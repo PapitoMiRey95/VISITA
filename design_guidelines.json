@@ -1,0 +1,148 @@
+{
+  "theme": "hybrid_light_theme",
+  "aesthetics": {
+    "internal_clinic_hub": {
+      "persona": "Staff, Physician, Admin",
+      "device_priority": "desktop-first",
+      "core_philosophy": "Operational density, fast access, high-contrast data display, progressive disclosure, minimal unnecessary whitespace. Must feel like a modernized desktop application, preserving the MS Access VISITA visual identity (light blue workspace, green functional modules)."
+    },
+    "patient_portal": {
+      "persona": "Patient (often older or non-technical)",
+      "device_priority": "mobile-first",
+      "core_philosophy": "Clean, friendly, simple, highly accessible. Large touch targets, plain wording, low cognitive load, minimal options. Should feel welcoming and reassuring."
+    }
+  },
+  "typography": {
+    "internal_clinic_hub": {
+      "font_family": "IBM Plex Sans, sans-serif",
+      "reasoning": "Technical, highly legible at small sizes, excellent for dense data tables and fast scanning.",
+      "scale": {
+        "h1": "text-2xl font-bold tracking-tight",
+        "h2": "text-lg font-semibold tracking-tight",
+        "body": "text-sm leading-snug",
+        "small": "text-xs font-medium uppercase tracking-wider"
+      }
+    },
+    "patient_portal": {
+      "font_family": "Nunito, sans-serif",
+      "reasoning": "Friendly, rounded terminals, approachable, and highly readable for older users.",
+      "scale": {
+        "h1": "text-3xl font-bold tracking-tight text-slate-900",
+        "h2": "text-xl font-semibold text-slate-800",
+        "body": "text-base md:text-lg leading-relaxed text-slate-700",
+        "small": "text-sm text-slate-500"
+      }
+    }
+  },
+  "colors": {
+    "internal_clinic_hub": {
+      "background": "#E6F0FA",
+      "surface": "#FFFFFF",
+      "primary": "#2E8540",
+      "primary_hover": "#246B33",
+      "text_primary": "#0F172A",
+      "text_secondary": "#475569",
+      "border": "#CBD5E1",
+      "alert_critical": "#DC2626",
+      "alert_warning": "#D97706"
+    },
+    "patient_portal": {
+      "background": "#F8FAFC",
+      "surface": "#FFFFFF",
+      "primary": "#0EA5E9",
+      "primary_hover": "#0284C7",
+      "text_primary": "#0F172A",
+      "text_secondary": "#334155",
+      "border": "#E2E8F0",
+      "action_green": "#10B981"
+    }
+  },
+  "visual_enhancers": {
+    "internal_clinic_hub": {
+      "border_radius": "rounded-sm (2px to 4px)",
+      "shadows": "shadow-sm (only to separate overlapping panels or modals, flat UI preferred for dense data)",
+      "borders": "1px solid border-slate-300 on cards and table rows to explicitly define boundaries."
+    },
+    "patient_portal": {
+      "border_radius": "rounded-2xl (16px)",
+      "shadows": "shadow-md (soft ambient shadows to make actionable tiles pop)",
+      "borders": "border-slate-100 to border-slate-200, subtle to maintain softness."
+    }
+  },
+  "component_guidelines": {
+    "internal_clinic_hub": {
+      "live_actionable_counters": "Must be rectangular, compact height (e.g., h-16), background white, with a thick green left border (border-l-4 border-[#2E8540]). Number should be text-2xl or 3xl font-bold text-slate-900. Label text-xs uppercase text-slate-600. Hover state: bg-slate-50 border-[#246B33].",
+      "data_tables_queues": "Extremely dense. py-1.5 px-2 for cells. Use border-collapse with border-b border-slate-200. text-sm. Striped rows (even:bg-slate-50) for fast scanning. Row hover: hover:bg-[#E6F0FA] (light blue highlight).",
+      "buttons": "Rectangular, rounded-sm, px-3 py-1.5 text-sm font-medium. Primary buttons in VISITA Green (#2E8540) with text-white.",
+      "navigation": "Persistent left sidebar or dense top ribbon. No hamburger menus on desktop. Immediate visibility of all primary queues."
+    },
+    "patient_portal": {
+      "action_tiles": "Large, square or wide-rectangular touch targets. rounded-2xl, p-6, shadow-md, bg-white. Centered layout: large friendly icon (text-blue-500) above text-lg font-bold. Active scale-down on click (active:scale-95).",
+      "bottom_navigation": "fixed bottom-0 w-full bg-white border-t border-slate-200 shadow-[0_-4px_6px_-1px_rgba(0,0,0,0.05)]. Flex justify-around. Min touch target 48px height. Active states highlighted with primary color.",
+      "disclaimer_banner": "bg-amber-50 text-amber-900 text-sm p-3 rounded-lg border border-amber-200 flex items-start gap-2. Prominent but not alarming."
+    }
+  },
+  "grids_and_layouts": {
+    "internal_clinic_hub": {
+      "layout_strategy": "CSS Grid for macro layout (e.g., grid-cols-12). Subgrids for complex forms. Avoid container padding larger than p-4.",
+      "spacing": "Tight scale: gap-2, p-2, p-3. Maximize viewport utilization.",
+      "alignment": "Left-align dense data, right-align numbers/currencies. Top-align labels in forms to save horizontal space."
+    },
+    "patient_portal": {
+      "layout_strategy": "Single column mobile-first (flex-col). On desktop, constrain max-width to max-w-md or max-w-lg and center it to maintain the app-like feel.",
+      "spacing": "Generous scale: gap-4, p-6, p-8. Let elements breathe.",
+      "alignment": "Center-align text in action tiles. Left-align body content for readability."
+    }
+  },
+  "motion": {
+    "internal_clinic_hub": {
+      "transitions": "Instant or extremely fast. duration-75 or duration-100 ease-in-out. Purely functional hover states (color changes). No scaling or bouncy animations.",
+      "reduced_motion": "Respect prefers-reduced-motion absolutely."
+    },
+    "patient_portal": {
+      "transitions": "Smooth and welcoming. duration-200 or duration-300 ease-out. Use gentle scaling for button presses (active:scale-95). List items can have a subtle staggered fade-in."
+    }
+  },
+  "accessibility": {
+    "contrast": "Strict APCA/WCAG AA compliance for both personas. Internal hub text must be dark gray/black against the light blue/white backgrounds.",
+    "touch_targets": "Patient Portal MUST have minimum 48x48px touch targets for all interactive elements.",
+    "testing": "All interactive and key informational elements MUST include a 'data-testid' attribute (e.g., data-testid='patient-appointment-btn', data-testid='rx-counter').",
+    "transparency": "DO NOT use complete transparent backgrounds in headers, overlays, or surfaces with content underneath."
+  },
+  "media": {
+    "strategy": "Use clean, professional medical imagery sparingly. Internal hub uses almost no imagery, heavily reliant on dense UI and Phosphor icons. Patient portal uses friendly, approachable icons (Lucide/Phosphor) and selective high-quality imagery."
+  },
+  "image_urls": {
+    "doctor_portrait_male": {
+      "url": "https://images.unsplash.com/photo-1612531385446-f7e6d131e1d0?crop=entropy&cs=srgb&fm=jpg&ixid=M3w3NTY2OTV8MHwxfHNlYXJjaHwzfHxmcmllbmRseSUyMGRvY3RvciUyMHBvcnRyYWl0fGVufDB8fHx8MTc4OTYxNjg1Nnww&ixlib=rb-4.1.0&q=85",
+      "category": "patient_portal_physician_profile",
+      "description": "Friendly male doctor portrait for portal."
+    },
+    "doctor_portrait_female": {
+      "url": "https://images.pexels.com/photos/5867737/pexels-photo-5867737.jpeg?auto=compress&cs=tinysrgb&dpr=2&h=650&w=940",
+      "category": "patient_portal_physician_profile",
+      "description": "Friendly female pediatrician portrait."
+    },
+    "clinic_interior": {
+      "url": "https://images.pexels.com/photos/7789620/pexels-photo-7789620.jpeg?auto=compress&cs=tinysrgb&dpr=2&h=650&w=940",
+      "category": "patient_portal_background_or_header",
+      "description": "Clean, state-of-the-art medical examination room."
+    }
+  },
+  "instructions_to_main_agent": {
+    "file_extensions": "Use .js and .jsx extensions exclusively. Do NOT use .tsx.",
+    "routing_strategy": "Implement distinct routing layouts for '/internal/*' (Desktop EMR Hub) and '/portal/*' (Mobile Patient Portal).",
+    "components": "Create custom raw Tailwind HTML for the dense Internal tables/counters to avoid Shadcn's default padding/margins. Use customized Shadcn for Patient Portal forms/dialogs.",
+    "styling": "Inject IBM Plex Sans and Nunito via Google Fonts in index.html or global css. Extend tailwind.config.js to include the custom VISITA colors (internal-bg: #E6F0FA, visita-green: #2E8540).",
+    "testing_attributes": "Enforce data-testid attributes on every clickable item, navigation link, table row action, and form input."
+  },
+  "UNIVERSAL_GUIDELINES_FOR_MAIN_AGENT": [
+    "NEVER use generic placeholder text for images; if image_urls are provided, use them.",
+    "Create depth through layered design elements with z-index hierarchy, but keep the internal hub flat and functional.",
+    "DO NOT apply universal transition (e.g., transition: all). Add transitions for specific interactive elements only.",
+    "DO NOT center align the app container in CSS (e.g., .App { text-align: center; }).",
+    "Use Phosphor Icons (@phosphor-icons/react) for dense dashboards, and Lucide React (lucide-react) for the patient portal.",
+    "Use 'sonner' for toasts notifications. They are located in /app/src/components/ui/sonner.js",
+    "Prioritize using pre-existing components from src/components/ui when applicable, adjusting their classes as needed for the dense vs. mobile-first contexts."
+  ]
+}

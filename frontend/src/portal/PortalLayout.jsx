@@ -1,4 +1,5 @@
 import { Outlet, useNavigate, NavLink, useLocation } from "react-router-dom";
+import { useMemo } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { Home, Calendar, Pill, MessageSquare, ClipboardList, Bell, LogOut, HeartPulse } from "lucide-react";
 import { api } from "../lib/api";
@@ -27,6 +28,11 @@ export default function PortalLayout() {
     });
 
     const unread = (overview.data?.notifications || []).filter((n) => !n.read).length;
+
+    const outletCtx = useMemo(
+        () => ({ overview, cfg, refetch: overview.refetch }),
+        [overview, cfg]
+    );
 
     return (
         <div className="min-h-screen bg-portal-blue/5 font-nunito flex flex-col">
@@ -60,7 +66,7 @@ export default function PortalLayout() {
             </header>
 
             <main className="flex-1 w-full max-w-lg mx-auto px-4 py-5 pb-24">
-                <Outlet context={{ overview, cfg, refetch: overview.refetch }} />
+                <Outlet context={outletCtx} />
             </main>
 
             <nav className="fixed bottom-0 inset-x-0 z-20 bg-white border-t border-slate-200 shadow-[0_-4px_6px_-1px_rgba(0,0,0,0.05)]">

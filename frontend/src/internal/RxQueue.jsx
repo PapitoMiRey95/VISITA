@@ -9,6 +9,15 @@ const STATUSES = [
     { label: "Completed", value: "completed" },
 ];
 
+const COLUMNS = [
+    { header: "Ref", cell: (i) => <span className="text-slate-500">{i.ref_number}</span> },
+    { header: "Patient", cell: (i) => <span className="font-semibold">{i.patient_name}</span> },
+    { header: "Medication", cell: (i) => `${i.medication_name} ${i.strength || ""}` },
+    { header: "Supply", cell: (i) => `${i.requested_months} mo` },
+    { header: "Delivery", cell: (i) => (i.delivery_method === "pharmacy" ? "Pharmacy" : "Pickup") },
+    { header: "Status", cell: (i) => <StatusPill status={i.internal_status} /> },
+];
+
 export default function RxQueue() {
     const { user } = useAuth();
     const physician = user?.role === "physician";
@@ -36,14 +45,7 @@ export default function RxQueue() {
             patchBase="/internal/prescriptions"
             searchPlaceholder="Search patient, medication, RX-…"
             statuses={physician ? [] : STATUSES}
-            columns={[
-                { header: "Ref", cell: (i) => <span className="text-slate-500">{i.ref_number}</span> },
-                { header: "Patient", cell: (i) => <span className="font-semibold">{i.patient_name}</span> },
-                { header: "Medication", cell: (i) => `${i.medication_name} ${i.strength || ""}` },
-                { header: "Supply", cell: (i) => `${i.requested_months} mo` },
-                { header: "Delivery", cell: (i) => (i.delivery_method === "pharmacy" ? "Pharmacy" : "Pickup") },
-                { header: "Status", cell: (i) => <StatusPill status={i.internal_status} /> },
-            ]}
+            columns={COLUMNS}
             detail={(i) => (
                 <div className="space-y-1.5">
                     <KV label="Medication">{i.medication_name} {i.strength}</KV>

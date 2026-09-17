@@ -1,4 +1,4 @@
-import { createContext, useContext, useEffect, useState } from "react";
+import { createContext, useContext, useEffect, useState, useCallback, useMemo } from "react";
 import { api, setToken, clearToken, getToken } from "../lib/api";
 
 const AuthCtx = createContext(null);
@@ -7,7 +7,7 @@ export function AuthProvider({ children }) {
     const [user, setUser] = useState(null); // null = checking, false = logged out, obj = logged in
     const [patient, setPatient] = useState(null);
 
-    const loadMe = async () => {
+    const loadMe = useCallback(async () => {
         if (!getToken()) {
             setUser(false);
             return;
@@ -20,39 +20,40 @@ export function AuthProvider({ children }) {
             clearToken();
             setUser(false);
         }
-    };
+    }, []);
 
     useEffect(() => {
         loadMe();
-    }, []);
+    }, [loadMe]);
 
-    const login = async (email, password) => {
+    const login = useCallback(async (email, password) => {
         const { data } = await api.post("/auth/login", { email, password });
         setToken(data.token);
         setUser(data.user);
         await loadMe();
         return data.user;
-    };
+    }, [loadMe]);
 
-    const register = async (payload) => {
+    const register = useCallback(async (payload) => {
         const { data } = await api.post("/auth/register", payload);
         setToken(data.token);
         setUser(data.user);
         await loadMe();
         return data.user;
-    };
+    }, [loadMe]);
 
-    const logout = () => {
+    const logout = useCallback(() => {
         clearToken();
         setUser(false);
         setPatient(null);
-    };
+    }, []);
 
-    return (
-        <AuthCtx.Provider value={{ user, patient, login, register, logout, refreshMe: loadMe }}>
-            {children}
-        </AuthCtx.Provider>
+    const value = useMemo(
+        () => ({ user, patient, login, register, logout, refreshMe: loadMe }),
+        [user, patient, login, register, logout, loadMe]
     );
+
+    return <AuthCtx.Provider value={value}>{children}</AuthCtx.Provider>;
 }
 
 export const useAuth = () => useContext(AuthCtx);

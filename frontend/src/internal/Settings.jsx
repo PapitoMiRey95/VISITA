@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useState, useCallback } from "react";
 import { toast } from "sonner";
 import { api, formatErr } from "../lib/api";
 import { Button } from "../components/ui/button";
@@ -29,9 +29,15 @@ export default function Settings() {
     const [templates, setTemplates] = useState({});
     const [busy, setBusy] = useState(false);
 
-    useEffect(() => {
-        api.get("/admin/settings").then(({ data }) => { setSettings(data.settings || {}); setTemplates(data.templates || {}); });
+    const load = useCallback(async () => {
+        const { data } = await api.get("/admin/settings");
+        setSettings(data.settings || {});
+        setTemplates(data.templates || {});
     }, []);
+
+    useEffect(() => {
+        load();
+    }, [load]);
 
     const save = async () => {
         setBusy(true);

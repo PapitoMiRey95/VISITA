@@ -3,9 +3,11 @@ import axios from "axios";
 export const API = `${process.env.REACT_APP_BACKEND_URL}/api`;
 const TOKEN_KEY = "visita_token";
 
-export const getToken = () => localStorage.getItem(TOKEN_KEY);
-export const setToken = (t) => localStorage.setItem(TOKEN_KEY, t);
-export const clearToken = () => localStorage.removeItem(TOKEN_KEY);
+// Use sessionStorage (cleared when the tab closes) instead of localStorage to
+// reduce XSS token-theft exposure and enforce session-scoped auth.
+export const getToken = () => sessionStorage.getItem(TOKEN_KEY);
+export const setToken = (t) => sessionStorage.setItem(TOKEN_KEY, t);
+export const clearToken = () => sessionStorage.removeItem(TOKEN_KEY);
 
 export const api = axios.create({ baseURL: API });
 

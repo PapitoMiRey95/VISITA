@@ -7,6 +7,7 @@ import Landing from "./pages/Landing";
 import SignIn from "./pages/SignIn";
 import Register from "./pages/Register";
 import ChangePassword from "./pages/ChangePassword";
+import ForgotPassword from "./pages/ForgotPassword";
 
 import PortalLayout from "./portal/PortalLayout";
 import PortalHome from "./portal/PortalHome";
@@ -40,6 +41,7 @@ function App() {
                     <Route path="/signin" element={<SignIn />} />
                     <Route path="/register" element={<Register />} />
                     <Route path="/change-password" element={<ChangePassword />} />
+                    <Route path="/forgot-password" element={<ForgotPassword />} />
 
                     <Route
                         path="/portal"

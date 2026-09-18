@@ -84,6 +84,12 @@ export default function SignIn() {
                             {busy ? <Loader2 className="w-4 h-4 animate-spin" /> : (internal ? "Sign in to VISITA" : "Sign in")}
                         </Button>
 
+                        <div className="text-center mt-4">
+                            <Link to="/forgot-password" data-testid="forgot-password-link" className="text-xs text-slate-400 hover:text-cyan-200">
+                                Forgot password?
+                            </Link>
+                        </div>
+
                         {!internal && (
                             <p className="text-sm text-center text-slate-400 mt-5">
                                 Existing clinic patient without an account?{" "}

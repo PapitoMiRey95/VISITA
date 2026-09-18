@@ -7,7 +7,9 @@ load_dotenv(ROOT_DIR / ".env")
 import logging
 import os
 import re
+import secrets
 import uuid
+from datetime import datetime, timedelta, timezone
 from typing import List, Optional
 
 from bson import ObjectId
@@ -18,6 +20,7 @@ from starlette.middleware.cors import CORSMiddleware
 
 import auth as authlib
 import availability as avail_mod
+import email_service
 import notifications as notify_svc
 import storage
 from db import (APPT_PATIENT_STATUS, IMG_ACTIVE, IMG_PATIENT_STATUS, MSG_ACTIVE,
@@ -133,6 +136,16 @@ class LoginBody(BaseModel):
 
 class ChangePwBody(BaseModel):
     current_password: str
+    new_password: str = Field(min_length=8)
+
+
+class ForgotBody(BaseModel):
+    identifier: str
+
+
+class ResetBody(BaseModel):
+    identifier: str
+    code: str
     new_password: str = Field(min_length=8)
 
 
@@ -258,6 +271,72 @@ async def change_password(body: ChangePwBody, user: dict = Depends(get_current_u
         "password_changed_at": now_iso(),
     }})
     await audit("change_password", "user", user["id"], user)
+    return {"ok": True}
+
+
+async def _find_by_identifier(ident: str):
+    ident = (ident or "").strip()
+    if not ident:
+        return None
+    return await db.users.find_one({"$or": [
+        {"email": ident.lower()},
+        {"username": {"$regex": f"^{re.escape(ident)}$", "$options": "i"}},
+    ]})
+
+
+@api.post("/auth/forgot-password")
+async def forgot_password(body: ForgotBody):
+    generic = {"ok": True, "message": "If an account matches, a verification code has been sent to the email on file."}
+    user = await _find_by_identifier(body.identifier)
+    if not user or not user.get("email"):
+        return generic
+    code = f"{secrets.randbelow(1000000):06d}"
+    await db.password_resets.update_one({"user_id": str(user["_id"])}, {"$set": {
+        "user_id": str(user["_id"]),
+        "code_hash": authlib.hash_password(code),
+        "expires_at": (datetime.now(timezone.utc) + timedelta(minutes=15)).isoformat(),
+        "attempts": 0,
+        "created_at": now_iso(),
+    }}, upsert=True)
+    try:
+        await email_service.send_email(
+            to=user["email"],
+            subject="Your VISITA password reset code",
+            html=email_service.reset_code_html(user.get("name"), code),
+        )
+    except Exception:
+        logger.error("Failed to send reset email")
+        raise HTTPException(status_code=502, detail="We couldn't send the email right now. Please try again shortly.")
+    await audit("forgot_password", "user", str(user["_id"]),
+                {"id": str(user["_id"]), "name": user.get("name"), "role": user.get("role")})
+    return generic
+
+
+@api.post("/auth/reset-password")
+async def reset_password(body: ResetBody):
+    user = await _find_by_identifier(body.identifier)
+    if not user:
+        raise HTTPException(status_code=400, detail="Invalid or expired code.")
+    rec = await db.password_resets.find_one({"user_id": str(user["_id"])})
+    if not rec:
+        raise HTTPException(status_code=400, detail="No active reset request. Please request a new code.")
+    if datetime.fromisoformat(rec["expires_at"]) < datetime.now(timezone.utc):
+        await db.password_resets.delete_one({"user_id": str(user["_id"])})
+        raise HTTPException(status_code=400, detail="Your code has expired. Please request a new one.")
+    if rec.get("attempts", 0) >= 5:
+        await db.password_resets.delete_one({"user_id": str(user["_id"])})
+        raise HTTPException(status_code=429, detail="Too many attempts. Please request a new code.")
+    if not authlib.verify_password(body.code.strip(), rec["code_hash"]):
+        await db.password_resets.update_one({"user_id": str(user["_id"])}, {"$inc": {"attempts": 1}})
+        raise HTTPException(status_code=400, detail="Invalid or expired code.")
+    await db.users.update_one({"_id": user["_id"]}, {"$set": {
+        "password_hash": authlib.hash_password(body.new_password),
+        "must_change_password": False,
+        "password_changed_at": now_iso(),
+    }})
+    await db.password_resets.delete_one({"user_id": str(user["_id"])})
+    await audit("reset_password", "user", str(user["_id"]),
+                {"id": str(user["_id"]), "name": user.get("name"), "role": user.get("role")})
     return {"ok": True}
 
 

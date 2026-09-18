@@ -13,7 +13,7 @@ const BG = "https://customer-assets-4nw71qhi.emergentagent.net/job_visita-admin/
 export default function Login() {
     const { login } = useAuth();
     const nav = useNavigate();
-    const [email, setEmail] = useState("");
+    const [identifier, setIdentifier] = useState("");
     const [password, setPassword] = useState("");
     const [busy, setBusy] = useState(false);
 
@@ -21,7 +21,12 @@ export default function Login() {
         e.preventDefault();
         setBusy(true);
         try {
-            const u = await login(email.trim(), password);
+            const u = await login(identifier.trim(), password);
+            if (u.must_change_password) {
+                toast.message("Please set a new password to continue.");
+                nav("/change-password", { replace: true });
+                return;
+            }
             toast.success(`Welcome back, ${u.name?.split(" ")[0] || ""}`);
             nav(u.role === "patient" ? "/portal" : "/internal", { replace: true });
         } catch (err) {
@@ -78,12 +83,12 @@ export default function Login() {
                             </div>
                         </div>
 
-                        <Label htmlFor="email" className="text-[11px] uppercase tracking-widest text-slate-400">Email</Label>
+                        <Label htmlFor="email" className="text-[11px] uppercase tracking-widest text-slate-400">Email or Username</Label>
                         <Input
-                            id="email" data-testid="login-email" type="email" required value={email}
-                            onChange={(e) => setEmail(e.target.value)}
+                            id="email" data-testid="login-email" type="text" required value={identifier}
+                            onChange={(e) => setIdentifier(e.target.value)}
                             className="mt-1 mb-4 bg-[#0f1e30] border-white/10 text-slate-100 placeholder:text-slate-500 focus-visible:ring-cyan-400/60"
-                            placeholder="you@example.com"
+                            placeholder="you@example.com  or  USERNAME"
                         />
 
                         <Label htmlFor="password" className="text-[11px] uppercase tracking-widest text-slate-400">Password</Label>

@@ -6,6 +6,7 @@ load_dotenv(ROOT_DIR / ".env")
 
 import logging
 import os
+import re
 import uuid
 from typing import List, Optional
 
@@ -38,11 +39,14 @@ CLINIC_ROLES = ("staff", "physician", "admin")
 def serialize_user(u: dict) -> dict:
     return {
         "id": str(u["_id"]),
-        "email": u["email"],
+        "email": u.get("email"),
+        "username": u.get("username"),
         "name": u.get("name"),
         "role": u.get("role"),
         "active": u.get("active", True),
         "patient_id": u.get("patient_id"),
+        "must_change_password": u.get("must_change_password", False),
+        "mfa_enabled": u.get("mfa_enabled", False),
     }
 
 
@@ -122,8 +126,14 @@ class RegisterBody(BaseModel):
 
 
 class LoginBody(BaseModel):
-    email: EmailStr
+    identifier: Optional[str] = None
+    email: Optional[str] = None
     password: str
+
+
+class ChangePwBody(BaseModel):
+    current_password: str
+    new_password: str = Field(min_length=8)
 
 
 class AppointmentBody(BaseModel):
@@ -220,14 +230,35 @@ async def register(body: RegisterBody):
 
 @api.post("/auth/login")
 async def login(body: LoginBody):
-    email = body.email.lower()
-    user = await db.users.find_one({"email": email})
+    ident = (body.identifier or body.email or "").strip()
+    if not ident:
+        raise HTTPException(status_code=400, detail="Please enter your email or username.")
+    user = await db.users.find_one({"$or": [
+        {"email": ident.lower()},
+        {"username": {"$regex": f"^{re.escape(ident)}$", "$options": "i"}},
+    ]})
     if not user or not authlib.verify_password(body.password, user["password_hash"]):
-        raise HTTPException(status_code=401, detail="Invalid email or password.")
+        raise HTTPException(status_code=401, detail="Invalid credentials. Please check your email/username and password.")
     if not user.get("active", True):
         raise HTTPException(status_code=403, detail="This account has been disabled. Contact the clinic.")
-    token = authlib.create_access_token(str(user["_id"]), email, user["role"])
+    token = authlib.create_access_token(str(user["_id"]), user.get("email") or user.get("username"), user["role"])
     return {"token": token, "user": serialize_user(user)}
+
+
+@api.post("/auth/change-password")
+async def change_password(body: ChangePwBody, user: dict = Depends(get_current_user)):
+    doc = await db.users.find_one({"_id": ObjectId(user["id"])})
+    if not doc or not authlib.verify_password(body.current_password, doc["password_hash"]):
+        raise HTTPException(status_code=401, detail="Your current password is incorrect.")
+    if authlib.verify_password(body.new_password, doc["password_hash"]):
+        raise HTTPException(status_code=400, detail="New password must be different from the current password.")
+    await db.users.update_one({"_id": doc["_id"]}, {"$set": {
+        "password_hash": authlib.hash_password(body.new_password),
+        "must_change_password": False,
+        "password_changed_at": now_iso(),
+    }})
+    await audit("change_password", "user", user["id"], user)
+    return {"ok": True}
 
 
 @api.get("/auth/me")

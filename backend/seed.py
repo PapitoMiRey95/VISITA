@@ -119,6 +119,24 @@ async def seed_all(db, authlib):
             }})
         await db.app_meta.insert_one({"id": "appt_v2", "at": now_iso()})
 
+    # physician account: username login + forced temp-password change (one-time)
+    if not await db.app_meta.find_one({"id": "phys_v2"}):
+        uname = os.environ.get("PHYSICIAN_USERNAME", "PAGUAYO")
+        temp = os.environ.get("PHYSICIAN_TEMP_PASSWORD", "ChangeMe#2026")
+        phys = await db.users.find_one({"role": "physician"})
+        payload = {
+            "username": uname, "name": "Dr. Pablo Aguayo", "role": "physician",
+            "password_hash": authlib.hash_password(temp), "must_change_password": True,
+            "mfa_enabled": False, "patient_id": None, "active": True,
+        }
+        if phys:
+            await db.users.update_one({"_id": phys["_id"]}, {"$set": payload})
+        else:
+            payload["email"] = "doctor@visita.demo"
+            payload["created_at"] = now_iso()
+            await db.users.insert_one(payload)
+        await db.app_meta.insert_one({"id": "phys_v2", "at": now_iso()})
+
     # guard demo
     if await db.app_meta.find_one({"id": "seeded_v1"}):
         return

@@ -5,6 +5,7 @@ import { RoleRoute, HomeRedirect } from "./components/RoleRoute";
 
 import Login from "./pages/Login";
 import Register from "./pages/Register";
+import ChangePassword from "./pages/ChangePassword";
 
 import PortalLayout from "./portal/PortalLayout";
 import PortalHome from "./portal/PortalHome";
@@ -36,6 +37,7 @@ function App() {
                     <Route path="/" element={<HomeRedirect />} />
                     <Route path="/login" element={<Login />} />
                     <Route path="/register" element={<Register />} />
+                    <Route path="/change-password" element={<ChangePassword />} />
 
                     <Route
                         path="/portal"

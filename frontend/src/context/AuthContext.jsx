@@ -36,6 +36,7 @@ export function AuthProvider({ children }) {
 
     const register = useCallback(async (payload) => {
         const { data } = await api.post("/auth/register", payload);
+        if (data.former_detected) return data; // no account created; caller handles re-establish flow
         setToken(data.token);
         setUser(data.user);
         await loadMe();

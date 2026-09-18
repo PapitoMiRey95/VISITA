@@ -1,7 +1,7 @@
 import { Outlet, NavLink, useNavigate } from "react-router-dom";
 import {
     LayoutGrid, Pill, Calendar, Scan, MessageSquare, ClipboardCheck,
-    Send, UserCheck, Settings as SettingsIcon, LogOut, Stethoscope,
+    Send, UserCheck, UserPlus, Settings as SettingsIcon, LogOut, Stethoscope,
 } from "lucide-react";
 import { useAuth } from "../context/AuthContext";
 import { useCounters } from "./hooks";
@@ -20,6 +20,7 @@ export default function InternalLayout() {
               { to: "/internal/rx", icon: Pill, label: "Rx", key: "rx" },
               { to: "/internal/imaging", icon: Scan, label: "Imaging", key: "imaging" },
               { to: "/internal/messages", icon: MessageSquare, label: "Messages", key: "messages" },
+              { to: "/internal/applications", icon: UserPlus, label: "Applications", key: "applications" },
               { to: "/internal/tasks", icon: Send, label: "Intercom", key: null },
               { to: "/internal/referrals", icon: ClipboardCheck, label: "Referral Drop-Off", key: null },
           ]
@@ -32,6 +33,7 @@ export default function InternalLayout() {
               { to: "/internal/appointments", icon: Calendar, label: "Appointments", key: "appointments" },
               { to: "/internal/tasks", icon: Send, label: "Doctor Tasks", key: "doctor_tasks" },
               { to: "/internal/verifications", icon: UserCheck, label: "Verifications", key: "verifications" },
+              { to: "/internal/applications", icon: UserPlus, label: "Applications", key: "applications" },
               ...(role === "admin" ? [{ to: "/internal/settings", icon: SettingsIcon, label: "Settings", key: null }] : []),
           ];
 

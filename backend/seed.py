@@ -45,6 +45,20 @@ DEFAULT_TEMPLATES = {
     "emergency_notice": ("This portal is not monitored continuously and should not be used for emergencies. "
                          "If you are experiencing a medical emergency, call 911 or go to the nearest Emergency Department."),
     "portal_disclaimer": "This portal is for non-urgent requests and communication with the clinic.",
+    "former_patient_detected": ("Our records indicate that you are not currently an active patient of Dr. Aguayo's "
+                                "practice. If you would like to request to re-establish care with the clinic, you may "
+                                "submit a request below. Requests are reviewed based on physician availability and "
+                                "practice capacity and do not guarantee acceptance."),
+    "reestablish_care_confirmation": ("Your request to re-establish care with Dr. Aguayo has been received. Your request "
+                                       "has been added to the clinic waiting list for review. Submission of a request "
+                                       "does not guarantee acceptance as a patient. We will contact you if the practice "
+                                       "is able to offer you care."),
+    "new_patient_request_confirmation": ("Thank you. Your request to become a patient of Dr. Aguayo's practice has been "
+                                         "received and added to the clinic waiting list for review. New patients are "
+                                         "accepted based on physician availability and practice capacity. Submitting a "
+                                         "request does not guarantee acceptance. We will contact you if the practice is "
+                                         "able to offer you care."),
+    "application_not_accepted": "The clinic is unable to offer you ongoing care at this time.",
 }
 
 DEFAULT_SETTINGS = {
@@ -95,8 +109,28 @@ async def seed_all(db, authlib):
         await db.settings.insert_one({**DEFAULT_SETTINGS})
     if not await db.templates.find_one({"id": "templates"}):
         await db.templates.insert_one({"id": "templates", "items": DEFAULT_TEMPLATES})
+    else:
+        # merge any newly-added default template keys into existing installs
+        existing = await db.templates.find_one({"id": "templates"})
+        items = existing.get("items", {})
+        missing = {k: v for k, v in DEFAULT_TEMPLATES.items() if k not in items}
+        if missing:
+            await db.templates.update_one({"id": "templates"}, {"$set": {f"items.{k}": v for k, v in missing.items()}})
     if not await db.settings.find_one({"id": "availability"}):
         await db.settings.insert_one({**avail_mod.DEFAULT_AVAILABILITY})
+
+    # one-time patient directory import (829 ACTIVE + 2157 FORMER_CLOSED)
+    if not await db.app_meta.find_one({"id": "directory_v1"}):
+        import directory as directory_mod
+        try:
+            count = await directory_mod.import_directory(db)
+            await db.patient_directory.create_index("norm_hcn")
+            await db.patient_directory.create_index([("norm_first", 1), ("norm_last", 1), ("norm_dob", 1)])
+            await db.patient_directory.create_index("patient_status")
+            await db.app_meta.insert_one({"id": "directory_v1", "at": now_iso(), "count": count})
+        except Exception as e:
+            import logging
+            logging.getLogger("visita").error(f"Directory import failed: {e}")
 
     # one-time migration: give legacy appointment requests slot-based options
     if not await db.app_meta.find_one({"id": "appt_v2"}):

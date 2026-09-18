@@ -1,7 +1,7 @@
 import { useNavigate } from "react-router-dom";
 import { useCounters } from "./hooks";
 import { useAuth } from "../context/AuthContext";
-import { Pill, ClipboardCheck, Scan, MessageSquare, Calendar, Send, UserCheck } from "lucide-react";
+import { Pill, ClipboardCheck, Scan, MessageSquare, Calendar, Send, UserCheck, UserPlus } from "lucide-react";
 
 const STAFF = [
     { key: "rx", label: "Rx", to: "/internal/rx", icon: Pill },
@@ -11,12 +11,14 @@ const STAFF = [
     { key: "appointments", label: "Appointments", to: "/internal/appointments", icon: Calendar },
     { key: "doctor_tasks", label: "Doctor Tasks", to: "/internal/tasks", icon: Send },
     { key: "verifications", label: "Verifications", to: "/internal/verifications", icon: UserCheck },
+    { key: "applications", label: "Applications", to: "/internal/applications", icon: UserPlus },
 ];
 
 const PHYS = [
     { key: "rx", label: "Rx", to: "/internal/rx", icon: Pill },
     { key: "imaging", label: "Imaging", to: "/internal/imaging", icon: Scan },
     { key: "messages", label: "Messages", to: "/internal/messages", icon: MessageSquare },
+    { key: "applications", label: "Applications", to: "/internal/applications", icon: UserPlus },
 ];
 
 function Counter({ item, value, onClick }) {

@@ -10,6 +10,12 @@ import { Label } from "../components/ui/label";
 
 const TYPE = { ohip: "OHIP", private: "Private / Uninsured", tourist: "Tourist / Visitor" };
 
+const REVIEW = {
+    ACTIVE_MATCH: ["Active match — verify & link", "bg-emerald-100 text-emerald-700"],
+    AMBIGUOUS_MATCH: ["Ambiguous match — confirm identity", "bg-amber-100 text-amber-700"],
+    UNMATCHED_CURRENT_PATIENT: ["Unmatched — staff review required", "bg-slate-100 text-slate-600"],
+};
+
 export default function Verifications() {
     const invalidate = useInvalidate();
     const [visitaIds, setVisitaIds] = useState({});
@@ -35,6 +41,11 @@ export default function Verifications() {
                     <div key={p.id} data-testid="verification-item" className="bg-white border border-slate-300 rounded-sm p-4">
                         <div className="flex items-start justify-between gap-3 flex-wrap">
                             <div className="text-sm space-y-0.5">
+                                {p.review_queue && REVIEW[p.review_queue] && (
+                                    <span data-testid="verification-review-badge" className={`inline-block px-2 py-0.5 rounded-sm text-xs font-semibold mb-1 ${REVIEW[p.review_queue][1]}`}>
+                                        {REVIEW[p.review_queue][0]}
+                                    </span>
+                                )}
                                 <div className="font-bold text-slate-800 text-base">{p.last_name}, {p.first_name}</div>
                                 <div className="text-slate-600">DOB: {p.date_of_birth} · {TYPE[p.patient_type] || p.patient_type}</div>
                                 <div className="text-slate-600">Phone: {p.phone} · Email: {p.email}</div>
@@ -42,6 +53,20 @@ export default function Verifications() {
                                 {p.province && <div className="text-slate-600">Province: {p.province}</div>}
                                 {p.country && <div className="text-slate-600">Country: {p.country}</div>}
                                 {p.extra_info && <div className="text-slate-600">Note: {p.extra_info}</div>}
+
+                                {(p.directory_match?.candidates || []).length > 0 && (
+                                    <div className="mt-2 border-t border-slate-200 pt-1.5">
+                                        <div className="text-xs uppercase tracking-wide text-slate-400 mb-1">
+                                            Suggested VISITA record{(p.directory_match.candidates.length > 1) ? "s" : ""} · {p.directory_match.strength} match
+                                        </div>
+                                        {p.directory_match.candidates.map((c) => (
+                                            <div key={c.id} data-testid="verification-candidate" className="text-xs text-slate-600 bg-emerald-50 rounded-sm px-2 py-1 mb-1">
+                                                {c.last_name}, {c.first_name} · DOB {c.date_of_birth} · HC {c.health_card_masked || "—"}
+                                                {c.visita_patient_id ? ` · VISITA #${c.visita_patient_id}` : ""} · {c.city || ""} {c.province || ""}
+                                            </div>
+                                        ))}
+                                    </div>
+                                )}
                             </div>
                             <div className="flex flex-col gap-2 items-end">
                                 <div>

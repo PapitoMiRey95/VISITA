@@ -20,6 +20,7 @@ from starlette.middleware.cors import CORSMiddleware
 
 import auth as authlib
 import availability as avail_mod
+import directory as directory_mod
 import email_service
 import notifications as notify_svc
 import storage
@@ -212,12 +213,94 @@ class VerifyBody(BaseModel):
     matched_patient_id: Optional[str] = None
 
 
+class ReturnRequestBody(BaseModel):
+    first_name: str
+    last_name: str
+    date_of_birth: str
+    health_card_number: Optional[str] = None
+    phone: str
+    email: EmailStr
+    address: Optional[str] = None
+    city: Optional[str] = None
+    province: Optional[str] = None
+    postal_code: Optional[str] = None
+    patient_message: Optional[str] = None
+    preferred_language: str = "en"
+
+
+class NewPatientRequestBody(BaseModel):
+    first_name: str
+    last_name: str
+    date_of_birth: str
+    phone: str
+    email: EmailStr
+    city: Optional[str] = None
+    province: Optional[str] = None
+    country: Optional[str] = None
+    patient_message: Optional[str] = None
+    preferred_language: str = "en"
+
+
+class ApplicationUpdateBody(BaseModel):
+    internal_status: Optional[str] = None
+    action: Optional[str] = None       # send_to_physician | accept | not_accepting | waitlist | review | close
+    internal_note: Optional[str] = None
+    staff_message: Optional[str] = None  # neutral, approved message to relay to the patient
+
+
+# ----------------------------- Patient application helpers -----------------------------
+APP_PATIENT_STATUS = {
+    "REQUEST_RECEIVED": "Request Received",
+    "WAITING_LIST": "On Waiting List",
+    "UNDER_REVIEW": "Under Review",
+    "SENT_TO_PHYSICIAN": "Under Review",
+    "ACCEPTED": "Accepted",
+    "NOT_ACCEPTING": "Request Closed",
+    "CLOSED": "Request Closed",
+}
+APP_ACTIVE = ["REQUEST_RECEIVED", "WAITING_LIST", "UNDER_REVIEW", "SENT_TO_PHYSICIAN"]
+
+
+async def get_template(key: str, default: str = "") -> str:
+    t = await db.templates.find_one({"id": "templates"}, {"_id": 0})
+    return (t or {}).get("items", {}).get(key, default)
+
+
 # ----------------------------- Auth routes -----------------------------
 @api.post("/auth/register")
 async def register(body: RegisterBody):
     email = body.email.lower()
     if await db.users.find_one({"email": email}):
         raise HTTPException(status_code=400, detail="An account with this email already exists.")
+
+    # Directory-assisted matching for current-patient registrations
+    match = await directory_mod.match_registration(
+        db, body.first_name, body.last_name, body.date_of_birth, body.health_card_number)
+
+    # FORMER_CLOSED match: do NOT create a current-patient portal account.
+    # Route the person to the neutral re-establish-care request flow instead.
+    if match["outcome"] == directory_mod.FORMER_MATCH:
+        msg = await get_template("former_patient_detected")
+        return {
+            "former_detected": True,
+            "message": msg,
+            "prefill": {
+                "first_name": body.first_name, "last_name": body.last_name,
+                "date_of_birth": body.date_of_birth, "email": email,
+                "phone": body.phone, "health_card_number": body.health_card_number,
+                "province": body.province,
+            },
+        }
+
+    # Duplicate-account guard: an ACTIVE directory record already linked to a portal patient
+    if match.get("outcome") == directory_mod.ACTIVE_MATCH and match.get("matched_id"):
+        d = await db.patient_directory.find_one({"id": match["matched_id"]})
+        if d and d.get("linked_patient_id"):
+            raise HTTPException(
+                status_code=409,
+                detail="It looks like you may already have a portal account. Please sign in or use Forgot Password, or contact the clinic.")
+
+    review_queue = match["outcome"]
     patient_id = str(uuid.uuid4())
     patient = {
         "id": patient_id, "visita_patient_id": None,
@@ -226,6 +309,10 @@ async def register(body: RegisterBody):
         "health_card_version": body.health_card_version, "phone": body.phone, "email": email,
         "province": body.province, "country": body.country, "extra_info": body.extra_info,
         "patient_type": body.patient_type, "verification_status": "pending",
+        "portal_status": "PENDING_VERIFICATION",
+        "review_queue": review_queue, "directory_match": match,
+        "matched_directory_id": match.get("matched_id"),
+        "preferred_language": "en",
         "active_status": True, "is_demo": False, "created_at": now_iso(), "updated_at": now_iso(),
     }
     await db.patients.insert_one({**patient})
@@ -235,10 +322,65 @@ async def register(body: RegisterBody):
         "patient_id": patient_id, "active": True, "created_at": now_iso(),
     })
     uid = str(res.inserted_id)
-    await audit("register", "patient", patient_id, {"id": uid, "name": patient["first_name"], "role": "patient"})
+    await audit("register", "patient", patient_id, {"id": uid, "name": patient["first_name"], "role": "patient"},
+                meta={"review_queue": review_queue, "match_outcome": match["outcome"]})
+    if match.get("candidates"):
+        await audit("directory_match_suggested", "patient", patient_id,
+                    {"id": uid, "name": patient["first_name"], "role": "patient"},
+                    meta={"outcome": match["outcome"], "candidate_count": len(match["candidates"])})
     token = authlib.create_access_token(uid, email, "patient")
     user = await db.users.find_one({"_id": res.inserted_id})
     return {"token": token, "user": serialize_user(user)}
+
+
+@api.post("/applications/return-request")
+async def return_request(body: ReturnRequestBody):
+    match = await directory_mod.match_registration(
+        db, body.first_name, body.last_name, body.date_of_birth, body.health_card_number)
+    ref = await next_ref("APP")
+    doc = {
+        "id": str(uuid.uuid4()), "ref_number": ref, "application_type": "former_return",
+        "first_name": body.first_name.strip(), "last_name": body.last_name.strip(),
+        "date_of_birth": body.date_of_birth, "health_card_number": body.health_card_number,
+        "phone": body.phone, "email": body.email.lower(), "address": body.address,
+        "city": body.city, "province": body.province, "postal_code": body.postal_code,
+        "patient_message": body.patient_message, "preferred_language": body.preferred_language or "en",
+        "directory_match": match, "matched_directory_id": match.get("matched_id"),
+        "internal_status": "REQUEST_RECEIVED", "internal_notes": [],
+        "accepted_by": None, "accepted_at": None, "previous_status": None, "new_status": None,
+        "history": [{"status": "REQUEST_RECEIVED", "at": now_iso(), "by": "patient"}],
+        "created_at": now_iso(), "updated_at": now_iso(),
+    }
+    await db.patient_applications.insert_one({**doc})
+    await audit("create", "patient_application", doc["id"],
+                {"id": None, "name": f"{body.first_name} {body.last_name}", "role": "patient"},
+                new_status="REQUEST_RECEIVED", meta={"type": "former_return"})
+    return {"ok": True, "ref_number": ref, "status": APP_PATIENT_STATUS["REQUEST_RECEIVED"],
+            "message": await get_template("reestablish_care_confirmation")}
+
+
+@api.post("/applications/new-patient")
+async def new_patient_request(body: NewPatientRequestBody):
+    ref = await next_ref("APP")
+    doc = {
+        "id": str(uuid.uuid4()), "ref_number": ref, "application_type": "new_patient",
+        "first_name": body.first_name.strip(), "last_name": body.last_name.strip(),
+        "date_of_birth": body.date_of_birth, "health_card_number": None,
+        "phone": body.phone, "email": body.email.lower(), "address": None,
+        "city": body.city, "province": body.province, "country": body.country,
+        "patient_message": body.patient_message, "preferred_language": body.preferred_language or "en",
+        "directory_match": None, "matched_directory_id": None,
+        "internal_status": "REQUEST_RECEIVED", "internal_notes": [],
+        "accepted_by": None, "accepted_at": None, "previous_status": None, "new_status": None,
+        "history": [{"status": "REQUEST_RECEIVED", "at": now_iso(), "by": "patient"}],
+        "created_at": now_iso(), "updated_at": now_iso(),
+    }
+    await db.patient_applications.insert_one({**doc})
+    await audit("create", "patient_application", doc["id"],
+                {"id": None, "name": f"{body.first_name} {body.last_name}", "role": "patient"},
+                new_status="REQUEST_RECEIVED", meta={"type": "new_patient"})
+    return {"ok": True, "ref_number": ref, "status": APP_PATIENT_STATUS["REQUEST_RECEIVED"],
+            "message": await get_template("new_patient_request_confirmation")}
 
 
 @api.post("/auth/login")
@@ -580,7 +722,8 @@ async def counters(user: dict = Depends(require_roles(*CLINIC_ROLES))):
         img = await db.imaging_requests.count_documents({"internal_status": "waiting_physician"})
         pmsg = await db.patient_messages.count_documents({"status": "waiting_physician"})
         dmsg = await db.internal_messages.count_documents({"recipient_role": "physician", "status": {"$ne": "completed"}})
-        return {"role": "physician", "counters": {"rx": rx, "imaging": img, "messages": pmsg + dmsg}}
+        apps = await db.patient_applications.count_documents({"internal_status": {"$in": APP_ACTIVE}})
+        return {"role": "physician", "counters": {"rx": rx, "imaging": img, "messages": pmsg + dmsg, "applications": apps}}
     rx = await db.prescription_requests.count_documents({"internal_status": {"$in": RX_ACTIVE}})
     referrals = await db.referrals.count_documents({"ready_to_fax": True, "faxed": False})
     img = await db.imaging_requests.count_documents({"internal_status": {"$in": IMG_ACTIVE}})
@@ -588,9 +731,10 @@ async def counters(user: dict = Depends(require_roles(*CLINIC_ROLES))):
     appts = await db.appointment_requests.count_documents({"status": "requested"})
     tasks = await db.internal_messages.count_documents({"recipient_role": "staff", "status": {"$ne": "completed"}})
     pending_verif = await db.patients.count_documents({"verification_status": "pending", "active_status": True})
+    apps = await db.patient_applications.count_documents({"internal_status": {"$in": APP_ACTIVE}})
     return {"role": user["role"], "counters": {
         "rx": rx, "referrals": referrals, "imaging": img, "messages": msgs,
-        "appointments": appts, "doctor_tasks": tasks, "verifications": pending_verif,
+        "appointments": appts, "doctor_tasks": tasks, "verifications": pending_verif, "applications": apps,
     }}
 
 
@@ -911,8 +1055,28 @@ async def verifications(user: dict = Depends(require_roles(*CLINIC_ROLES))):
             "patient_type": p["patient_type"], "province": p.get("province"), "country": p.get("country"),
             "extra_info": p.get("extra_info"), "created_at": p["created_at"],
             "health_card_masked": mask_hcn(p.get("health_card_number")),
+            "review_queue": p.get("review_queue"),
+            "directory_match": p.get("directory_match"),
         })
     return out
+
+
+@api.get("/internal/directory")
+async def search_directory(q: Optional[str] = None, status: Optional[str] = None,
+                           user: dict = Depends(require_roles(*CLINIC_ROLES))):
+    query = {}
+    if status:
+        query["patient_status"] = status
+    if q:
+        qn = q.strip()
+        query["$or"] = [
+            {"first_name": {"$regex": qn, "$options": "i"}},
+            {"last_name": {"$regex": qn, "$options": "i"}},
+            {"norm_hcn": {"$regex": directory_mod.norm_hcn(qn)}},
+            {"visita_patient_id": {"$regex": qn, "$options": "i"}},
+        ]
+    docs = await db.patient_directory.find(query).limit(50).to_list(50)
+    return [directory_mod.serialize_candidate(d) for d in docs]
 
 
 @api.post("/internal/verifications/{patient_id}")
@@ -922,13 +1086,120 @@ async def verify_patient(patient_id: str, body: VerifyBody, user: dict = Depends
         raise HTTPException(status_code=404, detail="Not found")
     updates = {"verification_status": body.decision, "updated_at": now_iso(),
                "verified_by": user["name"], "verified_at": now_iso()}
+    if body.decision == "verified":
+        updates["portal_status"] = "VERIFIED"
     if body.visita_patient_id:
         updates["visita_patient_id"] = body.visita_patient_id
+    # Link to a directory record (stable VISITA-id relationship)
+    link_dir_id = body.matched_patient_id or p.get("matched_directory_id")
+    if body.decision == "verified" and link_dir_id:
+        d = await db.patient_directory.find_one({"id": link_dir_id})
+        if d:
+            updates["visita_patient_id"] = d.get("visita_patient_id") or updates.get("visita_patient_id")
+            updates["matched_directory_id"] = link_dir_id
+            await db.patient_directory.update_one({"id": link_dir_id}, {"$set": {
+                "linked_patient_id": patient_id, "updated_at": now_iso()}})
+            await audit("patient_linked", "patient", patient_id, user, meta={"directory_id": link_dir_id})
     await db.patients.update_one({"id": patient_id}, {"$set": updates})
     await audit("verify_patient", "patient", patient_id, user, new_status=body.decision)
     await notify_patient(patient_id, "Account update",
                          "Your portal account has been reviewed. Please log in to your Patient Portal.")
     return {"ok": True}
+
+
+# ----------------------------- Patient Applications (new / former return) -----------------------------
+def _serialize_application(a: dict) -> dict:
+    return {
+        "id": a["id"], "ref_number": a.get("ref_number"), "application_type": a.get("application_type"),
+        "first_name": a.get("first_name"), "last_name": a.get("last_name"),
+        "date_of_birth": a.get("date_of_birth"), "phone": a.get("phone"), "email": a.get("email"),
+        "address": a.get("address"), "city": a.get("city"), "province": a.get("province"),
+        "postal_code": a.get("postal_code"), "country": a.get("country"),
+        "health_card_masked": mask_hcn(a.get("health_card_number")),
+        "patient_message": a.get("patient_message"), "preferred_language": a.get("preferred_language"),
+        "internal_status": a.get("internal_status"),
+        "patient_visible_status": APP_PATIENT_STATUS.get(a.get("internal_status")),
+        "directory_match": a.get("directory_match"), "matched_directory_id": a.get("matched_directory_id"),
+        "internal_notes": a.get("internal_notes", []), "history": a.get("history", []),
+        "accepted_by": a.get("accepted_by"), "accepted_at": a.get("accepted_at"),
+        "created_at": a.get("created_at"), "updated_at": a.get("updated_at"),
+    }
+
+
+@api.get("/internal/applications")
+async def applications_queue(type: Optional[str] = None, status: Optional[str] = None,
+                             user: dict = Depends(require_roles(*CLINIC_ROLES))):
+    query = {}
+    if type in ("new_patient", "former_return"):
+        query["application_type"] = type
+    if status == "active":
+        query["internal_status"] = {"$in": APP_ACTIVE}
+    elif status:
+        query["internal_status"] = status
+    docs = await db.patient_applications.find(query).sort("created_at", -1).to_list(500)
+    return [_serialize_application(a) for a in docs]
+
+
+@api.patch("/internal/applications/{item_id}")
+async def application_update(item_id: str, body: ApplicationUpdateBody,
+                             user: dict = Depends(require_roles(*CLINIC_ROLES))):
+    doc = await db.patient_applications.find_one({"id": item_id})
+    if not doc:
+        raise HTTPException(status_code=404, detail="Not found")
+    old = doc.get("internal_status")
+    updates = {"updated_at": now_iso()}
+    push = {}
+
+    final_actions = {"accept": "ACCEPTED", "not_accepting": "NOT_ACCEPTING"}
+    if body.action in final_actions:
+        # Final clinical decisions are physician-only
+        if user["role"] != "physician":
+            raise HTTPException(status_code=403, detail="Only the physician can make the final acceptance decision.")
+        new_status = final_actions[body.action]
+        updates["internal_status"] = new_status
+        updates["previous_status"] = old
+        updates["new_status"] = new_status
+        if body.action == "accept":
+            updates["accepted_by"] = user["name"]
+            updates["accepted_at"] = now_iso()
+            # Former-return acceptance flips the directory record to ACTIVE
+            if doc.get("application_type") == "former_return" and doc.get("matched_directory_id"):
+                d = await db.patient_directory.find_one({"id": doc["matched_directory_id"]})
+                if d:
+                    await db.patient_directory.update_one({"id": d["id"]}, {"$set": {
+                        "patient_status": directory_mod.ACTIVE,
+                        "previous_status": d.get("patient_status"),
+                        "reactivated_by": user["name"], "reactivated_at": now_iso(),
+                        "reactivation_application_id": item_id, "updated_at": now_iso(),
+                    }})
+                    await audit("physician_reactivation", "patient_directory", d["id"], user,
+                                old_status=directory_mod.FORMER_CLOSED, new_status=directory_mod.ACTIVE,
+                                meta={"application_id": item_id})
+    elif body.action == "send_to_physician":
+        updates["internal_status"] = "SENT_TO_PHYSICIAN"
+    elif body.action == "waitlist":
+        updates["internal_status"] = "WAITING_LIST"
+    elif body.action == "review":
+        updates["internal_status"] = "UNDER_REVIEW"
+    elif body.action == "close":
+        updates["internal_status"] = "CLOSED"
+    elif body.internal_status:
+        updates["internal_status"] = body.internal_status
+
+    if body.internal_note:
+        push["internal_notes"] = {"by": user["name"], "note": body.internal_note, "at": now_iso()}
+    if body.staff_message:
+        updates["staff_message"] = body.staff_message
+    new_stat = updates.get("internal_status", old)
+    push_hist = {"status": new_stat, "at": now_iso(), "by": user["name"]}
+    mongo_update = {"$set": updates, "$push": {"history": push_hist}}
+    if push.get("internal_notes"):
+        mongo_update["$push"]["internal_notes"] = push["internal_notes"]
+    await db.patient_applications.update_one({"id": item_id}, mongo_update)
+    await audit("update", "patient_application", item_id, user, old_status=old, new_status=new_stat,
+                meta={"action": body.action})
+    fresh = await db.patient_applications.find_one({"id": item_id})
+    return _serialize_application(fresh)
 
 
 # ----------------------------- Admin / patients -----------------------------

@@ -28,6 +28,7 @@ import MessageQueue from "./internal/MessageQueue";
 import TaskQueue from "./internal/TaskQueue";
 import Referrals from "./internal/Referrals";
 import Verifications from "./internal/Verifications";
+import Applications from "./internal/Applications";
 import Settings from "./internal/Settings";
 
 function App() {
@@ -77,6 +78,7 @@ function App() {
                         <Route path="tasks" element={<TaskQueue />} />
                         <Route path="referrals" element={<Referrals />} />
                         <Route path="verifications" element={<Verifications />} />
+                        <Route path="applications" element={<Applications />} />
                         <Route path="settings" element={<Settings />} />
                     </Route>
                 </Routes>

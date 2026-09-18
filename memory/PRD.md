@@ -38,3 +38,13 @@ Referral PDF generation (done in Access EMR), full clinical chart, automatic Bel
 
 ## Test Credentials
 See /app/memory/test_credentials.md.
+
+## Appointment Workflow v2 (2026-06 update) — verified (16/16 new tests + frontend)
+- Configurable **Physician Availability** (settings id="availability"): per-day enable + start/end, appointment duration, closures, vacations, blocked periods; timezone America/Toronto. Default Mon–Thu 11:30–16:30, 30-min. Admin-editable in Settings (`/api/admin/availability`).
+- **Slot generation** (`availability.py`): `generate_slots` (accepts future `busy` set for Google Calendar) + `is_within` validation. Endpoint `GET /api/availability/slots`.
+- **Patient request**: chooses up to 3 ranked preferred slots (no free-text times); each validated within availability.
+- **Staff modal**: Approve (validates within availability), **Offer Available Times** (slot selector, up to 3 → status `alternatives_offered`, notifies patient) — replaced "Suggest Another Time"; Request More Info; Decline.
+- **Patient self-selection**: `POST /portal/appointments/{id}/select` → auto CONFIRMED, no re-approval; notifies patient + staff (audit).
+- Statuses: requested, alternatives_offered, confirmed, more_info_required, declined, cancelled, completed. Counter still counts only `requested`.
+- **Notification integration layer** (`notifications.py`): in-portal active; SMS/email queued to `outbound_notifications` as `prepared` (disabled) — ready to wire the clinic's existing Google Apps Script + Twilio + Email system. `sync_calendar` is a stub (no assumptions about Apps Script). Medical reasons kept out of external payloads.
+- Future Google Calendar availability (office hours − existing events − blocks) architected via the `busy` parameter; not implemented until the clinic's Calendar/Apps Script code is provided.

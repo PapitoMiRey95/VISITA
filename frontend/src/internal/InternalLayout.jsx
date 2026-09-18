@@ -1,10 +1,11 @@
 import { Outlet, NavLink, useNavigate } from "react-router-dom";
 import {
     LayoutGrid, Pill, Calendar, Scan, Droplet, MessageSquare, ClipboardCheck,
-    Send, UserCheck, UserPlus, Settings as SettingsIcon, LogOut, Stethoscope,
+    Send, UserCheck, UserPlus, Settings as SettingsIcon, LogOut,
 } from "lucide-react";
 import { useAuth } from "../context/AuthContext";
 import { useCounters } from "./hooks";
+import { Logo } from "../components/Logo";
 
 export default function InternalLayout() {
     const { user, logout } = useAuth();
@@ -43,11 +44,8 @@ export default function InternalLayout() {
         <div className="min-h-screen bg-visita-bg font-plex flex flex-col">
             <header className="h-12 bg-visita-ribbon text-white flex items-center justify-between px-4 flex-shrink-0">
                 <div className="flex items-center gap-2">
-                    <div className="w-7 h-7 rounded bg-visita-green flex items-center justify-center">
-                        <Stethoscope className="w-4 h-4" />
-                    </div>
-                    <span className="font-bold tracking-tight">VISITA</span>
-                    <span className="text-white/50 text-sm">— Dr. Aguayo Family Practice</span>
+                    <Logo variant="dark" iconClass="h-8 w-8" textClass="text-base" />
+                    <span className="text-white/50 text-sm hidden sm:inline">— Dr. Aguayo Family Practice</span>
                 </div>
                 <div className="flex items-center gap-3 text-sm">
                     <span className="text-white/80">{user?.name} · <span className="uppercase text-white/50">{role}</span></span>

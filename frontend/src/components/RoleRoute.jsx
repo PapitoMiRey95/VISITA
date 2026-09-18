@@ -4,7 +4,7 @@ import { useAuth } from "../context/AuthContext";
 function Loader() {
     return (
         <div className="min-h-screen flex items-center justify-center bg-visita-bg">
-            <div className="text-visita-green font-plex font-semibold animate-pulse">Loading VISITA…</div>
+            <div className="text-visita-green font-plex font-semibold animate-pulse">Loading VIen EMR…</div>
         </div>
     );
 }

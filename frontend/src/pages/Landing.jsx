@@ -1,6 +1,7 @@
 import { useNavigate } from "react-router-dom";
 import { LogIn, UserPlus, UserRound, ArrowRight, Lock } from "lucide-react";
 import { Button } from "../components/ui/button";
+import { Logo } from "../components/Logo";
 
 const BG = "https://customer-assets-4nw71qhi.emergentagent.net/job_visita-admin/artifacts/ndj1izcs_ChatGPT%20Image%20Sep%2018%2C%202026%2C%2010_35_01%20AM.png";
 
@@ -16,7 +17,8 @@ export default function Landing() {
             <div className="relative z-10 min-h-screen flex flex-col lg:flex-row lg:items-center lg:justify-between px-6 py-10 lg:px-16 gap-10">
                 {/* Branding */}
                 <div className="max-w-xl">
-                    <h1 data-text="VISITA" className="visita-glitch text-6xl sm:text-7xl lg:text-8xl font-bold tracking-tight leading-none">VISITA</h1>
+                    <Logo variant="dark" iconClass="h-20 w-20 lg:h-28 lg:w-28 drop-shadow-[0_0_30px_rgba(23,179,196,0.35)]"
+                        textClass="text-4xl sm:text-5xl lg:text-6xl" />
                     <p className="mt-4 text-lg text-slate-200/90 font-semibold tracking-wide">Dr. Aguayo Family Practice</p>
                     <p className="mt-2 max-w-md text-sm text-slate-400 leading-relaxed">
                         Secure portal for appointments, prescriptions, referrals, and clinic communication.

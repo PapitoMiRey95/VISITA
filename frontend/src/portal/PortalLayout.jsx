@@ -1,9 +1,10 @@
 import { Outlet, useNavigate, NavLink, useLocation } from "react-router-dom";
 import { useMemo } from "react";
 import { useQuery } from "@tanstack/react-query";
-import { Home, Calendar, Pill, MessageSquare, ClipboardList, Bell, LogOut, HeartPulse } from "lucide-react";
+import { Home, Calendar, Pill, MessageSquare, ClipboardList, Bell, LogOut } from "lucide-react";
 import { api } from "../lib/api";
 import { useAuth } from "../context/AuthContext";
+import { Logo } from "../components/Logo";
 
 const NAV = [
     { to: "/portal", icon: Home, label: "Home", end: true, testid: "nav-home" },
@@ -37,9 +38,8 @@ export default function PortalLayout() {
     return (
         <div className="min-h-screen bg-portal-blue/5 font-nunito flex flex-col">
             <header className="sticky top-0 z-20 bg-white border-b border-slate-200 px-4 py-3 flex items-center justify-between">
-                <div className="flex items-center gap-2 text-portal-blueDark">
-                    <HeartPulse className="w-6 h-6" />
-                    <span className="font-extrabold">VISITA</span>
+                <div className="flex items-center gap-2">
+                    <Logo variant="light" iconClass="h-8 w-8" textClass="text-lg" />
                 </div>
                 <div className="flex items-center gap-1">
                     <button

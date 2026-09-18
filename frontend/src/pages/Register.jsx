@@ -1,12 +1,13 @@
 import { useState } from "react";
 import { useNavigate, Link, useSearchParams } from "react-router-dom";
 import { toast } from "sonner";
-import { ChevronLeft, Loader2, HeartPulse, Clock } from "lucide-react";
+import { ChevronLeft, Loader2, Clock } from "lucide-react";
 import { useAuth } from "../context/AuthContext";
 import { api, formatErr } from "../lib/api";
 import { Button } from "../components/ui/button";
 import { Input } from "../components/ui/input";
 import { Label } from "../components/ui/label";
+import { Logo } from "../components/Logo";
 
 const TYPES = [
     { key: "ohip", title: "Yes — OHIP patient", desc: "I have an Ontario Health Card" },
@@ -100,9 +101,8 @@ export default function Register() {
     return (
         <div className="min-h-screen bg-portal-blue/5 font-nunito flex flex-col items-center px-4 py-8">
             <div className="w-full max-w-md">
-                <div className="flex items-center gap-2 mb-6 text-portal-blueDark">
-                    <HeartPulse className="w-7 h-7" />
-                    <span className="text-xl font-extrabold">VISITA Patient Portal</span>
+                <div className="flex items-center gap-2 mb-6">
+                    <Logo variant="light" iconClass="h-9 w-9" textClass="text-xl" />
                 </div>
 
                 {step === 1 && (

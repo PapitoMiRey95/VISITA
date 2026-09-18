@@ -1,12 +1,13 @@
 import { useState } from "react";
 import { useNavigate, Link, useSearchParams } from "react-router-dom";
 import { toast } from "sonner";
-import { Loader2, ShieldPlus, ChevronLeft, Eye, EyeOff } from "lucide-react";
+import { Loader2, ChevronLeft, Eye, EyeOff } from "lucide-react";
 import { useAuth } from "../context/AuthContext";
 import { formatErr } from "../lib/api";
 import { Button } from "../components/ui/button";
 import { Input } from "../components/ui/input";
 import { Label } from "../components/ui/label";
+import { Logo } from "../components/Logo";
 
 const BG = "https://customer-assets-4nw71qhi.emergentagent.net/job_visita-admin/artifacts/ndj1izcs_ChatGPT%20Image%20Sep%2018%2C%202026%2C%2010_35_01%20AM.png";
 
@@ -54,10 +55,8 @@ export default function SignIn() {
 
                     <form onSubmit={submit}
                         className="rounded-md border border-white/10 bg-[#0b1524]/80 backdrop-blur-xl p-7 shadow-[0_20px_60px_-15px_rgba(0,0,0,0.8)]">
-                        <div className="flex items-center gap-2 mb-5">
-                            <div className="w-8 h-8 rounded-sm bg-cyan-500/15 border border-cyan-400/30 flex items-center justify-center">
-                                <ShieldPlus className="w-4 h-4 text-cyan-300" />
-                            </div>
+                        <div className="flex items-center gap-3 mb-5">
+                            <Logo variant="dark" iconClass="h-11 w-11" showText={false} />
                             <div>
                                 <h2 className="text-lg font-bold text-slate-100 leading-tight">
                                     {internal ? "Internal login" : "Sign in"}
@@ -90,7 +89,7 @@ export default function SignIn() {
 
                         <Button data-testid="login-submit" type="submit" disabled={busy}
                             className="w-full bg-cyan-500 hover:bg-cyan-400 text-[#04121f] font-bold tracking-wide">
-                            {busy ? <Loader2 className="w-4 h-4 animate-spin" /> : (internal ? "Sign in to VISITA" : "Sign in")}
+                            {busy ? <Loader2 className="w-4 h-4 animate-spin" /> : (internal ? "Sign in to VIen EMR" : "Sign in")}
                         </Button>
 
                         <div className="text-center mt-4">

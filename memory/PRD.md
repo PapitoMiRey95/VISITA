@@ -48,3 +48,19 @@ See /app/memory/test_credentials.md.
 - Statuses: requested, alternatives_offered, confirmed, more_info_required, declined, cancelled, completed. Counter still counts only `requested`.
 - **Notification integration layer** (`notifications.py`): in-portal active; SMS/email queued to `outbound_notifications` as `prepared` (disabled) — ready to wire the clinic's existing Google Apps Script + Twilio + Email system. `sync_calendar` is a stub (no assumptions about Apps Script). Medical reasons kept out of external payloads.
 - Future Google Calendar availability (office hours − existing events − blocks) architected via the `busy` parameter; not implemented until the clinic's Calendar/Apps Script code is provided.
+
+## Patient Status / Former-Patient Workflow (2026-06 update) — verified (12/12 backend + frontend, iteration_8)
+- **`patient_directory` collection** (single, `patient_status` field, extensible): imported once at startup from two bundled workbooks in `/app/backend/data/` — 828 ACTIVE + 2156 FORMER_CLOSED (guard `app_meta.directory_v1`). Normalized match keys (norm_first/last/dob/hcn). `directory.py` holds import + `match_registration`.
+- **Registration matching** (`POST /api/auth/register`): 3 outcomes for current-patient types. ACTIVE_MATCH → account created (PENDING_VERIFICATION) + suggested directory record shown in Verifications; FORMER_PATIENT_REVIEW → NO account created, returns `{former_detected:true, message, prefill}`, patient routed to neutral Re-establish-Care flow; UNMATCHED_CURRENT_PATIENT → account created, flagged for staff review. Two-level match: strong=OHIP, possible=name+DOB; multiple = AMBIGUOUS. Duplicate-account guard when an ACTIVE record is already linked.
+- **Public application endpoints**: `POST /api/applications/return-request` (former return), `POST /api/applications/new-patient` (new patient) → `patient_applications` (ref APP-xxxxxx), status REQUEST_RECEIVED + waiting-list confirmation (editable templates: former_patient_detected, reestablish_care_confirmation, new_patient_request_confirmation, application_not_accepted). `preferred_language` stored (default en) for multilingual-readiness.
+- **Internal Patient Applications queue** (`/internal/applications`, page Applications.jsx): filter NEW/FORMER, statuses REQUEST_RECEIVED/WAITING_LIST/UNDER_REVIEW/SENT_TO_PHYSICIAN/ACCEPTED/NOT_ACCEPTING/CLOSED. Patient-facing map (Request Received/On Waiting List/Under Review/Accepted/Request Closed). Counter `applications` (staff+physician) counts active statuses only.
+- **Physician-only final decision**: `PATCH /api/internal/applications/{id}` action=accept|not_accepting are physician-only (staff→403). Accepting a former_return flips the matched directory record FORMER_CLOSED→ACTIVE (records reactivated_by/at, previous_status, application id) — audited. Staff can review/waitlist/send_to_physician/close + notes.
+- **Verifications enhanced**: shows review_queue badge + suggested directory candidates (side-by-side). Verify+link writes `linked_patient_id`/`visita_patient_id` onto the directory record (stable VISITA-id link). `GET /api/internal/directory?q=` staff manual search.
+- Separation of concerns kept: patient_status (directory) vs portal_status (account). Former reactivation still requires portal verification afterwards.
+
+## Backlog / Next (updated)
+- P1: Side-by-side diff highlighting on Verifications for changed demographics (phone/address/HCN version) + "mark for VISITA update".
+- P1: Ambiguous-match staff picker to select the correct directory record when >1 candidate.
+- P2: Full multilingual (es/fr) template selection using preferred_language.
+- P2: Active→Former transition handling of an existing portal account (disable new requests, keep history).
+- P2 (still open): Admin CSV import UI, MFA, account lockout/rate limiting, strict file-upload hardening, soft-delete.

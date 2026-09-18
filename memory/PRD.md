@@ -64,3 +64,14 @@ See /app/memory/test_credentials.md.
 - P2: Full multilingual (es/fr) template selection using preferred_language.
 - P2: Active→Former transition handling of an existing portal account (disable new requests, keep history).
 - P2 (still open): Admin CSV import UI, MFA, account lockout/rate limiting, strict file-upload hardening, soft-delete.
+
+## Bloodwork Request + Book-Appointment-from-request (2026-06 update) — verified (13/13 backend + frontend, iteration_9)
+- **Bloodwork Request** (mirrors Imaging): patient submits Reason (required) + optional note (NO test selection — physician decides tests). Collection `bloodwork_requests` (ref BLD-*). Portal: Home tile `tile-bloodwork` + `/portal/bloodwork` + shows in My Requests/overview. Internal: `/internal/bloodwork` queue in Staff + Physician sidebar/Hub with live `bloodwork` counter. Physician actions: Approve/Process (complete), Appointment Required, Request More Info (more_info_required), Decline (declined). Generic `_update_request` now also supports `more_info` and `decline` actions.
+- **Book Appointment from a request** (`POST /api/internal/book-appointment`, staff+physician): available on Prescription, Imaging, Bloodwork, Patient Message dialogs (`act-book-appointment` -> `BookAppointmentModal`). Creates an immediately CONFIRMED appointment (APT-*) linked via `booked_from{source_type,source_id,source_ref}`, records confirmed_date/time/confirmed_slot_time, approved_by/booked_by; flips source request to `appointment_booked` + `linked_appointment_id`; notifies patient. Reason pre-filled from request type. NOT added to Referrals (drop-off only) by design.
+- **Double-booking prevention**: `_slot_taken` blocks a second confirmed appt at the same date+time (409) on book + approve + reschedule (self excluded). Out-of-window times rejected (400) via `avail_mod.is_within` (Mon–Thu 11:30–16:30 America/Toronto).
+- **Reschedule / Cancel** on confirmed appointments (Appointment queue, Confirmed filter -> `appt-confirmed-block`): `appt-reschedule` opens BookAppointmentModal in reschedule mode (PATCH action=reschedule, re-validates + notifies); `appt-cancel` (action=cancel -> status 'cancelled', notifies). No deletion; history preserved. New patient-facing status "Appointment Booked" added to RX/IMG/BLD/MSG maps.
+
+## Notes / tech debt (not actioned per user's "keep simple" directive)
+- server.py ~1420 lines — candidate to split into routers/ later.
+- Minor Radix DialogContent aria-describedby a11y warning across internal dialogs (pre-existing).
+- book_appointment insert+source-update not transactional (low risk orphan appt if update fails).

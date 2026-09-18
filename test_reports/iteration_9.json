@@ -1,0 +1,35 @@
+{
+  "summary": "Full backend+frontend testing of the Bloodwork + Book-Appointment iteration. Backend 13/13 pytest pass (bloodwork create with reason-required, ref BLD-*, internal_status new; overview.bloodwork + combined requests; staff list/counters; send_to_physician scoping; more_info + decline; book-from-bloodwork with source-status flip to appointment_booked + linked_appointment_id + appointment_booked=true; double-book 409; out-of-window 400; reschedule; reschedule-conflict 409; cancel). Frontend: patient tile-bloodwork -> bloodwork-form (reason+note, NO test picker) submits & lists; staff sidebar-bloodwork counter visible; /internal/bloodwork rows -> act-book-appointment opens book-appointment-modal, 160 slots load, clicking book-slot-N + book-confirm creates confirmed appt; Rx (/internal/rx), Imaging (/internal/imaging), Messages (/internal/messages) queues all expose act-book-appointment in the dialog; Appointment queue Confirmed filter -> appt-confirmed-block + appt-reschedule (opens BookAppointmentModal in reschedule mode) + appt-cancel; physician /internal/bloodwork shows only waiting_physician rows and all 4 actions (act-complete, act-appt-req, act-more-info, act-decline).",
+  "backend_issues": {"critical": [], "minor": []},
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [],
+    "design_issues": [
+      {"screen": "All internal Dialogs", "issues": ["Console warning: DialogContent missing Description/aria-describedby (Radix a11y warning) - minor accessibility improvement."]}
+    ]
+  },
+  "tests_executed": {
+    "backend_pytest": "13/13 PASS in /app/backend/tests/test_bloodwork_booking.py (TestBloodworkCreate x2, TestPortalOverviewBloodwork x1, TestBloodworkInternal x4, TestBooking x3, TestReschedCancel x3)",
+    "frontend_ui": "PASS - patient bloodwork tile+form+list; staff bloodwork queue + Book Appointment modal (160 slots, booking succeeded); Rx/Imaging/Message queues expose act-book-appointment; Appointment queue confirmed-block + reschedule (opens BookAppointmentModal) + cancel; physician bloodwork queue shows 4 action buttons."
+  },
+  "test_report_links": [
+    "/app/backend/tests/test_bloodwork_booking.py",
+    "/app/test_reports/pytest/bloodwork.xml"
+  ],
+  "action_items": [],
+  "critical_code_review_comments": [
+    "book_appointment: correctly validates availability window via avail_mod.is_within and prevents double-book via _slot_taken (checks confirmed_slot_time and normalized confirmed_time). Good.",
+    "_slot_taken passes exclude_id in reschedule/approve paths so a confirmed appt can be rescheduled without self-conflict. Correct.",
+    "book_appointment updates source with linked_appointment_id + appointment_booked=True + status='appointment_booked' atomically after appt insert. Consider wrapping insert+update in a transaction; currently if update fails, an orphan appointment exists. Low risk for MVP.",
+    "server.py is now 1420 lines - approaching the 700-line file-split guideline. Suggest splitting internal-queue endpoints into routers/*.py for maintainability.",
+    "Radix DialogContent Description/aria-describedby warning throughout internal dialogs - add DialogDescription for a11y."
+  ],
+  "updated_files": ["/app/backend/tests/test_bloodwork_booking.py"],
+  "success_rate": {"backend": "100% (13/13)", "frontend": "100% of bloodwork+booking flows"},
+  "test_credentials": "Used /app/memory/test_credentials.md (staff@visita.demo/Staff2026!, maria.lopez@demo.com/Patient2026!, PAGUAYO/Aguayo#Temp2026). Physician pwd was cycled to AguayoTest#2026Blood during run and restored to Aguayo#Temp2026 at end. must_change_password left as False (not re-set to True in teardown).",
+  "seed_data_creation": "Created ~9 TEST_ bloodwork requests (BLD-000002..BLD-000011) and ~2 new confirmed appointments (APT-*). BLD-000011 remains waiting_physician for physician view. Some early-day slots on the picked booking dates are now consumed by these tests. Main-agent re-seed recommended if a clean slot map is needed.",
+  "retest_needed": false,
+  "should_main_agent_self_test": false,
+  "context_for_next_testing_agent": "Run backend tests with `python -m pytest backend/tests/test_bloodwork_booking.py -v -o addopts=''`. Frontend token key is sessionStorage 'visita_token'. Physician must_change_password check happens on /auth/me not on the login response - if you inject a token you'll still be redirected to /change-password unless you actually POST /api/auth/change-password first. Book-appointment modal loads slots via /availability/slots?days=28 (queryKey ['slots-book']); wait ~2s after opening. Appointment queue defaults to Requested filter - click 'Confirmed' filter to see confirmed appts.",
+  "rca of the issue": "N/A - no functional bugs."
+}

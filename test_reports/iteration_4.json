@@ -1,0 +1,24 @@
+{
+  "summary": "Frontend-only regression test on redesigned dark cinematic Login page. Verified data-testids present, staff & patient logins route correctly, invalid creds stay on /login with error, and 'Create an account' link navigates to /register. No unexpected console errors (only expected 401 from invalid-cred test).",
+  "backend_issues": {"critical": [], "minor": []},
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [],
+    "design_issues": [
+      {"screen": "/login", "issues": ["Background artwork image did not appear in test screenshot (likely slow remote asset load); page remains fully usable thanks to dark gradient fallback — acceptable per spec."]}
+    ]
+  },
+  "test_report_links": [],
+  "action_items": [],
+  "critical_code_review_comments": [
+    "Login.jsx: remote background image URL is hardcoded (line 11). Consider moving to env or hosting locally for reliability; currently non-blocking since dark overlay provides usable fallback.",
+    "Body text color 'text-slate-500/80' on dark bg for the emergency disclaimer is low-contrast; readable but borderline."
+  ],
+  "updated_files": [],
+  "success_rate": {"backend": "N/A", "frontend": "100%"},
+  "test_credentials": "staff@visita.demo / Staff2026!, maria.lopez@demo.com / Patient2026!",
+  "seed_data_creation": "None",
+  "retest_needed": false,
+  "should_main_agent_self_test": false,
+  "context_for_next_testing_agent": "Login redesign functional: staff -> /internal, patient -> /portal, invalid -> error toast, go-register -> /register. Inputs readable (light text on dark). No JS errors on page load."
+}

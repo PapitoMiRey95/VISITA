@@ -1,0 +1,25 @@
+{
+  "summary": "Full backend + frontend testing of physician username-login + forced password-change flow. All 8 backend tests passed (pytest), all frontend flows verified end-to-end via Playwright.",
+  "backend_issues": {"critical": [], "minor": []},
+  "frontend_issues": {"ui_bugs": [], "integration_issues": [], "design_issues": []},
+  "test_report_links": [
+    "/app/backend/tests/test_physician_login.py",
+    "/app/test_reports/pytest/physician_login.xml"
+  ],
+  "action_items": [],
+  "critical_code_review_comments": [
+    "server.py: username regex login uses case-insensitive $regex — correct. Could add index on 'username' for performance if many users.",
+    "seed.py: phys_v2 migration overwrites password on legacy physician doc — good; guarded by app_meta so it runs only once. If PHYSICIAN_TEMP_PASSWORD env changes later, admin must manually reset because migration flag is set.",
+    "Login.jsx: label reads 'Email or Username' — matches spec.",
+    "RoleRoute.jsx: correctly forces /change-password redirect and prevents physician from entering /portal (role check redirects to /internal). Verified in browser."
+  ],
+  "updated_files": [
+    "/app/backend/tests/test_physician_login.py (new)"
+  ],
+  "success_rate": {"backend": "100% (8/8)", "frontend": "100%"},
+  "test_credentials": "Physician password is now DocSecret2026! (was reset by UI test as intended); PAGUAYO/paguayo case-insensitive works. Patient/staff/admin creds unchanged.",
+  "seed_data_creation": "None. Physician state left as: username=PAGUAYO, password=DocSecret2026!, must_change_password=false (as expected end-state of forced-change flow).",
+  "retest_needed": false,
+  "should_main_agent_self_test": false,
+  "context_for_next_testing_agent": "Backend verified: /api/auth/login accepts {identifier} or {email}, username is case-insensitive, /api/auth/change-password rejects same password (400) and <8 chars (422). Physician forced-change UI flow works: login with temp -> /change-password screen -> update -> /internal (Physician Hub) with counter-rx/imaging/messages tiles. Physician cannot enter /portal (redirected to /internal). No demo passwords exposed in /login HTML. Patient (maria.lopez) -> /portal, Staff -> /internal, Admin login OK. If further tests need forced-change state, reset via mongo: db.users.updateOne({username:'PAGUAYO'},{$set:{must_change_password:true,password_hash:<hash of temp>}})."
+}

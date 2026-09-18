@@ -3,7 +3,8 @@ import { Toaster } from "sonner";
 import { AuthProvider } from "./context/AuthContext";
 import { RoleRoute, HomeRedirect } from "./components/RoleRoute";
 
-import Login from "./pages/Login";
+import Landing from "./pages/Landing";
+import SignIn from "./pages/SignIn";
 import Register from "./pages/Register";
 import ChangePassword from "./pages/ChangePassword";
 
@@ -35,7 +36,8 @@ function App() {
             <BrowserRouter>
                 <Routes>
                     <Route path="/" element={<HomeRedirect />} />
-                    <Route path="/login" element={<Login />} />
+                    <Route path="/login" element={<Landing />} />
+                    <Route path="/signin" element={<SignIn />} />
                     <Route path="/register" element={<Register />} />
                     <Route path="/change-password" element={<ChangePassword />} />
 

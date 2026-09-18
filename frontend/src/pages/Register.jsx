@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { useNavigate, Link } from "react-router-dom";
+import { useNavigate, Link, useSearchParams } from "react-router-dom";
 import { toast } from "sonner";
 import { ChevronLeft, Loader2, HeartPulse } from "lucide-react";
 import { useAuth } from "../context/AuthContext";
@@ -18,8 +18,10 @@ const TYPES = [
 export default function Register() {
     const { register } = useAuth();
     const nav = useNavigate();
-    const [step, setStep] = useState(1);
-    const [type, setType] = useState(null);
+    const [params] = useSearchParams();
+    const isNew = params.get("new") === "1";
+    const [step, setStep] = useState(isNew ? 99 : 1);
+    const [type, setType] = useState(isNew ? "none" : null);
     const [busy, setBusy] = useState(false);
     const [form, setForm] = useState({
         first_name: "", last_name: "", date_of_birth: "", phone: "", email: "", password: "",
@@ -73,23 +75,28 @@ export default function Register() {
                         </div>
                         <p className="text-center text-sm text-slate-600 mt-6">
                             Already registered?{" "}
-                            <Link to="/login" className="text-portal-blueDark font-bold hover:underline">Sign in</Link>
+                            <Link to="/signin" className="text-portal-blueDark font-bold hover:underline">Sign in</Link>
                         </p>
                     </div>
                 )}
 
                 {step === 99 && (
                     <div className="bg-white rounded-2xl border border-slate-200 p-6 shadow-sm animate-fade-in">
-                        <button onClick={() => setStep(1)} className="flex items-center text-slate-500 mb-3 text-sm">
+                        <button onClick={() => (isNew ? nav("/login") : setStep(1))} className="flex items-center text-slate-500 mb-3 text-sm">
                             <ChevronLeft className="w-4 h-4" /> Back
                         </button>
-                        <h2 className="text-xl font-bold text-slate-900 mb-2">Becoming a patient</h2>
+                        <h2 className="text-xl font-bold text-slate-900 mb-2">New patient request</h2>
                         <p className="text-slate-600 mb-4">
-                            This portal is for existing patients of Dr. Aguayo. To become a new patient, please contact
-                            the clinic directly and our staff will help you get started.
+                            You are not currently a patient of Dr. Aguayo. New patients are accepted by request — please
+                            contact the clinic to begin the intake process and our staff will follow up with you. Submitting
+                            a request does not guarantee acceptance as a patient.
+                        </p>
+                        <p className="text-sm text-slate-500 mb-4">
+                            Phone: (647) 555-0123 · VISITA — Dr. Aguayo Family Practice
                         </p>
                         <p className="text-sm text-slate-500">
-                            Phone: (647) 555-0123 · VISITA — Dr. Aguayo Family Practice
+                            Already a current patient?{" "}
+                            <button onClick={() => setStep(1)} className="text-portal-blueDark font-bold hover:underline">Register for portal access</button>
                         </p>
                     </div>
                 )}

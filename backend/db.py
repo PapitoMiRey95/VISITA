@@ -59,10 +59,14 @@ RX_PATIENT_STATUS = {
 
 APPT_PATIENT_STATUS = {
     "requested": "Appointment Requested",
-    "more_info_requested": "More Information Requested",
-    "suggested": "New Time Suggested",
+    "alternatives_offered": "Alternative Times Offered",
+    "more_info_required": "More Information Requested",
     "confirmed": "Appointment Confirmed",
     "declined": "Declined",
+    "cancelled": "Cancelled",
+    "completed": "Completed",
+    "more_info_requested": "More Information Requested",
+    "suggested": "New Time Suggested",
 }
 
 IMG_PATIENT_STATUS = {

@@ -1,6 +1,7 @@
 import os
 import uuid
 
+import availability as avail_mod
 import storage
 from db import next_ref, now_iso
 
@@ -94,6 +95,29 @@ async def seed_all(db, authlib):
         await db.settings.insert_one({**DEFAULT_SETTINGS})
     if not await db.templates.find_one({"id": "templates"}):
         await db.templates.insert_one({"id": "templates", "items": DEFAULT_TEMPLATES})
+    if not await db.settings.find_one({"id": "availability"}):
+        await db.settings.insert_one({**avail_mod.DEFAULT_AVAILABILITY})
+
+    # one-time migration: give legacy appointment requests slot-based options
+    if not await db.app_meta.find_one({"id": "appt_v2"}):
+        avail = await db.settings.find_one({"id": "availability"}, {"_id": 0}) or avail_mod.DEFAULT_AVAILABILITY
+        slots = avail_mod.generate_slots(avail, days=21)
+        legacy = await db.appointment_requests.find({"preferred_options": {"$exists": False}}).to_list(500)
+        for idx, a in enumerate(legacy):
+            picks = slots[idx * 2: idx * 2 + 3] if slots else []
+            if not picks and slots:
+                picks = slots[:3]
+            opt1 = picks[0] if picks else {"date": a.get("preferred_date"), "time": "11:30",
+                                           "label": "11:30 AM", "display": f"{a.get('preferred_date')} 11:30 AM"}
+            await db.appointment_requests.update_one({"id": a["id"]}, {"$set": {
+                "preferred_options": picks or [opt1],
+                "offered_slots": a.get("offered_slots", []),
+                "selected_slot": None,
+                "confirmed_date": None, "confirmed_time": None, "confirmed_display": None,
+                "approved_by": None, "approved_at": None,
+                "preferred_date": opt1.get("date"), "preferred_time": opt1.get("label"),
+            }})
+        await db.app_meta.insert_one({"id": "appt_v2", "at": now_iso()})
 
     # guard demo
     if await db.app_meta.find_one({"id": "seeded_v1"}):
@@ -149,21 +173,30 @@ async def seed_all(db, authlib):
             "created_at": now_iso(), "updated_at": now_iso(),
         })
 
-    # 6. Appointments — 5 requested (counter = 5)
+    # 6. Appointments — 5 requested (counter = 5), with valid slot-based options
+    _avail = await db.settings.find_one({"id": "availability"}, {"_id": 0}) or avail_mod.DEFAULT_AVAILABILITY
+    _slots = avail_mod.generate_slots(_avail, days=21)
     appt_data = [
-        (maria, pname("Lopez", "Maria"), "Follow-up on blood pressure", "2026-06-20", "Morning"),
-        (john, pname("Smith", "John"), "Persistent cough", "2026-06-21", "Afternoon"),
-        (carlos, pname("Perez", "Carlos"), "Annual physical", "2026-06-22", "Morning"),
-        (linda, pname("Nguyen", "Linda"), "Medication review", "2026-06-23", "Afternoon"),
-        (ahmed, pname("Khan", "Ahmed"), "Referral discussion", "2026-06-24", "Morning"),
+        (maria, pname("Lopez", "Maria"), "Follow-up on blood pressure"),
+        (john, pname("Smith", "John"), "Persistent cough"),
+        (carlos, pname("Perez", "Carlos"), "Annual physical"),
+        (linda, pname("Nguyen", "Linda"), "Medication review"),
+        (ahmed, pname("Khan", "Ahmed"), "Referral discussion"),
     ]
-    for pid, nm, reason, pdate, ptime in appt_data:
+    for n, (pid, nm, reason) in enumerate(appt_data):
         ref = await next_ref("APT")
+        opts = _slots[n * 3: n * 3 + 3] if _slots else []
+        if not opts:
+            opts = [{"date": "2026-06-22", "time": "11:30", "label": "11:30 AM", "display": "Mon, Jun 22 · 11:30 AM"}]
         await db.appointment_requests.insert_one({
             "id": str(uuid.uuid4()), "ref_number": ref, "patient_id": pid, "patient_name": nm,
-            "reason": reason, "preferred_date": pdate, "preferred_time": ptime,
-            "alternative_date": None, "alternative_time": None, "patient_note": "",
-            "status": "requested", "staff_note": None, "approved_date": None, "approved_time": None,
+            "reason": reason, "patient_note": "",
+            "preferred_options": opts,
+            "preferred_date": opts[0]["date"], "preferred_time": opts[0]["label"],
+            "status": "requested", "staff_note": None,
+            "offered_slots": [], "selected_slot": None,
+            "confirmed_date": None, "confirmed_time": None, "confirmed_display": None,
+            "approved_by": None, "approved_at": None,
             "assigned_to": None, "internal_notes": [],
             "history": [{"status": "requested", "at": now_iso(), "by": "patient"}],
             "created_at": now_iso(), "updated_at": now_iso(), "completed_at": None,

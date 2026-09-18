@@ -1,5 +1,6 @@
 import { useEffect, useState, useCallback } from "react";
 import { toast } from "sonner";
+import { Plus, X } from "lucide-react";
 import { api, formatErr } from "../lib/api";
 import { Button } from "../components/ui/button";
 import { Input } from "../components/ui/input";
@@ -24,33 +25,43 @@ const TEMPLATE_FIELDS = [
     ["portal_disclaimer", "Portal disclaimer"],
 ];
 
+const DAYS = [["mon", "Monday"], ["tue", "Tuesday"], ["wed", "Wednesday"], ["thu", "Thursday"], ["fri", "Friday"], ["sat", "Saturday"], ["sun", "Sunday"]];
+
 export default function Settings() {
     const [settings, setSettings] = useState({});
     const [templates, setTemplates] = useState({});
+    const [avail, setAvail] = useState(null);
     const [busy, setBusy] = useState(false);
 
     const load = useCallback(async () => {
-        const { data } = await api.get("/admin/settings");
-        setSettings(data.settings || {});
-        setTemplates(data.templates || {});
+        const [s, a] = await Promise.all([api.get("/admin/settings"), api.get("/admin/availability")]);
+        setSettings(s.data.settings || {});
+        setTemplates(s.data.templates || {});
+        setAvail(a.data || {});
     }, []);
 
-    useEffect(() => {
-        load();
-    }, [load]);
+    useEffect(() => { load(); }, [load]);
 
     const save = async () => {
         setBusy(true);
         try {
             await api.put("/admin/settings", { settings, templates });
+            await api.put("/admin/availability", avail);
             toast.success("Settings saved.");
         } catch (e) { toast.error(formatErr(e)); } finally { setBusy(false); }
     };
 
+    const setDay = (key, field, value) =>
+        setAvail((a) => ({ ...a, days: { ...a.days, [key]: { ...a.days[key], [field]: value } } }));
+    const addRow = (listKey, row) => setAvail((a) => ({ ...a, [listKey]: [...(a[listKey] || []), row] }));
+    const rmRow = (listKey, idx) => setAvail((a) => ({ ...a, [listKey]: a[listKey].filter((_, i) => i !== idx) }));
+    const setRow = (listKey, idx, field, value) =>
+        setAvail((a) => ({ ...a, [listKey]: a[listKey].map((r, i) => (i === idx ? { ...r, [field]: value } : r)) }));
+
     return (
         <div className="animate-fade-in max-w-3xl">
-            <h1 className="text-2xl font-bold text-slate-900 tracking-tight">Clinic Settings & Message Templates</h1>
-            <p className="text-sm text-slate-500 mb-4">Configure clinic information and the default patient-facing messages.</p>
+            <h1 className="text-2xl font-bold text-slate-900 tracking-tight">Clinic Settings, Availability & Templates</h1>
+            <p className="text-sm text-slate-500 mb-4">Configure clinic info, physician availability, and default patient-facing messages.</p>
 
             <div className="bg-white border border-slate-300 rounded-sm p-4 mb-4 space-y-3">
                 <h2 className="font-semibold text-slate-700">Clinic information</h2>
@@ -61,6 +72,40 @@ export default function Settings() {
                     </div>
                 ))}
             </div>
+
+            {avail && (
+                <div className="bg-white border border-slate-300 rounded-sm p-4 mb-4 space-y-3" data-testid="availability-card">
+                    <h2 className="font-semibold text-slate-700">Physician Availability ({avail.timezone || "America/Toronto"})</h2>
+                    <div className="flex items-center gap-2">
+                        <Label className="text-xs">Appointment duration (min)</Label>
+                        <Input type="number" className="w-24 h-8" value={avail.appointment_duration || 30}
+                            onChange={(e) => setAvail({ ...avail, appointment_duration: Number(e.target.value) })} data-testid="avail-duration" />
+                    </div>
+                    <div className="space-y-1">
+                        {DAYS.map(([key, label]) => {
+                            const d = avail.days?.[key] || {};
+                            return (
+                                <div key={key} className="flex items-center gap-2 text-sm" data-testid={`avail-day-${key}`}>
+                                    <label className="flex items-center gap-1.5 w-32">
+                                        <input type="checkbox" checked={!!d.enabled} onChange={(e) => setDay(key, "enabled", e.target.checked)} data-testid={`avail-${key}-enabled`} />
+                                        <span className={d.enabled ? "font-semibold text-slate-800" : "text-slate-400"}>{label}</span>
+                                    </label>
+                                    <Input type="time" className="h-8 w-32" value={d.start || "11:30"} disabled={!d.enabled} onChange={(e) => setDay(key, "start", e.target.value)} />
+                                    <span className="text-slate-400">to</span>
+                                    <Input type="time" className="h-8 w-32" value={d.end || "16:30"} disabled={!d.enabled} onChange={(e) => setDay(key, "end", e.target.value)} />
+                                </div>
+                            );
+                        })}
+                    </div>
+
+                    <ListEditor title="Closures (single dates)" listKey="closures" rows={avail.closures || []}
+                        cols={[["date", "date"], ["reason", "text"]]} add={() => addRow("closures", { date: "", reason: "" })} rm={rmRow} set={setRow} testid="closures" />
+                    <ListEditor title="Vacations (date ranges)" listKey="vacations" rows={avail.vacations || []}
+                        cols={[["start", "date"], ["end", "date"], ["reason", "text"]]} add={() => addRow("vacations", { start: "", end: "", reason: "" })} rm={rmRow} set={setRow} testid="vacations" />
+                    <ListEditor title="Blocked periods" listKey="blocked_periods" rows={avail.blocked_periods || []}
+                        cols={[["date", "date"], ["start", "time"], ["end", "time"], ["reason", "text"]]} add={() => addRow("blocked_periods", { date: "", start: "", end: "", reason: "" })} rm={rmRow} set={setRow} testid="blocked" />
+                </div>
+            )}
 
             <div className="bg-white border border-slate-300 rounded-sm p-4 mb-4 space-y-3">
                 <h2 className="font-semibold text-slate-700">Message templates</h2>
@@ -73,8 +118,29 @@ export default function Settings() {
             </div>
 
             <Button onClick={save} disabled={busy} data-testid="settings-save" className="bg-visita-green hover:bg-visita-greenDark text-white">
-                {busy ? "Saving…" : "Save Settings"}
+                {busy ? "Saving…" : "Save All Settings"}
             </Button>
+        </div>
+    );
+}
+
+function ListEditor({ title, listKey, rows, cols, add, rm, set, testid }) {
+    return (
+        <div>
+            <div className="flex items-center justify-between">
+                <Label className="text-xs">{title}</Label>
+                <button onClick={add} data-testid={`add-${testid}`} className="text-xs text-visita-green flex items-center gap-1"><Plus className="w-3 h-3" /> Add</button>
+            </div>
+            <div className="space-y-1 mt-1">
+                {rows.map((r, i) => (
+                    <div key={i} className="flex items-center gap-1.5">
+                        {cols.map(([field, type]) => (
+                            <Input key={field} type={type} placeholder={field} className="h-8 text-xs" value={r[field] || ""} onChange={(e) => set(listKey, i, field, e.target.value)} />
+                        ))}
+                        <button onClick={() => rm(listKey, i)} className="text-slate-400 hover:text-red-500"><X className="w-4 h-4" /></button>
+                    </div>
+                ))}
+            </div>
         </div>
     );
 }

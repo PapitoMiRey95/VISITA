@@ -7,10 +7,13 @@ const MAP = {
     completed: ["Completed", "bg-emerald-100 text-emerald-700"],
     appointment_required: ["Appointment Required", "bg-amber-100 text-amber-700"],
     requested: ["Requested", "bg-amber-100 text-amber-700"],
+    alternatives_offered: ["Alternatives Offered", "bg-sky-100 text-sky-700"],
+    more_info_required: ["More Info Required", "bg-amber-100 text-amber-700"],
     more_info_requested: ["More Info Requested", "bg-amber-100 text-amber-700"],
     suggested: ["Time Suggested", "bg-amber-100 text-amber-700"],
     confirmed: ["Confirmed", "bg-emerald-100 text-emerald-700"],
     declined: ["Declined", "bg-red-100 text-red-700"],
+    cancelled: ["Cancelled", "bg-slate-200 text-slate-600"],
 };
 
 export function StatusPill({ status }) {

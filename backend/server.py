@@ -7,7 +7,7 @@ load_dotenv(ROOT_DIR / ".env")
 import logging
 import os
 import uuid
-from typing import Optional
+from typing import List, Optional
 
 from bson import ObjectId
 from fastapi import (APIRouter, Depends, FastAPI, File, Form, HTTPException,
@@ -16,6 +16,8 @@ from pydantic import BaseModel, EmailStr, Field
 from starlette.middleware.cors import CORSMiddleware
 
 import auth as authlib
+import availability as avail_mod
+import notifications as notify_svc
 import storage
 from db import (APPT_PATIENT_STATUS, IMG_ACTIVE, IMG_PATIENT_STATUS, MSG_ACTIVE,
                 MSG_PATIENT_STATUS, RX_ACTIVE, RX_PATIENT_STATUS, audit, db,
@@ -126,10 +128,7 @@ class LoginBody(BaseModel):
 
 class AppointmentBody(BaseModel):
     reason: str
-    preferred_date: Optional[str] = None
-    preferred_time: Optional[str] = None
-    alternative_date: Optional[str] = None
-    alternative_time: Optional[str] = None
+    options: List[dict] = []  # ranked slots [{date,time,label,display}] max 3
     patient_note: Optional[str] = None
 
 
@@ -166,7 +165,15 @@ class UpdateBody(BaseModel):
     staff_note: Optional[str] = None
     approved_date: Optional[str] = None
     approved_time: Optional[str] = None
+    confirmed_date: Optional[str] = None
+    confirmed_time: Optional[str] = None
+    confirmed_display: Optional[str] = None
+    offered_slots: Optional[List[dict]] = None
     patient_reply: Optional[str] = None
+
+
+class SelectSlotBody(BaseModel):
+    index: int
 
 
 class TaskBody(BaseModel):
@@ -262,14 +269,32 @@ async def portal_pharmacies(user: dict = Depends(get_current_user)):
     return await db.pharmacies.find({}, {"_id": 0}).to_list(200)
 
 
+async def get_availability_doc():
+    doc = await db.settings.find_one({"id": "availability"}, {"_id": 0})
+    return doc or avail_mod.DEFAULT_AVAILABILITY
+
+
 @api.post("/portal/appointments")
 async def create_appointment(body: AppointmentBody, p: dict = Depends(require_verified_patient)):
+    options = [o for o in (body.options or []) if o.get("date") and o.get("time")][:3]
+    if not options:
+        raise HTTPException(status_code=400, detail="Please choose at least one preferred appointment time.")
+    avail = await get_availability_doc()
+    for o in options:
+        if not avail_mod.is_within(avail, o.get("date"), o.get("time")):
+            raise HTTPException(status_code=400, detail="A selected time is outside the clinic's available hours.")
     ref = await next_ref("APT")
+    opt1 = options[0]
     doc = {
         "id": str(uuid.uuid4()), "ref_number": ref, "patient_id": p["id"],
         "patient_name": f"{p['last_name']}, {p['first_name']}",
-        **body.model_dump(), "status": "requested", "staff_note": None,
-        "approved_date": None, "approved_time": None, "assigned_to": None,
+        "reason": body.reason, "patient_note": body.patient_note,
+        "preferred_options": options,
+        "preferred_date": opt1.get("date"), "preferred_time": opt1.get("label") or opt1.get("time"),
+        "status": "requested", "staff_note": None,
+        "offered_slots": [], "selected_slot": None,
+        "confirmed_date": None, "confirmed_time": None, "confirmed_display": None,
+        "approved_by": None, "approved_at": None, "assigned_to": None,
         "internal_notes": [], "history": [{"status": "requested", "at": now_iso(), "by": "patient"}],
         "created_at": now_iso(), "updated_at": now_iso(), "completed_at": None,
     }
@@ -277,6 +302,57 @@ async def create_appointment(body: AppointmentBody, p: dict = Depends(require_ve
     await audit("create", "appointment", doc["id"], {"id": p["id"], "name": p["first_name"], "role": "patient"}, new_status="requested")
     doc.pop("_id", None)
     return doc
+
+
+@api.post("/portal/appointments/{item_id}/select")
+async def select_slot(item_id: str, body: SelectSlotBody, user: dict = Depends(get_current_user)):
+    p = await get_patient_record(user)
+    doc = await db.appointment_requests.find_one({"id": item_id, "patient_id": p["id"]})
+    if not doc:
+        raise HTTPException(status_code=404, detail="Not found")
+    if doc.get("status") != "alternatives_offered":
+        raise HTTPException(status_code=400, detail="This request is not awaiting a time selection.")
+    slots = doc.get("offered_slots") or []
+    if body.index < 0 or body.index >= len(slots):
+        raise HTTPException(status_code=400, detail="Invalid option selected.")
+    slot = slots[body.index]
+    avail = await get_availability_doc()
+    if not avail_mod.is_within(avail, slot.get("date"), slot.get("time")):
+        raise HTTPException(status_code=409, detail="That time is no longer available. Please contact the clinic.")
+    updates = {
+        "status": "confirmed", "selected_slot": slot,
+        "confirmed_date": slot.get("date"), "confirmed_time": slot.get("label") or slot.get("time"),
+        "confirmed_display": slot.get("display"), "approved_by": "Patient selection",
+        "approved_at": now_iso(), "completed_at": now_iso(), "updated_at": now_iso(),
+    }
+    await db.appointment_requests.update_one({"id": item_id}, {
+        "$set": updates,
+        "$push": {"history": {"status": "confirmed", "at": now_iso(), "by": "patient-selection"}},
+    })
+    confirmed = await db.appointment_requests.find_one({"id": item_id}, {"_id": 0})
+    await audit("patient_selected_slot", "appointment", item_id, {"id": p["id"], "name": p["first_name"], "role": "patient"}, new_status="confirmed")
+    await notify_svc.appointment_confirmed(db, confirmed)
+    return confirmed
+
+
+@api.get("/availability/slots")
+async def availability_slots(days: int = 28, user: dict = Depends(get_current_user)):
+    avail = await get_availability_doc()
+    return {"timezone": avail.get("timezone"), "duration": avail.get("appointment_duration"),
+            "slots": avail_mod.generate_slots(avail, days=min(max(days, 1), 60))}
+
+
+@api.get("/admin/availability")
+async def get_availability(user: dict = Depends(require_roles("admin"))):
+    return await get_availability_doc()
+
+
+@api.put("/admin/availability")
+async def put_availability(payload: dict, user: dict = Depends(require_roles("admin"))):
+    payload["id"] = "availability"
+    await db.settings.update_one({"id": "availability"}, {"$set": payload}, upsert=True)
+    await audit("update_availability", "settings", "availability", user)
+    return {"ok": True}
 
 
 @api.post("/portal/prescriptions")
@@ -359,8 +435,11 @@ async def portal_overview(user: dict = Depends(get_current_user)):
                     "patient_type": p["patient_type"], "verification_status": p["verification_status"]},
         "requests": requests,
         "appointments": [{"id": a["id"], "ref_number": a["ref_number"], "reason": a["reason"],
-                          "status": APPT_PATIENT_STATUS.get(a["status"]), "preferred_date": a.get("preferred_date"),
-                          "approved_date": a.get("approved_date"), "approved_time": a.get("approved_time"),
+                          "status": APPT_PATIENT_STATUS.get(a["status"]), "raw_status": a["status"],
+                          "preferred_options": a.get("preferred_options", []),
+                          "offered_slots": a.get("offered_slots", []),
+                          "confirmed_date": a.get("confirmed_date"), "confirmed_time": a.get("confirmed_time"),
+                          "confirmed_display": a.get("confirmed_display"),
                           "staff_note": a.get("staff_note"), "created_at": a["created_at"]} for a in appts],
         "prescriptions": [{"id": r["id"], "ref_number": r["ref_number"], "medication_name": r["medication_name"],
                            "strength": r.get("strength"), "status": RX_PATIENT_STATUS.get(r["internal_status"]),
@@ -542,30 +621,52 @@ async def appt_update(item_id: str, body: UpdateBody, user: dict = Depends(requi
         raise HTTPException(status_code=404, detail="Not found")
     old = doc.get("status")
     updates = {"updated_at": now_iso()}
-    notify = None
+    do_confirm_notify = False
+    do_offer_notify = False
+
     if body.action == "approve":
-        updates.update({"status": "confirmed", "approved_date": body.approved_date,
-                        "approved_time": body.approved_time, "completed_at": now_iso()})
-        notify = "Your appointment request has been approved."
-    elif body.action == "suggest":
-        updates.update({"status": "suggested", "staff_note": body.staff_note})
-        notify = "There is an update on your appointment request. Please log in to your Patient Portal."
+        cdate = body.confirmed_date or (doc.get("preferred_options") or [{}])[0].get("date")
+        ctime = body.confirmed_time or (doc.get("preferred_options") or [{}])[0].get("time")
+        avail = await get_availability_doc()
+        if not avail_mod.is_within(avail, cdate, ctime):
+            raise HTTPException(status_code=400, detail="That time is outside Dr. Aguayo's configured availability. Use 'Offer Available Times' instead.")
+        updates.update({
+            "status": "confirmed", "confirmed_date": cdate, "confirmed_time": ctime,
+            "confirmed_display": body.confirmed_display or f"{cdate} {ctime}",
+            "approved_by": user["name"], "approved_at": now_iso(), "completed_at": now_iso(),
+        })
+        do_confirm_notify = True
+    elif body.action == "offer":
+        slots = [s for s in (body.offered_slots or []) if s.get("date") and s.get("time")][:3]
+        if not slots:
+            raise HTTPException(status_code=400, detail="Select at least one available time to offer.")
+        updates.update({"status": "alternatives_offered", "offered_slots": slots})
+        do_offer_notify = True
     elif body.action == "more_info":
-        updates.update({"status": "more_info_requested", "staff_note": body.staff_note})
-        notify = "We need a little more information about your appointment request. Please log in to your Patient Portal."
+        updates.update({"status": "more_info_required", "staff_note": body.staff_note})
     elif body.action == "decline":
         updates.update({"status": "declined", "staff_note": body.staff_note, "completed_at": now_iso()})
-        notify = "There is an update on your appointment request. Please log in to your Patient Portal."
     if body.assigned_to is not None:
         updates["assigned_to"] = body.assigned_to
+
     mongo_update = {"$set": updates, "$push": {"history": {"status": updates.get("status", old), "at": now_iso(), "by": user["name"]}}}
     if body.internal_note:
         mongo_update["$push"]["internal_notes"] = {"by": user["name"], "note": body.internal_note, "at": now_iso()}
     await db.appointment_requests.update_one({"id": item_id}, mongo_update)
     await audit("update", "appointment", item_id, user, old_status=old, new_status=updates.get("status", old))
-    if notify:
-        await notify_patient(doc["patient_id"], "Appointment update", notify)
-    return await db.appointment_requests.find_one({"id": item_id}, {"_id": 0})
+
+    fresh = await db.appointment_requests.find_one({"id": item_id}, {"_id": 0})
+    if do_confirm_notify:
+        await notify_svc.appointment_confirmed(db, fresh)
+    elif do_offer_notify:
+        await notify_svc.alternatives_offered(db, fresh)
+    elif body.action == "more_info":
+        await notify_patient(doc["patient_id"], "Appointment update",
+                             "We need a little more information about your appointment request. Please log in to your Patient Portal.")
+    elif body.action == "decline":
+        await notify_patient(doc["patient_id"], "Appointment update",
+                             "There is an update on your appointment request. Please log in to your Patient Portal.")
+    return fresh
 
 
 # ----------------------------- Internal tasks / intercom -----------------------------

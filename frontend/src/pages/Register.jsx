@@ -7,6 +7,7 @@ import { api, formatErr } from "../lib/api";
 import { Button } from "../components/ui/button";
 import { Input } from "../components/ui/input";
 import { Label } from "../components/ui/label";
+import { Select, SelectTrigger, SelectValue, SelectContent, SelectItem } from "../components/ui/select";
 import { Logo } from "../components/Logo";
 
 const TYPES = [
@@ -32,7 +33,7 @@ export default function Register() {
         first_name: "", last_name: "", second_name: "", second_last_name: "",
         date_of_birth: "", phone: "", email: "", password: "",
         health_card_number: "", province: "", country: "", extra_info: "",
-        address: "", city: "", postal_code: "", patient_message: "",
+        address: "", city: "", postal_code: "", patient_message: "", join_reason: "",
     });
     const set = (k) => (e) => setForm({ ...form, [k]: e.target.value });
 
@@ -86,11 +87,12 @@ export default function Register() {
         try {
             const first = [form.first_name, form.second_name].map((s) => s.trim()).filter(Boolean).join(" ");
             const last = [form.last_name, form.second_last_name].map((s) => s.trim()).filter(Boolean).join(" ");
+            const message = [form.join_reason, form.patient_message.trim()].filter(Boolean).join(" — ");
             const { data } = await api.post("/applications/new-patient", {
                 first_name: first, last_name: last, date_of_birth: form.date_of_birth,
                 phone: form.phone, email: form.email, city: form.city || null,
                 province: form.province || null, country: form.country || null,
-                patient_message: form.patient_message || null,
+                patient_message: message || null,
             });
             setConfirm({ message: data.message, ref_number: data.ref_number });
             setStep("done");
@@ -246,7 +248,21 @@ export default function Register() {
                             <Field label="City" testid="np-city"><Input value={form.city} onChange={set("city")} /></Field>
                             <Field label="Province" testid="np-province"><Input value={form.province} onChange={set("province")} /></Field>
                         </div>
-                        <Field label="Message (optional)" testid="np-message"><Input value={form.patient_message} onChange={set("patient_message")} placeholder="Tell us a bit about why you'd like to join" /></Field>
+                        <Field label="Reason for request" testid="np-reason">
+                            <Select value={form.join_reason} onValueChange={(v) => setForm({ ...form, join_reason: v })}>
+                                <SelectTrigger data-testid="np-reason-trigger" className="w-full">
+                                    <SelectValue placeholder="Select a reason" />
+                                </SelectTrigger>
+                                <SelectContent>
+                                    <SelectItem value="I don't have a family doctor">I don't have a family doctor</SelectItem>
+                                    <SelectItem value="My doctor is retiring">My doctor is retiring</SelectItem>
+                                    <SelectItem value="My doctor moved away">My doctor moved away</SelectItem>
+                                    <SelectItem value="I am new to the city">I am new to the city</SelectItem>
+                                    <SelectItem value="Doctor–patient relationship ended">Doctor–patient relationship ended</SelectItem>
+                                </SelectContent>
+                            </Select>
+                        </Field>
+                        <Field label="Additional message (optional)" testid="np-message"><Input value={form.patient_message} onChange={set("patient_message")} placeholder="Anything else you'd like the clinic to know" /></Field>
 
                         <Button data-testid="new-patient-submit" type="submit" disabled={busy}
                             className="w-full bg-portal-blue hover:bg-portal-blueDark text-white text-base h-12 rounded-xl">

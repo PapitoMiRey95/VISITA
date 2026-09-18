@@ -1,7 +1,7 @@
 import { useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { toast } from "sonner";
-import { Search } from "lucide-react";
+import { Search, CalendarPlus } from "lucide-react";
 import { api, formatErr } from "../lib/api";
 import { useInvalidate } from "./hooks";
 import { useAuth } from "../context/AuthContext";
@@ -11,8 +11,17 @@ import {
 import { Button } from "../components/ui/button";
 import { Input } from "../components/ui/input";
 import { Textarea } from "../components/ui/textarea";
+import BookAppointmentModal from "./BookAppointmentModal";
 
-export default function Queue({ title, subtitle, endpoint, patchBase, searchPlaceholder, statuses = [], columns, detail, actions, replyEnabled = false }) {
+function reasonFor(item, sourceType) {
+    if (sourceType === "prescription") return `Review prescription: ${item.medication_name || ""}`.trim();
+    if (sourceType === "imaging") return `Follow-up: ${item.imaging_type || ""} ${item.body_part || ""}`.trim();
+    if (sourceType === "bloodwork") return item.reason || "Bloodwork follow-up";
+    if (sourceType === "message") return item.subject || "Follow-up on your message";
+    return item.reason || "";
+}
+
+export default function Queue({ title, subtitle, endpoint, patchBase, searchPlaceholder, statuses = [], columns, detail, actions, replyEnabled = false, enableBooking = false, sourceType }) {
     const { user } = useAuth();
     const invalidate = useInvalidate();
     const [q, setQ] = useState("");
@@ -21,6 +30,7 @@ export default function Queue({ title, subtitle, endpoint, patchBase, searchPlac
     const [note, setNote] = useState("");
     const [reply, setReply] = useState("");
     const [busy, setBusy] = useState(false);
+    const [bookOpen, setBookOpen] = useState(false);
 
     const list = useQuery({
         queryKey: ["queue", endpoint, q, status],
@@ -141,12 +151,30 @@ export default function Queue({ title, subtitle, endpoint, patchBase, searchPlac
                                             {a.label}
                                         </Button>
                                     ))}
+                                    {enableBooking && selected.patient_id && (
+                                        <Button data-testid="act-book-appointment" disabled={busy} variant="outline"
+                                            onClick={() => setBookOpen(true)} className="border-visita-green text-visita-greenDark">
+                                            <CalendarPlus className="w-4 h-4 mr-1" /> Book Appointment
+                                        </Button>
+                                    )}
                                 </div>
                             </div>
                         </>
                     )}
                 </DialogContent>
             </Dialog>
+
+            {enableBooking && selected && (
+                <BookAppointmentModal
+                    open={bookOpen}
+                    onClose={() => setBookOpen(false)}
+                    onDone={() => { invalidate(); list.refetch(); close(); }}
+                    mode="book"
+                    source={selected}
+                    sourceType={sourceType}
+                    defaultReason={reasonFor(selected, sourceType)}
+                />
+            )}
         </div>
     );
 }

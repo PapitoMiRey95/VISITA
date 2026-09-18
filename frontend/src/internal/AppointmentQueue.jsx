@@ -11,6 +11,7 @@ import { Button } from "../components/ui/button";
 import { Input } from "../components/ui/input";
 import { Textarea } from "../components/ui/textarea";
 import { Label } from "../components/ui/label";
+import BookAppointmentModal from "./BookAppointmentModal";
 
 export default function AppointmentQueue() {
     const invalidate = useInvalidate();
@@ -24,6 +25,7 @@ export default function AppointmentQueue() {
     const [offerMode, setOfferMode] = useState(false);
     const [chosen, setChosen] = useState([]); // slot objects
     const [busy, setBusy] = useState(false);
+    const [reschedOpen, setReschedOpen] = useState(false);
 
     const list = useQuery({
         queryKey: ["queue", "/internal/appointments", q, status],
@@ -116,6 +118,21 @@ export default function AppointmentQueue() {
                             <DialogHeader><DialogTitle>{sel.ref_number} · {sel.patient_name}</DialogTitle></DialogHeader>
                             <div className="space-y-2 text-sm">
                                 <KV label="Reason">{sel.reason}</KV>
+                                {sel.status === "confirmed" && (
+                                    <div className="bg-emerald-50 border border-emerald-200 rounded-sm p-2" data-testid="appt-confirmed-block">
+                                        <div className="text-emerald-800 font-semibold">Confirmed: {sel.confirmed_display || `${sel.confirmed_date} ${sel.confirmed_time}`}</div>
+                                        {sel.booked_from && <div className="text-xs text-emerald-700">Booked from {sel.booked_from.source_type} {sel.booked_from.source_ref}</div>}
+                                        <div className="flex gap-2 mt-2">
+                                            <Button size="sm" variant="outline" data-testid="appt-reschedule" onClick={() => setReschedOpen(true)}>
+                                                <CalendarClock className="w-4 h-4 mr-1" /> Reschedule
+                                            </Button>
+                                            <Button size="sm" variant="outline" className="text-red-600 border-red-200" data-testid="appt-cancel"
+                                                disabled={busy} onClick={() => act({ action: "cancel", staff_note: staffNote || undefined })}>
+                                                Cancel Appointment
+                                            </Button>
+                                        </div>
+                                    </div>
+                                )}
                                 <div>
                                     <div className="text-slate-500 mb-1">Preferred options</div>
                                     <div className="space-y-1">
@@ -173,6 +190,16 @@ export default function AppointmentQueue() {
                     )}
                 </DialogContent>
             </Dialog>
+
+            {sel && (
+                <BookAppointmentModal
+                    open={reschedOpen}
+                    onClose={() => setReschedOpen(false)}
+                    onDone={() => { invalidate(); list.refetch(); close(); }}
+                    mode="reschedule"
+                    source={sel}
+                />
+            )}
         </div>
     );
 }

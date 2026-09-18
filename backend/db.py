@@ -55,6 +55,7 @@ RX_PATIENT_STATUS = {
     "waiting_physician": "Under Review",
     "completed": "Completed",
     "appointment_required": "Appointment Required",
+    "appointment_booked": "Appointment Booked",
 }
 
 APPT_PATIENT_STATUS = {
@@ -75,6 +76,18 @@ IMG_PATIENT_STATUS = {
     "waiting_physician": "Under Review",
     "completed": "Completed",
     "appointment_required": "Appointment Required",
+    "appointment_booked": "Appointment Booked",
+}
+
+BLD_PATIENT_STATUS = {
+    "new": "Received",
+    "under_review": "Under Review",
+    "waiting_physician": "Under Review",
+    "completed": "Completed",
+    "appointment_required": "Appointment Required",
+    "appointment_booked": "Appointment Booked",
+    "more_info_required": "More Information Requested",
+    "declined": "Declined",
 }
 
 MSG_PATIENT_STATUS = {
@@ -82,9 +95,11 @@ MSG_PATIENT_STATUS = {
     "open": "Under Review",
     "waiting_physician": "Under Review",
     "completed": "Completed",
+    "appointment_booked": "Appointment Booked",
 }
 
 RX_ACTIVE = ["received", "under_review", "waiting_physician"]
 IMG_ACTIVE = ["new", "under_review", "waiting_physician"]
+BLD_ACTIVE = ["new", "under_review", "waiting_physician", "more_info_required"]
 MSG_ACTIVE = ["new", "open", "waiting_physician"]
 APPT_ACTIVE = ["requested", "more_info_requested"]

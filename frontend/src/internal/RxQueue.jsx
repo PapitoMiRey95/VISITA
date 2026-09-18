@@ -45,6 +45,8 @@ export default function RxQueue() {
             patchBase="/internal/prescriptions"
             searchPlaceholder="Search patient, medication, RX-…"
             statuses={physician ? [] : STATUSES}
+            enableBooking
+            sourceType="prescription"
             columns={COLUMNS}
             detail={(i) => (
                 <div className="space-y-1.5">

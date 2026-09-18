@@ -14,6 +14,8 @@ const MAP = {
     confirmed: ["Confirmed", "bg-emerald-100 text-emerald-700"],
     declined: ["Declined", "bg-red-100 text-red-700"],
     cancelled: ["Cancelled", "bg-slate-200 text-slate-600"],
+    appointment_booked: ["Appointment Booked", "bg-emerald-100 text-emerald-700"],
+    more_info_required: ["More Info Required", "bg-amber-100 text-amber-700"],
 };
 
 export function StatusPill({ status }) {

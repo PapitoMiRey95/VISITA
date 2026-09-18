@@ -29,6 +29,8 @@ export default function MessageQueue() {
             searchPlaceholder="Search patient, subject, MSG-…"
             statuses={physician ? [] : STATUSES}
             replyEnabled
+            enableBooking
+            sourceType="message"
             columns={[
                 { header: "Ref", cell: (i) => <span className="text-slate-500">{i.ref_number}</span> },
                 { header: "Patient", cell: (i) => <span className="font-semibold">{i.patient_name}</span> },

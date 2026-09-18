@@ -16,6 +16,7 @@ import PortalPrescriptions from "./portal/PortalPrescriptions";
 import PortalReferrals from "./portal/PortalReferrals";
 import PortalMessages from "./portal/PortalMessages";
 import PortalImaging from "./portal/PortalImaging";
+import PortalBloodwork from "./portal/PortalBloodwork";
 import PortalMyRequests from "./portal/PortalMyRequests";
 import PortalAccount from "./portal/PortalAccount";
 
@@ -24,6 +25,7 @@ import Hub from "./internal/Hub";
 import RxQueue from "./internal/RxQueue";
 import AppointmentQueue from "./internal/AppointmentQueue";
 import ImagingQueue from "./internal/ImagingQueue";
+import BloodworkQueue from "./internal/BloodworkQueue";
 import MessageQueue from "./internal/MessageQueue";
 import TaskQueue from "./internal/TaskQueue";
 import Referrals from "./internal/Referrals";
@@ -58,6 +60,7 @@ function App() {
                         <Route path="referrals" element={<PortalReferrals />} />
                         <Route path="messages" element={<PortalMessages />} />
                         <Route path="imaging" element={<PortalImaging />} />
+                        <Route path="bloodwork" element={<PortalBloodwork />} />
                         <Route path="requests" element={<PortalMyRequests />} />
                         <Route path="account" element={<PortalAccount />} />
                     </Route>
@@ -74,6 +77,7 @@ function App() {
                         <Route path="rx" element={<RxQueue />} />
                         <Route path="appointments" element={<AppointmentQueue />} />
                         <Route path="imaging" element={<ImagingQueue />} />
+                        <Route path="bloodwork" element={<BloodworkQueue />} />
                         <Route path="messages" element={<MessageQueue />} />
                         <Route path="tasks" element={<TaskQueue />} />
                         <Route path="referrals" element={<Referrals />} />

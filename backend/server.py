@@ -24,9 +24,9 @@ import directory as directory_mod
 import email_service
 import notifications as notify_svc
 import storage
-from db import (APPT_PATIENT_STATUS, IMG_ACTIVE, IMG_PATIENT_STATUS, MSG_ACTIVE,
-                MSG_PATIENT_STATUS, RX_ACTIVE, RX_PATIENT_STATUS, audit, db,
-                mask_hcn, next_ref, now_iso)
+from db import (APPT_PATIENT_STATUS, BLD_ACTIVE, BLD_PATIENT_STATUS, IMG_ACTIVE,
+                IMG_PATIENT_STATUS, MSG_ACTIVE, MSG_PATIENT_STATUS, RX_ACTIVE,
+                RX_PATIENT_STATUS, audit, db, mask_hcn, next_ref, now_iso)
 from seed import seed_all
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(name)s - %(levelname)s - %(message)s")
@@ -174,6 +174,11 @@ class ImagingBody(BaseModel):
     patient_note: Optional[str] = None
 
 
+class BloodworkBody(BaseModel):
+    reason: str
+    patient_note: Optional[str] = None
+
+
 class MessageBody(BaseModel):
     category: str
     subject: Optional[str] = None
@@ -198,6 +203,16 @@ class UpdateBody(BaseModel):
 
 class SelectSlotBody(BaseModel):
     index: int
+
+
+class BookApptBody(BaseModel):
+    source_type: str          # prescription | imaging | bloodwork | message
+    source_id: str
+    reason: Optional[str] = None
+    date: str
+    time: str
+    label: Optional[str] = None
+    display: Optional[str] = None
 
 
 class TaskBody(BaseModel):
@@ -638,6 +653,21 @@ async def create_imaging(body: ImagingBody, p: dict = Depends(require_verified_p
     return doc
 
 
+@api.post("/portal/bloodwork")
+async def create_bloodwork(body: BloodworkBody, p: dict = Depends(require_verified_patient)):
+    ref = await next_ref("BLD")
+    doc = {
+        "id": str(uuid.uuid4()), "ref_number": ref, "patient_id": p["id"],
+        "patient_name": f"{p['last_name']}, {p['first_name']}",
+        **body.model_dump(), "internal_status": "new", "assigned_to": None,
+        "internal_notes": [], "created_at": now_iso(), "updated_at": now_iso(), "completed_at": None,
+    }
+    await db.bloodwork_requests.insert_one({**doc})
+    await audit("create", "bloodwork", doc["id"], {"id": p["id"], "name": p["first_name"], "role": "patient"}, new_status="new")
+    doc.pop("_id", None)
+    return doc
+
+
 @api.post("/portal/messages")
 async def create_message(body: MessageBody, p: dict = Depends(require_verified_patient)):
     ref = await next_ref("MSG")
@@ -662,6 +692,7 @@ async def portal_overview(user: dict = Depends(get_current_user)):
     appts = await db.appointment_requests.find({"patient_id": pid}, {"_id": 0}).to_list(200)
     rxs = await db.prescription_requests.find({"patient_id": pid}, {"_id": 0}).to_list(200)
     imgs = await db.imaging_requests.find({"patient_id": pid}, {"_id": 0}).to_list(200)
+    blds = await db.bloodwork_requests.find({"patient_id": pid}, {"_id": 0}).to_list(200)
     msgs = await db.patient_messages.find({"patient_id": pid}, {"_id": 0}).to_list(200)
     refs = await db.patient_referrals.find({"patient_id": pid}, {"_id": 0}).to_list(200)
     notes = await db.notifications.find({"patient_id": pid}, {"_id": 0}).sort("created_at", -1).to_list(50)
@@ -678,7 +709,8 @@ async def portal_overview(user: dict = Depends(get_current_user)):
         return out
 
     requests = (pa(appts, "Appointment", APPT_PATIENT_STATUS) + pa(rxs, "Prescription", RX_PATIENT_STATUS)
-                + pa(imgs, "Imaging", IMG_PATIENT_STATUS) + pa(msgs, "Message", MSG_PATIENT_STATUS))
+                + pa(imgs, "Imaging", IMG_PATIENT_STATUS) + pa(blds, "Bloodwork", BLD_PATIENT_STATUS)
+                + pa(msgs, "Message", MSG_PATIENT_STATUS))
     requests.sort(key=lambda x: x["created_at"], reverse=True)
     referrals = [{"id": r["id"], "specialty": r.get("specialty"),
                   "status": r.get("patient_visible_status"), "last_updated": r.get("updated_at")} for r in refs]
@@ -699,6 +731,9 @@ async def portal_overview(user: dict = Depends(get_current_user)):
         "imaging": [{"id": i["id"], "ref_number": i["ref_number"], "imaging_type": i["imaging_type"],
                      "body_part": i["body_part"], "status": IMG_PATIENT_STATUS.get(i["internal_status"]),
                      "created_at": i["created_at"]} for i in imgs],
+        "bloodwork": [{"id": b["id"], "ref_number": b["ref_number"], "reason": b.get("reason"),
+                       "status": BLD_PATIENT_STATUS.get(b["internal_status"]),
+                       "created_at": b["created_at"]} for b in blds],
         "messages": [{"id": m["id"], "ref_number": m["ref_number"], "category": m["category"], "subject": m.get("subject"),
                       "thread": m.get("thread", []), "status": MSG_PATIENT_STATUS.get(m["status"]),
                       "created_at": m["created_at"]} for m in msgs],
@@ -722,18 +757,20 @@ async def counters(user: dict = Depends(require_roles(*CLINIC_ROLES))):
         img = await db.imaging_requests.count_documents({"internal_status": "waiting_physician"})
         pmsg = await db.patient_messages.count_documents({"status": "waiting_physician"})
         dmsg = await db.internal_messages.count_documents({"recipient_role": "physician", "status": {"$ne": "completed"}})
+        bld = await db.bloodwork_requests.count_documents({"internal_status": "waiting_physician"})
         apps = await db.patient_applications.count_documents({"internal_status": {"$in": APP_ACTIVE}})
-        return {"role": "physician", "counters": {"rx": rx, "imaging": img, "messages": pmsg + dmsg, "applications": apps}}
+        return {"role": "physician", "counters": {"rx": rx, "imaging": img, "bloodwork": bld, "messages": pmsg + dmsg, "applications": apps}}
     rx = await db.prescription_requests.count_documents({"internal_status": {"$in": RX_ACTIVE}})
     referrals = await db.referrals.count_documents({"ready_to_fax": True, "faxed": False})
     img = await db.imaging_requests.count_documents({"internal_status": {"$in": IMG_ACTIVE}})
+    bld = await db.bloodwork_requests.count_documents({"internal_status": {"$in": BLD_ACTIVE}})
     msgs = await db.patient_messages.count_documents({"status": {"$in": MSG_ACTIVE}})
     appts = await db.appointment_requests.count_documents({"status": "requested"})
     tasks = await db.internal_messages.count_documents({"recipient_role": "staff", "status": {"$ne": "completed"}})
     pending_verif = await db.patients.count_documents({"verification_status": "pending", "active_status": True})
     apps = await db.patient_applications.count_documents({"internal_status": {"$in": APP_ACTIVE}})
     return {"role": user["role"], "counters": {
-        "rx": rx, "referrals": referrals, "imaging": img, "messages": msgs,
+        "rx": rx, "referrals": referrals, "imaging": img, "bloodwork": bld, "messages": msgs,
         "appointments": appts, "doctor_tasks": tasks, "verifications": pending_verif, "applications": apps,
     }}
 
@@ -764,6 +801,17 @@ async def _update_request(coll, entity, item_id, body: UpdateBody, user, status_
     elif body.action == "appointment_required":
         updates[status_field] = "appointment_required"
         updates["completed_at"] = now_iso()
+        notify = True
+    elif body.action == "more_info":
+        updates[status_field] = "more_info_required"
+        if body.staff_note is not None:
+            updates["staff_note"] = body.staff_note
+        notify = True
+    elif body.action == "decline":
+        updates[status_field] = "declined"
+        updates["completed_at"] = now_iso()
+        if body.staff_note is not None:
+            updates["staff_note"] = body.staff_note
         notify = True
     elif body.internal_status:
         updates[status_field] = body.internal_status
@@ -813,6 +861,100 @@ async def img_queue(q: Optional[str] = None, status: Optional[str] = None, user:
 async def img_update(item_id: str, body: UpdateBody, user: dict = Depends(require_roles(*CLINIC_ROLES))):
     return await _update_request(db.imaging_requests, "imaging", item_id, body, user,
                                  "internal_status", "Your imaging request has been updated.")
+
+
+# ----------------------------- Bloodwork -----------------------------
+@api.get("/internal/bloodwork")
+async def bld_queue(q: Optional[str] = None, status: Optional[str] = None, user: dict = Depends(require_roles(*CLINIC_ROLES))):
+    query = {}
+    if user["role"] == "physician":
+        query["internal_status"] = "waiting_physician"
+    elif status:
+        query["internal_status"] = status
+    query.update(_search_filter(q, ["patient_name", "reason", "ref_number"]))
+    return await db.bloodwork_requests.find(query, {"_id": 0}).sort("created_at", -1).to_list(500)
+
+
+@api.patch("/internal/bloodwork/{item_id}")
+async def bld_update(item_id: str, body: UpdateBody, user: dict = Depends(require_roles(*CLINIC_ROLES))):
+    return await _update_request(db.bloodwork_requests, "bloodwork", item_id, body, user,
+                                 "internal_status", "Your bloodwork request has been updated.")
+
+
+# ----------------------------- Book appointment from a request -----------------------------
+_BOOK_SOURCES = {
+    "prescription": (lambda: db.prescription_requests, "internal_status"),
+    "imaging": (lambda: db.imaging_requests, "internal_status"),
+    "bloodwork": (lambda: db.bloodwork_requests, "internal_status"),
+    "message": (lambda: db.patient_messages, "status"),
+}
+
+
+async def _slot_taken(date_str: str, time24: str, exclude_id: Optional[str] = None) -> bool:
+    existing = await db.appointment_requests.find(
+        {"status": "confirmed", "confirmed_date": date_str}).to_list(200)
+    for a in existing:
+        if exclude_id and a.get("id") == exclude_id:
+            continue
+        at = a.get("confirmed_slot_time") or avail_mod._norm_time(a.get("confirmed_time") or "")
+        if at == time24:
+            return True
+    return False
+
+
+@api.post("/internal/book-appointment")
+async def book_appointment(body: BookApptBody, user: dict = Depends(require_roles(*CLINIC_ROLES))):
+    src = _BOOK_SOURCES.get(body.source_type)
+    if not src:
+        raise HTTPException(status_code=400, detail="Unsupported request type for booking.")
+    coll, status_field = src[0](), src[1]
+    source = await coll.find_one({"id": body.source_id})
+    if not source:
+        raise HTTPException(status_code=404, detail="Original request not found.")
+    if not source.get("patient_id"):
+        raise HTTPException(status_code=400, detail="This request has no linked patient.")
+    time24 = avail_mod._norm_time(body.time)
+    avail = await get_availability_doc()
+    if not avail_mod.is_within(avail, body.date, time24):
+        raise HTTPException(status_code=400, detail="That time is outside Dr. Aguayo's configured availability.")
+    if await _slot_taken(body.date, time24):
+        raise HTTPException(status_code=409, detail="This time is no longer available. Please select another time.")
+
+    ref = await next_ref("APT")
+    display = body.display or f"{body.date} {body.label or body.time}"
+    appt = {
+        "id": str(uuid.uuid4()), "ref_number": ref, "patient_id": source["patient_id"],
+        "patient_name": source.get("patient_name"),
+        "reason": body.reason or f"Follow-up for {body.source_type} request {source.get('ref_number')}",
+        "patient_note": None, "preferred_options": [],
+        "preferred_date": body.date, "preferred_time": body.label or body.time,
+        "status": "confirmed", "staff_note": None,
+        "offered_slots": [], "selected_slot": None,
+        "confirmed_date": body.date, "confirmed_time": body.label or body.time,
+        "confirmed_slot_time": time24, "confirmed_display": display,
+        "approved_by": user["name"], "approved_at": now_iso(),
+        "booked_from": {"source_type": body.source_type, "source_id": body.source_id,
+                        "source_ref": source.get("ref_number")},
+        "booked_by": user["name"], "assigned_to": None, "internal_notes": [],
+        "history": [{"status": "confirmed", "at": now_iso(), "by": user["name"], "note": "Booked from request"}],
+        "created_at": now_iso(), "updated_at": now_iso(), "completed_at": None,
+    }
+    await db.appointment_requests.insert_one({**appt})
+    await coll.update_one({"id": body.source_id}, {"$set": {
+        status_field: "appointment_booked", "linked_appointment_id": appt["id"],
+        "appointment_booked": True, "updated_at": now_iso(),
+    }})
+    await audit("book_appointment", "appointment", appt["id"], user, new_status="confirmed",
+                meta={"source_type": body.source_type, "source_id": body.source_id})
+    await notify_patient(source["patient_id"], "Appointment booked",
+                         f"An appointment with Dr. Aguayo has been booked for {display}. "
+                         "Please log in to your Patient Portal for details.")
+    try:
+        await notify_svc.appointment_confirmed(db, appt)
+    except Exception:
+        pass
+    appt.pop("_id", None)
+    return appt
 
 
 # ----------------------------- Messages -----------------------------
@@ -884,12 +1026,33 @@ async def appt_update(item_id: str, body: UpdateBody, user: dict = Depends(requi
         avail = await get_availability_doc()
         if not avail_mod.is_within(avail, cdate, ctime):
             raise HTTPException(status_code=400, detail="That time is outside Dr. Aguayo's configured availability. Use 'Offer Available Times' instead.")
+        time24 = avail_mod._norm_time(ctime)
+        if await _slot_taken(cdate, time24, exclude_id=item_id):
+            raise HTTPException(status_code=409, detail="This time is no longer available. Please select another time.")
         updates.update({
             "status": "confirmed", "confirmed_date": cdate, "confirmed_time": ctime,
-            "confirmed_display": body.confirmed_display or f"{cdate} {ctime}",
+            "confirmed_slot_time": time24, "confirmed_display": body.confirmed_display or f"{cdate} {ctime}",
             "approved_by": user["name"], "approved_at": now_iso(), "completed_at": now_iso(),
         })
         do_confirm_notify = True
+    elif body.action == "reschedule":
+        cdate = body.confirmed_date
+        ctime = body.confirmed_time
+        avail = await get_availability_doc()
+        if not avail_mod.is_within(avail, cdate, ctime):
+            raise HTTPException(status_code=400, detail="That time is outside Dr. Aguayo's configured availability.")
+        time24 = avail_mod._norm_time(ctime)
+        if await _slot_taken(cdate, time24, exclude_id=item_id):
+            raise HTTPException(status_code=409, detail="This time is no longer available. Please select another time.")
+        updates.update({
+            "status": "confirmed", "confirmed_date": cdate, "confirmed_time": ctime,
+            "confirmed_slot_time": time24, "confirmed_display": body.confirmed_display or f"{cdate} {ctime}",
+            "rescheduled_by": user["name"], "rescheduled_at": now_iso(),
+        })
+        do_confirm_notify = True
+    elif body.action == "cancel":
+        updates.update({"status": "cancelled", "staff_note": body.staff_note,
+                        "cancelled_by": user["name"], "cancelled_at": now_iso(), "completed_at": now_iso()})
     elif body.action == "offer":
         slots = [s for s in (body.offered_slots or []) if s.get("date") and s.get("time")][:3]
         if not slots:
@@ -920,6 +1083,9 @@ async def appt_update(item_id: str, body: UpdateBody, user: dict = Depends(requi
     elif body.action == "decline":
         await notify_patient(doc["patient_id"], "Appointment update",
                              "There is an update on your appointment request. Please log in to your Patient Portal.")
+    elif body.action == "cancel":
+        await notify_patient(doc["patient_id"], "Appointment cancelled",
+                             "Your appointment has been cancelled. Please contact the clinic if you have questions.")
     return fresh
 
 

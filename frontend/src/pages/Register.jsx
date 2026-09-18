@@ -29,7 +29,8 @@ export default function Register() {
     const [former, setFormer] = useState(null); // { message, prefill }
     const [confirm, setConfirm] = useState(null); // { message, ref_number }
     const [form, setForm] = useState({
-        first_name: "", last_name: "", date_of_birth: "", phone: "", email: "", password: "",
+        first_name: "", last_name: "", second_name: "", second_last_name: "",
+        date_of_birth: "", phone: "", email: "", password: "",
         health_card_number: "", province: "", country: "", extra_info: "",
         address: "", city: "", postal_code: "", patient_message: "",
     });
@@ -83,8 +84,10 @@ export default function Register() {
         e.preventDefault();
         setBusy(true);
         try {
+            const first = [form.first_name, form.second_name].map((s) => s.trim()).filter(Boolean).join(" ");
+            const last = [form.last_name, form.second_last_name].map((s) => s.trim()).filter(Boolean).join(" ");
             const { data } = await api.post("/applications/new-patient", {
-                first_name: form.first_name, last_name: form.last_name, date_of_birth: form.date_of_birth,
+                first_name: first, last_name: last, date_of_birth: form.date_of_birth,
                 phone: form.phone, email: form.email, city: form.city || null,
                 province: form.province || null, country: form.country || null,
                 patient_message: form.patient_message || null,
@@ -230,7 +233,11 @@ export default function Register() {
 
                         <div className="grid grid-cols-2 gap-3">
                             <Field label="First name" testid="np-first"><Input required value={form.first_name} onChange={set("first_name")} /></Field>
-                            <Field label="Last name" testid="np-last"><Input required value={form.last_name} onChange={set("last_name")} /></Field>
+                            <Field label="Second name" testid="np-second"><Input value={form.second_name} onChange={set("second_name")} placeholder="Optional" /></Field>
+                        </div>
+                        <div className="grid grid-cols-2 gap-3">
+                            <Field label="First last name" testid="np-last"><Input required value={form.last_name} onChange={set("last_name")} /></Field>
+                            <Field label="Second last name" testid="np-second-last"><Input value={form.second_last_name} onChange={set("second_last_name")} placeholder="Optional" /></Field>
                         </div>
                         <Field label="Date of birth" testid="np-dob"><Input type="date" required value={form.date_of_birth} onChange={set("date_of_birth")} /></Field>
                         <Field label="Phone" testid="np-phone"><Input required value={form.phone} onChange={set("phone")} /></Field>

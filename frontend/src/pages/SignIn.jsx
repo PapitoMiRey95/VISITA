@@ -1,7 +1,7 @@
 import { useState } from "react";
 import { useNavigate, Link, useSearchParams } from "react-router-dom";
 import { toast } from "sonner";
-import { Loader2, ShieldPlus, ChevronLeft } from "lucide-react";
+import { Loader2, ShieldPlus, ChevronLeft, Eye, EyeOff } from "lucide-react";
 import { useAuth } from "../context/AuthContext";
 import { formatErr } from "../lib/api";
 import { Button } from "../components/ui/button";
@@ -17,6 +17,7 @@ export default function SignIn() {
     const internal = params.get("internal") === "1";
     const [identifier, setIdentifier] = useState("");
     const [password, setPassword] = useState("");
+    const [showPassword, setShowPassword] = useState(false);
     const [busy, setBusy] = useState(false);
 
     const submit = async (e) => {
@@ -74,10 +75,18 @@ export default function SignIn() {
                             placeholder={internal ? "USERNAME" : "you@example.com"} />
 
                         <Label htmlFor="password" className="text-[11px] uppercase tracking-widest text-slate-400">Password</Label>
-                        <Input id="password" data-testid="login-password" type="password" required value={password}
-                            onChange={(e) => setPassword(e.target.value)}
-                            className="mt-1 mb-6 bg-[#0f1e30] border-white/10 text-slate-100 placeholder:text-slate-500 focus-visible:ring-cyan-400/60"
-                            placeholder="••••••••" />
+                        <div className="relative mt-1 mb-6">
+                            <Input id="password" data-testid="login-password" type={showPassword ? "text" : "password"} required value={password}
+                                onChange={(e) => setPassword(e.target.value)}
+                                className="pr-10 bg-[#0f1e30] border-white/10 text-slate-100 placeholder:text-slate-500 focus-visible:ring-cyan-400/60"
+                                placeholder="••••••••" />
+                            <button type="button" data-testid="toggle-password-visibility"
+                                onClick={() => setShowPassword((v) => !v)}
+                                aria-label={showPassword ? "Hide password" : "Show password"}
+                                className="absolute inset-y-0 right-0 flex items-center pr-3 text-slate-400 hover:text-cyan-200">
+                                {showPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+                            </button>
+                        </div>
 
                         <Button data-testid="login-submit" type="submit" disabled={busy}
                             className="w-full bg-cyan-500 hover:bg-cyan-400 text-[#04121f] font-bold tracking-wide">

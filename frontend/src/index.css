@@ -48,6 +48,71 @@ body {
     .no-scrollbar { -ms-overflow-style: none; scrollbar-width: none; }
 }
 
+/* --- Cinematic login: spectral glitch + scanlines --- */
+.visita-glitch {
+    position: relative;
+    color: rgba(226, 240, 255, 0.92);
+    text-shadow:
+        0 0 18px rgba(120, 190, 230, 0.35),
+        0 0 2px rgba(255, 255, 255, 0.4);
+    animation: visita-flicker 6s infinite steps(60);
+}
+.visita-glitch::before,
+.visita-glitch::after {
+    content: attr(data-text);
+    position: absolute;
+    inset: 0;
+    pointer-events: none;
+}
+.visita-glitch::before {
+    color: rgba(90, 200, 210, 0.55);
+    animation: visita-shift-1 4.2s infinite linear alternate;
+    clip-path: inset(0 0 55% 0);
+    mix-blend-mode: screen;
+}
+.visita-glitch::after {
+    color: rgba(210, 70, 90, 0.45);
+    animation: visita-shift-2 3.4s infinite linear alternate;
+    clip-path: inset(55% 0 0 0);
+    mix-blend-mode: screen;
+}
+@keyframes visita-shift-1 {
+    0% { transform: translate(0, 0); }
+    40% { transform: translate(-2px, 1px); }
+    80% { transform: translate(1px, -1px); }
+    100% { transform: translate(-1px, 0); }
+}
+@keyframes visita-shift-2 {
+    0% { transform: translate(0, 0); }
+    50% { transform: translate(2px, -1px); }
+    100% { transform: translate(-1px, 1px); }
+}
+@keyframes visita-flicker {
+    0%, 92%, 100% { opacity: 1; }
+    93% { opacity: 0.78; }
+    94% { opacity: 1; }
+    96% { opacity: 0.85; }
+    97% { opacity: 1; }
+}
+.visita-scanlines::after {
+    content: "";
+    position: absolute;
+    inset: 0;
+    pointer-events: none;
+    background: repeating-linear-gradient(
+        to bottom,
+        rgba(255, 255, 255, 0.04) 0px,
+        rgba(255, 255, 255, 0.04) 1px,
+        transparent 1px,
+        transparent 3px
+    );
+    mix-blend-mode: overlay;
+    opacity: 0.5;
+}
+@media (prefers-reduced-motion: reduce) {
+    .visita-glitch, .visita-glitch::before, .visita-glitch::after { animation: none; }
+}
+
 @layer base {
     [data-debug-wrapper="true"] { display: contents !important; }
 }

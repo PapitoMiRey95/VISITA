@@ -12,6 +12,7 @@ import { Input } from "../components/ui/input";
 import { Textarea } from "../components/ui/textarea";
 import { Label } from "../components/ui/label";
 import BookAppointmentModal from "./BookAppointmentModal";
+import { formatDate } from "../lib/date";
 
 export default function AppointmentQueue() {
     const invalidate = useInvalidate();
@@ -120,7 +121,7 @@ export default function AppointmentQueue() {
                                 <KV label="Reason">{sel.reason}</KV>
                                 {sel.status === "confirmed" && (
                                     <div className="bg-emerald-50 border border-emerald-200 rounded-sm p-2" data-testid="appt-confirmed-block">
-                                        <div className="text-emerald-800 font-semibold">Confirmed: {sel.confirmed_display || `${sel.confirmed_date} ${sel.confirmed_time}`}</div>
+                                        <div className="text-emerald-800 font-semibold">Confirmed: {sel.confirmed_display || `${formatDate(sel.confirmed_date)} · ${sel.confirmed_time}`}</div>
                                         {sel.booked_from && <div className="text-xs text-emerald-700">Booked from {sel.booked_from.source_type} {sel.booked_from.source_ref}</div>}
                                         <div className="flex gap-2 mt-2">
                                             <Button size="sm" variant="outline" data-testid="appt-reschedule" onClick={() => setReschedOpen(true)}>

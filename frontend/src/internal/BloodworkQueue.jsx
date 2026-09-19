@@ -1,6 +1,7 @@
 import Queue, { KV } from "./Queue";
 import { useAuth } from "../context/AuthContext";
 import { StatusPill } from "./statusPill";
+import { formatDateTime } from "../lib/date";
 
 const STATUSES = [
     { label: "New", value: "new" },
@@ -51,7 +52,7 @@ export default function BloodworkQueue() {
                 <div className="space-y-1.5">
                     <KV label="Reason">{i.reason}</KV>
                     <KV label="Patient note">{i.patient_note}</KV>
-                    <KV label="Requested">{new Date(i.created_at).toLocaleString()}</KV>
+                    <KV label="Requested">{formatDateTime(i.created_at)}</KV>
                 </div>
             )}
             actions={actions}

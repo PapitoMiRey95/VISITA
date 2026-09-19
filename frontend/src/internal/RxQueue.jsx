@@ -1,6 +1,7 @@
 import Queue, { KV } from "./Queue";
 import { useAuth } from "../context/AuthContext";
 import { StatusPill } from "./statusPill";
+import { formatDateTime } from "../lib/date";
 
 const STATUSES = [
     { label: "Received", value: "received" },
@@ -56,7 +57,7 @@ export default function RxQueue() {
                     <KV label="Delivery">{i.delivery_method === "pharmacy" ? "Send to pharmacy" : "Pickup"}</KV>
                     <KV label="New pharmacy">{i.new_pharmacy_details}</KV>
                     <KV label="Patient note">{i.patient_note}</KV>
-                    <KV label="Requested">{new Date(i.created_at).toLocaleString()}</KV>
+                    <KV label="Requested">{formatDateTime(i.created_at)}</KV>
                     <KV label="Assigned to">{i.assigned_to}</KV>
                 </div>
             )}

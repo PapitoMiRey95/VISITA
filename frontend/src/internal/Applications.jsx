@@ -7,6 +7,7 @@ import { useInvalidate } from "./hooks";
 import { useAuth } from "../context/AuthContext";
 import { Button } from "../components/ui/button";
 import { Input } from "../components/ui/input";
+import { formatDate } from "../lib/date";
 
 const APP_STATUS = {
     REQUEST_RECEIVED: ["Request Received", "bg-slate-100 text-slate-600"],
@@ -88,7 +89,7 @@ export default function Applications() {
                                         <AppPill status={a.internal_status} />
                                     </div>
                                     <div className="font-bold text-slate-800 text-base mt-1">{a.last_name}, {a.first_name}</div>
-                                    <div className="text-slate-600">DOB: {a.date_of_birth} · {a.ref_number}</div>
+                                    <div className="text-slate-600">DOB: {formatDate(a.date_of_birth)} · {a.ref_number}</div>
                                     <div className="text-slate-600">Phone: {a.phone} · Email: {a.email}</div>
                                     {a.health_card_masked && <div className="text-slate-600">Health Card: {a.health_card_masked}</div>}
                                     {(a.address || a.city || a.province) && (
@@ -145,7 +146,7 @@ export default function Applications() {
                                     </div>
                                     {cands.map((c) => (
                                         <div key={c.id} className="text-xs text-slate-600 bg-orange-50 rounded-sm px-2 py-1 mb-1">
-                                            {c.last_name}, {c.first_name} · DOB {c.date_of_birth} · HC {c.health_card_masked || "—"} · Status {c.patient_status}
+                                            {c.last_name}, {c.first_name} · DOB {formatDate(c.date_of_birth)} · HC {c.health_card_masked || "—"} · Status {c.patient_status}
                                             {c.visita_patient_id ? ` · VISITA #${c.visita_patient_id}` : ""}
                                         </div>
                                     ))}

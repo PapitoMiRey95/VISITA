@@ -8,6 +8,7 @@ import { useAuth } from "../context/AuthContext";
 import { Button } from "../components/ui/button";
 import { Input } from "../components/ui/input";
 import { Label } from "../components/ui/label";
+import { formatDateTime } from "../lib/date";
 
 export default function Referrals() {
     const { user } = useAuth();
@@ -123,7 +124,7 @@ export default function Referrals() {
                             <div key={r.id} className="bg-white border border-slate-300 rounded-sm p-3 flex items-center justify-between gap-3 text-sm">
                                 <div>
                                     <div className="font-semibold text-slate-800">{r.patient_name} · {r.specialty || "Referral"}</div>
-                                    <div className="text-slate-500 text-xs">{r.ref_number} · Faxed by {r.faxed_by} · {r.faxed_at ? new Date(r.faxed_at).toLocaleString() : ""}</div>
+                                    <div className="text-slate-500 text-xs">{r.ref_number} · Faxed by {r.faxed_by} · {r.faxed_at ? formatDateTime(r.faxed_at) : ""}</div>
                                 </div>
                                 <Button size="sm" variant="outline" onClick={() => getPdf(r, false)}>Open PDF</Button>
                             </div>

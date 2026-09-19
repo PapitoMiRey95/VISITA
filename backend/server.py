@@ -281,6 +281,18 @@ async def get_template(key: str, default: str = "") -> str:
     return (t or {}).get("items", {}).get(key, default)
 
 
+_DISP_MONTHS = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"]
+
+
+def fmt_date_display(d: Optional[str]) -> str:
+    """ISO 'YYYY-MM-DD' -> 'YYYY Mon - DD' for user-facing fallbacks."""
+    try:
+        y, m, dd = str(d)[:10].split("-")
+        return f"{y} {_DISP_MONTHS[int(m) - 1]} - {dd}"
+    except Exception:
+        return str(d or "")
+
+
 # ----------------------------- Auth routes -----------------------------
 @api.post("/auth/register")
 async def register(body: RegisterBody):
@@ -921,7 +933,7 @@ async def book_appointment(body: BookApptBody, user: dict = Depends(require_role
         raise HTTPException(status_code=409, detail="This time is no longer available. Please select another time.")
 
     ref = await next_ref("APT")
-    display = body.display or f"{body.date} {body.label or body.time}"
+    display = body.display or f"{fmt_date_display(body.date)} · {body.label or body.time}"
     appt = {
         "id": str(uuid.uuid4()), "ref_number": ref, "patient_id": source["patient_id"],
         "patient_name": source.get("patient_name"),
@@ -1031,7 +1043,7 @@ async def appt_update(item_id: str, body: UpdateBody, user: dict = Depends(requi
             raise HTTPException(status_code=409, detail="This time is no longer available. Please select another time.")
         updates.update({
             "status": "confirmed", "confirmed_date": cdate, "confirmed_time": ctime,
-            "confirmed_slot_time": time24, "confirmed_display": body.confirmed_display or f"{cdate} {ctime}",
+            "confirmed_slot_time": time24, "confirmed_display": body.confirmed_display or f"{fmt_date_display(cdate)} · {ctime}",
             "approved_by": user["name"], "approved_at": now_iso(), "completed_at": now_iso(),
         })
         do_confirm_notify = True
@@ -1046,7 +1058,7 @@ async def appt_update(item_id: str, body: UpdateBody, user: dict = Depends(requi
             raise HTTPException(status_code=409, detail="This time is no longer available. Please select another time.")
         updates.update({
             "status": "confirmed", "confirmed_date": cdate, "confirmed_time": ctime,
-            "confirmed_slot_time": time24, "confirmed_display": body.confirmed_display or f"{cdate} {ctime}",
+            "confirmed_slot_time": time24, "confirmed_display": body.confirmed_display or f"{fmt_date_display(cdate)} · {ctime}",
             "rescheduled_by": user["name"], "rescheduled_at": now_iso(),
         })
         do_confirm_notify = True

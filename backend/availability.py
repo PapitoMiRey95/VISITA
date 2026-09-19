@@ -96,7 +96,7 @@ def generate_slots(avail: dict, days: int = 28, busy=None):
                     "weekday": d.strftime("%A"),
                     "time": f"{t // 60:02d}:{t % 60:02d}",
                     "label": _label(t),
-                    "display": f"{d.strftime('%a, %b %d')} · {_label(t)}",
+                    "display": f"{d.strftime('%Y %b - %d')} ({d.strftime('%a')}) · {_label(t)}",
                 })
             t += dur
     return out

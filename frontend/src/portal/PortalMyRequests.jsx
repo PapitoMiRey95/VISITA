@@ -1,5 +1,6 @@
 import { usePortal, StatusPill, Card } from "./shared";
 import { Calendar, Pill, Scan, MessageSquare } from "lucide-react";
+import { formatDate } from "../lib/date";
 
 const ICONS = { Appointment: Calendar, Prescription: Pill, Imaging: Scan, Message: MessageSquare };
 
@@ -24,7 +25,7 @@ export default function PortalMyRequests() {
                             <div className="flex-1 min-w-0">
                                 <div className="font-bold text-slate-800">{r.type} Request</div>
                                 <div className="text-sm text-slate-500 truncate">
-                                    {r.ref_number} · {new Date(r.created_at).toLocaleDateString()}
+                                    {r.ref_number} · {formatDate(r.created_at)}
                                 </div>
                             </div>
                             <StatusPill status={r.status} />

@@ -1,6 +1,7 @@
 import { useNavigate } from "react-router-dom";
 import { Calendar } from "lucide-react";
 import { usePortal, StatusPill, Card } from "./shared";
+import { formatDateTime } from "../lib/date";
 
 export default function PortalReferrals() {
     const nav = useNavigate();
@@ -34,7 +35,7 @@ export default function PortalReferrals() {
                         </div>
                         {r.last_updated && (
                             <div className="text-xs text-slate-400 mt-1">
-                                LAST UPDATED: {new Date(r.last_updated).toLocaleString()}
+                                LAST UPDATED: {formatDateTime(r.last_updated)}
                             </div>
                         )}
                         <p className="text-sm text-slate-600 mt-2 leading-snug">{delay}</p>

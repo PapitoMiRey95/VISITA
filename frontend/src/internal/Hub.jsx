@@ -10,7 +10,7 @@ const STAFF = [
     { key: "bloodwork", label: "Bloodwork", to: "/internal/bloodwork", icon: Droplet },
     { key: "messages", label: "Messages", to: "/internal/messages", icon: MessageSquare },
     { key: "appointments", label: "Appointments", to: "/internal/appointments", icon: Calendar },
-    { key: "doctor_tasks", label: "Doctor Tasks", to: "/internal/tasks", icon: Send },
+    { key: "doctor_tasks", label: "Intercom", to: "/internal/tasks", icon: Send },
     { key: "verifications", label: "Verifications", to: "/internal/verifications", icon: UserCheck },
     { key: "applications", label: "Applications", to: "/internal/applications", icon: UserPlus },
 ];

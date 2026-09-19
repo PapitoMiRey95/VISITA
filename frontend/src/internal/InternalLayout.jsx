@@ -34,7 +34,7 @@ export default function InternalLayout() {
               { to: "/internal/bloodwork", icon: Droplet, label: "Bloodwork", key: "bloodwork" },
               { to: "/internal/messages", icon: MessageSquare, label: "Messages", key: "messages" },
               { to: "/internal/appointments", icon: Calendar, label: "Appointments", key: "appointments" },
-              { to: "/internal/tasks", icon: Send, label: "Doctor Tasks", key: "doctor_tasks" },
+              { to: "/internal/tasks", icon: Send, label: "Intercom", key: "doctor_tasks" },
               { to: "/internal/verifications", icon: UserCheck, label: "Verifications", key: "verifications" },
               { to: "/internal/applications", icon: UserPlus, label: "Applications", key: "applications" },
               ...(role === "admin" ? [{ to: "/internal/settings", icon: SettingsIcon, label: "Settings", key: null }] : []),

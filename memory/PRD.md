@@ -149,3 +149,8 @@ See /app/memory/test_credentials.md.
 - P5 craco.config.js console: FALSE POSITIVE (build-time only, no sensitive data in shipped bundle).
 - Also fixed array-index React keys -> stable keys in PortalAppointments.jsx & AppointmentQueue.jsx.
 - Large refactors (seed.py/directory.py/AppointmentQueue/etc complexity) intentionally NOT done per user; remain backlog.
+
+## Patient calendar real-availability + mobile + cache safety (2026-06, iteration_14) — verified by testing_agent (6/6 pass)
+- CONFIRMED not a frontend bug in preview: patient calendar already uses backend /availability/slots as single source of truth (availableDates derived from backend; no hardcoded Mon-Thu). Verified Sep 21/22/23 DISABLED (0 slots), Sep 24 (9) / Sep 28 (1) ENABLED at 375/390/430px, no horizontal scroll, flow not clipped.
+- Root cause of user seeing Sep21/22 selectable = the DEPLOYED PRODUCTION app (separate DB, no imports yet). Fix for prod = run /app/scripts/prod_import.py once live.
+- Added cache-safety to PortalAppointments.jsx: slots query staleTime:0 + refetchOnMount:always + refetchOnWindowFocus; refetch on month change (onMonthChange) and on date pick; pre-submit re-check that re-fetches and shows \"This appointment time is no longer available. Please select another time.\" if the slot was taken. Both mobile+desktop use REACT_APP_BACKEND_URL (same origin).

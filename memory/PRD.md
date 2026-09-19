@@ -134,3 +134,9 @@ See /app/memory/test_credentials.md.
 - Daily break is now a RECURRING availability rule: availability doc `break_start:"15:00"`, `break_end:"15:30"` (in DEFAULT_AVAILABILITY too). `_slots_for_day` subtracts it on every working day, so 3:00 PM is NEVER offered to patients (verified 10-05 -> 10 slots, no 3:00 PM). Confirmed appointments unchanged.
 - Purged the 7 old dated per-day "Break" (15:00-15:30) and the "Recycling Day" (10:00-11:30) records from blocked_periods (kept block_day entries). Recycling Day was a personal reminder, not scheduling.
 - Settings UI: removed the "Partial Blocks" section; added a read-only DAILY BREAK row ("Mon-Thu | 3:00 PM-3:30 PM"). Final sections: Weekly Availability, Daily Break, Blocked Days, Vacations, Closures. Availability = weekly hours - recurring break - confirmed appts - blocked days - vacations - closures.
+
+## PENDING: Production import of real schedule (awaiting deploy-live)
+- Script (persistent, idempotent, stdlib-only): `/app/scripts/prod_import.py <LIVE_URL> <ADMIN_ID> <ADMIN_PW>`.
+- Runs entirely via the LIVE site admin API (production DB is separate from preview). Validated against preview: login OK, sets Mon-Thu 11:30-17:00 + recurring break 15:00-15:30, imports 41 appts (idempotent: skips existing by imported+date+time), blocks 2026-09-29/09-30/10-01.
+- On fresh production it will: create 41, link ~38, flag 3 PATIENT LINK REQUIRED (CHIRRILLO, VALERO UZCATEGUI, GUTIERREZ NUNEZ); NO confirmation SMS/email; schedule 24h reminders for linked appts still >24h out.
+- Admin creds (same as seed): kevinrodriguez9528@gmail.com / VisitaAdmin2026!. RUN THIS ONCE the deployment is live, then verify admin calendar + patient-portal availability. Do NOT copy preview test bookings.

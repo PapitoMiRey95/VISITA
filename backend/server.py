@@ -215,6 +215,31 @@ class BookApptBody(BaseModel):
     display: Optional[str] = None
 
 
+class ImportApptItem(BaseModel):
+    date: str
+    time: str
+    patient_name: str
+    label: Optional[str] = None
+    reason: Optional[str] = None
+
+
+class ImportBreakItem(BaseModel):
+    date: str
+    start: str
+    end: str
+    reason: Optional[str] = "Break"
+
+
+class ImportApptBody(BaseModel):
+    appointments: List[ImportApptItem] = []
+    breaks: List[ImportBreakItem] = []
+    dry_run: bool = False
+
+
+class LinkPatientBody(BaseModel):
+    directory_id: str
+
+
 class TaskBody(BaseModel):
     patient_id: Optional[str] = None
     patient_name: Optional[str] = None
@@ -1407,6 +1432,155 @@ async def appt_update(item_id: str, body: UpdateBody, user: dict = Depends(requi
         await notify_svc.appointment_cancelled(db, fresh, reason=body.staff_note)
     if body.action in ("decline", "complete", "no_show"):
         await notify_svc.cancel_reminders(db, item_id)
+    return fresh
+
+
+# ----------------------------- Import existing appointments (one-time, production) -----------------------------
+async def _match_directory_by_name(full_name: str):
+    """Best-effort directory match by name. Returns (doc_or_None, ambiguous_bool).
+    Only returns a doc when EXACTLY ONE record matches (no guessing)."""
+    nm = (full_name or "").strip()
+    if not nm:
+        return None, False
+    if "," in nm:
+        last, first = [x.strip() for x in nm.split(",", 1)]
+    else:
+        parts = nm.split()
+        first = parts[0] if parts else ""
+        last = parts[-1] if len(parts) > 1 else parts[0] if parts else ""
+    nf, nl = directory_mod.norm_name(first), directory_mod.norm_name(last)
+    if not nl:
+        return None, False
+    # 1) first + last
+    if nf:
+        docs = await db.patient_directory.find({"norm_first": nf, "norm_last": nl}).to_list(50)
+        if len(docs) == 1:
+            return docs[0], False
+        if len(docs) > 1:
+            return None, True
+    # 2) last name only
+    docs = await db.patient_directory.find({"norm_last": nl}).to_list(50)
+    if len(docs) == 1:
+        return docs[0], False
+    return None, len(docs) > 1
+
+
+@api.post("/internal/appointments/import")
+async def import_appointments(body: ImportApptBody, user: dict = Depends(require_roles("admin"))):
+    """Import EXISTING clinic appointments as CONFIRMED (no confirmation SMS/email).
+    Idempotent: an imported appointment on the same date+time is skipped. Reminders
+    are scheduled only when a linked appointment is still >24h away."""
+    avail = await get_availability_doc()
+    summary = {"created": 0, "linked": 0, "link_required": 0, "skipped_duplicate": 0,
+               "breaks_added": 0, "breaks_skipped": 0, "items": []}
+
+    for it in body.appointments:
+        time24 = avail_mod._norm_time(it.time)
+        h, m = time24.split(":")
+        label = it.label or avail_mod._label(int(h) * 60 + int(m))
+        dup = await db.appointment_requests.find_one(
+            {"imported": True, "confirmed_date": it.date, "confirmed_slot_time": time24})
+        if dup:
+            summary["skipped_duplicate"] += 1
+            summary["items"].append({"name": it.patient_name, "date": it.date, "time": time24, "result": "duplicate"})
+            continue
+        matched, ambiguous = await _match_directory_by_name(it.patient_name)
+        link_required = matched is None
+        appt = {
+            "id": str(uuid.uuid4()), "ref_number": await next_ref("APT"),
+            "patient_id": (matched.get("linked_patient_id") or matched["id"]) if matched else None,
+            "directory_id": matched["id"] if matched else None,
+            "visita_patient_id": matched.get("visita_patient_id") if matched else None,
+            "patient_name": (f"{matched.get('last_name','')}, {matched.get('first_name','')}".strip(", ")
+                             if matched else it.patient_name),
+            "original_imported_name": it.patient_name,
+            "patient_link_required": link_required,
+            "reason": it.reason or "Imported appointment",
+            "patient_note": None, "preferred_options": [],
+            "status": "confirmed",
+            "confirmed_date": it.date, "confirmed_time": label, "confirmed_slot_time": time24,
+            "confirmed_display": f"{fmt_date_display(it.date)} · {label}",
+            "imported": True, "import_source": "google_calendar",
+            "booked_from": {"source_type": "import", "source_id": None},
+            "booked_by": f"Import ({user['name']})", "approved_by": "Imported (Google Calendar)",
+            "approved_at": now_iso(), "assigned_to": None, "internal_notes": [],
+            "history": [{"status": "confirmed", "at": now_iso(), "by": user["name"],
+                         "note": "Imported from Google Calendar"}],
+            "created_at": now_iso(), "updated_at": now_iso(), "completed_at": None,
+        }
+        if body.dry_run:
+            summary["created"] += 1
+            summary["items"].append({"name": it.patient_name, "date": it.date, "time": time24,
+                                     "result": "linked" if matched else ("ambiguous" if ambiguous else "no_match")})
+            continue
+        await db.appointment_requests.insert_one({**appt})
+        await audit("import_appointment", "appointment", appt["id"], user, new_status="confirmed",
+                    meta={"date": it.date, "time": time24, "linked": bool(matched)})
+        summary["created"] += 1
+        if matched:
+            summary["linked"] += 1
+        else:
+            summary["link_required"] += 1
+        # Reminders only when linked AND still more than 24h away (no confirmation notice).
+        if matched:
+            hrs = _hours_until(appt)
+            if hrs is not None and hrs >= SELF_SERVICE_CUTOFF_HOURS:
+                await notify_svc.schedule_reminders(db, appt)
+        summary["items"].append({"name": it.patient_name, "date": it.date, "time": time24,
+                                 "result": "linked" if matched else ("ambiguous" if ambiguous else "no_match"),
+                                 "ref": appt["ref_number"]})
+
+    # Break / block records → availability.blocked_periods (deduped)
+    if body.breaks and not body.dry_run:
+        blocks = list(avail.get("blocked_periods", []))
+        existing = {(b.get("date"), b.get("start"), b.get("end")) for b in blocks}
+        added = 0
+        for br in body.breaks:
+            key = (br.date, avail_mod._norm_time(br.start), avail_mod._norm_time(br.end))
+            if key in existing:
+                summary["breaks_skipped"] += 1
+                continue
+            blocks.append({"date": br.date, "start": key[1], "end": key[2], "reason": br.reason or "Break"})
+            existing.add(key)
+            added += 1
+        if added:
+            await db.settings.update_one({"id": "availability"}, {"$set": {"blocked_periods": blocks}}, upsert=True)
+            await audit("import_blocks", "settings", "availability", user, meta={"added": added})
+        summary["breaks_added"] = added
+    elif body.breaks and body.dry_run:
+        summary["breaks_added"] = len(body.breaks)
+
+    return summary
+
+
+@api.post("/internal/appointments/{item_id}/link-patient")
+async def link_appointment_patient(item_id: str, body: LinkPatientBody,
+                                   user: dict = Depends(require_roles(*CLINIC_ROLES))):
+    appt = await db.appointment_requests.find_one({"id": item_id})
+    if not appt:
+        raise HTTPException(status_code=404, detail="Appointment not found")
+    d = await db.patient_directory.find_one({"id": body.directory_id})
+    if not d:
+        raise HTTPException(status_code=404, detail="Patient not found in directory.")
+    name = f"{d.get('last_name','')}, {d.get('first_name','')}".strip(", ")
+    updates = {
+        "patient_id": d.get("linked_patient_id") or d["id"],
+        "directory_id": d["id"], "visita_patient_id": d.get("visita_patient_id"),
+        "patient_name": name,
+        "original_imported_name": appt.get("original_imported_name") or appt.get("patient_name"),
+        "patient_link_required": False,
+        "linked_by": user["name"], "linked_at": now_iso(), "updated_at": now_iso(),
+    }
+    await db.appointment_requests.update_one({"id": item_id}, {
+        "$set": updates,
+        "$push": {"history": {"status": appt.get("status"), "at": now_iso(), "by": user["name"],
+                              "note": f"Linked patient {name}"}}})
+    await audit("appointment_patient_linked", "appointment", item_id, user, meta={"directory_id": d["id"]})
+    fresh = await db.appointment_requests.find_one({"id": item_id}, {"_id": 0})
+    if fresh.get("status") in ("confirmed", "rescheduled"):
+        hrs = _hours_until(fresh)
+        if hrs is not None and hrs >= SELF_SERVICE_CUTOFF_HOURS:
+            await notify_svc.schedule_reminders(db, fresh)
     return fresh
 
 

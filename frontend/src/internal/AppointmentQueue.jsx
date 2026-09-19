@@ -27,6 +27,10 @@ export default function AppointmentQueue() {
     const [chosen, setChosen] = useState([]); // slot objects
     const [busy, setBusy] = useState(false);
     const [reschedOpen, setReschedOpen] = useState(false);
+    const [linkOpen, setLinkOpen] = useState(false);
+    const [linkQ, setLinkQ] = useState("");
+    const [linkResults, setLinkResults] = useState([]);
+    const [linkBusy, setLinkBusy] = useState(false);
 
     const list = useQuery({
         queryKey: ["queue", "/internal/appointments", q, status],
@@ -41,10 +45,29 @@ export default function AppointmentQueue() {
 
     const open = (i) => {
         setSel(i); setOfferMode(false); setChosen([]); setStaffNote("");
+        setLinkOpen(false); setLinkQ(""); setLinkResults([]);
         const o1 = (i.preferred_options || [])[0] || {};
         setCdate(o1.date || ""); setCtime(o1.time || ""); setCdisplay(o1.display || "");
     };
     const close = () => setSel(null);
+
+    const searchDirectory = async () => {
+        if (!linkQ.trim()) return;
+        setLinkBusy(true);
+        try {
+            const r = await api.get("/internal/directory", { params: { q: linkQ.trim() } });
+            setLinkResults(r.data || []);
+        } catch (e) { toast.error(formatErr(e)); } finally { setLinkBusy(false); }
+    };
+
+    const linkPatient = async (directoryId) => {
+        setLinkBusy(true);
+        try {
+            await api.post(`/internal/appointments/${sel.id}/link-patient`, { directory_id: directoryId });
+            toast.success("Patient linked to appointment.");
+            invalidate(); list.refetch(); close();
+        } catch (e) { toast.error(formatErr(e)); } finally { setLinkBusy(false); }
+    };
 
     const applyOption = (o) => { setCdate(o.date); setCtime(o.time); setCdisplay(o.display); };
 
@@ -117,6 +140,42 @@ export default function AppointmentQueue() {
                     {sel && (
                         <>
                             <DialogHeader><DialogTitle>{sel.ref_number} · {sel.patient_name}</DialogTitle></DialogHeader>
+                            {sel.patient_link_required && (
+                                <div className="bg-amber-50 border border-amber-200 rounded-sm p-2 mb-1" data-testid="patient-link-required">
+                                    <div className="flex items-center justify-between gap-2">
+                                        <div className="text-xs text-amber-800">
+                                            <span className="font-bold">PATIENT LINK REQUIRED</span>
+                                            <div>Imported as: <span className="font-semibold">{sel.original_imported_name || sel.patient_name}</span></div>
+                                        </div>
+                                        <Button size="sm" variant="outline" className="text-amber-800 border-amber-300" data-testid="link-patient-open"
+                                            onClick={() => setLinkOpen((v) => !v)}>{linkOpen ? "Close" : "Link Patient"}</Button>
+                                    </div>
+                                    {linkOpen && (
+                                        <div className="mt-2" data-testid="link-patient-panel">
+                                            <div className="flex gap-2">
+                                                <Input value={linkQ} onChange={(e) => setLinkQ(e.target.value)}
+                                                    onKeyDown={(e) => e.key === "Enter" && (e.preventDefault(), searchDirectory())}
+                                                    placeholder="Search name, VISITA ID or Health Card" className="h-9 bg-white" data-testid="link-patient-search" />
+                                                <Button size="sm" onClick={searchDirectory} disabled={linkBusy} data-testid="link-patient-search-btn"
+                                                    className="bg-visita-green hover:bg-visita-greenDark text-white">Search</Button>
+                                            </div>
+                                            <div className="mt-2 max-h-56 overflow-y-auto divide-y border border-slate-200 rounded-sm bg-white">
+                                                {linkResults.length === 0 && <div className="px-2 py-3 text-xs text-slate-400">No results yet — search above.</div>}
+                                                {linkResults.map((r) => (
+                                                    <div key={r.id} className="flex items-center justify-between gap-2 px-2 py-1.5" data-testid="link-patient-result">
+                                                        <div className="text-xs">
+                                                            <div className="font-semibold text-slate-800">{r.last_name}, {r.first_name}</div>
+                                                            <div className="text-slate-500">DOB {formatDate(r.date_of_birth)} · VISITA {r.visita_patient_id || "—"} · {r.patient_status}</div>
+                                                        </div>
+                                                        <Button size="sm" variant="outline" disabled={linkBusy} onClick={() => linkPatient(r.id)}
+                                                            data-testid={`link-to-appointment-${r.id}`}>Link</Button>
+                                                    </div>
+                                                ))}
+                                            </div>
+                                        </div>
+                                    )}
+                                </div>
+                            )}
                             <div className="space-y-2 text-sm">
                                 <KV label="Reason">{sel.reason}</KV>
                                 {sel.status === "confirmed" && (

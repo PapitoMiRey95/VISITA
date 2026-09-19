@@ -65,9 +65,11 @@ export default function RxQueue() {
             enableBooking
             sourceType="prescription"
             headerAction={
-                <Button asChild size="sm" className="bg-visita-green hover:bg-visita-greenDark text-white" data-testid="pharmacy-refill-btn">
-                    <Link to="/internal/pharmacy-intake"><Plus className="w-4 h-4 mr-1" /> Pharmacy Refill</Link>
-                </Button>
+                physician ? null : (
+                    <Button asChild size="sm" className="bg-visita-green hover:bg-visita-greenDark text-white" data-testid="pharmacy-refill-btn">
+                        <Link to="/internal/pharmacy-intake"><Plus className="w-4 h-4 mr-1" /> Pharmacy Refill</Link>
+                    </Button>
+                )
             }
             columns={COLUMNS}
             detail={(i) => (

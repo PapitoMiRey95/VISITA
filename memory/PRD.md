@@ -118,3 +118,9 @@ See /app/memory/test_credentials.md.
 - **Link Patient (staff/admin)**: `POST /api/internal/appointments/{id}/link-patient {directory_id}` — sets patient_id (linked_patient_id or directory id), visita_patient_id, patient_name from directory, clears the flag, preserves `original_imported_name`, records `linked_by`/`linked_at`, and schedules reminders if >24h out. Does NOT modify patient_directory. Reuses `GET /api/internal/directory?q=`. UI: AppointmentQueue detail shows a "PATIENT LINK REQUIRED" badge + inline directory search (name / VISITA ID / HCN) with per-result Link button (data-testids: patient-link-required, link-patient-open, link-patient-search, link-to-appointment-&lt;id&gt;).
 - Imported appointments behave like native ones in the Admin calendar/queue (reschedule, cancel, complete, no-show, fee controls) and are NOT labeled demo data.
 
+
+## Simplified Admin Calendar Block Day (2026-06, iteration_15) — self-verified (curl + screenshot)
+- Replaced the Block time-range modal (start/end/reason) with one-click **Block Day**: confirm "Block all remaining available appointment slots for <YYYY Mon - DD>?" -> [Cancel]/[Block Day].
+- `POST /api/internal/calendar/block-day {date}`: blocks every REMAINING open slot (one blocked_period per slot, tagged `block_day:true`). Existing appointments are NOT modified. Blocked slots vanish from Patient Portal availability; if none remain the date auto-disables.
+- `POST /api/internal/calendar/unblock-day {date}`: removes ONLY `block_day:true` blocks for that date (appointments untouched).
+- `GET /api/internal/calendar` day rows now include `day_blocked`; Calendar.jsx shows a red "DAY BLOCKED" banner + "Unblock Day" toggle. Verified on 2026-09-24: block -> patient open 9->0, appt kept; unblock -> 0->9, appt kept.

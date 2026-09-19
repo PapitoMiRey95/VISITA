@@ -37,6 +37,10 @@ export default function Calendar() {
         try { await api.patch(`/internal/appointments/${id}`, body); toast.success(msg); refresh(); }
         catch (e) { toast.error(formatErr(e)); }
     };
+    const unblockDay = async (date) => {
+        try { await api.post("/internal/calendar/unblock-day", { date }); toast.success("Day unblocked."); refresh(); }
+        catch (e) { toast.error(formatErr(e)); }
+    };
 
     const rows = cal.data?.days || [];
 
@@ -66,15 +70,26 @@ export default function Calendar() {
                         <div className="flex items-center justify-between mb-2">
                             <div className="font-semibold text-slate-800 text-sm">{d.weekday}<div className="text-xs text-slate-500">{formatDate(d.date)}</div></div>
                             {!d.closed && (
-                                <button data-testid="cal-block" onClick={() => setBlocking({ date: d.date })} className="text-xs text-slate-400 hover:text-red-600 flex items-center gap-1">
-                                    <Ban className="w-3 h-3" /> Block
-                                </button>
+                                d.day_blocked ? (
+                                    <button data-testid="cal-unblock" onClick={() => unblockDay(d.date)} className="text-xs text-red-600 hover:text-slate-600 flex items-center gap-1">
+                                        <Ban className="w-3 h-3" /> Unblock Day
+                                    </button>
+                                ) : (
+                                    <button data-testid="cal-block" onClick={() => setBlocking({ date: d.date })} className="text-xs text-slate-400 hover:text-red-600 flex items-center gap-1">
+                                        <Ban className="w-3 h-3" /> Block
+                                    </button>
+                                )
                             )}
                         </div>
                         {d.closed ? (
                             <div className="text-xs text-slate-400 py-3 text-center italic">{d.reason || "Closed"}</div>
                         ) : (
                             <div className="space-y-1">
+                                {d.day_blocked && (
+                                    <div data-testid="cal-day-blocked" className="rounded-sm bg-red-50 border border-red-200 text-red-700 text-xs font-semibold px-2 py-1 text-center">
+                                        DAY BLOCKED — remaining slots unavailable
+                                    </div>
+                                )}
                                 {d.appointments.map((a) => (
                                     <div key={a.id} data-testid="cal-appt" className="rounded-sm bg-emerald-50 border border-emerald-200 px-2 py-1 text-xs">
                                         <div className="flex justify-between items-center">
@@ -169,27 +184,30 @@ function BookSlotDialog({ slot, onClose, onDone }) {
 }
 
 function BlockDialog({ day, onClose, onDone }) {
-    const [f, setF] = useState({ start: "", end: "", reason: "" });
     const [busy, setBusy] = useState(false);
     const submit = async () => {
-        if (!f.start || !f.end) { toast.error("Enter start and end times."); return; }
         setBusy(true);
         try {
-            await api.post("/internal/calendar/block", { date: day.date, start: f.start, end: f.end, reason: f.reason || null });
-            toast.success("Time blocked."); onDone(); onClose();
+            const r = await api.post("/internal/calendar/block-day", { date: day.date });
+            toast.success(`Day blocked — ${r.data.slots_blocked} open slot(s) made unavailable.`);
+            onDone(); onClose();
         } catch (e) { toast.error(formatErr(e)); } finally { setBusy(false); }
     };
     return (
         <Dialog open onOpenChange={(o) => !o && onClose()}>
             <DialogContent className="max-w-sm" data-testid="cal-block-dialog">
-                <DialogHeader><DialogTitle>Block time — {formatDate(day.date)}</DialogTitle></DialogHeader>
-                <div className="space-y-2 text-sm">
-                    <div className="flex gap-2">
-                        <Input placeholder="Start 13:00" value={f.start} onChange={(e) => setF({ ...f, start: e.target.value })} data-testid="block-start" />
-                        <Input placeholder="End 14:00" value={f.end} onChange={(e) => setF({ ...f, end: e.target.value })} data-testid="block-end" />
+                <DialogHeader><DialogTitle>Block day</DialogTitle></DialogHeader>
+                <div className="space-y-4 text-sm">
+                    <p className="text-slate-700">
+                        Block all remaining available appointment slots for <b>{formatDate(day.date)}</b>?
+                        Existing appointments are kept unchanged.
+                    </p>
+                    <div className="flex gap-2 justify-end">
+                        <Button variant="outline" onClick={onClose} data-testid="block-cancel">Cancel</Button>
+                        <Button disabled={busy} onClick={submit} className="bg-red-600 hover:bg-red-700 text-white" data-testid="block-confirm">
+                            {busy ? "Blocking…" : "Block Day"}
+                        </Button>
                     </div>
-                    <Input placeholder="Reason (e.g. Lunch)" value={f.reason} onChange={(e) => setF({ ...f, reason: e.target.value })} data-testid="block-reason" />
-                    <Button disabled={busy} onClick={submit} className="w-full" data-testid="block-confirm">Block</Button>
                 </div>
             </DialogContent>
         </Dialog>

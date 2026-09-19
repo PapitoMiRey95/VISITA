@@ -797,7 +797,50 @@ async def internal_calendar(start: Optional[str] = None, days: int = 7,
         })
     for row in day_rows:
         row["appointments"] = sorted(by_day.get(row["date"], []), key=lambda x: x["time"] or "")
+        row["day_blocked"] = any(b.get("date") == row["date"] and b.get("block_day")
+                                 for b in avail.get("blocked_periods", []))
     return {"timezone": avail.get("timezone"), "duration": avail.get("appointment_duration"), "days": day_rows}
+
+
+class DayBody(BaseModel):
+    date: str
+
+
+@api.post("/internal/calendar/block-day")
+async def block_day(body: DayBody, user: dict = Depends(require_roles(*CLINIC_ROLES))):
+    """Block every REMAINING open slot for a day. Existing appointments are untouched."""
+    avail = await get_availability_doc()
+    dur = int(avail.get("appointment_duration") or 30) or 30
+    busy = await get_busy_slots()
+    from datetime import date as _date
+    _, _, open_slots = avail_mod._slots_for_day(avail, _date.fromisoformat(body.date), dur, busy)
+    blocks = list(avail.get("blocked_periods", []))
+    have = {(b.get("date"), b.get("start")) for b in blocks}
+    added = 0
+    for s in open_slots:
+        st = s["time"]
+        if (body.date, st) in have:
+            continue
+        h, m = st.split(":")
+        em = int(h) * 60 + int(m) + dur
+        blocks.append({"date": body.date, "start": st, "end": f"{em // 60:02d}:{em % 60:02d}",
+                       "reason": "Day blocked", "block_day": True})
+        added += 1
+    await db.settings.update_one({"id": "availability"}, {"$set": {"blocked_periods": blocks}}, upsert=True)
+    await audit("block_day", "settings", "availability", user, meta={"date": body.date, "slots_blocked": added})
+    return {"ok": True, "slots_blocked": added}
+
+
+@api.post("/internal/calendar/unblock-day")
+async def unblock_day(body: DayBody, user: dict = Depends(require_roles(*CLINIC_ROLES))):
+    """Restore only the slots that Block Day created for this date. Appointments untouched."""
+    avail = await get_availability_doc()
+    blocks = avail.get("blocked_periods", [])
+    kept = [b for b in blocks if not (b.get("date") == body.date and b.get("block_day"))]
+    removed = len(blocks) - len(kept)
+    await db.settings.update_one({"id": "availability"}, {"$set": {"blocked_periods": kept}}, upsert=True)
+    await audit("unblock_day", "settings", "availability", user, meta={"date": body.date, "slots_unblocked": removed})
+    return {"ok": True, "slots_unblocked": removed}
 
 
 @api.post("/internal/calendar/block")

@@ -28,6 +28,13 @@ const TEMPLATE_FIELDS = [
 
 const DAYS = [["mon", "Monday"], ["tue", "Tuesday"], ["wed", "Wednesday"], ["thu", "Thursday"], ["fri", "Friday"], ["sat", "Saturday"], ["sun", "Sunday"]];
 
+const to12 = (t) => {
+    if (!t) return "";
+    const [h, m] = String(t).split(":").map(Number);
+    const ap = h < 12 ? "AM" : "PM";
+    return `${h % 12 || 12}:${String(m).padStart(2, "0")} ${ap}`;
+};
+
 export default function Settings() {
     const [settings, setSettings] = useState({});
     const [templates, setTemplates] = useState({});
@@ -89,7 +96,6 @@ export default function Settings() {
             {avail && (() => {
                 const bp = avail.blocked_periods || [];
                 const blockedDates = [...new Set(bp.filter((b) => b.block_day).map((b) => b.date))].sort();
-                const partials = bp.map((r, i) => ({ r, i })).filter((x) => !x.r.block_day);
                 return (
                 <div className="bg-white border border-slate-300 rounded-sm p-4 mb-4 space-y-4" data-testid="availability-card">
                     <h2 className="font-semibold text-slate-700">Physician Availability ({avail.timezone || "America/Toronto"})</h2>
@@ -119,6 +125,15 @@ export default function Settings() {
                         </div>
                     </div>
 
+                    <div data-testid="daily-break-section">
+                        <Label className="text-xs font-semibold text-slate-600 uppercase tracking-wide">Daily break</Label>
+                        <div className="flex items-center gap-3 text-sm bg-slate-50 border border-slate-200 rounded-sm px-2 py-1 mt-1" data-testid="daily-break-row">
+                            <span className="font-semibold text-slate-800 w-40">Mon–Thu</span>
+                            <span className="text-slate-600">{to12(avail.break_start)}–{to12(avail.break_end)}</span>
+                        </div>
+                        <p className="text-[11px] text-slate-400 mt-1">Recurring — patients are never offered this time.</p>
+                    </div>
+
                     <div data-testid="blocked-days-section">
                         <Label className="text-xs font-semibold text-slate-600 uppercase tracking-wide">Blocked days</Label>
                         <div className="space-y-1 mt-1">
@@ -129,26 +144,6 @@ export default function Settings() {
                                     <span className="font-semibold text-slate-800 w-40">{formatDate(date)}</span>
                                     <span className="text-xs text-red-700 flex-1">Day Blocked</span>
                                     <Button size="sm" variant="outline" className="h-7 text-xs" data-testid={`unblock-day-${date}`} onClick={() => unblockDay(date)}>Unblock</Button>
-                                </div>
-                            ))}
-                        </div>
-                    </div>
-
-                    <div data-testid="partial-blocks-section">
-                        <div className="flex items-center justify-between">
-                            <Label className="text-xs font-semibold text-slate-600 uppercase tracking-wide">Partial blocks</Label>
-                            <button onClick={() => addRow("blocked_periods", { date: "", start: "", end: "", reason: "" })} data-testid="add-partial-block" className="text-xs text-visita-green flex items-center gap-1"><Plus className="w-3 h-3" /> Add</button>
-                        </div>
-                        <div className="space-y-1 mt-1">
-                            {partials.length === 0 && <p className="text-xs text-slate-400">No partial blocks.</p>}
-                            {partials.map(({ r, i }) => (
-                                <div key={i} className="flex items-center gap-1.5" data-testid={`partial-block-${i}`}>
-                                    <Input type="date" className="h-8 text-xs w-40" value={r.date || ""} onChange={(e) => setRow("blocked_periods", i, "date", e.target.value)} />
-                                    <Input type="time" className="h-8 text-xs w-28" value={r.start || ""} onChange={(e) => setRow("blocked_periods", i, "start", e.target.value)} />
-                                    <span className="text-slate-400 text-xs">–</span>
-                                    <Input type="time" className="h-8 text-xs w-28" value={r.end || ""} onChange={(e) => setRow("blocked_periods", i, "end", e.target.value)} />
-                                    <Input type="text" placeholder="reason" className="h-8 text-xs flex-1" value={r.reason || ""} onChange={(e) => setRow("blocked_periods", i, "reason", e.target.value)} />
-                                    <button onClick={() => rmRow("blocked_periods", i)} className="text-slate-400 hover:text-red-500"><X className="w-4 h-4" /></button>
                                 </div>
                             ))}
                         </div>

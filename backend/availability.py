@@ -26,6 +26,8 @@ DEFAULT_AVAILABILITY = {
     "closures": [],         # [{"date": "2026-06-25", "reason": ""}]
     "blocked_periods": [],  # [{"date": "2026-06-23", "start": "13:00", "end": "14:00", "reason": ""}]
     "exceptions": [],       # [{"date": "2026-06-27", "start": "10:00", "end": "13:00"}] override hours
+    "break_start": "15:00",  # recurring daily break (applies to every working day)
+    "break_end": "15:30",
 }
 
 
@@ -75,6 +77,9 @@ def _slots_for_day(avail, d, dur, busy):
             return True, "Not a working day", []
         start, end = _to_min(cfg["start"]), _to_min(cfg["end"])
     day_blocks = [(_to_min(b["start"]), _to_min(b["end"])) for b in avail.get("blocked_periods", []) if b.get("date") == ds]
+    # Recurring daily break (applies to every working day) — never offered to patients.
+    if avail.get("break_start") and avail.get("break_end"):
+        day_blocks.append((_to_min(avail["break_start"]), _to_min(avail["break_end"])))
     slots, t = [], start
     while t + dur <= end:
         occupied = any(bs <= t < be for bs, be in day_blocks) or f"{ds} {t // 60:02d}:{t % 60:02d}" in busy

@@ -129,3 +129,8 @@ See /app/memory/test_credentials.md.
 - Settings > Physician Availability reorganized into labeled sections: WEEKLY AVAILABILITY (mon-thu hours + duration), BLOCKED DAYS, PARTIAL BLOCKS, VACATIONS, CLOSURES.
 - BLOCKED DAYS: full-day blocks (blocked_periods with `block_day:true`) are grouped to ONE row per date (VIen format `YYYY Mon - DD`) with a single [Unblock] button (POST /internal/calendar/unblock-day -> restores slots, keeps appointments). Individual per-slot block records stay in scheduling logic but are hidden from the UI. Verified: 32 slot-blocks across 3 dates -> 3 rows.
 - PARTIAL BLOCKS: non-block_day entries render one editable row each (date, start-end, reason) e.g. daily 3:00-3:30 Break, 09/23 Recycling Day 10:00-11:30. Editing writes back into the full blocked_periods array (block_day entries preserved on Save).
+
+## Recurring Daily Break + de-cluttered availability (2026-06, iteration_17) — self-verified
+- Daily break is now a RECURRING availability rule: availability doc `break_start:"15:00"`, `break_end:"15:30"` (in DEFAULT_AVAILABILITY too). `_slots_for_day` subtracts it on every working day, so 3:00 PM is NEVER offered to patients (verified 10-05 -> 10 slots, no 3:00 PM). Confirmed appointments unchanged.
+- Purged the 7 old dated per-day "Break" (15:00-15:30) and the "Recycling Day" (10:00-11:30) records from blocked_periods (kept block_day entries). Recycling Day was a personal reminder, not scheduling.
+- Settings UI: removed the "Partial Blocks" section; added a read-only DAILY BREAK row ("Mon-Thu | 3:00 PM-3:30 PM"). Final sections: Weekly Availability, Daily Break, Blocked Days, Vacations, Closures. Availability = weekly hours - recurring break - confirmed appts - blocked days - vacations - closures.

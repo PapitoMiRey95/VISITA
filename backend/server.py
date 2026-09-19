@@ -13,8 +13,8 @@ from datetime import datetime, timedelta, timezone
 from typing import List, Optional
 
 from bson import ObjectId
-from fastapi import (APIRouter, Depends, FastAPI, File, Form, HTTPException,
-                     Request, Response, UploadFile)
+from fastapi import (APIRouter, BackgroundTasks, Depends, FastAPI, File, Form,
+                     Header, HTTPException, Request, Response, UploadFile)
 from pydantic import BaseModel, EmailStr, Field
 from starlette.middleware.cors import CORSMiddleware
 
@@ -614,11 +614,24 @@ async def select_slot(item_id: str, body: SelectSlotBody, user: dict = Depends(g
     return confirmed
 
 
+async def get_busy_slots():
+    """VIen EMR is the source of truth: confirmed/rescheduled appointments occupy slots."""
+    appts = await db.appointment_requests.find(
+        {"status": {"$in": ["confirmed", "rescheduled"]}, "confirmed_date": {"$ne": None}}).to_list(2000)
+    busy = set()
+    for a in appts:
+        t = a.get("confirmed_slot_time") or avail_mod._norm_time(a.get("confirmed_time") or "")
+        if a.get("confirmed_date") and t:
+            busy.add(f"{a['confirmed_date']} {t}")
+    return busy
+
+
 @api.get("/availability/slots")
 async def availability_slots(days: int = 28, user: dict = Depends(get_current_user)):
     avail = await get_availability_doc()
+    busy = await get_busy_slots()
     return {"timezone": avail.get("timezone"), "duration": avail.get("appointment_duration"),
-            "slots": avail_mod.generate_slots(avail, days=min(max(days, 1), 60))}
+            "slots": avail_mod.generate_slots(avail, days=min(max(days, 1), 60), busy=busy)}
 
 
 @api.get("/admin/availability")
@@ -632,6 +645,97 @@ async def put_availability(payload: dict, user: dict = Depends(require_roles("ad
     await db.settings.update_one({"id": "availability"}, {"$set": payload}, upsert=True)
     await audit("update_availability", "settings", "availability", user)
     return {"ok": True}
+
+
+class BlockTimeBody(BaseModel):
+    date: str
+    start: str
+    end: str
+    reason: Optional[str] = None
+
+
+@api.get("/internal/calendar")
+async def internal_calendar(start: Optional[str] = None, days: int = 7,
+                            user: dict = Depends(require_roles(*CLINIC_ROLES))):
+    from datetime import date as _date
+    start = start or _date.today().isoformat()
+    days = min(max(days, 1), 14)
+    avail = await get_availability_doc()
+    busy = await get_busy_slots()
+    day_rows = avail_mod.calendar_range(avail, start, days, busy=busy)
+    # attach booked appointments per day
+    from datetime import date as _d, timedelta as _td
+    d0 = _date.fromisoformat(start)
+    end = (d0 + _td(days=days - 1)).isoformat()
+    appts = await db.appointment_requests.find({
+        "confirmed_date": {"$gte": start, "$lte": end},
+        "status": {"$in": ["confirmed", "rescheduled", "completed", "no_show"]},
+    }, {"_id": 0}).to_list(1000)
+    by_day = {}
+    for a in appts:
+        by_day.setdefault(a["confirmed_date"], []).append({
+            "id": a["id"], "ref_number": a.get("ref_number"),
+            "time": a.get("confirmed_slot_time") or avail_mod._norm_time(a.get("confirmed_time") or ""),
+            "label": a.get("confirmed_time"), "patient_name": a.get("patient_name"),
+            "status": a.get("status"), "reason": a.get("reason"),
+            "source": (a.get("booked_from") or {}).get("source_type") or "appointment",
+        })
+    for row in day_rows:
+        row["appointments"] = sorted(by_day.get(row["date"], []), key=lambda x: x["time"] or "")
+    return {"timezone": avail.get("timezone"), "duration": avail.get("appointment_duration"), "days": day_rows}
+
+
+@api.post("/internal/calendar/block")
+async def block_time(body: BlockTimeBody, user: dict = Depends(require_roles(*CLINIC_ROLES))):
+    avail = await get_availability_doc()
+    blocks = avail.get("blocked_periods", [])
+    blocks.append({"date": body.date, "start": avail_mod._norm_time(body.start),
+                   "end": avail_mod._norm_time(body.end), "reason": body.reason or "Blocked"})
+    await db.settings.update_one({"id": "availability"}, {"$set": {"blocked_periods": blocks}}, upsert=True)
+    await audit("block_time", "settings", "availability", user, meta={"date": body.date})
+    return {"ok": True}
+
+
+class CalendarBookBody(BaseModel):
+    directory_id: str
+    date: str
+    time: str
+    label: Optional[str] = None
+    reason: Optional[str] = None
+    appointment_type: Optional[str] = "Office visit"
+
+
+@api.post("/internal/calendar/book")
+async def calendar_book(body: CalendarBookBody, user: dict = Depends(require_roles(*CLINIC_ROLES))):
+    d = await db.patient_directory.find_one({"id": body.directory_id})
+    if not d:
+        raise HTTPException(status_code=404, detail="Patient not found in directory.")
+    time24 = avail_mod._norm_time(body.time)
+    avail = await get_availability_doc()
+    if not avail_mod.is_within(avail, body.date, time24):
+        raise HTTPException(status_code=400, detail="That time is outside Dr. Aguayo's configured availability.")
+    if await _slot_taken(body.date, time24):
+        raise HTTPException(status_code=409, detail="This time is no longer available. Please select another time.")
+    ref = await next_ref("APT")
+    patient_name = f"{d.get('last_name','')}, {d.get('first_name','')}".strip(", ")
+    appt = {
+        "id": str(uuid.uuid4()), "ref_number": ref, "patient_id": d.get("linked_patient_id") or d["id"],
+        "directory_id": d["id"], "patient_name": patient_name,
+        "reason": body.reason or "Office visit", "appointment_type": body.appointment_type,
+        "duration": avail.get("appointment_duration"), "preferred_options": [],
+        "status": "confirmed", "confirmed_date": body.date, "confirmed_time": body.label or body.time,
+        "confirmed_slot_time": time24, "confirmed_display": f"{fmt_date_display(body.date)} · {body.label or body.time}",
+        "approved_by": user["name"], "approved_at": now_iso(), "booked_by": user["name"],
+        "booked_from": {"source_type": "calendar", "source_id": None},
+        "assigned_to": None, "internal_notes": [],
+        "history": [{"status": "confirmed", "at": now_iso(), "by": user["name"], "note": "Booked from calendar"}],
+        "created_at": now_iso(), "updated_at": now_iso(), "completed_at": None,
+    }
+    await db.appointment_requests.insert_one({**appt})
+    await audit("calendar_book", "appointment", appt["id"], user, new_status="confirmed")
+    await notify_svc.appointment_confirmed(db, appt)
+    appt.pop("_id", None)
+    return appt
 
 
 @api.post("/portal/prescriptions")
@@ -1162,6 +1266,10 @@ async def appt_update(item_id: str, body: UpdateBody, user: dict = Depends(requi
         updates.update({"status": "more_info_required", "staff_note": body.staff_note})
     elif body.action == "decline":
         updates.update({"status": "declined", "staff_note": body.staff_note, "completed_at": now_iso()})
+    elif body.action == "complete":
+        updates.update({"status": "completed", "completed_at": now_iso(), "completed_by": user["name"]})
+    elif body.action == "no_show":
+        updates.update({"status": "no_show", "completed_at": now_iso(), "marked_by": user["name"]})
     if body.assigned_to is not None:
         updates["assigned_to"] = body.assigned_to
 
@@ -1185,6 +1293,8 @@ async def appt_update(item_id: str, body: UpdateBody, user: dict = Depends(requi
     elif body.action == "cancel":
         await notify_patient(doc["patient_id"], "Appointment cancelled",
                              "Your appointment has been cancelled. Please contact the clinic if you have questions.")
+    if body.action in ("cancel", "decline", "complete", "no_show"):
+        await notify_svc.cancel_reminders(db, item_id)
     return fresh
 
 
@@ -1487,6 +1597,18 @@ async def search_patients(q: Optional[str] = None, user: dict = Depends(require_
 @api.get("/")
 async def root():
     return {"service": "VISITA Web Portal", "status": "ok"}
+
+
+@api.post("/cron/appointment-reminders")
+async def cron_appointment_reminders(background: BackgroundTasks,
+                                     authorization: Optional[str] = Header(None)):
+    # Cron endpoints must ack 2xx immediately; enqueue/background the actual work.
+    secret = os.environ.get("WEBHOOK_CRON_SECRET")
+    token = (authorization or "").replace("Bearer ", "", 1)
+    if not secret or not token or not secrets.compare_digest(token, secret):
+        raise HTTPException(status_code=401, detail="Unauthorized")
+    background.add_task(notify_svc.send_due_reminders, db)
+    return {"ok": True, "queued": True}
 
 
 app.include_router(api)

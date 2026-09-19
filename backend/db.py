@@ -69,6 +69,7 @@ APPT_PATIENT_STATUS = {
     "declined": "Declined",
     "cancelled": "Cancelled",
     "completed": "Completed",
+    "no_show": "No Show",
     "more_info_requested": "More Information Requested",
     "suggested": "New Time Suggested",
 }

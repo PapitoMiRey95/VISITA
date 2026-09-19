@@ -1,0 +1,8 @@
+crons:
+  - name: appt-reminders
+    description: "Sends due 24h-before appointment reminders (email now, SMS when Twilio is configured)"
+    cron: "*/15 * * * *"
+    endpoint: "{{BASE_URL}}/api/cron/appointment-reminders"
+    method: POST
+    # Cron endpoints must ack 2xx immediately; enqueue/background the actual work.
+    enabled: true

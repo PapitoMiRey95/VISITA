@@ -25,6 +25,7 @@ import Hub from "./internal/Hub";
 import RxQueue from "./internal/RxQueue";
 import PharmacyIntake from "./internal/PharmacyIntake";
 import AppointmentQueue from "./internal/AppointmentQueue";
+import Calendar from "./internal/Calendar";
 import ImagingQueue from "./internal/ImagingQueue";
 import BloodworkQueue from "./internal/BloodworkQueue";
 import MessageQueue from "./internal/MessageQueue";
@@ -78,6 +79,7 @@ function App() {
                         <Route path="rx" element={<RxQueue />} />
                         <Route path="pharmacy-intake" element={<PharmacyIntake />} />
                         <Route path="appointments" element={<AppointmentQueue />} />
+                        <Route path="calendar" element={<Calendar />} />
                         <Route path="imaging" element={<ImagingQueue />} />
                         <Route path="bloodwork" element={<BloodworkQueue />} />
                         <Route path="messages" element={<MessageQueue />} />

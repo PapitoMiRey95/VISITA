@@ -1,8 +1,8 @@
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { useNavigate } from "react-router-dom";
 import { toast } from "sonner";
-import { CalendarClock, CheckCircle2, AlertTriangle, Phone, X } from "lucide-react";
+import { CalendarClock, CheckCircle2, AlertTriangle, Phone, X, Clock, CalendarDays } from "lucide-react";
 import { api, formatErr } from "../lib/api";
 import { usePortal, StatusPill, Card, PendingBanner } from "./shared";
 import { EmergencyNotice } from "../components/EmergencyNotice";
@@ -10,6 +10,15 @@ import { Button } from "../components/ui/button";
 import { Input } from "../components/ui/input";
 import { Textarea } from "../components/ui/textarea";
 import { Label } from "../components/ui/label";
+import { Calendar } from "../components/ui/calendar";
+import { formatDate } from "../lib/date";
+
+const isoOf = (d) =>
+    `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+const dateFromIso = (s) => {
+    const [y, m, d] = s.split("-").map(Number);
+    return new Date(y, m - 1, d);
+};
 
 export default function PortalAppointments() {
     const { overview, refetch } = usePortal();
@@ -21,30 +30,57 @@ export default function PortalAppointments() {
 
     const slotsQ = useQuery({
         queryKey: ["slots"],
-        queryFn: async () => (await api.get("/availability/slots", { params: { days: 28 } })).data,
+        queryFn: async () => (await api.get("/availability/slots", { params: { days: 60 } })).data,
         enabled: verified,
     });
     const slots = slotsQ.data?.slots || [];
 
+    // Group available slots by date -> only these dates are selectable.
+    const { byDate, availableDates, minDate, maxDate } = useMemo(() => {
+        const map = {};
+        for (const s of slots) {
+            (map[s.date] = map[s.date] || []).push(s);
+        }
+        const keys = Object.keys(map).sort();
+        return {
+            byDate: map,
+            availableDates: new Set(keys),
+            minDate: keys.length ? dateFromIso(keys[0]) : new Date(),
+            maxDate: keys.length ? dateFromIso(keys[keys.length - 1]) : undefined,
+        };
+    }, [slots]);
+
+    const [selDate, setSelDate] = useState(null);     // Date object
+    const [selSlot, setSelSlot] = useState(null);     // slot object
     const [reason, setReason] = useState("");
     const [note, setNote] = useState("");
-    const [picks, setPicks] = useState(["", "", ""]);
     const [busy, setBusy] = useState(false);
+
     const [selecting, setSelecting] = useState({});
     const [reschedId, setReschedId] = useState(null);
     const [reschedPick, setReschedPick] = useState("");
 
-    const setPick = (i, v) => setPicks((s) => s.map((x, idx) => (idx === i ? v : x)));
+    const selIso = selDate ? isoOf(selDate) : null;
+    const dayTimes = selIso ? (byDate[selIso] || []) : [];
+
+    const pickDate = (d) => {
+        if (!d) return;
+        setSelDate(d);
+        setSelSlot(null);
+    };
 
     const submit = async (e) => {
         e.preventDefault();
-        const options = picks.filter((v) => v !== "").map((v) => slots[Number(v)]).filter(Boolean);
-        if (options.length === 0) return toast.error("Please choose at least Preferred Option 1.");
+        if (!selSlot) return toast.error("Please select a date and time.");
+        if (!reason.trim()) return toast.error("Please enter a reason for the appointment.");
         setBusy(true);
         try {
-            await api.post("/portal/appointments", { reason, patient_note: note, options });
-            toast.success("Appointment requested. The clinic will confirm a time.");
-            setReason(""); setNote(""); setPicks(["", "", ""]);
+            await api.post("/portal/appointments", {
+                reason: reason.trim(), patient_note: note || undefined,
+                options: [{ date: selSlot.date, time: selSlot.time, label: selSlot.label, display: selSlot.display }],
+            });
+            toast.success("Appointment request submitted. The clinic will confirm your time.");
+            setSelDate(null); setSelSlot(null); setReason(""); setNote("");
             refetch();
         } catch (err) { toast.error(formatErr(err)); } finally { setBusy(false); }
     };
@@ -104,31 +140,95 @@ export default function PortalAppointments() {
 
             {verified && !hasFee && (
                 <Card>
-                    <form onSubmit={submit} className="space-y-4" data-testid="appointment-form">
+                    <form onSubmit={submit} className="space-y-5" data-testid="appointment-form">
+                        {/* Step 1 — Date */}
                         <div>
-                            <Label className="font-semibold text-slate-700">Reason for appointment</Label>
-                            <Input className="mt-1" required value={reason} onChange={(e) => setReason(e.target.value)} data-testid="appt-reason" />
-                        </div>
-                        <div>
-                            <Label className="font-semibold text-slate-700">Choose up to 3 preferred times</Label>
-                            <p className="text-xs text-slate-500 mb-2">These are Dr. Aguayo's available times. Ranking a few options helps us confirm faster.</p>
-                            {slotsQ.isLoading && <p className="text-sm text-slate-400">Loading available times…</p>}
-                            {!slotsQ.isLoading && slots.length === 0 && <p className="text-sm text-amber-700">No available times right now — please message the clinic.</p>}
-                            {slots.length > 0 && [0, 1, 2].map((i) => (
-                                <div key={i} className="mb-2">
-                                    <Label className="text-xs text-slate-500">Preferred Option {i + 1}{i === 0 ? " (required)" : ""}</Label>
-                                    <select data-testid={`appt-option-${i + 1}`} value={picks[i]} onChange={(e) => setPick(i, e.target.value)}
-                                        className="w-full border border-slate-200 rounded-xl h-11 px-2 mt-1 bg-white">
-                                        <option value="">— Select a time —</option>
-                                        {slots.map((s, idx) => <option key={idx} value={idx}>{s.display}</option>)}
-                                    </select>
+                            <div className="flex items-center gap-2 mb-2">
+                                <span className="w-6 h-6 rounded-full bg-portal-blue text-white text-xs font-bold flex items-center justify-center">1</span>
+                                <Label className="font-semibold text-slate-700">Select a date</Label>
+                            </div>
+                            <p className="text-xs text-slate-500 mb-2">Dr. Aguayo sees patients Monday–Thursday. Only dates with availability can be selected.</p>
+                            {slotsQ.isLoading && <p className="text-sm text-slate-400">Loading available dates…</p>}
+                            {!slotsQ.isLoading && availableDates.size === 0 && (
+                                <p className="text-sm text-amber-700">No available dates right now — please message the clinic.</p>
+                            )}
+                            {availableDates.size > 0 && (
+                                <div className="inline-block rounded-2xl border border-slate-200 bg-white" data-testid="appt-calendar">
+                                    <Calendar
+                                        mode="single"
+                                        selected={selDate || undefined}
+                                        onSelect={pickDate}
+                                        fromDate={minDate}
+                                        toDate={maxDate}
+                                        defaultMonth={minDate}
+                                        disabled={(d) => !availableDates.has(isoOf(d))}
+                                        modifiers={{ available: (d) => availableDates.has(isoOf(d)) }}
+                                        modifiersClassNames={{ available: "font-semibold text-portal-blue" }}
+                                    />
                                 </div>
-                            ))}
+                            )}
                         </div>
-                        <div><Label className="font-semibold text-slate-700">Short note (optional)</Label><Textarea className="mt-1" value={note} onChange={(e) => setNote(e.target.value)} /></div>
-                        <Button type="submit" disabled={busy || slots.length === 0} data-testid="appt-submit"
+
+                        {/* Step 2 — Time */}
+                        {selDate && (
+                            <div data-testid="appt-time-section">
+                                <div className="flex items-center gap-2 mb-2">
+                                    <span className="w-6 h-6 rounded-full bg-portal-blue text-white text-xs font-bold flex items-center justify-center">2</span>
+                                    <Label className="font-semibold text-slate-700">Select an available time</Label>
+                                </div>
+                                <p className="text-xs text-slate-500 mb-2 flex items-center gap-1">
+                                    <CalendarDays className="w-3.5 h-3.5" /> {formatDate(selIso)} · America/Toronto
+                                </p>
+                                {dayTimes.length === 0 && <p className="text-sm text-amber-700">No times left on this date. Please pick another day.</p>}
+                                <div className="grid grid-cols-3 sm:grid-cols-4 gap-2">
+                                    {dayTimes.map((s) => {
+                                        const on = selSlot && selSlot.time === s.time && selSlot.date === s.date;
+                                        return (
+                                            <button type="button" key={s.time} data-testid={`appt-time-${s.time}`} onClick={() => setSelSlot(s)}
+                                                className={`h-10 rounded-xl border text-sm font-semibold transition-colors ${on
+                                                    ? "bg-portal-blue text-white border-portal-blue"
+                                                    : "bg-white text-slate-700 border-slate-200 hover:border-portal-blue"}`}>
+                                                {s.label}
+                                            </button>
+                                        );
+                                    })}
+                                </div>
+                            </div>
+                        )}
+
+                        {/* Step 3 — Reason */}
+                        {selSlot && (
+                            <div data-testid="appt-reason-section">
+                                <div className="flex items-center gap-2 mb-2">
+                                    <span className="w-6 h-6 rounded-full bg-portal-blue text-white text-xs font-bold flex items-center justify-center">3</span>
+                                    <Label className="font-semibold text-slate-700">Reason for appointment</Label>
+                                </div>
+                                <Input required value={reason} onChange={(e) => setReason(e.target.value)} data-testid="appt-reason"
+                                    placeholder="e.g. Annual physical, medication review" />
+                                <div className="mt-3">
+                                    <Label className="font-semibold text-slate-700">Short note (optional)</Label>
+                                    <Textarea className="mt-1" value={note} onChange={(e) => setNote(e.target.value)} data-testid="appt-note" />
+                                </div>
+                            </div>
+                        )}
+
+                        {/* Step 4 — Review + Submit */}
+                        {selSlot && (
+                            <div className="bg-sky-50 border border-sky-200 rounded-xl p-3" data-testid="appt-review">
+                                <div className="flex items-center gap-2 text-sky-900 font-bold text-sm mb-1">
+                                    <Clock className="w-4 h-4" /> Review
+                                </div>
+                                <div className="text-sm text-slate-700">
+                                    <div><span className="text-slate-500">When:</span> <span className="font-semibold" data-testid="appt-review-when">{formatDate(selSlot.date)} at {selSlot.label}</span></div>
+                                    {reason.trim() && <div><span className="text-slate-500">Reason:</span> <span className="font-semibold">{reason.trim()}</span></div>}
+                                </div>
+                                <p className="text-xs text-slate-500 mt-2">This request still requires clinic approval before it becomes confirmed.</p>
+                            </div>
+                        )}
+
+                        <Button type="submit" disabled={busy || !selSlot || !reason.trim()} data-testid="appt-submit"
                             className="w-full h-12 rounded-xl bg-portal-blue hover:bg-portal-blueDark text-white text-base">
-                            {busy ? "Submitting…" : "Request Appointment"}
+                            {busy ? "Submitting…" : "Submit Appointment Request"}
                         </Button>
                     </form>
                 </Card>

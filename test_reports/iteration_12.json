@@ -1,0 +1,25 @@
+{
+  "summary": "Frontend-only verification of the new cancel/reschedule/late-fee UI on the VIen EMR portal. Patient portal reschedule flow verified end-to-end (dropdown -> confirm -> 200 OK -> success toast 'Appointment rescheduled.' -> displayed time updated to '2026 Sep - 21 (Mon) - 4:00 PM'). Staff late-fee controls verified end-to-end for record -> mark paid path (record_fee PATCH 200 -> fee-status = 'Late fee $40 - Outstanding' + Mark Paid/Waive buttons shown -> mark_fee_paid PATCH 200 -> fee-status = 'Late fee $40 - Paid'). Cancel button and within-24h locked branch verified by code + presence only (not exercised to avoid destroying test data / lack of <24h appt).",
+  "backend_issues": {"critical": [], "minor": []},
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [],
+    "design_issues": []
+  },
+  "test_report_links": [],
+  "action_items": [],
+  "critical_code_review_comments": [
+    "PortalAppointments.jsx line 176: reschedule <select> lists ALL availability slots including past times for the same day; consider filtering to slots >= now+24h to match backend 24h policy (currently backend enforces it, but user could pick a slot the API will reject).",
+    "AppointmentQueue.jsx: after a successful action (act) the dialog is closed via close(); user must re-open the row to see the updated fee-status. Consider refetching sel from the list instead of closing, for a smoother UX.",
+    "PortalAppointments.jsx cancelAppt uses window.confirm() which is blocked in some environments; consider a shadcn AlertDialog for consistency and testability.",
+    "reschedule select does not display the currently confirmed slot as pre-selected; user has no indication of current time within picker."
+  ],
+  "updated_files": [],
+  "success_rate": {"backend": "n/a (skipped per request)", "frontend": "100% of exercised flows (reschedule + record/mark-paid); cancel and within-24h branch verified by DOM/code inspection only"},
+  "test_credentials": "Patient: carlos.perez@demo.com / Patient2026!  |  Admin: kevinrodriguez9528@gmail.com / VisitaAdmin2026!  (login path: /signin for patient, /signin?internal=1 for staff)",
+  "seed_data_creation": "None. Existing APT-000003 was rescheduled (2026 Sep 21 13:00 -> 4:00 PM) and had a $40 late fee recorded and marked Paid during testing.",
+  "retest_needed": false,
+  "main_agent_can_self_test": true,
+  "context_for_next_testing_agent": "APT-000003 (id 271ee0b7-a33a-4912-a4fb-2e54bb6113de) currently has a Paid late_fee and is confirmed at 2026 Sep 21 4:00 PM. To retest waive_fee you'll need a fresh confirmed appointment OR backend support to clear/reset late_fee. Within-24h notice branch was not exercised in UI (no appt within 24h existed); to test, approve a confirmed appt to a time <24h away and verify [data-testid=within-24h-notice-<id>] + [data-testid=contact-clinic-<id>] render instead of reschedule/cancel buttons. Cancel button (data-testid patient-cancel-<id>) not clicked intentionally to preserve data.",
+  "rca of the issue": "N/A - no issues found."
+}

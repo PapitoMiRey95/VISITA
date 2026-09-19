@@ -1,0 +1,29 @@
+{
+  "summary": "Iteration 11 — Native VIen Calendar + Reminders + Google-removal fully verified. 6/6 pytest cases pass in /app/backend/tests/test_calendar_reminders.py (availability/slots, calendar range with per-day open_slots+appointments, slot subtraction after book, 409 double-book, 400 outside-hours, block-time hides slot, approve/reschedule/complete/no_show lifecycle, cron endpoint 401 without/with wrong token + 200 with valid WEBHOOK_CRON_SECRET, notifications.py contains no Google/Apps-Script integration). Also verified out-of-band with a script that send_due_reminders processes past-due pending reminders (delivery_status transitions to sent/failed/prepared, sent_time populated). Frontend Playwright verified staff sidebar 'Calendar' -> /internal/calendar; day header format 'YYYY Mon - DD' ('2026 Sep - 19'); day/week toggle (1 vs 7 cal-day cards); prev/next/today nav; 40 open slots rendered; cal-open-slot opens cal-book-dialog; cal-book-search + cal-book-result returns 10 ROMERO results with DOB in 'YYYY Mon - DD' format; cal-block opens cal-block-dialog with block-start/block-end/block-confirm; Appointments queue dialog for a Confirmed appointment shows appt-reschedule / appt-complete / appt-noshow / appt-cancel testids.",
+  "backend_issues": {"critical": [], "minor": []},
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [],
+    "design_issues": [
+      {"screen": "Appointments queue dialog", "issues": ["The 'Confirmed: <date>' banner and 'Preferred options' rows display dates as 'Mon, Sep 21 · 12:00 PM' instead of the global 'YYYY Mon - DD' format. Calendar day-headers and Book/Block dialog titles correctly use 'YYYY Mon - DD'. Only minor — server-provided confirmed_display could route through formatDateTime."]}
+    ]
+  },
+  "test_report_links": ["/app/backend/tests/test_calendar_reminders.py", "/app/test_reports/pytest/calendar.xml"],
+  "action_items": [
+    "OPTIONAL: unify confirmed_display + preferred-option label rendering in AppointmentQueue dialog to global 'YYYY Mon - DD' format via formatDateTime (currently uses server strings like 'Mon, Sep 21 · 12:30 PM')."
+  ],
+  "critical_code_review_comments": [
+    "notifications._send_email/_send_sms records outbound_notifications even when 'to' is None/empty (status='prepared') — fine as prepared record, but consider skipping the DB write for null recipients to avoid noise.",
+    "cron_appointment_reminders schedules background task but returns immediately; success is not observable from the endpoint. For production visibility consider a synchronous inline path when the queue is small, or writing a cron_runs collection with counts.",
+    "server.py get_busy_slots also treats status='completed'/'no_show' as free (only 'confirmed'/'rescheduled' are busy). Correct per spec; ensure future 'rescheduled' → new 'confirmed' transitions properly clear the old slot (currently _slot_taken uses exclude_id=item_id and the record is updated in place — good).",
+    "server.py is now ~1642 lines; split into routers (auth/portal/internal/rx/calendar/cron)."
+  ],
+  "updated_files": ["/app/backend/tests/test_calendar_reminders.py"],
+  "success_rate": {"backend": "100% (6/6 + out-of-band cron send verified)", "frontend": "100% (all cal-* and appt-* selectors verified, YYYY Mon - DD format present)"},
+  "test_credentials": "Staff staff@visita.demo / Staff2026! ; Physician PAGUAYO / Newman2013_! ; Patient maria.lopez@demo.com / Patient2026! ; WEBHOOK_CRON_SECRET read from /app/backend/.env.",
+  "seed_data_creation": "All test appointments created during runs are cancelled in finally blocks (status=cancelled — history preserved per spec). Block-time entries created for tests are removed via admin PUT /api/admin/availability during teardown. No test data left in DB.",
+  "retest_needed": false,
+  "should_main_agent_self_test": false,
+  "context_for_next_testing_agent": "Native calendar + reminders regression suite lives at /app/backend/tests/test_calendar_reminders.py. It self-cleans test appointments/blocks. To verify actual sending of past-due reminders, use the pattern in /tmp/verify_cron_process.py (insert reminder with scheduled_time='2020-01-01T00:00:00+00:00', call notify_svc.send_due_reminders(db), assert status becomes sent/failed/prepared).",
+  "rca of the issue": "No issues detected."
+}

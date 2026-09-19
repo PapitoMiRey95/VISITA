@@ -103,7 +103,7 @@ export default function AppointmentQueue() {
                                 <td className="px-3 py-2 text-slate-500">{i.ref_number}</td>
                                 <td className="px-3 py-2 font-semibold">{i.patient_name}</td>
                                 <td className="px-3 py-2">{i.reason}</td>
-                                <td className="px-3 py-2">{(i.preferred_options || [])[0]?.display || "—"}</td>
+                                <td className="px-3 py-2">{(i.preferred_options || [])[0] ? `${formatDate((i.preferred_options || [])[0].date)} · ${(i.preferred_options || [])[0].label || (i.preferred_options || [])[0].time}` : "—"}</td>
                                 <td className="px-3 py-2"><StatusPill status={i.status} /></td>
                                 <td className="px-3 py-2 text-right"><Button size="sm" variant="ghost" className="h-7 text-visita-green" data-testid="queue-open">Open</Button></td>
                             </tr>
@@ -121,7 +121,7 @@ export default function AppointmentQueue() {
                                 <KV label="Reason">{sel.reason}</KV>
                                 {sel.status === "confirmed" && (
                                     <div className="bg-emerald-50 border border-emerald-200 rounded-sm p-2" data-testid="appt-confirmed-block">
-                                        <div className="text-emerald-800 font-semibold">Confirmed: {sel.confirmed_display || `${formatDate(sel.confirmed_date)} · ${sel.confirmed_time}`}</div>
+                                        <div className="text-emerald-800 font-semibold">Confirmed: {`${formatDate(sel.confirmed_date)} · ${sel.confirmed_time}`}</div>
                                         {sel.booked_from && <div className="text-xs text-emerald-700">Booked from {sel.booked_from.source_type} {sel.booked_from.source_ref}</div>}
                                         <div className="flex gap-2 mt-2 flex-wrap">
                                             <Button size="sm" variant="outline" data-testid="appt-reschedule" onClick={() => setReschedOpen(true)}>
@@ -144,7 +144,7 @@ export default function AppointmentQueue() {
                                         {(sel.preferred_options || []).map((o, idx) => (
                                             <button key={idx} onClick={() => applyOption(o)} data-testid={`use-option-${idx}`}
                                                 className="w-full text-left px-2 py-1 rounded-sm border border-slate-200 hover:bg-visita-greenLight text-slate-800">
-                                                {idx + 1}. {o.display}
+                                                {idx + 1}. {`${formatDate(o.date)} · ${o.label || o.time}`}
                                             </button>
                                         ))}
                                         {(sel.preferred_options || []).length === 0 && <span className="text-slate-400">None provided</span>}

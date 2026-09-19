@@ -136,6 +136,24 @@ export default function AppointmentQueue() {
                                                 Cancel
                                             </Button>
                                         </div>
+                                        <div className="flex gap-2 mt-2 flex-wrap items-center border-t border-emerald-200 pt-2" data-testid="late-fee-controls">
+                                            {sel.late_fee?.status === "outstanding" ? (
+                                                <>
+                                                    <span className="text-xs font-semibold text-red-700" data-testid="fee-status">Late fee ${sel.late_fee.amount} — Outstanding</span>
+                                                    <Button size="sm" variant="outline" data-testid="appt-fee-paid" disabled={busy}
+                                                        onClick={() => act({ action: "mark_fee_paid" })}>Mark Fee Paid</Button>
+                                                    <Button size="sm" variant="outline" data-testid="appt-fee-waive" disabled={busy}
+                                                        onClick={() => act({ action: "waive_fee" })}>Waive Fee</Button>
+                                                </>
+                                            ) : sel.late_fee ? (
+                                                <span className="text-xs font-semibold text-slate-600" data-testid="fee-status">
+                                                    Late fee ${sel.late_fee.amount} — {sel.late_fee.status === "paid" ? "Paid" : "Waived"}
+                                                </span>
+                                            ) : (
+                                                <Button size="sm" variant="outline" className="text-amber-700 border-amber-200" data-testid="appt-record-fee"
+                                                    disabled={busy} onClick={() => act({ action: "record_fee" })}>Record $40 Late Fee</Button>
+                                            )}
+                                        </div>
                                     </div>
                                 )}
                                 <div>

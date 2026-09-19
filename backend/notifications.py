@@ -13,14 +13,20 @@ from datetime import datetime, timedelta, timezone
 from zoneinfo import ZoneInfo
 
 import email_service
+import availability as avail_mod
 from db import now_iso
 
 logger = logging.getLogger("visita.notify")
 
 CLINIC_TZ = ZoneInfo("America/Toronto")
 PORTAL_URL = (os.environ.get("CORS_ORIGINS", "").split(",")[0] or "").strip().rstrip("/")
+if not PORTAL_URL.startswith("http"):
+    PORTAL_URL = ""
+SMS_SENDER = "Dr. Aguayo's Office"
+_MONTHS = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"]
+# Single source of truth for the sender number: TWILIO_PHONE_NUMBER.
 TWILIO_ENABLED = bool(os.environ.get("TWILIO_ACCOUNT_SID") and os.environ.get("TWILIO_AUTH_TOKEN")
-                      and os.environ.get("TWILIO_FROM_NUMBER"))
+                      and os.environ.get("TWILIO_PHONE_NUMBER"))
 
 
 async def _in_portal(db, patient_id, title, body):
@@ -34,12 +40,17 @@ async def _patient(db, patient_id):
     return await db.patients.find_one({"id": patient_id}, {"_id": 0})
 
 
+def _time24(appt) -> str:
+    t = appt.get("confirmed_slot_time")
+    if not t:
+        t = avail_mod._norm_time(appt.get("confirmed_time") or "")
+    return t or ""
+
+
 def _confirmed_dt_utc(appt):
     """Confirmed date+time (America/Toronto) as a UTC datetime, or None."""
-    ds, t = appt.get("confirmed_date"), (appt.get("confirmed_slot_time") or "")
-    if not ds:
-        return None
-    if not t:
+    ds, t = appt.get("confirmed_date"), _time24(appt)
+    if not ds or not t:
         return None
     try:
         h, m = t.split(":")
@@ -49,21 +60,63 @@ def _confirmed_dt_utc(appt):
         return None
 
 
-async def _send_sms(db, patient_id, phone, body):
-    """Direct Twilio when configured; otherwise record as prepared and skip."""
-    status = "prepared"
+def confirmed_dt_utc(appt):
+    return _confirmed_dt_utc(appt)
+
+
+def _fmt_when(appt) -> str:
+    """'2026 Sep - 23 at 1:30 PM' from confirmed date/time (America/Toronto)."""
+    ds, t = appt.get("confirmed_date"), _time24(appt)
+    if not ds:
+        return appt.get("confirmed_display") or "your scheduled time"
+    try:
+        y, m, d = str(ds)[:10].split("-")
+        base = f"{y} {_MONTHS[int(m) - 1]} - {d}"
+    except Exception:
+        return appt.get("confirmed_display") or str(ds)
+    if t:
+        try:
+            h, mi = t.split(":")
+            h = int(h)
+            ampm = "AM" if h < 12 else "PM"
+            return f"{base} at {h % 12 or 12}:{mi} {ampm}"
+        except Exception:
+            pass
+    return base
+
+
+async def _send_sms(db, patient_id, phone, body, *, appointment_id=None,
+                    message_type="general", dedup_key=None):
+    """Direct Twilio when configured; graceful + fully tracked. Prefixed with the
+    sender identity. NEVER raises: a Twilio failure must not interrupt the
+    appointment workflow (email + in-portal still proceed). No clinical details."""
+    if dedup_key:
+        prior = await db.outbound_notifications.find_one(
+            {"channel": "sms", "dedup_key": dedup_key, "delivery_status": "sent"})
+        if prior:
+            return "duplicate"
+    text = f"{SMS_SENDER}: {body}"
+    status, sid, error = "prepared", None, None
     if TWILIO_ENABLED and phone:
         try:
             from twilio.rest import Client  # optional dependency
             client = Client(os.environ["TWILIO_ACCOUNT_SID"], os.environ["TWILIO_AUTH_TOKEN"])
-            client.messages.create(to=phone, from_=os.environ["TWILIO_FROM_NUMBER"], body=body)
-            status = "sent"
+            msg = client.messages.create(
+                to=phone, from_=os.environ["TWILIO_PHONE_NUMBER"], body=text)
+            sid, status = msg.sid, "sent"
         except Exception as e:
-            status = "failed"
-            logger.warning(f"[sms] send failed: {e}")
+            status, error = "failed", str(e)[:300]
+            logger.warning("[sms] delivery failed; continuing with email + portal")
+    elif not phone:
+        status = "no_phone"
     await db.outbound_notifications.insert_one({
-        "id": str(uuid.uuid4()), "channel": "sms", "patient_id": patient_id,
-        "to": phone, "body": body, "status": status, "created_at": now_iso(),
+        "id": str(uuid.uuid4()), "channel": "sms",
+        "appointment_id": appointment_id, "patient_id": patient_id,
+        "to": phone, "message_type": message_type, "body": text,
+        "delivery_status": status, "twilio_sid": sid, "error": error,
+        "dedup_key": dedup_key,
+        "sent_at": (now_iso() if status == "sent" else None),
+        "created_at": now_iso(),
     })
     return status
 
@@ -111,16 +164,60 @@ async def cancel_reminders(db, appointment_id):
 async def appointment_confirmed(db, appt):
     p = await _patient(db, appt.get("patient_id"))
     first = (p or {}).get("first_name") or (appt.get("patient_name") or "").split(",")[-1].strip() or "there"
-    disp = appt.get("confirmed_display") or f"{appt.get('confirmed_date')} {appt.get('confirmed_time')}"
+    when = _fmt_when(appt)
+    disp = appt.get("confirmed_display") or when
     await _in_portal(db, appt["patient_id"], "Appointment confirmed",
                      f"Your appointment with Dr. Aguayo is confirmed for {disp}. See your Patient Portal for details.")
     email = (p or {}).get("email")
     phone = (p or {}).get("phone")
     html = email_service.appointment_confirmed_html(first, disp, PORTAL_URL)
     await _send_email(db, appt["patient_id"], email, "Appointment Confirmed — Dr. Aguayo", html)
-    await _send_sms(db, appt["patient_id"], phone,
-                    f"Appointment Confirmed with Dr. Aguayo for {disp}. Details: {PORTAL_URL}/portal")
+    await _send_sms(
+        db, appt["patient_id"], phone,
+        f"Your appointment has been confirmed for {when}. Please log in to your VIen EMR Patient Portal for details.",
+        appointment_id=appt.get("id"), message_type="confirmation",
+        dedup_key=f"{appt.get('id')}:confirmation:{appt.get('confirmed_date')} {_time24(appt)}")
     await schedule_reminders(db, appt)
+
+
+async def appointment_rescheduled(db, appt):
+    p = await _patient(db, appt.get("patient_id"))
+    first = (p or {}).get("first_name") or (appt.get("patient_name") or "").split(",")[-1].strip() or "there"
+    when = _fmt_when(appt)
+    disp = appt.get("confirmed_display") or when
+    await _in_portal(db, appt["patient_id"], "Appointment rescheduled",
+                     f"Your appointment with Dr. Aguayo has been rescheduled to {disp}. See your Patient Portal for details.")
+    email = (p or {}).get("email")
+    phone = (p or {}).get("phone")
+    html = email_service.appointment_reschedule_html(first, disp, PORTAL_URL)
+    await _send_email(db, appt["patient_id"], email, "Appointment Rescheduled — Dr. Aguayo", html)
+    await _send_sms(
+        db, appt["patient_id"], phone,
+        f"Your appointment has been rescheduled to {when}. Please log in to your VIen EMR Patient Portal for details.",
+        appointment_id=appt.get("id"), message_type="reschedule",
+        dedup_key=f"{appt.get('id')}:reschedule:{appt.get('confirmed_date')} {_time24(appt)}")
+    await schedule_reminders(db, appt)
+
+
+async def appointment_cancelled(db, appt, reason=None):
+    p = await _patient(db, appt.get("patient_id"))
+    first = (p or {}).get("first_name") or "there"
+    when = _fmt_when(appt)
+    disp = appt.get("confirmed_display") or when
+    note = f" Note: {reason}" if reason else ""
+    await _in_portal(db, appt["patient_id"], "Appointment cancelled",
+                     f"Your appointment with Dr. Aguayo scheduled for {disp} has been cancelled.{note} "
+                     "Please contact the office if you have questions.")
+    email = (p or {}).get("email")
+    phone = (p or {}).get("phone")
+    html = email_service.appointment_cancelled_html(first, disp, PORTAL_URL)
+    await _send_email(db, appt["patient_id"], email, "Appointment Cancelled — Dr. Aguayo", html)
+    await _send_sms(
+        db, appt["patient_id"], phone,
+        f"Your appointment on {when} has been cancelled. Please contact the office or log in to your VIen EMR Patient Portal.",
+        appointment_id=appt.get("id"), message_type="cancellation",
+        dedup_key=f"{appt.get('id')}:cancellation:{appt.get('confirmed_date')} {_time24(appt)}")
+    await cancel_reminders(db, appt.get("id"))
 
 
 async def alternatives_offered(db, appt):
@@ -128,7 +225,8 @@ async def alternatives_offered(db, appt):
            "alternative appointment times. Please log in to your Patient Portal to choose one.")
     await _in_portal(db, appt["patient_id"], "Action needed: choose an appointment time", msg)
     p = await _patient(db, appt.get("patient_id"))
-    await _send_sms(db, appt["patient_id"], (p or {}).get("phone"), msg)
+    await _send_sms(db, appt["patient_id"], (p or {}).get("phone"), msg,
+                    appointment_id=appt.get("id"), message_type="alternatives")
 
 
 async def send_due_reminders(db):
@@ -150,8 +248,12 @@ async def send_due_reminders(db):
             status = await _send_email(db, r["patient_id"], (p or {}).get("email"),
                                        "Appointment Reminder — Dr. Aguayo", html)
         else:
-            status = await _send_sms(db, r["patient_id"], (p or {}).get("phone"),
-                                     f"Reminder: appointment with Dr. Aguayo {disp}. {PORTAL_URL}/portal")
+            when = _fmt_when(appt)
+            status = await _send_sms(
+                db, r["patient_id"], (p or {}).get("phone"),
+                f"Reminder — you have an appointment on {when}. Please log in to your VIen EMR Patient Portal for details.",
+                appointment_id=appt.get("id"), message_type="reminder",
+                dedup_key=f"{appt.get('id')}:reminder:{appt.get('confirmed_date')} {_time24(appt)}")
         await db.appointment_reminders.update_one({"id": r["id"]}, {"$set": {
             "delivery_status": status, "sent_time": now_iso()}})
         sent += 1

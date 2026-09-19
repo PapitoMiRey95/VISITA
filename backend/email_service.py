@@ -159,3 +159,13 @@ def appointment_confirmed_html(name: str, when: str, portal_url: str = "") -> st
 def appointment_reminder_html(name: str, when: str, portal_url: str = "") -> str:
     return _appt_email("Appointment Reminder", "This is a friendly reminder of your upcoming appointment with Dr. Aguayo:",
                        name, when, portal_url)
+
+
+def appointment_reschedule_html(name: str, when: str, portal_url: str = "") -> str:
+    return _appt_email("Appointment Rescheduled", "Your appointment with Dr. Aguayo has been rescheduled to:",
+                       name, when, portal_url)
+
+
+def appointment_cancelled_html(name: str, when: str, portal_url: str = "") -> str:
+    return _appt_email("Appointment Cancelled", "Your appointment with Dr. Aguayo scheduled for the time below has been cancelled:",
+                       name, when, portal_url)

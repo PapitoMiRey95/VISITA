@@ -814,10 +814,10 @@ async def _update_request(coll, entity, item_id, body: UpdateBody, user, status_
         updates[status_field] = "appointment_required"
         updates["completed_at"] = now_iso()
         notify = True
-    elif body.action == "approve":
+    elif body.action == "approve" and entity == "prescription":
         updates[status_field] = "approved_process_visita"
         notify = True
-    elif body.action == "modify":
+    elif body.action == "modify" and entity == "prescription":
         updates[status_field] = "approved_process_visita"
         updates["modified"] = True
         if body.staff_note is not None:

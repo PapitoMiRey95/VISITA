@@ -219,7 +219,7 @@ export default function AppointmentQueue() {
                                     <div className="text-slate-500 mb-1">Preferred options</div>
                                     <div className="space-y-1">
                                         {(sel.preferred_options || []).map((o, idx) => (
-                                            <button key={idx} onClick={() => applyOption(o)} data-testid={`use-option-${idx}`}
+                                            <button key={o.display || `${o.date}-${o.time}`} onClick={() => applyOption(o)} data-testid={`use-option-${idx}`}
                                                 className="w-full text-left px-2 py-1 rounded-sm border border-slate-200 hover:bg-visita-greenLight text-slate-800">
                                                 {idx + 1}. {`${formatDate(o.date)} · ${o.label || o.time}`}
                                             </button>
@@ -256,7 +256,7 @@ export default function AppointmentQueue() {
                                             {slots.map((s, idx) => {
                                                 const on = chosen.find((x) => x.date === s.date && x.time === s.time);
                                                 return (
-                                                    <button key={idx} data-testid={`slot-${idx}`} onClick={() => toggleSlot(s)}
+                                                    <button key={s.display || `${s.date}-${s.time}`} data-testid={`slot-${idx}`} onClick={() => toggleSlot(s)}
                                                         className={`w-full text-left px-2 py-1.5 text-sm ${on ? "bg-visita-greenLight font-semibold" : "hover:bg-slate-50"}`}>
                                                         {on ? "✓ " : ""}{s.display}
                                                     </button>

@@ -20,6 +20,8 @@ export function AuthProvider({ children }) {
             clearToken();
             setUser(false);
         }
+        // deps intentionally empty: api/getToken/clearToken are stable module imports and
+        // setUser/setPatient are stable React setters — nothing here changes across renders.
     }, []);
 
     useEffect(() => {
@@ -47,6 +49,7 @@ export function AuthProvider({ children }) {
         clearToken();
         setUser(false);
         setPatient(null);
+        // deps empty: clearToken is a stable import; setUser/setPatient are stable setters.
     }, []);
 
     const value = useMemo(

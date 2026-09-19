@@ -22,8 +22,8 @@ BASE_URL = os.environ["REACT_APP_BACKEND_URL"].rstrip("/") if os.environ.get("RE
 MONGO_URL = os.environ["MONGO_URL"]
 DB_NAME = os.environ["DB_NAME"]
 
-MARIA_EMAIL = "maria.lopez@demo.com"
-ORIGINAL_PASSWORD = "Patient2026!"
+MARIA_EMAIL = os.environ.get("DEMO_PATIENT_EMAIL", "maria.lopez@demo.com")
+ORIGINAL_PASSWORD = os.environ.get("DEMO_PATIENT_PASSWORD", "Patient2026!")
 
 
 def _run(coro):

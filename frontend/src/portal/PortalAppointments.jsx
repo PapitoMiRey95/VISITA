@@ -54,6 +54,7 @@ export default function PortalAppointments() {
             minDate: keys.length ? dateFromIso(keys[0]) : new Date(),
             maxDate: keys.length ? dateFromIso(keys[keys.length - 1]) : undefined,
         };
+        // deps: only `slots` matters. dateFromIso is a stable module helper; map/keys are local.
     }, [slots]);
 
     const [selDate, setSelDate] = useState(null);     // Date object
@@ -295,7 +296,7 @@ export default function PortalAppointments() {
                                         <select data-testid={`reschedule-select-${a.id}`} value={reschedPick} onChange={(e) => setReschedPick(e.target.value)}
                                             className="w-full border border-slate-200 rounded-xl h-11 px-2 mt-1 bg-white">
                                             <option value="">— Select a time —</option>
-                                            {slots.map((s, idx) => <option key={idx} value={idx}>{s.display}</option>)}
+                                            {slots.map((s, idx) => <option key={`${s.date}-${s.time}`} value={idx}>{s.display}</option>)}
                                         </select>
                                         <div className="flex gap-2 mt-2">
                                             <Button size="sm" data-testid={`reschedule-confirm-${a.id}`} onClick={() => submitReschedule(a.id)}
@@ -331,7 +332,7 @@ export default function PortalAppointments() {
                                 <p className="text-xs text-slate-600 mb-2">The time you requested wasn't available. Please choose one of these:</p>
                                 <div className="space-y-2">
                                     {(a.offered_slots || []).map((s, idx) => (
-                                        <label key={idx} data-testid={`offer-option-${idx}`}
+                                        <label key={s.display || idx} data-testid={`offer-option-${idx}`}
                                             className={`flex items-center gap-2 p-2 rounded-lg border cursor-pointer ${selecting[a.id] === idx ? "border-portal-blue bg-white" : "border-slate-200 bg-white"}`}>
                                             <input type="radio" name={`sel-${a.id}`} checked={selecting[a.id] === idx}
                                                 onChange={() => setSelecting({ ...selecting, [a.id]: idx })} />

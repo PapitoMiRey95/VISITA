@@ -46,6 +46,7 @@ export default function Settings() {
         setSettings(s.data.settings || {});
         setTemplates(s.data.templates || {});
         setAvail(a.data || {});
+        // deps empty: api is a stable import; s/a are local; setters are stable.
     }, []);
 
     useEffect(() => { load(); }, [load]);

@@ -140,3 +140,12 @@ See /app/memory/test_credentials.md.
 - Runs entirely via the LIVE site admin API (production DB is separate from preview). Validated against preview: login OK, sets Mon-Thu 11:30-17:00 + recurring break 15:00-15:30, imports 41 appts (idempotent: skips existing by imported+date+time), blocks 2026-09-29/09-30/10-01.
 - On fresh production it will: create 41, link ~38, flag 3 PATIENT LINK REQUIRED (CHIRRILLO, VALERO UZCATEGUI, GUTIERREZ NUNEZ); NO confirmation SMS/email; schedule 24h reminders for linked appts still >24h out.
 - Admin creds (same as seed): kevinrodriguez9528@gmail.com / VisitaAdmin2026!. RUN THIS ONCE the deployment is live, then verify admin calendar + patient-portal availability. Do NOT copy preview test bookings.
+
+## Security/code-quality focused cleanup (2026-06, iteration_13-regression) — verified by testing_agent (no regressions)
+- P1 hardcoded secret: tests/test_password_reset.py demo password now env-driven (DEMO_PATIENT_PASSWORD). NOTE: admin (VisitaAdmin2026!) + physician (Newman2013_!) passwords are hardcoded across several other test files and committed to git -> RECOMMENDED ROTATION (flagged to user; not yet actioned).
+- P2 undefined vars: FALSE POSITIVE (pyflakes + pylint E0601/E0602 clean across backend).
+- P3 auth token in sessionStorage -> HttpOnly cookie: DEFERRED (larger migration; needs logout endpoint, get_current_user cookie read, withCredentials, CORS origin change from *; forces re-login). Impact explained to user, awaiting go-ahead.
+- P4 hook deps: FALSE POSITIVES (stable module imports + stable setState setters + local vars). Documented intentional empty-deps with comments in AuthContext.jsx, Settings.jsx, PortalAppointments.jsx. use-toast.js left (shadcn lib).
+- P5 craco.config.js console: FALSE POSITIVE (build-time only, no sensitive data in shipped bundle).
+- Also fixed array-index React keys -> stable keys in PortalAppointments.jsx & AppointmentQueue.jsx.
+- Large refactors (seed.py/directory.py/AppointmentQueue/etc complexity) intentionally NOT done per user; remain backlog.

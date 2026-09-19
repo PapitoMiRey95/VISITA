@@ -1,0 +1,29 @@
+{
+  "summary": "Regression check after low-risk security/code-quality cleanup (stable React keys in PortalAppointments.jsx & AppointmentQueue.jsx, doc-only useCallback/useMemo comments, test env-var read for demo password). All three logins (patient / admin / physician), role-based routing, logout, patient booking end-to-end, admin Calendar week view + Block Day dialog, and Settings page (Physician Availability, Daily Break, Blocked Days, Vacations, Closures all present) work with NO console errors and NO regressions. 12/12 backend regression tests green.",
+  "backend_issues": {"critical": [], "minor": []},
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [],
+    "design_issues": []
+  },
+  "test_report_links": [
+    "/app/backend/tests/test_regression_iter13.py",
+    "/app/test_reports/pytest/iter13_results.xml"
+  ],
+  "action_items": [],
+  "critical_code_review_comments": [
+    "After session logout (sessionStorage cleared), directly navigating to /internal/calendar or /portal/home does NOT client-side-redirect to /login — the URL stays on the protected path (page likely renders blank/loading while API returns 401). Not a data-leak because Bearer auth blocks API calls, and after subsequent SPA navigation the login redirect kicks in, but a ProtectedRoute wrapper that unconditionally redirects when no token exists would give a cleaner UX. Not a regression from this cleanup.",
+    "Landing route seems to be /login (contains testids brand-logo/current-signin/internal-login) while /signin is the actual email+password form. Slightly confusing naming — worth a short comment in the router.",
+    "Case in test_regression_iter13 body-substring checks: Settings page uses ALL-CAPS section headers (WEEKLY AVAILABILITY, DAILY BREAK, BLOCKED DAYS) — future testers should case-fold when asserting section presence."
+  ],
+  "updated_files": [
+    "/app/backend/tests/test_regression_iter13.py"
+  ],
+  "success_rate": {"backend": "100% (12/12)", "frontend": "100% of exercised flows"},
+  "test_credentials": "Patient: maria.lopez@demo.com / Patient2026!  |  Admin: kevinrodriguez9528@gmail.com / VisitaAdmin2026!  |  Physician: PAGUAYO / Newman2013_!  |  Sign-in form: /signin (fields data-testid=login-email, login-password, login-submit)",
+  "seed_data_creation": "Patient Maria Lopez had one new appointment request created (reason 'New Medical Concern', 2026 Sep 24 at 4:00 PM) during the booking test. Cleanup not required — it appears as 'Appointment Requested' in her list.",
+  "retest_needed": false,
+  "main_agent_can_self_test": true,
+  "context_for_next_testing_agent": "New reusable regression suite at /app/backend/tests/test_regression_iter13.py covers login for all 3 roles + /auth/me shape (returns {user, ...} not flat) + role routing (patient blocked from /api/internal/counters) + unauth 401 on /auth/me. Frontend flow: navigate directly to /signin (NOT /login) to hit the SignIn form; use data-testid login-email/login-password/login-submit. Portal booking uses appt-calendar day buttons -> appt-time-<HH:MM> -> native <select data-testid=appt-reason> (use select_option, NOT shadcn combobox) -> appt-submit. Calendar Block Day: [data-testid=cal-block] opens confirm dialog (per day column).",
+  "rca of the issue": "N/A - no regressions found. Cleanup was safe."
+}

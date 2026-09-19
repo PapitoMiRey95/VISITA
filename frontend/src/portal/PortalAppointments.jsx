@@ -7,7 +7,6 @@ import { api, formatErr } from "../lib/api";
 import { usePortal, StatusPill, Card, PendingBanner } from "./shared";
 import { EmergencyNotice } from "../components/EmergencyNotice";
 import { Button } from "../components/ui/button";
-import { Input } from "../components/ui/input";
 import { Textarea } from "../components/ui/textarea";
 import { Label } from "../components/ui/label";
 import { Calendar } from "../components/ui/calendar";
@@ -19,6 +18,13 @@ const dateFromIso = (s) => {
     const [y, m, d] = s.split("-").map(Number);
     return new Date(y, m - 1, d);
 };
+
+const REASON_OPTIONS = [
+    "New Medical Concern", "Follow-Up", "Discuss Test Results", "Medication Review",
+    "Prescription / Refill", "Bloodwork Review", "Imaging Review", "Referral Discussion",
+    "Forms / Documentation", "Annual Physical", "Other",
+];
+const NOTE_MAX = 200;
 
 export default function PortalAppointments() {
     const { overview, refetch } = usePortal();
@@ -203,11 +209,28 @@ export default function PortalAppointments() {
                                     <span className="w-6 h-6 rounded-full bg-portal-blue text-white text-xs font-bold flex items-center justify-center">3</span>
                                     <Label className="font-semibold text-slate-700">Reason for appointment</Label>
                                 </div>
-                                <Input required value={reason} onChange={(e) => setReason(e.target.value)} data-testid="appt-reason"
-                                    placeholder="e.g. Annual physical, medication review" />
+                                <select required value={reason} onChange={(e) => setReason(e.target.value)} data-testid="appt-reason"
+                                    className="w-full border border-slate-200 rounded-xl h-11 px-2 bg-white">
+                                    <option value="">— Select a reason —</option>
+                                    {REASON_OPTIONS.map((r) => <option key={r} value={r}>{r}</option>)}
+                                </select>
+                                {reason === "Other" && (
+                                    <p className="text-xs text-slate-500 mt-1" data-testid="appt-other-hint">
+                                        Please briefly explain in the Short note below.
+                                    </p>
+                                )}
                                 <div className="mt-3">
-                                    <Label className="font-semibold text-slate-700">Short note (optional)</Label>
-                                    <Textarea className="mt-1" value={note} onChange={(e) => setNote(e.target.value)} data-testid="appt-note" />
+                                    <div className="flex items-center justify-between">
+                                        <Label className="font-semibold text-slate-700">Short note (optional)</Label>
+                                        <span className="text-xs text-slate-400" data-testid="appt-note-counter">{note.length} / {NOTE_MAX}</span>
+                                    </div>
+                                    <Textarea className="mt-1" value={note} maxLength={NOTE_MAX} data-testid="appt-note"
+                                        onChange={(e) => setNote(e.target.value.slice(0, NOTE_MAX))} />
+                                    <p className="text-xs text-slate-400 mt-1">
+                                        Need to send a longer message? Use the{" "}
+                                        <button type="button" onClick={() => nav("/portal/messages")} data-testid="appt-note-messages-link"
+                                            className="text-portal-blue font-semibold underline">Messages</button>{" "}section.
+                                    </p>
                                 </div>
                             </div>
                         )}

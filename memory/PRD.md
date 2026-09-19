@@ -124,3 +124,8 @@ See /app/memory/test_credentials.md.
 - `POST /api/internal/calendar/block-day {date}`: blocks every REMAINING open slot (one blocked_period per slot, tagged `block_day:true`). Existing appointments are NOT modified. Blocked slots vanish from Patient Portal availability; if none remain the date auto-disables.
 - `POST /api/internal/calendar/unblock-day {date}`: removes ONLY `block_day:true` blocks for that date (appointments untouched).
 - `GET /api/internal/calendar` day rows now include `day_blocked`; Calendar.jsx shows a red "DAY BLOCKED" banner + "Unblock Day" toggle. Verified on 2026-09-24: block -> patient open 9->0, appt kept; unblock -> 0->9, appt kept.
+
+## Settings: grouped Blocked Days display (2026-06, iteration_16) — self-verified (screenshot)
+- Settings > Physician Availability reorganized into labeled sections: WEEKLY AVAILABILITY (mon-thu hours + duration), BLOCKED DAYS, PARTIAL BLOCKS, VACATIONS, CLOSURES.
+- BLOCKED DAYS: full-day blocks (blocked_periods with `block_day:true`) are grouped to ONE row per date (VIen format `YYYY Mon - DD`) with a single [Unblock] button (POST /internal/calendar/unblock-day -> restores slots, keeps appointments). Individual per-slot block records stay in scheduling logic but are hidden from the UI. Verified: 32 slot-blocks across 3 dates -> 3 rows.
+- PARTIAL BLOCKS: non-block_day entries render one editable row each (date, start-end, reason) e.g. daily 3:00-3:30 Break, 09/23 Recycling Day 10:00-11:30. Editing writes back into the full blocked_periods array (block_day entries preserved on Save).

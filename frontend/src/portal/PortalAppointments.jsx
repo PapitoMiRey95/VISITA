@@ -38,6 +38,9 @@ export default function PortalAppointments() {
         queryKey: ["slots"],
         queryFn: async () => (await api.get("/availability/slots", { params: { days: 60 } })).data,
         enabled: verified,
+        staleTime: 0,                    // availability is time-sensitive — never serve stale
+        refetchOnMount: "always",        // fetch current availability every time the page opens
+        refetchOnWindowFocus: true,
     });
     const slots = slotsQ.data?.slots || [];
 
@@ -74,6 +77,7 @@ export default function PortalAppointments() {
         if (!d) return;
         setSelDate(d);
         setSelSlot(null);
+        slotsQ.refetch();   // re-verify current open slots for the chosen date
     };
 
     const submit = async (e) => {
@@ -82,6 +86,14 @@ export default function PortalAppointments() {
         if (!reason.trim()) return toast.error("Please enter a reason for the appointment.");
         setBusy(true);
         try {
+            // Re-check the slot is still open right before submitting (it may have been taken).
+            const fresh = (await slotsQ.refetch()).data?.slots || [];
+            const stillOpen = fresh.some((s) => s.date === selSlot.date && s.time === selSlot.time);
+            if (!stillOpen) {
+                setSelSlot(null);
+                toast.error("This appointment time is no longer available. Please select another time.");
+                return;
+            }
             await api.post("/portal/appointments", {
                 reason: reason.trim(), patient_note: note || undefined,
                 options: [{ date: selSlot.date, time: selSlot.time, label: selSlot.label, display: selSlot.display }],
@@ -165,6 +177,7 @@ export default function PortalAppointments() {
                                         mode="single"
                                         selected={selDate || undefined}
                                         onSelect={pickDate}
+                                        onMonthChange={() => slotsQ.refetch()}
                                         fromDate={minDate}
                                         toDate={maxDate}
                                         defaultMonth={minDate}

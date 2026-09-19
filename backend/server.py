@@ -814,6 +814,15 @@ async def _update_request(coll, entity, item_id, body: UpdateBody, user, status_
         updates[status_field] = "appointment_required"
         updates["completed_at"] = now_iso()
         notify = True
+    elif body.action == "approve":
+        updates[status_field] = "approved_process_visita"
+        notify = True
+    elif body.action == "modify":
+        updates[status_field] = "approved_process_visita"
+        updates["modified"] = True
+        if body.staff_note is not None:
+            updates["physician_note"] = body.staff_note
+        notify = True
     elif body.action == "more_info":
         updates[status_field] = "more_info_required"
         if body.staff_note is not None:
@@ -855,6 +864,84 @@ async def rx_queue(q: Optional[str] = None, status: Optional[str] = None, user: 
 async def rx_update(item_id: str, body: UpdateBody, user: dict = Depends(require_roles(*CLINIC_ROLES))):
     return await _update_request(db.prescription_requests, "prescription", item_id, body, user,
                                  "internal_status", "Your prescription request has been updated.")
+
+
+# ----------------------------- Pharmacy Rx intake -----------------------------
+class PharmacyRxBody(BaseModel):
+    directory_id: str
+    pharmacy: str
+    medications: List[str]
+    selected_active_meds: Optional[List[str]] = []
+    duration_qty: Optional[str] = None
+    pharmacy_note: Optional[str] = None
+    received_via: str  # fax | phone | other
+    internal_note: Optional[str] = None
+
+
+def _age_from_dob(dob: Optional[str]) -> Optional[int]:
+    try:
+        from datetime import date
+        y, m, d = str(dob)[:10].split("-")
+        today = date.today()
+        return today.year - int(y) - ((today.month, today.day) < (int(m), int(d)))
+    except Exception:
+        return None
+
+
+@api.get("/internal/patient-snapshot/{directory_id}")
+async def patient_snapshot(directory_id: str, user: dict = Depends(require_roles(*CLINIC_ROLES))):
+    d = await db.patient_directory.find_one({"id": directory_id})
+    if not d:
+        raise HTTPException(status_code=404, detail="Patient not found in directory.")
+    # Fields marked (VISITA) are model-ready placeholders for future read-only sync.
+    return {
+        "directory_id": d["id"],
+        "first_name": d.get("first_name"), "last_name": d.get("last_name"),
+        "visita_patient_id": d.get("visita_patient_id"),
+        "date_of_birth": d.get("date_of_birth"), "age": _age_from_dob(d.get("date_of_birth")),
+        "phone": d.get("cell_phone") or d.get("home_phone"),
+        "patient_status": d.get("patient_status"),
+        "linked_patient_id": d.get("linked_patient_id"),
+        "medications": d.get("medications", []),                # VISITA (read-only, future)
+        "last_visit_date": d.get("last_visit_date"),            # VISITA
+        "last_visit_plan": d.get("last_visit_plan"),            # VISITA
+        "current_pharmacy": d.get("current_pharmacy"),          # VISITA
+    }
+
+
+@api.post("/internal/pharmacy-rx")
+async def create_pharmacy_rx(body: PharmacyRxBody, user: dict = Depends(require_roles(*CLINIC_ROLES))):
+    d = await db.patient_directory.find_one({"id": body.directory_id})
+    if not d:
+        raise HTTPException(status_code=404, detail="Patient not found in directory.")
+    meds = [m.strip() for m in body.medications if m and m.strip()]
+    if not meds:
+        raise HTTPException(status_code=400, detail="Please add at least one requested medication.")
+    ref = await next_ref("RX")
+    patient_name = f"{d.get('last_name','')}, {d.get('first_name','')}".strip(", ")
+    doc = {
+        "id": str(uuid.uuid4()), "ref_number": ref,
+        "source": "pharmacy",
+        "patient_id": d.get("linked_patient_id") or d["id"],
+        "directory_id": d["id"], "visita_patient_id": d.get("visita_patient_id"),
+        "patient_name": patient_name,
+        "medication_name": "; ".join(meds), "strength": None,
+        "medications": meds, "selected_active_meds": body.selected_active_meds or [],
+        "pharmacy": body.pharmacy, "duration_qty": body.duration_qty,
+        "pharmacy_note": body.pharmacy_note, "received_via": body.received_via,
+        "requested_months": None, "delivery_method": "pharmacy",
+        "directions": None, "patient_note": None,
+        "staff_note": body.internal_note, "intake_by": user["name"],
+        "internal_status": "waiting_physician", "assigned_to": None,
+        "internal_notes": ([{"by": user["name"], "note": body.internal_note, "at": now_iso()}] if body.internal_note else []),
+        "history": [{"status": "waiting_physician", "at": now_iso(), "by": user["name"], "note": "Pharmacy intake"}],
+        "created_at": now_iso(), "updated_at": now_iso(), "completed_at": None,
+    }
+    await db.prescription_requests.insert_one({**doc})
+    await audit("pharmacy_intake", "prescription", doc["id"], user, new_status="waiting_physician",
+                meta={"pharmacy": body.pharmacy, "directory_id": d["id"]})
+    doc.pop("_id", None)
+    return doc
 
 
 # ----------------------------- Imaging -----------------------------

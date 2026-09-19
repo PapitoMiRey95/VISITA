@@ -23,6 +23,7 @@ import PortalAccount from "./portal/PortalAccount";
 import InternalLayout from "./internal/InternalLayout";
 import Hub from "./internal/Hub";
 import RxQueue from "./internal/RxQueue";
+import PharmacyIntake from "./internal/PharmacyIntake";
 import AppointmentQueue from "./internal/AppointmentQueue";
 import ImagingQueue from "./internal/ImagingQueue";
 import BloodworkQueue from "./internal/BloodworkQueue";
@@ -75,6 +76,7 @@ function App() {
                     >
                         <Route index element={<Hub />} />
                         <Route path="rx" element={<RxQueue />} />
+                        <Route path="pharmacy-intake" element={<PharmacyIntake />} />
                         <Route path="appointments" element={<AppointmentQueue />} />
                         <Route path="imaging" element={<ImagingQueue />} />
                         <Route path="bloodwork" element={<BloodworkQueue />} />

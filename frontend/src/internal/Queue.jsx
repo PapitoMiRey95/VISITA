@@ -21,7 +21,7 @@ function reasonFor(item, sourceType) {
     return item.reason || "";
 }
 
-export default function Queue({ title, subtitle, endpoint, patchBase, searchPlaceholder, statuses = [], columns, detail, actions, replyEnabled = false, enableBooking = false, sourceType }) {
+export default function Queue({ title, subtitle, endpoint, patchBase, searchPlaceholder, statuses = [], columns, detail, actions, replyEnabled = false, enableBooking = false, sourceType, headerAction = null }) {
     const { user } = useAuth();
     const invalidate = useInvalidate();
     const [q, setQ] = useState("");
@@ -68,6 +68,7 @@ export default function Queue({ title, subtitle, endpoint, patchBase, searchPlac
                     <h1 className="text-2xl font-bold text-slate-900 tracking-tight">{title}</h1>
                     <p className="text-sm text-slate-500">{subtitle}</p>
                 </div>
+                {headerAction}
             </div>
 
             <div className="flex flex-wrap items-center gap-2 mb-3">

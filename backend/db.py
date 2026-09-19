@@ -53,6 +53,9 @@ RX_PATIENT_STATUS = {
     "received": "Received",
     "under_review": "Under Review",
     "waiting_physician": "Under Review",
+    "approved_process_visita": "Approved — Processing",
+    "more_info_required": "More Information Requested",
+    "declined": "Declined",
     "completed": "Completed",
     "appointment_required": "Appointment Required",
     "appointment_booked": "Appointment Booked",
@@ -98,7 +101,7 @@ MSG_PATIENT_STATUS = {
     "appointment_booked": "Appointment Booked",
 }
 
-RX_ACTIVE = ["received", "under_review", "waiting_physician"]
+RX_ACTIVE = ["received", "under_review", "waiting_physician", "approved_process_visita", "more_info_required"]
 IMG_ACTIVE = ["new", "under_review", "waiting_physician"]
 BLD_ACTIVE = ["new", "under_review", "waiting_physician", "more_info_required"]
 MSG_ACTIVE = ["new", "open", "waiting_physician"]

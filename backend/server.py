@@ -2062,7 +2062,9 @@ async def pharmacy_rx_list(user: dict = Depends(require_roles("pharmacy"))):
     docs = await db.prescription_requests.find(
         {"source": "pharmacy", "pharmacy_id": pid}, {"_id": 0}).sort("created_at", -1).to_list(200)
     for x in docs:
-        x["status_label"] = RX_PATIENT_STATUS.get(x.get("internal_status"), "Received")
+        st = x.get("internal_status")
+        x["status_label"] = ("Waiting for Physician to review" if st == "waiting_physician"
+                              else RX_PATIENT_STATUS.get(st, "Received"))
     return docs
 
 

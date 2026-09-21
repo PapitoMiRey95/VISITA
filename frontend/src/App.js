@@ -34,6 +34,7 @@ import Referrals from "./internal/Referrals";
 import Verifications from "./internal/Verifications";
 import Applications from "./internal/Applications";
 import Settings from "./internal/Settings";
+import Patients from "./internal/Patients";
 
 import PharmacyLayout from "./pharmacy/PharmacyLayout";
 import PharmacyRx from "./pharmacy/PharmacyRx";
@@ -81,6 +82,7 @@ function App() {
                         }
                     >
                         <Route index element={<Hub />} />
+                        <Route path="patients" element={<Patients />} />
                         <Route path="rx" element={<RxQueue />} />
                         <Route path="pharmacy-intake" element={<PharmacyIntake />} />
                         <Route path="appointments" element={<AppointmentQueue />} />

@@ -1785,6 +1785,48 @@ async def search_directory(q: Optional[str] = None, status: Optional[str] = None
     return [directory_mod.serialize_candidate(d) for d in docs]
 
 
+def _directory_snapshot(d: dict) -> dict:
+    line1 = " ".join([str(d.get("address") or ""), (f"#{d.get('unit')}" if d.get("unit") else "")]).strip()
+    address_full = ", ".join([x for x in [line1, d.get("city"), d.get("province"), d.get("postal_code")] if x])
+    return {
+        "id": d["id"],
+        "first_name": d.get("first_name"), "last_name": d.get("last_name"),
+        "full_name": f"{d.get('last_name','')}, {d.get('first_name','')}".strip(", "),
+        "visita_patient_id": d.get("visita_patient_id"),
+        "date_of_birth": d.get("date_of_birth"), "age": _age_from_dob(d.get("date_of_birth")),
+        "home_phone": d.get("home_phone"), "cell_phone": d.get("cell_phone"),
+        "address": d.get("address"), "unit": d.get("unit"),
+        "city": d.get("city"), "province": d.get("province"), "postal_code": d.get("postal_code"),
+        "address_full": address_full,
+        "health_card_number": d.get("health_card_number"),
+        "health_card_version_code": d.get("health_card_version_code"),
+        "patient_status": d.get("patient_status"),
+        "current_pharmacy": d.get("current_pharmacy"),
+    }
+
+
+@api.get("/internal/patient-lookup")
+async def internal_patient_lookup(q: str, user: dict = Depends(require_roles(*CLINIC_ROLES))):
+    """Read-only clinic patient directory lookup by name / VISITA PIN / health
+    card number / phone. Returns demographic + contact snapshot only (no clinical
+    chart). Does not modify any record."""
+    qn = (q or "").strip()
+    if len(qn) < 2:
+        return []
+    ors = [
+        {"first_name": {"$regex": re.escape(qn), "$options": "i"}},
+        {"last_name": {"$regex": re.escape(qn), "$options": "i"}},
+        {"norm_hcn": {"$regex": directory_mod.norm_hcn(qn)}},
+        {"visita_patient_id": {"$regex": re.escape(qn), "$options": "i"}},
+    ]
+    digits = re.sub(r"\D", "", qn)
+    if len(digits) >= 3:
+        ph = {"$regex": r"\D*".join(digits)}
+        ors += [{"home_phone": ph}, {"cell_phone": ph}]
+    docs = await db.patient_directory.find({"$or": ors}).limit(40).to_list(40)
+    return [_directory_snapshot(d) for d in docs]
+
+
 @api.post("/internal/verifications/{patient_id}")
 async def verify_patient(patient_id: str, body: VerifyBody, user: dict = Depends(require_roles("staff", "admin"))):
     p = await db.patients.find_one({"id": patient_id})

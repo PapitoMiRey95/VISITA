@@ -175,3 +175,10 @@ See /app/memory/test_credentials.md.
 - PREVIEW pharmacy account seeded: 1670dufferin / Dufferin2026! (backend/.env PHARMACY_USERNAME/PASSWORD/NAME/ID). Attachments: pharmacy/rx & pharmacy/messages.
 - PRODUCTION: real account is NOT created until PHARMACY_* prod secrets are set (deliberate, after user approval). Seed is strictly create-if-missing (never overwrites existing users/passwords). No production data touched by this feature.
 - STATUS: Built & tested in Preview. AWAITING USER REVIEW before deploying to Production.
+
+## Internal PATIENTS lookup (2026-06, agentic edit) — read-only, Preview-verified
+- New internal sidebar section "Patients" (icon UserSearch) for admin/staff/physician ONLY (added to both role lists in InternalLayout). NOT in Pharmacy Portal.
+- Backend: GET /api/internal/patient-lookup?q= (CLINIC_ROLES) searches patient_directory by name / VISITA PIN / health card (norm_hcn) / phone (flexible digit regex r"\D*".join(digits)). Returns _directory_snapshot: full_name, visita_patient_id, date_of_birth, age, home_phone, cell_phone, address_full, health_card_number + version_code, patient_status, current_pharmacy. Read-only; no writes.
+- Frontend: frontend/src/internal/Patients.jsx (search + results + read-only snapshot panel), route /internal/patients, dates via formatDate (YYYY Mon - DD).
+- Reuses existing directory_mod.norm_hcn + _age_from_dob. No clinical chart (meds/labs/imaging/referrals) exposed — placeholder note for future VISITA info.
+- STATUS: built & verified in Preview (search by name/PIN/phone all work; snapshot matches spec). NOT yet deployed to production.

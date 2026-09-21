@@ -1,7 +1,7 @@
 import { Outlet, NavLink, useNavigate } from "react-router-dom";
 import {
     LayoutGrid, Pill, Calendar, Scan, Droplet, MessageSquare, ClipboardCheck,
-    Send, UserCheck, UserPlus, CalendarDays, Settings as SettingsIcon, LogOut,
+    Send, UserCheck, UserPlus, CalendarDays, Settings as SettingsIcon, LogOut, UserSearch,
 } from "lucide-react";
 import { useAuth } from "../context/AuthContext";
 import { useCounters } from "./hooks";
@@ -18,6 +18,7 @@ export default function InternalLayout() {
     const items = isPhysician
         ? [
               { to: "/internal", icon: LayoutGrid, label: "Hub", end: true, key: null },
+              { to: "/internal/patients", icon: UserSearch, label: "Patients", key: null },
               { to: "/internal/rx", icon: Pill, label: "Rx", key: "rx" },
               { to: "/internal/imaging", icon: Scan, label: "Imaging", key: "imaging" },
               { to: "/internal/bloodwork", icon: Droplet, label: "Bloodwork", key: "bloodwork" },
@@ -29,6 +30,7 @@ export default function InternalLayout() {
           ]
         : [
               { to: "/internal", icon: LayoutGrid, label: "Hub", end: true, key: null },
+              { to: "/internal/patients", icon: UserSearch, label: "Patients", key: null },
               { to: "/internal/rx", icon: Pill, label: "Rx", key: "rx" },
               { to: "/internal/referrals", icon: ClipboardCheck, label: "Referrals", key: "referrals" },
               { to: "/internal/imaging", icon: Scan, label: "Imaging", key: "imaging" },

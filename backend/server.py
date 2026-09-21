@@ -2059,8 +2059,12 @@ async def pharmacy_create_rx(
 @api.get("/pharmacy/rx")
 async def pharmacy_rx_list(user: dict = Depends(require_roles("pharmacy"))):
     pid, _ = _pharmacy_of(user)
+    # Visibility: ONLY requests actually submitted through THIS authenticated
+    # pharmacy account via the portal. Determined by account (pharmacy_id) AND
+    # origin (received_via), never by source alone — so staff-entered clinic
+    # pharmacy-intake records (pharmacy_id=None) are never exposed here.
     docs = await db.prescription_requests.find(
-        {"source": "pharmacy", "pharmacy_id": pid}, {"_id": 0}).sort("created_at", -1).to_list(200)
+        {"pharmacy_id": pid, "received_via": "pharmacy_portal"}, {"_id": 0}).sort("created_at", -1).to_list(200)
     for x in docs:
         st = x.get("internal_status")
         x["status_label"] = ("Waiting for Physician to review" if st == "waiting_physician"

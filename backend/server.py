@@ -2176,6 +2176,35 @@ async def internal_msg_attachment(item_id: str, idx: int, user: dict = Depends(r
     return _serve_attachment(thread[idx]["attachment"])
 
 
+class ResetPharmacyPwBody(BaseModel):
+    identifier: str
+    new_password: str
+
+
+@api.post("/admin/pharmacy/reset-temp-password")
+async def admin_reset_pharmacy_temp_password(body: ResetPharmacyPwBody, user: dict = Depends(require_roles("admin"))):
+    """Admin-only rotation of a PHARMACY account's temporary password. Scoped to
+    role='pharmacy' targets ONLY — it can never affect admin/physician/staff/patient
+    accounts. Sets must_change_password=True so the pharmacy must set their own
+    password on next login. Does not touch any other user or record."""
+    if len((body.new_password or "").strip()) < 8:
+        raise HTTPException(status_code=400, detail="Password must be at least 8 characters.")
+    target = await db.users.find_one({
+        "username": {"$regex": f"^{re.escape((body.identifier or '').strip())}$", "$options": "i"},
+        "role": "pharmacy",
+    })
+    if not target:
+        raise HTTPException(status_code=404, detail="Pharmacy user not found.")
+    await db.users.update_one({"_id": target["_id"]}, {"$set": {
+        "password_hash": authlib.hash_password(body.new_password),
+        "must_change_password": True,
+        "password_rotated_at": now_iso(),
+    }})
+    await audit("reset_pharmacy_temp_password", "user", str(target["_id"]), user,
+                meta={"username": target.get("username")})
+    return {"ok": True, "username": target.get("username"), "must_change_password": True}
+
+
 
 
 

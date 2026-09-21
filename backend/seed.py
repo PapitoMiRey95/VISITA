@@ -188,7 +188,7 @@ async def seed_all(db, authlib):
                 "password_hash": authlib.hash_password(pharm_pw),
                 "name": pharm_name, "role": "pharmacy",
                 "pharmacy_id": pharm_id, "pharmacy_name": pharm_name,
-                "patient_id": None, "active": True, "must_change_password": False,
+                "patient_id": None, "active": True, "must_change_password": True,
                 "created_at": now_iso(),
             })
 

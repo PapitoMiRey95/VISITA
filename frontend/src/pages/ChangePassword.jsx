@@ -30,7 +30,7 @@ export default function ChangePassword() {
             await api.post("/auth/change-password", { current_password: cur, new_password: pw });
             await refreshMe();
             toast.success("Password updated.");
-            nav(user.role === "patient" ? "/portal" : "/internal", { replace: true });
+            nav(user.role === "patient" ? "/portal" : user.role === "pharmacy" ? "/pharmacy" : "/internal", { replace: true });
         } catch (err) {
             toast.error(formatErr(err));
         } finally {

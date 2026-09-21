@@ -163,3 +163,15 @@ See /app/memory/test_credentials.md.
 - CONFIRMED not a frontend bug in preview: patient calendar already uses backend /availability/slots as single source of truth (availableDates derived from backend; no hardcoded Mon-Thu). Verified Sep 21/22/23 DISABLED (0 slots), Sep 24 (9) / Sep 28 (1) ENABLED at 375/390/430px, no horizontal scroll, flow not clipped.
 - Root cause of user seeing Sep21/22 selectable = the DEPLOYED PRODUCTION app (separate DB, no imports yet). Fix for prod = run /app/scripts/prod_import.py once live.
 - Added cache-safety to PortalAppointments.jsx: slots query staleTime:0 + refetchOnMount:always + refetchOnWindowFocus; refetch on month change (onMonthChange) and on date pick; pre-submit re-check that re-fetches and shows \"This appointment time is no longer available. Please select another time.\" if the slot was taken. Both mobile+desktop use REACT_APP_BACKEND_URL (same origin).
+
+
+## Pharmacy Portal + new "pharmacy" role (2026-06, iteration_16) — verified testing_agent 9/9 + curl
+- NEW authenticated role `pharmacy`, locked to ONE pharmacy per account ("1670 Dufferin Drug Mart"). Reuses existing JWT/bcrypt auth (username login via same /signin), existing Rx pipeline (prescription_requests, source="pharmacy") and existing Messages pipeline (patient_messages, source="pharmacy").
+- Pharmacy portal at /pharmacy (RoleRoute roles=["pharmacy"]). Nav ONLY: Rx | Messages | Account/Logout. Cannot reach /internal or /portal (redirect + backend 403).
+- Rx: search patient (identity/contact only — name, PIN, DOB, home/cell, full address, HCN+version; NO clinical data) -> medication form (name*, strength, duration, pharmacy note, message to physician) -> attach JPG/PNG/PDF (camera or upload, 15MB) -> submit. Flows into clinic RxQueue with PHARMACY badge + downloadable attachment.
+- Messages: pharmacy compose/reply with optional patient link, Rx ref, attachment. Folds into clinic MessageQueue with PHARMACY badge + pharmacy name; clinic replies via existing PATCH /internal/messages/{id} (patient_reply). notify_patient guarded to skip when source=="pharmacy" or no patient_id.
+- Files: backend server.py (PHARMACY PORTAL section, ~L1909), seed.py (env-gated create-if-missing pharmacy account), frontend/src/pharmacy/{PharmacyLayout,PharmacyRx,PharmacyMessages,PharmacyAccount,shared}.jsx, App.js, RoleRoute.jsx, SignIn.jsx, internal/RxQueue.jsx, internal/MessageQueue.jsx, lib/api.js (openAttachment).
+- Object storage (storage.py) reused for attachments; served ONLY via authenticated endpoints (no public URLs).
+- PREVIEW pharmacy account seeded: 1670dufferin / Dufferin2026! (backend/.env PHARMACY_USERNAME/PASSWORD/NAME/ID). Attachments: pharmacy/rx & pharmacy/messages.
+- PRODUCTION: real account is NOT created until PHARMACY_* prod secrets are set (deliberate, after user approval). Seed is strictly create-if-missing (never overwrites existing users/passwords). No production data touched by this feature.
+- STATUS: Built & tested in Preview. AWAITING USER REVIEW before deploying to Production.

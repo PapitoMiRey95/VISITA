@@ -1,0 +1,31 @@
+{
+  "summary": "Pharmacy Portal E2E (iteration_16) — verified via Playwright against the preview backend using seeded pharmacy account 1670dufferin / Dufferin2026!. All 9 requested flows pass: (1) pharmacy login redirects to /pharmacy with 'Pharmacy Portal' header and nav Rx/Messages/Account only; (2) role isolation — pharmacy hitting /internal and /portal is redirected back to /pharmacy; (3) New Rx search 'cru' returns 25 identity-only results (name, PIN, DOB in 'YYYY Mon - DD', home/cell, full address, HCN+version) with no clinical data (no diagnoses/visits/labs strings present); (4) Rx submit with test PDF attached via rx-file-input succeeds; new row appears in list with an attachment 'File' link; (5) as admin at /internal/messages and /internal/rx the pharmacy-submitted items show a PHARMACY badge and '1670 Dufferin Drug Mart' name; (6) pharmacy compose New Message succeeds and thread bubble labels sender as 'You (Pharmacy)'; (7) admin opens the pharmacy conversation (Queue detail), types into patient-reply and clicks Mark Completed — patch succeeds with a green 'Updated.' toast and no error (msg_update correctly skipped patient notify since source='pharmacy'); (8) re-logging in as pharmacy, the same thread now shows a 'Clinic' bubble containing the reply body; (9) account page shows locked pharmacy name, username, Change password and Logout. Date format 'YYYY Mon - DD · HH:MM AM/PM' is applied consistently in the pharmacy thread and Rx list. No console errors seen (only 2 benign Radix DialogContent aria-describedby warnings on the internal Messages queue detail modal).",
+  "backend_issues": {"critical": [], "minor": []},
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [],
+    "design_issues": [
+      {"screen": "Internal Messages queue detail modal", "issues": ["Radix DialogContent missing Description/aria-describedby prop — accessibility warning in console (non-blocking)."]}
+    ]
+  },
+  "test_report_links": ["/app/backend/tests/test_pharmacy_rx.py"],
+  "action_items": [
+    "Optional: add DialogDescription (or aria-describedby) to the internal Message queue detail modal to silence Radix a11y warnings."
+  ],
+  "critical_code_review_comments": [
+    "PharmacyRx.jsx submit(): trims form values but sends duration_qty as a form field; backend accepts it. Fine.",
+    "shared.jsx AttachmentPicker: client-side type/size validation matches backend (JPG/PNG/PDF, 15MB) — good.",
+    "MessageQueue.jsx: reply is bundled into a Mark Completed / Send to Physician action rather than a dedicated 'Send Reply' button. This works but is subtly non-obvious for staff — a dedicated action for 'Reply' (without changing status) would improve UX when clinic wants to reply to pharmacy while keeping the message Open.",
+    "PharmacyRx list: the Sent column uses formatDateTime which contains a middle dot; the requested global date format is 'YYYY Mon - DD'. Date part is correctly 'YYYY Mon - DD' — confirmed in the pharmacy thread ('2026 Sep - 21 · 7:47 PM'). OK.",
+    "PharmacyLayout header: pharmacy_name is only shown 'hidden xs:inline' — on very small screens it disappears. Not blocking.",
+    "PharmacyAccount 'pharmacy-change-password' points to /change-password but that global route is normally reserved for forced first-login change; confirm it works for a role='pharmacy' user (was not exercised here)."
+  ],
+  "updated_files": [],
+  "success_rate": {"backend": "N/A (main agent had already curl-verified all endpoints)", "frontend": "100% (9/9 pharmacy portal flows)"},
+  "test_credentials": "Pharmacy 1670dufferin / Dufferin2026! ; Admin kevinrodriguez9528@gmail.com / VisitaAdmin2026! (from /app/memory/test_credentials.md).",
+  "seed_data_creation": "In the Preview DB the test created: 2 pharmacy prescription_requests (TEST-Ramipril for MALDONADO CRUZ, Eduardo, one with the small test PDF attached) — visible as 'Refill question' and TEST rows on /internal/rx and /internal/messages; 1 pharmacy patient_messages conversation subject='TEST subject' body='TEST body from pharmacy' left in status='completed' after admin reply.",
+  "retest_needed": false,
+  "main_agent_can_self_test": true,
+  "context_for_next_testing_agent": "Pharmacy portal is fully wired. Reply-to-pharmacy on the clinic side happens via the /internal/messages Queue detail's patient-reply textarea (data-testid='patient-reply') combined with an action button (act-complete or act-send-physician) — clicking the action sends patient_reply in the PATCH payload; there is no standalone 'Send Reply' button. The MSG-000007 pharmacy conversation is now status=completed; new conversations can be created via POST /api/pharmacy/messages multipart. Backend has been curl-verified independently.",
+  "rca of the issue": "N/A — no bug found. Everything works end-to-end."
+}

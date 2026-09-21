@@ -1,9 +1,11 @@
 import { Link } from "react-router-dom";
-import { Plus } from "lucide-react";
+import { Plus, Paperclip } from "lucide-react";
+import { toast } from "sonner";
 import Queue, { KV } from "./Queue";
 import { useAuth } from "../context/AuthContext";
 import { StatusPill } from "./statusPill";
 import { formatDateTime } from "../lib/date";
+import { openAttachment, formatErr } from "../lib/api";
 import { Button } from "../components/ui/button";
 
 const STATUSES = [
@@ -83,6 +85,20 @@ export default function RxQueue() {
                             <KV label="Duration / quantity">{i.duration_qty}</KV>
                             <KV label="Received via">{i.received_via}</KV>
                             <KV label="Pharmacy note">{i.pharmacy_note}</KV>
+                            {i.message_to_physician && <KV label="Message to physician">{i.message_to_physician}</KV>}
+                            {i.attachment && (
+                                <KV label="Attachment">
+                                    <button
+                                        data-testid="rx-attachment-view"
+                                        onClick={async () => {
+                                            try { await openAttachment(`/internal/prescriptions/${i.id}/attachment`); }
+                                            catch (err) { toast.error(formatErr(err)); }
+                                        }}
+                                        className="inline-flex items-center gap-1 text-indigo-600 hover:underline">
+                                        <Paperclip className="w-3.5 h-3.5" /> {i.attachment.original_filename || "View file"}
+                                    </button>
+                                </KV>
+                            )}
                             <KV label="Intake by">{i.intake_by}</KV>
                         </>
                     ) : (

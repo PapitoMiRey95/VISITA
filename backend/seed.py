@@ -1,4 +1,5 @@
 import os
+import re
 import uuid
 
 import availability as avail_mod
@@ -170,6 +171,26 @@ async def seed_all(db, authlib):
             payload["created_at"] = now_iso()
             await db.users.insert_one(payload)
         await db.app_meta.insert_one({"id": "phys_v2", "at": now_iso()})
+
+    # Pharmacy portal account — env-gated, CREATE-IF-MISSING ONLY.
+    # Never overwrites an existing account/password. Nothing is created unless
+    # PHARMACY_USERNAME + PHARMACY_PASSWORD are configured for this environment.
+    pharm_user = os.environ.get("PHARMACY_USERNAME")
+    pharm_pw = os.environ.get("PHARMACY_PASSWORD")
+    if pharm_user and pharm_pw:
+        pharm_name = os.environ.get("PHARMACY_NAME", "1670 Dufferin Drug Mart")
+        pharm_id = os.environ.get("PHARMACY_ID", "1670-dufferin")
+        exists = await db.users.find_one(
+            {"username": {"$regex": f"^{re.escape(pharm_user)}$", "$options": "i"}})
+        if not exists:
+            await db.users.insert_one({
+                "username": pharm_user,
+                "password_hash": authlib.hash_password(pharm_pw),
+                "name": pharm_name, "role": "pharmacy",
+                "pharmacy_id": pharm_id, "pharmacy_name": pharm_name,
+                "patient_id": None, "active": True, "must_change_password": False,
+                "created_at": now_iso(),
+            })
 
     # guard demo
     if await db.app_meta.find_one({"id": "seeded_v1"}):

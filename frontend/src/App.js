@@ -35,6 +35,11 @@ import Verifications from "./internal/Verifications";
 import Applications from "./internal/Applications";
 import Settings from "./internal/Settings";
 
+import PharmacyLayout from "./pharmacy/PharmacyLayout";
+import PharmacyRx from "./pharmacy/PharmacyRx";
+import PharmacyMessages from "./pharmacy/PharmacyMessages";
+import PharmacyAccount from "./pharmacy/PharmacyAccount";
+
 function App() {
     return (
         <AuthProvider>
@@ -88,6 +93,19 @@ function App() {
                         <Route path="verifications" element={<Verifications />} />
                         <Route path="applications" element={<Applications />} />
                         <Route path="settings" element={<Settings />} />
+                    </Route>
+
+                    <Route
+                        path="/pharmacy"
+                        element={
+                            <RoleRoute roles={["pharmacy"]}>
+                                <PharmacyLayout />
+                            </RoleRoute>
+                        }
+                    >
+                        <Route index element={<PharmacyRx />} />
+                        <Route path="messages" element={<PharmacyMessages />} />
+                        <Route path="account" element={<PharmacyAccount />} />
                     </Route>
                 </Routes>
             </BrowserRouter>

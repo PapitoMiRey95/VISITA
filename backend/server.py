@@ -51,6 +51,8 @@ def serialize_user(u: dict) -> dict:
         "patient_id": u.get("patient_id"),
         "must_change_password": u.get("must_change_password", False),
         "mfa_enabled": u.get("mfa_enabled", False),
+        "pharmacy_id": u.get("pharmacy_id"),
+        "pharmacy_name": u.get("pharmacy_name"),
     }
 
 
@@ -1366,7 +1368,7 @@ async def msg_update(item_id: str, body: UpdateBody, user: dict = Depends(requir
         mongo_update["$push"] = push
     await db.patient_messages.update_one({"id": item_id}, mongo_update)
     await audit("update", "message", item_id, user, old_status=old_status, new_status=updates.get("status", old_status))
-    if updates.get("status") == "completed" or body.patient_reply:
+    if (updates.get("status") == "completed" or body.patient_reply) and doc.get("source") != "pharmacy" and doc.get("patient_id"):
         await notify_patient(doc["patient_id"], "Message update",
                              "The clinic has responded to your message. Please log in to your Patient Portal.")
     return await db.patient_messages.find_one({"id": item_id}, {"_id": 0})
@@ -1904,6 +1906,277 @@ async def application_update(item_id: str, body: ApplicationUpdateBody,
                 meta={"action": body.action})
     fresh = await db.patient_applications.find_one({"id": item_id})
     return _serialize_application(fresh)
+# ============================ PHARMACY PORTAL ============================
+# External pharmacy role. Locked to a single pharmacy per account. Reuses the
+# existing Rx (prescription_requests) and Messages (patient_messages) pipelines.
+PHARMACY_UPLOAD_EXT = {
+    "application/pdf": "pdf", "image/jpeg": "jpg", "image/jpg": "jpg", "image/png": "png",
+}
+MAX_PHARMACY_UPLOAD_BYTES = 15 * 1024 * 1024
+
+
+def _pharmacy_of(user: dict):
+    pid, name = user.get("pharmacy_id"), user.get("pharmacy_name")
+    if not pid or not name:
+        raise HTTPException(status_code=403, detail="No pharmacy is associated with this account.")
+    return pid, name
+
+
+def _pharmacy_patient_identity(d: dict) -> dict:
+    line1 = " ".join([str(d.get("address") or ""), (f"#{d.get('unit')}" if d.get("unit") else "")]).strip()
+    address_full = ", ".join([x for x in [line1, d.get("city"), d.get("postal_code")] if x])
+    return {
+        "id": d["id"],
+        "first_name": d.get("first_name"), "last_name": d.get("last_name"),
+        "full_name": f"{d.get('last_name','')}, {d.get('first_name','')}".strip(", "),
+        "visita_patient_id": d.get("visita_patient_id"),
+        "date_of_birth": d.get("date_of_birth"),
+        "home_phone": d.get("home_phone"), "cell_phone": d.get("cell_phone"),
+        "address": d.get("address"), "unit": d.get("unit"),
+        "city": d.get("city"), "province": d.get("province"), "postal_code": d.get("postal_code"),
+        "address_full": address_full,
+        "health_card_number": d.get("health_card_number"),
+        "health_card_version_code": d.get("health_card_version_code"),
+        "patient_status": d.get("patient_status"),
+    }
+
+
+def _serve_attachment(att: dict):
+    data, ctype = storage.get_object(att["storage_path"])
+    ctype = att.get("content_type") or ctype
+    fname = att.get("original_filename") or "attachment"
+    return Response(content=data, media_type=ctype,
+                    headers={"Content-Disposition": f'inline; filename="{fname}"'})
+
+
+async def _store_pharmacy_upload(file, subdir: str) -> dict:
+    ctype = (file.content_type or "").lower()
+    fname = (file.filename or "").lower()
+    ext = PHARMACY_UPLOAD_EXT.get(ctype)
+    if not ext:
+        if fname.endswith(".pdf"):
+            ext = "pdf"
+        elif fname.endswith((".jpg", ".jpeg")):
+            ext = "jpg"
+        elif fname.endswith(".png"):
+            ext = "png"
+    if not ext:
+        raise HTTPException(status_code=400, detail="Only JPG, PNG, or PDF files are accepted.")
+    data = await file.read()
+    if len(data) == 0:
+        raise HTTPException(status_code=400, detail="The selected file is empty.")
+    if len(data) > MAX_PHARMACY_UPLOAD_BYTES:
+        raise HTTPException(status_code=400, detail="File too large. Maximum size is 15 MB.")
+    content_type = "application/pdf" if ext == "pdf" else ("image/png" if ext == "png" else "image/jpeg")
+    path = f"{storage.APP_NAME}/pharmacy/{subdir}/{uuid.uuid4()}.{ext}"
+    storage.put_object(path, data, content_type)
+    return {"storage_path": path, "original_filename": file.filename,
+            "content_type": content_type, "size": len(data), "uploaded_at": now_iso()}
+
+
+@api.get("/pharmacy/context")
+async def pharmacy_context(user: dict = Depends(require_roles("pharmacy"))):
+    pid, name = _pharmacy_of(user)
+    return {"pharmacy_id": pid, "pharmacy_name": name, "name": user.get("name"),
+            "username": user.get("username")}
+
+
+@api.get("/pharmacy/patients/search")
+async def pharmacy_search(q: str, user: dict = Depends(require_roles("pharmacy"))):
+    _pharmacy_of(user)
+    qn = (q or "").strip()
+    if len(qn) < 2:
+        return []
+    query = {"$or": [
+        {"first_name": {"$regex": re.escape(qn), "$options": "i"}},
+        {"last_name": {"$regex": re.escape(qn), "$options": "i"}},
+        {"norm_hcn": {"$regex": directory_mod.norm_hcn(qn)}},
+        {"visita_patient_id": {"$regex": re.escape(qn), "$options": "i"}},
+    ]}
+    docs = await db.patient_directory.find(query).limit(25).to_list(25)
+    return [_pharmacy_patient_identity(d) for d in docs]
+
+
+@api.get("/pharmacy/patients/{directory_id}")
+async def pharmacy_patient(directory_id: str, user: dict = Depends(require_roles("pharmacy"))):
+    _pharmacy_of(user)
+    d = await db.patient_directory.find_one({"id": directory_id})
+    if not d:
+        raise HTTPException(status_code=404, detail="Patient not found in directory.")
+    return _pharmacy_patient_identity(d)
+
+
+@api.post("/pharmacy/rx")
+async def pharmacy_create_rx(
+    directory_id: str = Form(...),
+    medication_name: str = Form(...),
+    strength: str = Form(""),
+    duration_qty: str = Form(""),
+    pharmacy_note: str = Form(""),
+    message_to_physician: str = Form(""),
+    file: Optional[UploadFile] = File(None),
+    user: dict = Depends(require_roles("pharmacy")),
+):
+    pid, pname = _pharmacy_of(user)
+    d = await db.patient_directory.find_one({"id": directory_id})
+    if not d:
+        raise HTTPException(status_code=404, detail="Patient not found in directory.")
+    med = medication_name.strip()
+    if not med:
+        raise HTTPException(status_code=400, detail="Enter the medication name.")
+    full_med = f"{med}{(' ' + strength.strip()) if strength.strip() else ''}"
+    attachment = await _store_pharmacy_upload(file, "rx") if file is not None else None
+    ref = await next_ref("RX")
+    patient_name = f"{d.get('last_name','')}, {d.get('first_name','')}".strip(", ")
+    doc = {
+        "id": str(uuid.uuid4()), "ref_number": ref,
+        "source": "pharmacy",
+        "patient_id": d.get("linked_patient_id") or d["id"],
+        "directory_id": d["id"], "visita_patient_id": d.get("visita_patient_id"),
+        "patient_name": patient_name,
+        "medication_name": med, "strength": strength.strip() or None,
+        "medications": [full_med], "selected_active_meds": [],
+        "pharmacy": pname, "pharmacy_id": pid, "duration_qty": duration_qty.strip() or None,
+        "pharmacy_note": pharmacy_note.strip() or None, "received_via": "pharmacy_portal",
+        "message_to_physician": message_to_physician.strip() or None,
+        "requested_months": None, "delivery_method": "pharmacy",
+        "directions": None, "patient_note": None,
+        "staff_note": None, "intake_by": pname,
+        "attachment": attachment,
+        "internal_status": "waiting_physician", "assigned_to": None,
+        "internal_notes": [],
+        "history": [{"status": "waiting_physician", "at": now_iso(), "by": pname, "note": "Pharmacy portal request"}],
+        "created_at": now_iso(), "updated_at": now_iso(), "completed_at": None,
+    }
+    await db.prescription_requests.insert_one({**doc})
+    await audit("pharmacy_portal_rx", "prescription", doc["id"],
+                {"id": user["id"], "name": pname, "role": "pharmacy"}, new_status="waiting_physician",
+                meta={"pharmacy_id": pid, "directory_id": d["id"], "attachment": bool(attachment)})
+    doc.pop("_id", None)
+    return doc
+
+
+@api.get("/pharmacy/rx")
+async def pharmacy_rx_list(user: dict = Depends(require_roles("pharmacy"))):
+    pid, _ = _pharmacy_of(user)
+    docs = await db.prescription_requests.find(
+        {"source": "pharmacy", "pharmacy_id": pid}, {"_id": 0}).sort("created_at", -1).to_list(200)
+    for x in docs:
+        x["status_label"] = RX_PATIENT_STATUS.get(x.get("internal_status"), "Received")
+    return docs
+
+
+@api.get("/pharmacy/rx/{item_id}/attachment")
+async def pharmacy_rx_attachment(item_id: str, user: dict = Depends(require_roles("pharmacy"))):
+    pid, _ = _pharmacy_of(user)
+    doc = await db.prescription_requests.find_one({"id": item_id, "pharmacy_id": pid})
+    if not doc or not doc.get("attachment"):
+        raise HTTPException(status_code=404, detail="Attachment not found.")
+    return _serve_attachment(doc["attachment"])
+
+
+@api.get("/internal/prescriptions/{item_id}/attachment")
+async def internal_rx_attachment(item_id: str, user: dict = Depends(require_roles(*CLINIC_ROLES))):
+    doc = await db.prescription_requests.find_one({"id": item_id})
+    if not doc or not doc.get("attachment"):
+        raise HTTPException(status_code=404, detail="Attachment not found.")
+    return _serve_attachment(doc["attachment"])
+
+
+@api.get("/pharmacy/messages")
+async def pharmacy_messages(user: dict = Depends(require_roles("pharmacy"))):
+    pid, _ = _pharmacy_of(user)
+    return await db.patient_messages.find(
+        {"source": "pharmacy", "pharmacy_id": pid}, {"_id": 0}).sort("updated_at", -1).to_list(200)
+
+
+@api.post("/pharmacy/messages")
+async def pharmacy_create_message(
+    body: str = Form(...),
+    subject: str = Form(""),
+    patient_directory_id: str = Form(""),
+    rx_ref: str = Form(""),
+    file: Optional[UploadFile] = File(None),
+    user: dict = Depends(require_roles("pharmacy")),
+):
+    pid, pname = _pharmacy_of(user)
+    text = body.strip()
+    if not text:
+        raise HTTPException(status_code=400, detail="Enter a message.")
+    patient_id, patient_name = None, None
+    if patient_directory_id:
+        d = await db.patient_directory.find_one({"id": patient_directory_id})
+        if d:
+            patient_id = d.get("linked_patient_id") or d["id"]
+            patient_name = f"{d.get('last_name','')}, {d.get('first_name','')}".strip(", ")
+    attachment = await _store_pharmacy_upload(file, "messages") if file is not None else None
+    ref = await next_ref("MSG")
+    entry = {"from": "pharmacy", "body": text, "at": now_iso()}
+    if attachment:
+        entry["attachment"] = attachment
+    doc = {
+        "id": str(uuid.uuid4()), "ref_number": ref,
+        "source": "pharmacy", "pharmacy_id": pid, "pharmacy_name": pname,
+        "patient_id": patient_id, "patient_name": patient_name or pname,
+        "linked_rx_ref": rx_ref.strip() or None,
+        "category": "Pharmacy", "subject": subject.strip() or "Pharmacy message",
+        "body": text, "sender": "pharmacy", "status": "new", "assigned_to": None,
+        "thread": [entry], "internal_notes": [],
+        "created_at": now_iso(), "updated_at": now_iso(), "completed_at": None,
+    }
+    await db.patient_messages.insert_one({**doc})
+    await audit("pharmacy_message", "message", doc["id"],
+                {"id": user["id"], "name": pname, "role": "pharmacy"}, new_status="new",
+                meta={"pharmacy_id": pid, "patient_linked": bool(patient_id), "attachment": bool(attachment)})
+    doc.pop("_id", None)
+    return doc
+
+
+@api.post("/pharmacy/messages/{item_id}/reply")
+async def pharmacy_reply_message(
+    item_id: str,
+    body: str = Form(...),
+    file: Optional[UploadFile] = File(None),
+    user: dict = Depends(require_roles("pharmacy")),
+):
+    pid, pname = _pharmacy_of(user)
+    doc = await db.patient_messages.find_one({"id": item_id, "source": "pharmacy", "pharmacy_id": pid})
+    if not doc:
+        raise HTTPException(status_code=404, detail="Conversation not found.")
+    text = body.strip()
+    if not text:
+        raise HTTPException(status_code=400, detail="Enter a reply.")
+    entry = {"from": "pharmacy", "body": text, "at": now_iso()}
+    if file is not None:
+        entry["attachment"] = await _store_pharmacy_upload(file, "messages")
+    await db.patient_messages.update_one({"id": item_id}, {
+        "$push": {"thread": entry},
+        "$set": {"status": "new", "updated_at": now_iso()}})
+    await audit("pharmacy_message_reply", "message", item_id,
+                {"id": user["id"], "name": pname, "role": "pharmacy"})
+    return await db.patient_messages.find_one({"id": item_id}, {"_id": 0})
+
+
+@api.get("/pharmacy/messages/{item_id}/attachment/{idx}")
+async def pharmacy_msg_attachment(item_id: str, idx: int, user: dict = Depends(require_roles("pharmacy"))):
+    pid, _ = _pharmacy_of(user)
+    doc = await db.patient_messages.find_one({"id": item_id, "source": "pharmacy", "pharmacy_id": pid})
+    thread = (doc or {}).get("thread", [])
+    if not doc or idx < 0 or idx >= len(thread) or not thread[idx].get("attachment"):
+        raise HTTPException(status_code=404, detail="Attachment not found.")
+    return _serve_attachment(thread[idx]["attachment"])
+
+
+@api.get("/internal/messages/{item_id}/attachment/{idx}")
+async def internal_msg_attachment(item_id: str, idx: int, user: dict = Depends(require_roles(*CLINIC_ROLES))):
+    doc = await db.patient_messages.find_one({"id": item_id})
+    thread = (doc or {}).get("thread", [])
+    if not doc or idx < 0 or idx >= len(thread) or not thread[idx].get("attachment"):
+        raise HTTPException(status_code=404, detail="Attachment not found.")
+    return _serve_attachment(thread[idx]["attachment"])
+
+
+
 
 
 # ----------------------------- Admin / patients -----------------------------

@@ -26,3 +26,11 @@ export function formatErr(err) {
     if (detail && typeof detail.msg === "string") return detail.msg;
     return String(detail);
 }
+
+// Open an authenticated attachment (blob) in a new tab.
+export async function openAttachment(url) {
+    const { data } = await api.get(url, { responseType: "blob" });
+    const objUrl = URL.createObjectURL(data);
+    window.open(objUrl, "_blank", "noopener");
+    setTimeout(() => URL.revokeObjectURL(objUrl), 60000);
+}

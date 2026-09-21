@@ -1,0 +1,24 @@
+{
+  "summary": "Verified full removal of Twilio/SMS from VIen EMR notification stack. Created 1 fresh appointment_request as patient (maria.lopez@demo.com), then confirmed / rescheduled / cancelled it via admin PATCH /api/internal/appointments/{id}. Asserted directly against MongoDB (test_database) that: (1) in-portal 'Appointment confirmed', 'Appointment rescheduled', 'Appointment cancelled' rows are inserted in `notifications`; (2) `outbound_notifications` rows for the flow are created ONLY with channel='email' (no new channel='sms' since test start); (3) `appointment_reminders` scheduled by schedule_reminders() are ONLY reminder_type='email'; (4) cancel path flips pending reminders to delivery_status='cancelled'; (5) POST /api/cron/appointment-reminders returns 401 without/with wrong bearer and 200 with WEBHOOK_CRON_SECRET; (6) a manually-injected legacy reminder_type='sms' row that is past-due is cancelled by send_due_reminders() without being sent and without producing an outbound sms record; (7) appointment_requests count grew by exactly 1 (no bulk changes). 13/13 tests passed.",
+  "backend_issues": {"critical": [], "minor": []},
+  "frontend_issues": {"ui_bugs": [], "integration_issues": [], "design_issues": []},
+  "test_report_links": [
+    "/app/backend/tests/test_notifications_no_sms.py",
+    "/app/test_reports/pytest/iter15_notifications.xml"
+  ],
+  "action_items": [],
+  "critical_code_review_comments": [
+    "notifications.py:100 docstring still says 'Create 24h-before email + sms reminders' but the code (correctly) only inserts an email reminder. Update the docstring to avoid confusion for future maintainers.",
+    "notifications.py:169-194 send_due_reminders() runs on the request event loop path (background task). When many overdue reminders exist it will serialize N email sends inside a single request. Consider batching / asyncio.gather with concurrency cap.",
+    "server.py:1931 /api/cron/appointment-reminders uses BackgroundTasks so the endpoint returns 200 even if the eventual send fails. That is fine for cron ack but any delivery failure is only observable via db.outbound_notifications.status='failed'. Add a lightweight metrics/log line on failure count so ops can alert.",
+    "backend/.env still contains no TWILIO_* keys — confirmed removed. Recommend also grepping the code for remaining 'twilio' references (none found in server.py/notifications.py) and adding a lint rule to prevent reintroduction."
+  ],
+  "updated_files": ["/app/backend/tests/test_notifications_no_sms.py"],
+  "success_rate": {"backend": "100% (13/13)", "frontend": "N/A (skipped per request)"},
+  "test_credentials": "Admin kevinrodriguez9528@gmail.com / VisitaAdmin2026!, Patient maria.lopez@demo.com / Patient2026! (username 'demo' in review request is NOT valid; corrected via /app/memory/test_credentials.md).",
+  "seed_data_creation": "One TEST appointment_request created for maria.lopez@demo.com (patient_note='TEST_iter15 automated notification test'), taken through confirm -> reschedule -> cancel and finally left in status='cancelled'. One legacy SMS reminder row was inserted into appointment_reminders solely to prove send_due_reminders cancels it; it was left in delivery_status='cancelled'. Historical channel='sms' outbound rows were NOT touched.",
+  "retest_needed": false,
+  "main_agent_can_self_test": true,
+  "context_for_next_testing_agent": "Backend availability slots endpoint returns ONLY currently-available slots (busy ones are filtered server-side); do not filter by a nonexistent 'available' key. Cron secret is in backend/.env under WEBHOOK_CRON_SECRET and endpoint accepts 'Authorization: Bearer <secret>'. Direct Mongo access works via MONGO_URL=mongodb://localhost:27017 DB=test_database. When creating appointment_requests the API rejects times outside Dr. Aguayo's Mon-Thu 11:30-16:30 window; use /api/availability/slots to pick valid dates.",
+  "rca of the issue": "N/A — no bug found. The Twilio removal is complete on the notification path: notifications.py has no _send_sms function, schedule_reminders only inserts reminder_type='email', send_due_reminders explicitly cancels non-email reminders without sending, and /api/cron/appointment-reminders only invokes send_due_reminders. Verified via 13 assertions across confirm/reschedule/cancel/cron/no-bulk-change scenarios."
+}

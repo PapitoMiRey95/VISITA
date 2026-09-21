@@ -97,7 +97,7 @@ async def _send_email(db, patient_id, to, subject, html):
 
 
 async def schedule_reminders(db, appt):
-    """Create 24h-before email + sms reminders for a confirmed appointment.
+    """Create a 24h-before EMAIL reminder for a confirmed appointment.
     Idempotent: clears existing pending reminders for this appointment first."""
     await db.appointment_reminders.delete_many({"appointment_id": appt["id"], "delivery_status": "pending"})
     if appt.get("status") not in ("confirmed", "rescheduled"):

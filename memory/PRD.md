@@ -101,6 +101,15 @@ See /app/memory/test_credentials.md.
 - **$40 late fee (staff/admin only)**: appt_update actions `record_fee` / `mark_fee_paid` / `waive_fee` (`late_fee.status` outstanding→paid/waived, amount=40). AppointmentQueue detail shows `late-fee-controls`. Outstanding fee blocks patient self-book (`create_appointment`) and self-reschedule → 403 OUTSTANDING_FEE_MSG. 24h restriction applies to patients only; staff can always cancel/reschedule.
 - **crons.yml** unchanged (SMS now actually sends on the 24h reminder job since Twilio is live).
 
+## Twilio/SMS FULLY REMOVED (2026-06, iteration_15) — verified backend testing agent 13/13
+- **Per explicit user instruction**, Twilio/SMS was completely removed. VIen EMR now uses **EMAIL (Resend) + IN-PORTAL notifications only** for all appointment lifecycle events (confirm, physician direct-book, 24h reminder, reschedule, cancel). NO SMS.
+- Removed from `notifications.py`: `_send_sms`, `SMS_SENDER`, `TWILIO_ENABLED`, and all `_send_sms(...)` calls. `schedule_reminders` now inserts **only** `reminder_type='email'`. `send_due_reminders` cancels any legacy `reminder_type='sms'` row **without sending** and without contacting Twilio.
+- `backend/.env`: `TWILIO_ACCOUNT_SID` / `TWILIO_AUTH_TOKEN` / `TWILIO_PHONE_NUMBER` removed. `twilio` package uninstalled and dropped from requirements.txt.
+- `.emergent/crons.yml` description updated (email reminders only); endpoint unchanged.
+- **Historical `outbound_notifications` channel='sms' rows preserved as read-only** — never deleted. No new sms rows are created.
+- Sections 95-102 above (Twilio LIVE) are now HISTORICAL/superseded.
+
+
 
 ## Patient-portal calendar booking (2026-06, iteration_13) — self-verified end-to-end (screenshot)
 - Replaced the 3× "Preferred Option" dropdowns in Patient Portal → Request an Appointment with a visual monthly calendar flow: **Select Date → Select Available Time → Reason → Optional Note → Review → Submit**.

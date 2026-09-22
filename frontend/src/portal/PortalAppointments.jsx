@@ -63,7 +63,7 @@ export default function PortalAppointments() {
 
     const [selDate, setSelDate] = useState(null);     // Date object
     const [selSlot, setSelSlot] = useState(null);     // slot object
-    const [apptType, setApptType] = useState("");     // IN_CLINIC | TELEPHONE
+    const [apptType, setApptType] = useState("IN_CLINIC");     // IN_CLINIC | TELEPHONE (default In-Clinic)
     const [reason, setReason] = useState("");
     const [note, setNote] = useState("");
     const [busy, setBusy] = useState(false);
@@ -103,7 +103,7 @@ export default function PortalAppointments() {
                 options: [{ date: selSlot.date, time: selSlot.time, label: selSlot.label, display: selSlot.display }],
             });
             toast.success("Appointment request submitted. The clinic will confirm your time.");
-            setSelDate(null); setSelSlot(null); setApptType(""); setReason(""); setNote("");
+            setSelDate(null); setSelSlot(null); setApptType("IN_CLINIC"); setReason(""); setNote("");
             refetch();
         } catch (err) { toast.error(formatErr(err)); } finally { setBusy(false); }
     };

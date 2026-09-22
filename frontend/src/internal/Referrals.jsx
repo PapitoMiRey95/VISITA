@@ -10,6 +10,22 @@ import { Input } from "../components/ui/input";
 import { Label } from "../components/ui/label";
 import { formatDateTime } from "../lib/date";
 
+const SPECIALTIES = [
+    "Allergy & Immunology", "Anesthesiology", "Cardiology", "Cardiac Surgery",
+    "Colorectal Surgery", "Dermatology", "Endocrinology", "Ear, Nose & Throat (ENT / Otolaryngology)",
+    "Gastroenterology", "General Surgery", "Geriatric Medicine", "Gynecology",
+    "Hematology", "Hepatology", "Infectious Diseases", "Internal Medicine",
+    "Nephrology", "Neurology", "Neurosurgery", "Obstetrics & Gynecology (OB/GYN)",
+    "Oncology (Medical)", "Oncology (Radiation)", "Ophthalmology", "Orthopedic Surgery",
+    "Pain Management", "Palliative Care", "Pediatrics", "Physiatry (Physical Medicine & Rehab)",
+    "Plastic Surgery", "Podiatry", "Psychiatry", "Pulmonology / Respirology",
+    "Rheumatology", "Sleep Medicine", "Sports Medicine", "Thoracic Surgery",
+    "Urology", "Vascular Surgery", "Audiology", "Dietitian / Nutrition",
+    "Occupational Therapy", "Optometry", "Physiotherapy", "Speech-Language Pathology",
+    "Chiropractic", "Genetics", "Nuclear Medicine", "Radiology / Diagnostic Imaging",
+    "Chronic Pain Clinic", "Mental Health / Counselling",
+];
+
 export default function Referrals() {
     const { user } = useAuth();
     const canUpload = user?.role === "physician" || user?.role === "admin";
@@ -51,6 +67,19 @@ export default function Referrals() {
         setMeta((m) => ({ ...m, patient_name: r.full_name }));
         setShowPat(false);
     };
+
+    // Specialty searchable combobox
+    const [showSpec, setShowSpec] = useState(false);
+    const specRef = useRef(null);
+    useEffect(() => {
+        function onDocClick(e) {
+            if (specRef.current && !specRef.current.contains(e.target)) setShowSpec(false);
+        }
+        document.addEventListener("mousedown", onDocClick);
+        return () => document.removeEventListener("mousedown", onDocClick);
+    }, []);
+    const specMatches = SPECIALTIES.filter((s) =>
+        s.toLowerCase().includes((meta.specialty || "").trim().toLowerCase()));
 
     const active = useQuery({ queryKey: ["queue", "/internal/referrals"], queryFn: async () => (await api.get("/internal/referrals")).data });
     const history = useQuery({ queryKey: ["queue", "/internal/referrals/history", q], queryFn: async () => (await api.get("/internal/referrals/history", { params: { q: q || undefined } })).data, enabled: tab === "history" });
@@ -131,7 +160,28 @@ export default function Referrals() {
                                 </div>
                             )}
                         </div>
-                        <div><Label className="text-xs">Specialty</Label><Input value={meta.specialty} onChange={(e) => setMeta({ ...meta, specialty: e.target.value })} data-testid="ref-specialty" /></div>
+                        <div ref={specRef} className="relative">
+                            <Label className="text-xs">Specialty</Label>
+                            <div className="relative">
+                                <Search className="w-3.5 h-3.5 text-slate-400 absolute left-2 top-2.5" />
+                                <Input value={meta.specialty}
+                                    onChange={(e) => { setMeta({ ...meta, specialty: e.target.value }); setShowSpec(true); }}
+                                    onFocus={() => setShowSpec(true)}
+                                    placeholder="Type or select a specialty…" className="pl-7" autoComplete="off" data-testid="ref-specialty" />
+                            </div>
+                            {showSpec && specMatches.length > 0 && (
+                                <div data-testid="ref-specialty-results"
+                                    className="absolute z-30 mt-1 w-full min-w-[16rem] bg-white border border-slate-300 rounded-sm shadow-lg divide-y max-h-[calc(100vh-14rem)] overflow-y-auto">
+                                    {specMatches.map((s) => (
+                                        <button key={s} type="button" data-testid="ref-specialty-option"
+                                            onClick={() => { setMeta((m) => ({ ...m, specialty: s })); setShowSpec(false); }}
+                                            className="w-full text-left px-3 py-2 text-sm text-slate-700 hover:bg-slate-50">
+                                            {s}
+                                        </button>
+                                    ))}
+                                </div>
+                            )}
+                        </div>
                         <div><Label className="text-xs">Specialist / Clinic</Label><Input value={meta.specialist_name} onChange={(e) => setMeta({ ...meta, specialist_name: e.target.value })} data-testid="ref-specialist" /></div>
                         <div><Label className="text-xs">Destination fax</Label><Input value={meta.fax_number} onChange={(e) => setMeta({ ...meta, fax_number: e.target.value })} data-testid="ref-fax" /></div>
                         <div className="md:col-span-2">

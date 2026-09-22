@@ -84,7 +84,7 @@ export default function Patients() {
 
                 {showResults && searched && (
                     <div data-testid="patient-lookup-results"
-                        className="absolute z-20 mt-1 w-full bg-white border border-slate-300 rounded-sm shadow-lg divide-y max-h-80 overflow-y-auto">
+                        className="absolute z-20 mt-1 w-full bg-white border border-slate-300 rounded-sm shadow-lg divide-y max-h-[calc(100vh-13rem)] overflow-y-auto">
                         {results.length === 0 ? (
                             <div className="px-3 py-4 text-slate-400 text-sm">No matching patients found.</div>
                         ) : (

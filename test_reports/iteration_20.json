@@ -1,0 +1,42 @@
+{
+  "summary": "Full independent pass on the NEW Appointment Type (IN_CLINIC / TELEPHONE) feature. Backend pytest 9/9 PASS: create TELEPHONE, create IN_CLINIC, invalid type coerced to None (no injection), /internal/appointments exposes appointment_type on every row, approve preserves type (TELEPHONE remained TELEPHONE after staff approve), in-portal note body contains 'Telephone Appointment', exactly ONE outbound_notifications row (subject 'Appointment Confirmed — Dr. Aguayo') and exactly ONE notifications row (title 'Appointment confirmed') per approve, /internal/calendar day-appointments include appointment_type on confirmed cards, availability doc (GET /api/admin/availability) is byte-identical before vs after test run (mon-thu 11:30 start, 15:00-15:30 break unchanged), existing/imported appts not backfilled. Frontend UI (Playwright, patient=maria.lopez, staff=Kevin): /portal/appointments Step 3 renders <appt-type-select> with IN_CLINIC + TELEPHONE cards; selecting a card visibly highlights it (portal-blue ring); Review row appt-review-type reflects 'In-Clinic Appointment' / 'Telephone Appointment'; appt-not-confirmed-note is present; appt-submit is disabled when no type OR no reason is chosen (verified both empty + type-only). /internal/appointments queue table shows the new 'Type' column with appt-type-badge-none for imported appts (visible without opening the row); row detail dialog renders appt-detail-type. /internal/calendar shows imported appointments (which are all appointment_type=None) without any badge — this is a MINOR deviation from spec (see design_issues). Test-created appointments and their notifications/reminders were cleaned up by the pytest teardown fixture; DB confirmed clean.",
+  "backend_issues": {
+    "critical": [],
+    "minor": []
+  },
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [],
+    "design_issues": [
+      {
+        "screen": "/internal/calendar",
+        "issues": [
+          "Calendar.jsx L101 renders <ApptTypeBadge/> only when `a.appointment_type` is truthy: `{a.appointment_type && <ApptTypeBadge type={a.appointment_type} />}`. Spec explicitly states existing appointments without a type should display 'NOT SPECIFIED' badge on BOTH the list and the calendar. Currently the queue list (AppointmentQueue.jsx) shows the NOT-SPECIFIED badge for null/missing types (verified: appt-type-badge-none visible), but the calendar hides it entirely. Suggested fix: remove the guard and always render <ApptTypeBadge type={a.appointment_type} /> — the badge component already handles the null case as 'NOT SPECIFIED' (data-testid appt-type-badge-none)."
+        ]
+      }
+    ]
+  },
+  "test_report_links": [
+    "/app/backend/tests/test_appointment_type.py",
+    "/app/test_reports/pytest/appointment_type.xml"
+  ],
+  "action_items": [
+    "MINOR (optional per spec): Remove the `a.appointment_type &&` guard in /app/frontend/src/internal/Calendar.jsx (line 101) so calendar cards render 'NOT SPECIFIED' badge for existing appointments without a type, matching queue-list behavior and the spec's 'both list and calendar' requirement."
+  ],
+  "critical_code_review_comments": [
+    "server.py L622: `appt_type = body.appointment_type if body.appointment_type in ('IN_CLINIC','TELEPHONE') else None` correctly whitelists the enum on inbound request. Approve/reschedule handlers (L1418-1447) never overwrite appointment_type — preservation is by omission, verified end-to-end.",
+    "notifications.appointment_confirmed (L131-142) is a single call site and _send_email always inserts exactly 1 outbound_notifications row (status sent|failed|prepared). No retry/dedupe loop — exactly-one guarantee upheld under normal approve.",
+    "_type_label (notifications.py L62-68) and apptTypeConfirmationLabel (ApptTypeBadge.jsx L18) both fall back to 'Not specified'/'NOT SPECIFIED' safely for null — no crashes on legacy data.",
+    "Naming clash worth noting (not a bug for this feature): CalendarBookBody.appointment_type (server.py L870) is used for the reason string ('Office visit') on staff-side calendar booking, colliding conceptually with the patient portal's IN_CLINIC/TELEPHONE enum. Because 'Office visit' is not in the whitelist, staff-booked appointments render as NOT SPECIFIED on the queue — safe but confusing. Consider renaming CalendarBookBody's field or normalizing on write.",
+    "Calendar.jsx L101 badge is gated on appointment_type presence — see design_issues above."
+  ],
+  "updated_files": [
+    "/app/backend/tests/test_appointment_type.py (new — 9 tests)"
+  ],
+  "success_rate": {"backend": "100% (9/9 pytest)", "frontend": "100% patient flow + queue list + detail dialog; 1 minor calendar badge omission for legacy appts"},
+  "test_credentials": "Patient maria.lopez@demo.com/Patient2026!, Staff staff@visita.demo/Staff2026!, Admin kevinrodriguez9528@gmail.com/VisitaAdmin2026! — all working. Patient signin at /signin; Internal signin at /login -> 'Internal Login' link.",
+  "seed_data_creation": "None persisted. Four TEST_ appointments were created during pytest (2× TELEPHONE, 1× IN_CLINIC, 1× invalid-type→None) plus 1 was approved; the module-scoped autouse teardown fixture deleted every CREATED_ID from appointment_requests, plus its matching entries in appointment_reminders, notifications (title='Appointment confirmed'), and outbound_notifications (subject='Appointment Confirmed — Dr. Aguayo'). DB post-check confirmed 0 rows remain for maria's confirmation notif/outbound. Note: an unrelated older leftover 'APT-000038' (reason='TEST_approve_flow', status='cancelled') from a previous iteration exists but is NOT from this run.",
+  "retest_needed": false,
+  "should_main_agent_self_test": true,
+  "context_for_next_testing_agent": "test_appointment_type.py is idempotent — pytest teardown deletes all CREATED_IDs and their notification rows every run. Safe to re-run repeatedly on Preview. Availability snapshot compares full doc equality — if you change any admin setting, it will fail. If main agent removes the Calendar.jsx guard for legacy 'NOT SPECIFIED' badge, retest by opening /internal/calendar and asserting `[data-testid=appt-type-badge-none]` appears on each imported (appointment_type=null) confirmed card."
+}

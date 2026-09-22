@@ -98,7 +98,7 @@ export default function Calendar() {
                                             <StatusPill status={a.status} />
                                         </div>
                                         {a.reason && <div className="text-slate-500 truncate">{a.reason}</div>}
-                                        {a.appointment_type && <div className="mt-1"><ApptTypeBadge type={a.appointment_type} /></div>}
+                                        <div className="mt-1"><ApptTypeBadge type={a.appointment_type} /></div>
                                         {(a.status === "confirmed" || a.status === "rescheduled") && (
                                             <div className="flex gap-1 mt-1">
                                                 <button className="text-[11px] text-slate-500 hover:text-visita-greenDark" onClick={() => setResched(a)} data-testid="cal-reschedule">Reschedule</button>

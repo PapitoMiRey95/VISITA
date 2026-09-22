@@ -402,7 +402,7 @@ async def register(body: RegisterBody):
         "health_card_version": hc_ver,
         "health_card_issue_date": body.health_card_issue_date or None,
         "health_card_expiry_date": body.health_card_expiry_date or None,
-        "phone": body.phone, "email": email,
+        "phone": identity_mod.normalize_phone(body.phone), "email": email,
         "province": body.province, "country": body.country, "extra_info": body.extra_info,
         "patient_type": body.patient_type, "verification_status": "pending",
         "portal_status": "PENDING_VERIFICATION",
@@ -2594,6 +2594,8 @@ async def internal_edit_patient(patient_id: str, body: InternalPatientEditBody,
     if body.visita_patient_id is not None:
         vid = body.visita_patient_id.strip()
         if vid and vid != p.get("visita_patient_id"):
+            if not re.fullmatch(r"\d{4}", vid):
+                raise HTTPException(status_code=400, detail="VISITA PIN must be a 4-digit number.")
             clash = await db.patients.find_one({"visita_patient_id": vid, "id": {"$ne": patient_id}})
             clash_dir = await db.patient_directory.find_one({"visita_patient_id": vid, "linked_patient_id": {"$ne": patient_id}})
             if clash or clash_dir:

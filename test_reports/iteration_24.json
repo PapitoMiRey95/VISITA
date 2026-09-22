@@ -1,0 +1,41 @@
+{
+  "summary": "Full independent pass on the Health Card + Auto VISITA PIN + Edit Patient rework. Backend: 18/18 pytest pass in /app/backend/tests/test_health_card_pin.py (OHIP register normalization + 400s, auto 4-digit PIN on verification, no re-assign on re-verify, PIN searchable via /internal/patient-lookup and bookable via /internal/calendar/book with patient_id, portal phone self-update (normalized + 400 on <10 digits), portal HC pending workflow (active card preserved, invalid HC -> 400), staff approve applies + clears pending, staff reject clears pending + keeps existing card, staff PATCH normalizes HC + normalizes phone (Cell Phone), invalid HC on PATCH -> 400, PIN collision -> 409, physician -> 403, EXPIRING_SOON + EXPIRED statuses via America/Toronto, Maria (existing verified portal patient) regression still searchable). Frontend: OHIP register form (/register) with reg-hcn/reg-hcv/reg-hc-issue/reg-hc-expiry validates + posts; portal /portal/account shows Health Card '1234 567 890 XD' with Valid badge, VISITA PIN block, Cell Phone edit (normalized to '(647) 555-1234' after save), Update Health Card modal (acct-hc-number/acct-hc-version/submit) creates acct-hc-pending panel while active card remains. Internal /internal/patients: search finds newly-verified portal patient (PIN 5006 auto-assigned by verify), shows green 'VERIFIED — PORTAL PATIENT' badge, VALID HC badge, HEALTH CARD UPDATE PENDING panel with hc-approve/hc-reject; clicking Approve fires success toast 'Health Card update approved.' and applies proposed card (also verified via backend test); Edit Patient form (edit-phone/edit-hcn/edit-hcv/edit-hc-issue/edit-hc-expiry/edit-pin/edit-save) normalizes phone to '(905) 123-4567' on save; physician (PAGUAYO) receives 403 from PATCH /api/internal/patients/{id}. Cleanup: 1 test patient, 1 user, 3 notifications, 1 audit_log entry, 1 visita_pins claim (_id=5006) deleted; residuals 0. Maria untouched (verified, unchanged HC).",
+  "backend_issues": {
+    "critical": [],
+    "minor": [
+      {"endpoint": "/api/auth/register", "issue": "For OHIP register the health_card is normalized but the phone field is stored as raw digits (e.g. '4165550100') instead of being normalized via identity_mod.normalize_phone. The portal Account UI then displays the raw string until the patient hits Edit + Save. Suggest calling normalize_phone on body.phone at registration for parity with /portal/profile/phone and internal PATCH."}
+    ]
+  },
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [],
+    "design_issues": [
+      {"screen": "internal Patients — HC pending panel", "issues": ["After clicking Approve the current-snapshot card doesn't auto-refresh; user must re-search to see updated HC. A silent refetch of the selected snapshot after hc-approve/hc-reject would remove the double-search step."]},
+      {"screen": "internal Patients — search dropdown", "issues": ["Numeric query '5006' surfaces 4 matches (PIN 5006 correctly first, plus 3 FORMER_CLOSED patients whose date-of-birth substrings contain '5006' or similar). Fine but consider tightening to exact PIN match for 4-digit numeric queries."]}
+    ]
+  },
+  "test_report_links": [
+    "/app/backend/tests/test_health_card_pin.py",
+    "/app/test_reports/pytest/health_card_pin.xml"
+  ],
+  "action_items": [
+    "(Minor) Normalize `phone` in POST /api/auth/register the same way /portal/profile/phone does, so newly-registered OHIP patients see '(416) 555-0100' in the portal immediately instead of the raw '4165550100'.",
+    "(UX polish) After Approve/Reject in internal Patients HC pending panel, refetch the selected patient snapshot so the display updates without a manual re-search."
+  ],
+  "critical_code_review_comments": [
+    "server.py now 2692 lines — the earlier recommendation to split into routers (auth/register, portal, internal patients, calendar) still stands; the Health Card + PIN rework adds three more endpoints (portal phone, portal HC, internal PATCH, HC approve/reject) inside the same monolith.",
+    "identity_mod.assign_visita_pin returns None only when 1000-9999 is exhausted — good; caller returns 507. Consider persisting a small metrics counter for near-exhaustion (e.g. warn at >90% used) so ops can plan for id-space expansion.",
+    "InternalPatientEditBody accepts visita_patient_id but does not validate it's a 4-digit numeric string. A staff typo like 'ABCD' would be accepted (no clash) and stored — recommend enforcing `^\\d{4}$` (or reusing the same rules as auto-assignment) before persisting.",
+    "PortalAccount.jsx: no local validation of the pending Health Card issue/expiry dates before POST (backend correctly 400s, but a client-side check would be nicer). The current-verified card block also shows 'Health Card information incomplete.' when only expiry is missing, which is correct but does NOT block portal access (spec-compliant)."
+  ],
+  "updated_files": [
+    "/app/backend/tests/test_health_card_pin.py (new — 18 tests)"
+  ],
+  "success_rate": {"backend": "100% (18/18)", "frontend": "100% of tested flows (register OHIP + normalize display, phone self-update, HC pending, staff approve + edit patient, physician 403)"},
+  "test_credentials": "Admin kevinrodriguez9528@gmail.com/VisitaAdmin2026!; Staff staff@visita.demo/Staff2026!; Physician PAGUAYO/Newman2013_!; Maria maria.lopez@demo.com/Patient2026!",
+  "seed_data_creation": "Tests register throwaway hctest+<rand>@example.com accounts and delete them + their users + audit_log + notifications + outbound_notifications + visita_pins claim + any appointments they create at teardown. Post-run DB scan: 0 residual hctest patients, 0 hctest users, 0 residual visita_pins claims for the test PIN(s). Maria (existing) verified + unchanged.",
+  "retest_needed": false,
+  "should_main_agent_self_test": true,
+  "context_for_next_testing_agent": "Test file /app/backend/tests/test_health_card_pin.py is now the regression for this rework. Run with: `python -m pytest backend/tests/test_health_card_pin.py -v -o addopts=''` (pytest.ini forces xdist load-scope; the -o override disables it). Note that /api/internal/patient-lookup filters to verification_status='verified' — to fetch a just-registered pending patient's id, hit MongoDB via users.patient_id (helper _pid_by_email in the test file). Register endpoint currently stores phone as raw digits (see minor issue).",
+  "rca of the issue": "No blocking bug found. The single minor gap is that POST /api/auth/register does not call normalize_phone on body.phone, so an OHIP patient who typed '4165550100' will see the raw string in /portal/account until they Edit + Save (which routes through /portal/profile/phone -> normalize_phone -> '(416) 555-0100'). Two-line fix in server.py register() before insert: `phone = identity_mod.normalize_phone(body.phone)` and then `\"phone\": phone,` in the patient doc."
+}

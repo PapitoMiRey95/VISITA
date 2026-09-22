@@ -4,7 +4,6 @@ import { api, formatErr } from "../lib/api";
 import { usePortal, StatusPill, Card, PendingBanner } from "./shared";
 import { EmergencyNotice } from "../components/EmergencyNotice";
 import { Button } from "../components/ui/button";
-import { Input } from "../components/ui/input";
 import { Textarea } from "../components/ui/textarea";
 import { Label } from "../components/ui/label";
 
@@ -42,9 +41,15 @@ export default function PortalBloodwork() {
                 <Card>
                     <form onSubmit={submit} className="space-y-4" data-testid="bloodwork-form">
                         <div>
-                            <Label className="font-semibold text-slate-700">Reason for requesting bloodwork</Label>
-                            <Input className="mt-1" required value={f.reason} onChange={(e) => set("reason", e.target.value)} data-testid="bld-reason"
-                                placeholder="e.g. Annual check-up, follow-up on symptoms" />
+                            <Label className="font-semibold text-slate-700">Reason for bloodwork request</Label>
+                            <select className="mt-1 w-full h-11 border border-slate-300 rounded-md px-3 text-sm bg-white"
+                                required value={f.reason} onChange={(e) => set("reason", e.target.value)} data-testid="bld-reason">
+                                <option value="" disabled>Select a reason…</option>
+                                <option value="Routine / Annual bloodwork">Routine / Annual bloodwork</option>
+                                <option value="Follow-up / Repeat bloodwork">Follow-up / Repeat bloodwork</option>
+                                <option value="New symptoms or health concern">New symptoms or health concern</option>
+                                <option value="Other">Other</option>
+                            </select>
                         </div>
                         <div>
                             <Label className="font-semibold text-slate-700">Additional note (optional)</Label>

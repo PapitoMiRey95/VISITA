@@ -162,6 +162,12 @@ def appointment_confirmed_html(name: str, when: str, portal_url: str = "", type_
                        name, when, portal_url, type_label)
 
 
+def appointment_type_changed_html(name: str, when: str, portal_url: str = "", type_label: str = "") -> str:
+    return _appt_email("Appointment Updated",
+                       "The type of your appointment with Dr. Aguayo has been updated. Your date and time are unchanged:",
+                       name, when, portal_url, type_label)
+
+
 def appointment_reminder_html(name: str, when: str, portal_url: str = "") -> str:
     return _appt_email("Appointment Reminder", "This is a friendly reminder of your upcoming appointment with Dr. Aguayo:",
                        name, when, portal_url)

@@ -1500,6 +1500,35 @@ async def appt_update(item_id: str, body: UpdateBody, user: dict = Depends(requi
     return fresh
 
 
+class ApptTypeBody(BaseModel):
+    appointment_type: str  # IN_CLINIC | TELEPHONE
+
+
+@api.patch("/internal/appointments/{item_id}/type")
+async def appt_set_type(item_id: str, body: ApptTypeBody, user: dict = Depends(require_roles(*CLINIC_ROLES))):
+    if body.appointment_type not in ("IN_CLINIC", "TELEPHONE"):
+        raise HTTPException(status_code=400, detail="Invalid appointment type.")
+    doc = await db.appointment_requests.find_one({"id": item_id})
+    if not doc:
+        raise HTTPException(status_code=404, detail="Not found")
+    old_type = doc.get("appointment_type")
+    if old_type == body.appointment_type:
+        return await db.appointment_requests.find_one({"id": item_id}, {"_id": 0})
+    await db.appointment_requests.update_one({"id": item_id}, {
+        "$set": {"appointment_type": body.appointment_type, "updated_at": now_iso()},
+        "$push": {"history": {"status": doc.get("status"), "at": now_iso(), "by": user["name"],
+                              "note": f"appointment_type -> {body.appointment_type}"}},
+    })
+    await audit("set_type", "appointment", item_id, user,
+                old_status=old_type or "not_specified", new_status=body.appointment_type)
+    fresh = await db.appointment_requests.find_one({"id": item_id}, {"_id": 0})
+    # Notify patient only when a CONFIRMED appointment switches between two real types (In-Clinic <-> Telephone).
+    if doc.get("status") in ("confirmed", "rescheduled") and old_type in ("IN_CLINIC", "TELEPHONE"):
+        await notify_svc.appointment_type_changed(db, fresh)
+    return fresh
+
+
+
 # ----------------------------- Import existing appointments (one-time, production) -----------------------------
 async def _match_directory_by_name(full_name: str):
     """Best-effort directory match by name. Returns (doc_or_None, ambiguous_bool).

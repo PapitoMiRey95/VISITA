@@ -142,6 +142,19 @@ async def appointment_confirmed(db, appt):
     await schedule_reminders(db, appt)
 
 
+async def appointment_type_changed(db, appt):
+    p = await _patient(db, appt.get("patient_id"))
+    first = (p or {}).get("first_name") or (appt.get("patient_name") or "").split(",")[-1].strip() or "there"
+    disp = appt.get("confirmed_display") or _fmt_when(appt)
+    tlabel = _type_label(appt)
+    await _in_portal(db, appt["patient_id"], "Appointment type updated",
+                     f"Your appointment with Dr. Aguayo on {disp} is now a {tlabel}. "
+                     "See your Patient Portal for details.")
+    email = (p or {}).get("email")
+    html = email_service.appointment_type_changed_html(first, disp, PORTAL_URL, tlabel)
+    await _send_email(db, appt["patient_id"], email, "Appointment Update — Dr. Aguayo", html)
+
+
 async def appointment_rescheduled(db, appt):
     p = await _patient(db, appt.get("patient_id"))
     first = (p or {}).get("first_name") or (appt.get("patient_name") or "").split(",")[-1].strip() or "there"

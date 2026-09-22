@@ -13,6 +13,7 @@ import { Textarea } from "../components/ui/textarea";
 import { Label } from "../components/ui/label";
 import BookAppointmentModal from "./BookAppointmentModal";
 import { ApptTypeBadge } from "../components/ApptTypeBadge";
+import { ApptTypeEditor } from "../components/ApptTypeEditor";
 import { formatDate } from "../lib/date";
 
 export default function AppointmentQueue() {
@@ -179,7 +180,10 @@ export default function AppointmentQueue() {
                                 </div>
                             )}
                             <div className="space-y-2 text-sm">
-                                <div className="flex items-center gap-2" data-testid="appt-detail-type"><ApptTypeBadge type={sel.appointment_type} size="lg" /></div>
+                                <div className="flex items-center gap-2" data-testid="appt-detail-type">
+                                    <ApptTypeEditor appt={sel} size="lg"
+                                        onSaved={(updated) => { setSel(updated); invalidate(); list.refetch(); }} />
+                                </div>
                                 <KV label="Reason">{sel.reason}</KV>
                                 {sel.status === "confirmed" && (
                                     <div className="bg-emerald-50 border border-emerald-200 rounded-sm p-2" data-testid="appt-confirmed-block">

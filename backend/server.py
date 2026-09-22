@@ -1847,6 +1847,7 @@ async def verify_patient(patient_id: str, body: VerifyBody, user: dict = Depends
     p = await db.patients.find_one({"id": patient_id})
     if not p:
         raise HTTPException(status_code=404, detail="Not found")
+    was_verified = p.get("verification_status") == "verified"
     updates = {"verification_status": body.decision, "updated_at": now_iso(),
                "verified_by": user["name"], "verified_at": now_iso()}
     if body.decision == "verified":
@@ -1865,8 +1866,12 @@ async def verify_patient(patient_id: str, body: VerifyBody, user: dict = Depends
             await audit("patient_linked", "patient", patient_id, user, meta={"directory_id": link_dir_id})
     await db.patients.update_one({"id": patient_id}, {"$set": updates})
     await audit("verify_patient", "patient", patient_id, user, new_status=body.decision)
-    await notify_patient(patient_id, "Account update",
-                         "Your portal account has been reviewed. Please log in to your Patient Portal.")
+    if body.decision == "verified" and not was_verified:
+        fresh = await db.patients.find_one({"id": patient_id}, {"_id": 0})
+        await notify_svc.account_verified(db, fresh)
+    else:
+        await notify_patient(patient_id, "Account update",
+                             "Your portal account has been reviewed. Please log in to your Patient Portal.")
     return {"ok": True}
 
 

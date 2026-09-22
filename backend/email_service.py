@@ -169,3 +169,25 @@ def appointment_reschedule_html(name: str, when: str, portal_url: str = "") -> s
 def appointment_cancelled_html(name: str, when: str, portal_url: str = "") -> str:
     return _appt_email("Appointment Cancelled", "Your appointment with Dr. Aguayo scheduled for the time below has been cancelled:",
                        name, when, portal_url)
+
+
+def account_verified_html(name: str, portal_url: str = "") -> str:
+    safe_name = _clean(name) or "there"
+    link = ""
+    if portal_url and portal_url.startswith("https://"):
+        link = (f'<p style="margin:18px 0"><a href="{portal_url}/portal" '
+                f'style="background:#0e7490;color:#fff;padding:10px 18px;border-radius:6px;'
+                f'text-decoration:none">Open Patient Portal</a></p>')
+    return (
+        '<table role="presentation" width="100%"><tr><td style="padding:24px;font-family:Arial,sans-serif;color:#0f172a">'
+        '<h2 style="margin:0 0 12px">Your account has been verified</h2>'
+        f'<p>Hello {safe_name},</p>'
+        '<p>Your registration with Dr. Aguayo\'s office has been verified and your VIen EMR patient portal '
+        'account is now active.</p>'
+        '<p>You can now sign in to access the patient portal and submit requests.</p>'
+        f'{link}'
+        '<p style="margin-top:16px"><strong>Dr. Aguayo\'s Office</strong><br>VIen EMR</p>'
+        '<p style="font-size:12px;color:#888;margin-top:20px">This message contains no medical information. '
+        'We will never ask you for your password by email.</p>'
+        '</td></tr></table>'
+    )

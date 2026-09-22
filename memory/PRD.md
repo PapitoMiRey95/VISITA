@@ -200,3 +200,9 @@ See /app/memory/test_credentials.md.
 - **Internal Patients** (Patients.jsx): search-results dropdown max-height now calc(100vh-13rem) (taller, more matches visible) — cosmetic.
 - Frontend-only; no backend/schema changes, no hard deletes. Code-only Production deploy triggered together (user-approved); no production data modified.
 
+## Patient email confirmations via Resend (2026-06) — Preview-verified (curl + DB), NOT deployed
+- **Account verified email** (NEW): when Staff/Admin sets a patient's verification to "verified" AND it was not already verified, sends Resend email — subject "Your VIen EMR account has been verified" + in-portal "Account verified" note. Dedup: guarded by `was_verified` check so re-approving / unrelated edits do NOT resend (verified: 2nd approve created 0 extra emails). No clinical data in email. New: email_service.account_verified_html(name, portal_url); notifications.account_verified(db, patient); server.py verify_patient wired with was_verified guard. Logged to outbound_notifications (channel=email).
+- **Appointment confirmed email** (already existed, satisfies request): notifications.appointment_confirmed fires on staff approve / physician book / calendar book → subject "Appointment Confirmed — Dr. Aguayo", body has date (YYYY Mon - DD) + time + Dr. Aguayo, portal link; no medical reason. Logged to outbound_notifications.
+- Emails to fake @demo.com log status 'failed' gracefully (template passes the _assert_safe_email G2/G3 gate); real addresses send. Preview demo patient restored to pending after test.
+
+

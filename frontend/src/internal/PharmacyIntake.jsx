@@ -67,7 +67,7 @@ export default function PharmacyIntake() {
             <div className="flex items-center gap-3 mb-4">
                 <Button asChild variant="ghost" size="sm"><Link to="/internal/rx"><ArrowLeft className="w-4 h-4 mr-1" /> Rx</Link></Button>
                 <div>
-                    <h1 className="text-2xl font-bold text-slate-900 tracking-tight">Pharmacy Rx Intake</h1>
+                    <h1 className="text-2xl font-bold text-slate-900 tracking-tight">Request Intake</h1>
                     <p className="text-sm text-slate-500">Log a pharmacy-initiated renewal/refill request and send it to the physician.</p>
                 </div>
             </div>

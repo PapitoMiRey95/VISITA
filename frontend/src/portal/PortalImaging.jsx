@@ -55,9 +55,9 @@ export default function PortalImaging() {
                                 <option value="Chest">Chest</option>
                                 <option value="Abdomen">Abdomen</option>
                                 <option value="Pelvis">Pelvis</option>
-                                <option value="Spine - Cervical">Spine - Cervical</option>
-                                <option value="Spine - Thoracic">Spine - Thoracic</option>
-                                <option value="Spine - Lumbar">Spine - Lumbar</option>
+                                <option value="Cervical Spine">Cervical Spine</option>
+                                <option value="Thoracic Spine">Thoracic Spine</option>
+                                <option value="Lumbar Spine">Lumbar Spine</option>
                                 <option value="Shoulder">Shoulder</option>
                                 <option value="Arm / Elbow">Arm / Elbow</option>
                                 <option value="Wrist / Hand">Wrist / Hand</option>

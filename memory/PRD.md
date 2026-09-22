@@ -182,3 +182,8 @@ See /app/memory/test_credentials.md.
 - Frontend: frontend/src/internal/Patients.jsx (search + results + read-only snapshot panel), route /internal/patients, dates via formatDate (YYYY Mon - DD).
 - Reuses existing directory_mod.norm_hcn + _age_from_dob. No clinical chart (meds/labs/imaging/referrals) exposed — placeholder note for future VISITA info.
 - STATUS: built & verified in Preview (search by name/PIN/phone all work; snapshot matches spec). NOT yet deployed to production.
+
+## Patients Lookup DEPLOYED to Production (2026-06) — verified
+- Deploy 1: Patients lookup feature (GET /api/internal/patient-lookup + /internal/patients page). Verified live: name/PIN/HCN/phone search, snapshot fields, admin+physician access, unauthenticated 401, regressions OK, data unchanged (15 Rx; avail 11:30-17:00, break 15:00-15:30, 60 blocks).
+- Deploy 2 (frontend-only): Patients UX fix — results collapse after selection, snapshot stays full-width, "Change Patient" reopens search, click-outside closes results; "—" fallback for empty rows. testing_agent iteration_17 PASSED all 4 UX behaviors + role access + no regressions. Verified live on production (bundle main.4984b7c3.js).
+- Pharmacy note: production pharmacy 1670dufferin already completed its forced first-login password change (owns a private password). Not disturbed by deploys (create-if-missing seed).

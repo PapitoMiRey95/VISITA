@@ -131,14 +131,14 @@ export default function Patients() {
                     <Row label="VISITA PIN / ID" testid="snap-pin"><span className="inline-flex items-center gap-1"><IdCard className="w-3.5 h-3.5 text-slate-400" />{selected.visita_patient_id}</span></Row>
                     <Row label="DOB" testid="snap-dob">{formatDate(selected.date_of_birth)}</Row>
                     <Row label="Age" testid="snap-age">{selected.age != null ? `${selected.age}` : "—"}</Row>
-                    <Row label="Home Phone" testid="snap-home"><span className="inline-flex items-center gap-1"><Phone className="w-3.5 h-3.5 text-slate-400" />{selected.home_phone}</span></Row>
-                    <Row label="Cell Phone" testid="snap-cell"><span className="inline-flex items-center gap-1"><Phone className="w-3.5 h-3.5 text-slate-400" />{selected.cell_phone}</span></Row>
-                    <Row label="Address" testid="snap-address"><span className="inline-flex items-center gap-1 text-right"><MapPin className="w-3.5 h-3.5 text-slate-400 flex-shrink-0" />{selected.address_full}</span></Row>
+                    <Row label="Home Phone" testid="snap-home">{selected.home_phone ? <span className="inline-flex items-center gap-1"><Phone className="w-3.5 h-3.5 text-slate-400" />{selected.home_phone}</span> : null}</Row>
+                    <Row label="Cell Phone" testid="snap-cell">{selected.cell_phone ? <span className="inline-flex items-center gap-1"><Phone className="w-3.5 h-3.5 text-slate-400" />{selected.cell_phone}</span> : null}</Row>
+                    <Row label="Address" testid="snap-address">{selected.address_full ? <span className="inline-flex items-center gap-1 text-right"><MapPin className="w-3.5 h-3.5 text-slate-400 flex-shrink-0" />{selected.address_full}</span> : null}</Row>
                     <Row label="Health Card" testid="snap-hcn">
-                        {selected.health_card_number ? `${selected.health_card_number}${selected.health_card_version_code ? " " + selected.health_card_version_code : ""}` : "—"}
+                        {selected.health_card_number ? `${selected.health_card_number}${selected.health_card_version_code ? " " + selected.health_card_version_code : ""}` : null}
                     </Row>
                     <Row label="Directory Status" testid="snap-status">{statusLabel(selected.patient_status)}</Row>
-                    <Row label="Current Pharmacy" testid="snap-pharmacy"><span className="inline-flex items-center gap-1"><Building2 className="w-3.5 h-3.5 text-slate-400" />{selected.current_pharmacy}</span></Row>
+                    <Row label="Current Pharmacy" testid="snap-pharmacy">{selected.current_pharmacy ? <span className="inline-flex items-center gap-1"><Building2 className="w-3.5 h-3.5 text-slate-400" />{selected.current_pharmacy}</span> : null}</Row>
 
                     <p className="text-xs text-slate-400 mt-4 leading-relaxed">
                         Demographic &amp; contact information only. Medication list and other approved VISITA information will appear here later.

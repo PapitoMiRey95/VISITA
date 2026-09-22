@@ -1,0 +1,35 @@
+{
+  "summary": "Frontend-only verification of the internal Patients lookup UX bug fix on Preview. All four UX behaviors PASS: (1) results dropdown collapses immediately after selecting a result, (2) full-width Patient Snapshot renders with all 10 fields and DOB in '1973 Jul - 01' format, (3) 'Change Patient' reopens the results dropdown while keeping the snapshot visible, (4) click-outside on the page closes the results dropdown. Verified with admin, physician, and staff — all three see the 'Patients' sidebar item and can load /internal/patients. Search modes verified: name 'cru' -> 34 matches; PIN '2295' -> single-match auto-selects Cruickshank; phone '416' -> 40 matches. No regressions: Rx, Messages, Calendar navigation from sidebar all loaded without console errors. Pharmacy account is force-redirected to /change-password on login (temp password flow), so it cannot reach /internal/patients — role gating on the route works. Backend /api/internal/patient-lookup with pharmacy session returned 401 rather than 403 because the pharmacy session isn't fully authorized until password change; this matches the observed auth flow but differs from the spec's stated 403.",
+  "backend_issues": {
+    "critical": [],
+    "minor": [
+      {"endpoint": "/api/internal/patient-lookup", "issue": "With pharmacy (temp-password) session, endpoint returns 401 instead of the spec-stated 403. Likely because the pharmacy user is not yet fully authenticated post-password-change. If a fully-provisioned pharmacy token should still be forbidden here, add a role check that returns 403 when the caller is authenticated but role=pharmacy. Access control is still enforced (no data leak), so severity is low."}
+    ]
+  },
+  "frontend_issues": {
+    "ui_bugs": [
+      {"component": "Patients snapshot row 'Current Pharmacy'", "issue": "For the Cruickshank test patient, snap-pharmacy renders an empty value (just the Building2 icon, no '—' fallback). Row() only shows '—' when children is falsy, but the icon+empty-string span is truthy. Consider rendering '—' when selected.current_pharmacy is empty.", "selector": "[data-testid=\"snap-pharmacy\"]", "priority": "LOW"}
+    ],
+    "integration_issues": [],
+    "design_issues": []
+  },
+  "test_report_links": [],
+  "action_items": [
+    "(Optional) Return 403 from /api/internal/patient-lookup when caller is authenticated with role=pharmacy (currently 401 because pharmacy preview account is stuck in must-change-password state).",
+    "(Optional) Show '—' fallback in snap-pharmacy row when current_pharmacy is empty."
+  ],
+  "critical_code_review_comments": [
+    "Patients.jsx click-outside handler is correctly scoped to searchRef via mousedown listener; teardown returns removeEventListener. Good.",
+    "run() auto-selects when results.length === 1 — nice UX; keep in mind that if the same single-result query is retried it will silently reselect without user click.",
+    "Change Patient does not clear the current selection; only reopens results — matches spec (snapshot must remain visible). OK.",
+    "Row() fallback '—' won't trigger when child is a JSX element with an empty string inside — see snap-pharmacy bug above."
+  ],
+  "updated_files": [],
+  "success_rate": {"backend": "n/a (frontend-only run; 1 auth-role-code observation)", "frontend": "100% (all 4 UX-fix behaviors verified for admin; role access verified for admin/physician/staff; pharmacy blocked)"},
+  "test_credentials": "Admin kevinrodriguez9528@gmail.com / VisitaAdmin2026! ; Physician PAGUAYO / Newman2013_! ; Staff staff@visita.demo / Staff2026! ; Pharmacy 1670dufferin / Preview-Rotate-Test-9! (this account is forced to /change-password on login).",
+  "seed_data_creation": "None",
+  "retest_needed": false,
+  "should_main_agent_self_test": true,
+  "context_for_next_testing_agent": "Login page is the marketing landing at /login; click 'Internal Login' link to reveal the login form for admin/staff/physician, and 'Sign In' for pharmacy/patient. Pharmacy preview account 1670dufferin lands on /change-password until password is changed, so any authenticated-role tests should use a non-temp pharmacy account. Snapshot fields for CRUICKSHANK, Christy Lee (PIN 2295): DOB '1973 Jul - 01', Age 53, HCN '5372155431 BC', ACTIVE, Toronto address.",
+  "rca of the issue": "N/A — this iteration verified a bug fix that is working. Only two minor follow-ups noted above."
+}

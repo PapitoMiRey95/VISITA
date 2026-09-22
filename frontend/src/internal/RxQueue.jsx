@@ -71,7 +71,7 @@ export default function RxQueue() {
             headerAction={
                 physician ? null : (
                     <Button asChild size="sm" className="bg-visita-green hover:bg-visita-greenDark text-white" data-testid="pharmacy-refill-btn">
-                        <Link to="/internal/pharmacy-intake"><Plus className="w-4 h-4 mr-1" /> Pharmacy Refill</Link>
+                        <Link to="/internal/pharmacy-intake"><Plus className="w-4 h-4 mr-1" /> Request Intake</Link>
                     </Button>
                 )
             }

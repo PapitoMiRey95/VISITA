@@ -53,7 +53,8 @@ export default function PortalBloodwork() {
                         </div>
                         <div>
                             <Label className="font-semibold text-slate-700">Additional note (optional)</Label>
-                            <Textarea className="mt-1" value={f.patient_note} onChange={(e) => set("patient_note", e.target.value)} data-testid="bld-note" />
+                            <Textarea className="mt-1" maxLength={50} value={f.patient_note} onChange={(e) => set("patient_note", e.target.value)} data-testid="bld-note" />
+                            <div className="text-xs text-slate-400 mt-1 text-right">{f.patient_note.length}/50</div>
                         </div>
                         <div className="bg-amber-50 border border-amber-200 rounded-lg p-3 text-sm text-amber-900">
                             You do not need to choose specific tests. Dr. Aguayo decides whether bloodwork is appropriate

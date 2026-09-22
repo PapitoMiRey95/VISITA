@@ -780,7 +780,7 @@ async def internal_calendar(start: Optional[str] = None, days: int = 7,
                             user: dict = Depends(require_roles(*CLINIC_ROLES))):
     from datetime import date as _date
     start = start or _date.today().isoformat()
-    days = min(max(days, 1), 14)
+    days = min(max(days, 1), 42)
     avail = await get_availability_doc()
     busy = await get_busy_slots()
     day_rows = avail_mod.calendar_range(avail, start, days, busy=busy)

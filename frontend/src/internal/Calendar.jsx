@@ -17,21 +17,44 @@ function addDays(iso, n) {
     d.setDate(d.getDate() + n);
     return d.toISOString().slice(0, 10);
 }
+function addMonths(iso, n) {
+    const d = new Date(iso + "T00:00:00");
+    d.setDate(1);
+    d.setMonth(d.getMonth() + n);
+    return d.toISOString().slice(0, 10);
+}
+function monthFirstISO(iso) { return iso.slice(0, 7) + "-01"; }
+function gridStartISO(iso) {
+    const d = new Date(monthFirstISO(iso) + "T00:00:00");
+    d.setDate(d.getDate() - d.getDay()); // back to Sunday
+    return d.toISOString().slice(0, 10);
+}
+function monthLabel(iso) {
+    const d = new Date(monthFirstISO(iso) + "T00:00:00");
+    return d.toLocaleDateString("en-US", { month: "long", year: "numeric" });
+}
 function todayISO() { return new Date().toISOString().slice(0, 10); }
+const WEEKDAY_HEADERS = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
 
 export default function Calendar() {
     const invalidate = useInvalidate();
-    const [view, setView] = useState("week"); // day | week
+    const [view, setView] = useState("month"); // day | week | month
     const [start, setStart] = useState(todayISO());
     const [resched, setResched] = useState(null);
     const [booking, setBooking] = useState(null); // {date, time, label}
     const [blocking, setBlocking] = useState(null); // {date}
 
-    const days = view === "day" ? 1 : 7;
+    const step = view === "day" ? 1 : 7;
+    const fetchStart = view === "month" ? gridStartISO(start) : start;
+    const fetchDays = view === "day" ? 1 : view === "week" ? 7 : 42;
     const cal = useQuery({
-        queryKey: ["calendar", start, days],
-        queryFn: async () => (await api.get("/internal/calendar", { params: { start, days } })).data,
+        queryKey: ["calendar", fetchStart, fetchDays],
+        queryFn: async () => (await api.get("/internal/calendar", { params: { start: fetchStart, days: fetchDays } })).data,
     });
+
+    const goPrev = () => setStart(view === "month" ? addMonths(start, -1) : addDays(start, -step));
+    const goNext = () => setStart(view === "month" ? addMonths(start, 1) : addDays(start, step));
+    const openDay = (date) => { setStart(date); setView("day"); };
 
     const refresh = () => { invalidate(); cal.refetch(); };
     const act = async (id, body, msg) => {
@@ -52,19 +75,25 @@ export default function Calendar() {
                     <h1 className="text-2xl font-bold text-slate-900 tracking-tight flex items-center gap-2">
                         <CalendarDays className="w-6 h-6 text-visita-green" /> Clinic Calendar
                     </h1>
-                    <p className="text-sm text-slate-500">Native VIen EMR schedule · {cal.data?.timezone || "America/Toronto"}</p>
+                    <p className="text-sm text-slate-500">
+                        {view === "month" ? monthLabel(start) : "Native VIen EMR schedule"} · {cal.data?.timezone || "America/Toronto"}
+                    </p>
                 </div>
                 <div className="flex items-center gap-2">
                     <div className="flex rounded-sm border border-slate-300 overflow-hidden">
                         <button data-testid="cal-view-day" onClick={() => setView("day")} className={`px-3 py-1.5 text-sm ${view === "day" ? "bg-visita-green text-white" : "bg-white"}`}>Day</button>
-                        <button data-testid="cal-view-week" onClick={() => setView("week")} className={`px-3 py-1.5 text-sm ${view === "week" ? "bg-visita-green text-white" : "bg-white"}`}>Week</button>
+                        <button data-testid="cal-view-week" onClick={() => setView("week")} className={`px-3 py-1.5 text-sm border-l border-slate-300 ${view === "week" ? "bg-visita-green text-white" : "bg-white"}`}>Week</button>
+                        <button data-testid="cal-view-month" onClick={() => setView("month")} className={`px-3 py-1.5 text-sm border-l border-slate-300 ${view === "month" ? "bg-visita-green text-white" : "bg-white"}`}>Month</button>
                     </div>
-                    <Button size="icon" variant="outline" data-testid="cal-prev" onClick={() => setStart(addDays(start, -days))}><ChevronLeft className="w-4 h-4" /></Button>
+                    <Button size="icon" variant="outline" data-testid="cal-prev" onClick={goPrev}><ChevronLeft className="w-4 h-4" /></Button>
                     <Button size="sm" variant="outline" data-testid="cal-today" onClick={() => setStart(todayISO())}>Today</Button>
-                    <Button size="icon" variant="outline" data-testid="cal-next" onClick={() => setStart(addDays(start, days))}><ChevronRight className="w-4 h-4" /></Button>
+                    <Button size="icon" variant="outline" data-testid="cal-next" onClick={goNext}><ChevronRight className="w-4 h-4" /></Button>
                 </div>
             </div>
 
+            {view === "month" ? (
+                <MonthGrid anchor={start} rows={rows} onPickDate={openDay} />
+            ) : (
             <div className={`grid gap-3 ${view === "week" ? "grid-cols-1 md:grid-cols-2 xl:grid-cols-4" : "grid-cols-1 max-w-2xl"}`}>
                 {rows.map((d) => (
                     <div key={d.date} data-testid="cal-day" className="bg-white border border-slate-300 rounded-sm p-3">
@@ -123,12 +152,71 @@ export default function Calendar() {
                     </div>
                 ))}
             </div>
+            )}
 
             {resched && (
                 <BookAppointmentModal open onClose={() => setResched(null)} onDone={refresh} mode="reschedule" source={resched} />
             )}
             {booking && <BookSlotDialog slot={booking} onClose={() => setBooking(null)} onDone={refresh} />}
             {blocking && <BlockDialog day={blocking} onClose={() => setBlocking(null)} onDone={refresh} />}
+        </div>
+    );
+}
+
+function MonthGrid({ anchor, rows, onPickDate }) {
+    const gridStart = gridStartISO(anchor);
+    const monthKey = anchor.slice(0, 7);
+    const today = todayISO();
+    const byDate = {};
+    for (const d of rows) byDate[d.date] = d;
+    const cells = Array.from({ length: 42 }, (_, i) => addDays(gridStart, i));
+
+    return (
+        <div data-testid="cal-month-grid" className="bg-white border border-slate-300 rounded-sm overflow-hidden">
+            <div className="grid grid-cols-7 border-b border-slate-200 bg-slate-50">
+                {WEEKDAY_HEADERS.map((w) => (
+                    <div key={w} className="px-2 py-2 text-[11px] font-semibold uppercase tracking-wide text-slate-500 text-center">{w}</div>
+                ))}
+            </div>
+            <div className="grid grid-cols-7">
+                {cells.map((iso) => {
+                    const d = byDate[iso];
+                    const inMonth = iso.slice(0, 7) === monthKey;
+                    const isToday = iso === today;
+                    const nonWorking = d?.closed;
+                    const blocked = d?.day_blocked;
+                    const appts = d?.appointments || [];
+                    const dayNum = Number(iso.slice(8, 10));
+                    return (
+                        <button key={iso} type="button" data-testid="cal-month-cell" onClick={() => onPickDate(iso)}
+                            className={`min-h-[104px] border-b border-r border-slate-200 p-1.5 text-left align-top transition-colors
+                                ${nonWorking ? "bg-slate-50" : "bg-white hover:bg-visita-bg"}
+                                ${!inMonth ? "opacity-40" : ""}`}>
+                            <div className="flex items-center justify-between">
+                                <span data-testid={isToday ? "cal-month-today" : undefined}
+                                    className={`text-xs font-semibold w-5 h-5 flex items-center justify-center rounded-full
+                                        ${isToday ? "bg-visita-green text-white" : nonWorking ? "text-slate-400" : "text-slate-700"}`}>
+                                    {dayNum}
+                                </span>
+                                <div className="flex items-center gap-1">
+                                    {blocked && <span data-testid="cal-month-blocked" className="text-[9px] font-bold text-red-700 bg-red-50 border border-red-200 rounded px-1">BLOCKED</span>}
+                                    {appts.length > 0 && <span className="text-[10px] text-slate-400 font-semibold">{appts.length}</span>}
+                                </div>
+                            </div>
+                            <div className="mt-1 space-y-0.5">
+                                {appts.slice(0, 3).map((a) => (
+                                    <div key={a.id} data-testid="cal-month-appt" className="text-[10px] leading-tight truncate rounded-sm bg-emerald-50 text-emerald-800 px-1 py-0.5">
+                                        <span className="font-semibold">{a.time}</span> {(a.patient_name || "").split(",")[0]}
+                                    </div>
+                                ))}
+                                {appts.length > 3 && (
+                                    <div data-testid="cal-month-more" className="text-[10px] text-slate-500 font-medium px-1">+ {appts.length - 3} more</div>
+                                )}
+                            </div>
+                        </button>
+                    );
+                })}
+            </div>
         </div>
     );
 }

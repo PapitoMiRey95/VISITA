@@ -201,6 +201,7 @@ class UpdateBody(BaseModel):
     confirmed_display: Optional[str] = None
     offered_slots: Optional[List[dict]] = None
     patient_reply: Optional[str] = None
+    void_reason: Optional[str] = None
 
 
 class SelectSlotBody(BaseModel):
@@ -1109,6 +1110,15 @@ async def _update_request(coll, entity, item_id, body: UpdateBody, user, status_
         if body.staff_note is not None:
             updates["staff_note"] = body.staff_note
         notify = True
+    elif body.action == "void":
+        if user["role"] not in ("staff", "admin"):
+            raise HTTPException(status_code=403, detail="Only staff or admin can void a request.")
+        updates[status_field] = "voided"
+        updates["voided_by"] = user["name"]
+        updates["voided_at"] = now_iso()
+        updates["void_reason"] = body.void_reason or "Other"
+        updates["completed_at"] = now_iso()
+        # No patient notification for a void — the original record is kept read-only.
     elif body.internal_status:
         updates[status_field] = body.internal_status
     if body.assigned_to is not None:
@@ -1131,6 +1141,9 @@ async def rx_queue(q: Optional[str] = None, status: Optional[str] = None, user: 
         query["internal_status"] = "waiting_physician"
     elif status:
         query["internal_status"] = status
+    else:
+        # Hide voided/archived requests from the normal active queue.
+        query["internal_status"] = {"$nin": ["voided"]}
     query.update(_search_filter(q, ["patient_name", "medication_name", "ref_number"]))
     return await db.prescription_requests.find(query, {"_id": 0}).sort("created_at", -1).to_list(500)
 

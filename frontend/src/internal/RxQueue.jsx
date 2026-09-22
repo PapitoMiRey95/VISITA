@@ -14,6 +14,7 @@ const STATUSES = [
     { label: "Waiting Physician", value: "waiting_physician" },
     { label: "Approved (VISITA)", value: "approved_process_visita" },
     { label: "Completed", value: "completed" },
+    { label: "Voided / Archived", value: "voided" },
 ];
 
 function SourceBadge({ source }) {
@@ -65,6 +66,7 @@ export default function RxQueue() {
             searchPlaceholder="Search patient, medication, RX-…"
             statuses={physician ? [] : STATUSES}
             enableBooking
+            enableVoid
             sourceType="prescription"
             headerAction={
                 physician ? null : (
@@ -114,6 +116,14 @@ export default function RxQueue() {
                     {i.physician_note && <KV label="Physician modification">{i.physician_note}</KV>}
                     <KV label="Staff note">{i.staff_note}</KV>
                     <KV label="Requested">{formatDateTime(i.created_at)}</KV>
+                    {i.internal_status === "voided" && (
+                        <div className="mt-2 border border-red-200 bg-red-50/60 rounded p-2 space-y-1" data-testid="voided-banner">
+                            <div className="text-xs uppercase text-red-600 font-medium">Voided / Archived</div>
+                            <KV label="Void reason">{i.void_reason}</KV>
+                            <KV label="Voided by">{i.voided_by}</KV>
+                            <KV label="Voided at">{formatDateTime(i.voided_at)}</KV>
+                        </div>
+                    )}
                 </div>
             )}
             actions={actions}

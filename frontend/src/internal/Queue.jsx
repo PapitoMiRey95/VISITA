@@ -21,7 +21,7 @@ function reasonFor(item, sourceType) {
     return item.reason || "";
 }
 
-export default function Queue({ title, subtitle, endpoint, patchBase, searchPlaceholder, statuses = [], columns, detail, actions, replyEnabled = false, enableBooking = false, sourceType, headerAction = null }) {
+export default function Queue({ title, subtitle, endpoint, patchBase, searchPlaceholder, statuses = [], columns, detail, actions, replyEnabled = false, enableBooking = false, enableVoid = false, sourceType, headerAction = null }) {
     const { user } = useAuth();
     const invalidate = useInvalidate();
     const [q, setQ] = useState("");
@@ -31,6 +31,7 @@ export default function Queue({ title, subtitle, endpoint, patchBase, searchPlac
     const [reply, setReply] = useState("");
     const [busy, setBusy] = useState(false);
     const [bookOpen, setBookOpen] = useState(false);
+    const [voidReason, setVoidReason] = useState("Duplicate");
 
     const list = useQuery({
         queryKey: ["queue", endpoint, q, status],
@@ -159,6 +160,25 @@ export default function Queue({ title, subtitle, endpoint, patchBase, searchPlac
                                         </Button>
                                     )}
                                 </div>
+
+                                {enableVoid && ["admin", "staff"].includes(user?.role) && selected.internal_status !== "voided" && (
+                                    <div className="border border-red-200 bg-red-50/50 rounded p-2.5 space-y-2">
+                                        <div className="text-xs uppercase text-red-600 font-medium">Void / Archive request</div>
+                                        <p className="text-[11px] text-slate-500">The request is preserved read-only for audit history — it is not deleted.</p>
+                                        <select data-testid="void-reason" value={voidReason} onChange={(e) => setVoidReason(e.target.value)}
+                                            className="w-full h-9 border border-slate-300 rounded px-2 text-sm bg-white">
+                                            <option>Duplicate</option>
+                                            <option>Entered by mistake</option>
+                                            <option>No longer needed</option>
+                                            <option>Other</option>
+                                        </select>
+                                        <Button data-testid="act-void" disabled={busy} variant="outline"
+                                            onClick={() => run({ action: "void", void_reason: voidReason })}
+                                            className="border-red-300 text-red-700 hover:bg-red-100">
+                                            Void Request
+                                        </Button>
+                                    </div>
+                                )}
                             </div>
                         </>
                     )}

@@ -22,6 +22,7 @@ import auth as authlib
 import availability as avail_mod
 import directory as directory_mod
 import email_service
+import identity as identity_mod
 import notifications as notify_svc
 import storage
 from db import (APPT_PATIENT_STATUS, BLD_ACTIVE, BLD_PATIENT_STATUS, IMG_ACTIVE,
@@ -126,6 +127,8 @@ class RegisterBody(BaseModel):
     password: str = Field(min_length=6)
     health_card_number: Optional[str] = None
     health_card_version: Optional[str] = None
+    health_card_issue_date: Optional[str] = None
+    health_card_expiry_date: Optional[str] = None
     province: Optional[str] = None
     country: Optional[str] = None
     extra_info: Optional[str] = None
@@ -353,6 +356,16 @@ async def register(body: RegisterBody):
     if await db.users.find_one({"email": email}):
         raise HTTPException(status_code=400, detail="An account with this email already exists.")
 
+    # OHIP patients: Health Card number (10 digits) + Version Code (2 letters) required & normalized.
+    hc_num, hc_ver = body.health_card_number, body.health_card_version
+    if body.patient_type == "ohip":
+        try:
+            hc_num, hc_ver = identity_mod.normalize_health_card(body.health_card_number, body.health_card_version)
+        except ValueError as e:
+            raise HTTPException(status_code=400, detail=str(e))
+    if not identity_mod.valid_date(body.health_card_issue_date) or not identity_mod.valid_date(body.health_card_expiry_date):
+        raise HTTPException(status_code=400, detail="Health Card dates must be valid dates.")
+
     # Directory-assisted matching for current-patient registrations
     match = await directory_mod.match_registration(
         db, body.first_name, body.last_name, body.date_of_birth, body.health_card_number)
@@ -385,8 +398,11 @@ async def register(body: RegisterBody):
     patient = {
         "id": patient_id, "visita_patient_id": None,
         "first_name": body.first_name.strip(), "last_name": body.last_name.strip(),
-        "date_of_birth": body.date_of_birth, "health_card_number": body.health_card_number,
-        "health_card_version": body.health_card_version, "phone": body.phone, "email": email,
+        "date_of_birth": body.date_of_birth, "health_card_number": hc_num,
+        "health_card_version": hc_ver,
+        "health_card_issue_date": body.health_card_issue_date or None,
+        "health_card_expiry_date": body.health_card_expiry_date or None,
+        "phone": body.phone, "email": email,
         "province": body.province, "country": body.country, "extra_info": body.extra_info,
         "patient_type": body.patient_type, "verification_status": "pending",
         "portal_status": "PENDING_VERIFICATION",
@@ -1038,9 +1054,17 @@ async def portal_overview(user: dict = Depends(get_current_user)):
             "staff_note": a.get("staff_note"), "created_at": a["created_at"],
         }
     has_fee = any((a.get("late_fee") or {}).get("status") == "outstanding" for a in appts)
+    pending_hc = p.get("pending_health_card")
     return {
         "patient": {"first_name": p["first_name"], "last_name": p["last_name"],
                     "patient_type": p["patient_type"], "verification_status": p["verification_status"],
+                    "visita_patient_id": p.get("visita_patient_id"),
+                    "phone": p.get("phone"), "email": p.get("email"),
+                    "health_card_display": identity_mod.format_health_card(p.get("health_card_number"), p.get("health_card_version")),
+                    "health_card_issue_date": p.get("health_card_issue_date"),
+                    "health_card_expiry_date": p.get("health_card_expiry_date"),
+                    "health_card_status": identity_mod.health_card_status(p.get("health_card_expiry_date")),
+                    "health_card_update_pending": bool(pending_hc),
                     "has_outstanding_fee": has_fee},
         "requests": requests,
         "appointments": [appt_view(a) for a in appts],
@@ -1059,6 +1083,59 @@ async def portal_overview(user: dict = Depends(get_current_user)):
         "referrals": referrals,
         "notifications": notes,
     }
+
+
+class PhoneUpdateBody(BaseModel):
+    phone: str
+
+
+class HealthCardUpdateBody(BaseModel):
+    health_card_number: str
+    health_card_version: str
+    health_card_issue_date: Optional[str] = None
+    health_card_expiry_date: Optional[str] = None
+
+
+@api.post("/portal/profile/phone")
+async def portal_update_phone(body: PhoneUpdateBody, user: dict = Depends(get_current_user)):
+    p = await get_patient_record(user)
+    new_phone = identity_mod.normalize_phone(body.phone)
+    if len(re.sub(r"\D", "", new_phone)) < 10:
+        raise HTTPException(status_code=400, detail="Please enter a valid 10-digit phone number.")
+    old_phone = p.get("phone")
+    await db.patients.update_one({"id": p["id"]}, {"$set": {"phone": new_phone, "updated_at": now_iso()}})
+    await audit("patient_phone_update", "patient", p["id"],
+                {"id": p["id"], "name": p["first_name"], "role": "patient"},
+                meta={"field": "phone", "previous": old_phone, "new": new_phone})
+    return {"ok": True, "phone": new_phone}
+
+
+@api.post("/portal/profile/health-card")
+async def portal_submit_health_card(body: HealthCardUpdateBody, user: dict = Depends(get_current_user)):
+    """Patient submits a Health Card update — stored as a PENDING proposal; the
+    currently verified card stays active until Staff/Admin approves it."""
+    p = await get_patient_record(user)
+    try:
+        num, ver = identity_mod.normalize_health_card(body.health_card_number, body.health_card_version)
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    if not identity_mod.valid_date(body.health_card_issue_date) or not identity_mod.valid_date(body.health_card_expiry_date):
+        raise HTTPException(status_code=400, detail="Health Card dates must be valid dates.")
+    pending = {
+        "health_card_number": num, "health_card_version": ver,
+        "health_card_issue_date": body.health_card_issue_date or None,
+        "health_card_expiry_date": body.health_card_expiry_date or None,
+        "display": identity_mod.format_health_card(num, ver),
+        "submitted_at": now_iso(), "status": "pending",
+    }
+    await db.patients.update_one({"id": p["id"]}, {"$set": {"pending_health_card": pending, "updated_at": now_iso()}})
+    await audit("health_card_update_submitted", "patient", p["id"],
+                {"id": p["id"], "name": p["first_name"], "role": "patient"},
+                meta={"proposed_display": pending["display"]})
+    await notify_svc._in_portal(db, p["id"], "Health Card update received",
+                                "Your Health Card update is pending clinic verification. Your current record stays active until approved.")
+    return {"ok": True, "pending": pending}
+
 
 
 @api.post("/portal/notifications/read")
@@ -1881,6 +1958,11 @@ def _directory_snapshot(d: dict) -> dict:
         "address_full": address_full,
         "health_card_number": d.get("health_card_number"),
         "health_card_version_code": d.get("health_card_version_code"),
+        "health_card_display": identity_mod.format_health_card(d.get("health_card_number"), d.get("health_card_version_code")),
+        "health_card_issue_date": d.get("health_card_issue_date"),
+        "health_card_expiry_date": d.get("health_card_expiry_date"),
+        "health_card_status": identity_mod.health_card_status(d.get("health_card_expiry_date")),
+        "health_card_update_pending": False,
         "patient_status": d.get("patient_status"),
         "current_pharmacy": d.get("current_pharmacy"),
     }
@@ -1902,6 +1984,12 @@ def _portal_patient_snapshot(p: dict) -> dict:
         "address_full": None,
         "health_card_number": p.get("health_card_number"),
         "health_card_version_code": p.get("health_card_version"),
+        "health_card_display": identity_mod.format_health_card(p.get("health_card_number"), p.get("health_card_version")),
+        "health_card_issue_date": p.get("health_card_issue_date"),
+        "health_card_expiry_date": p.get("health_card_expiry_date"),
+        "health_card_status": identity_mod.health_card_status(p.get("health_card_expiry_date")),
+        "health_card_update_pending": bool(p.get("pending_health_card")),
+        "pending_health_card": p.get("pending_health_card"),
         "patient_status": "PORTAL_PATIENT",
         "current_pharmacy": None,
     }
@@ -2020,6 +2108,16 @@ async def verify_patient(patient_id: str, body: VerifyBody, user: dict = Depends
             await db.patient_directory.update_one({"id": link_dir_id}, {"$set": {
                 "linked_patient_id": patient_id, "updated_at": now_iso()}})
             await audit("patient_linked", "patient", patient_id, user, meta={"directory_id": link_dir_id})
+    # Auto-assign a unique 4-digit VISITA PIN ONLY for a portal-only patient becoming
+    # verified with no existing PIN and no directory link. Never overwrite / never backfill.
+    final_pin = updates.get("visita_patient_id") or p.get("visita_patient_id")
+    if body.decision == "verified" and not final_pin and not link_dir_id and not p.get("matched_directory_id"):
+        new_pin = await identity_mod.assign_visita_pin(db, patient_id)
+        if new_pin is None:
+            raise HTTPException(status_code=507,
+                                detail="No 4-digit VISITA PINs remain (1000-9999 exhausted). Please contact an administrator.")
+        updates["visita_patient_id"] = new_pin
+        await audit("visita_pin_assigned", "patient", patient_id, user, meta={"visita_patient_id": new_pin})
     await db.patients.update_one({"id": patient_id}, {"$set": updates})
     await audit("verify_patient", "patient", patient_id, user, new_status=body.decision)
     if body.decision == "verified" and not was_verified:
@@ -2447,6 +2545,103 @@ async def search_patients(q: Optional[str] = None, user: dict = Depends(require_
                         {"last_name": {"$regex": q, "$options": "i"}},
                         {"visita_patient_id": {"$regex": q, "$options": "i"}}]
     return await db.patients.find(query, {"_id": 0, "health_card_number": 0}).limit(50).to_list(50)
+
+
+class InternalPatientEditBody(BaseModel):
+    phone: Optional[str] = None
+    health_card_number: Optional[str] = None
+    health_card_version: Optional[str] = None
+    health_card_issue_date: Optional[str] = None
+    health_card_expiry_date: Optional[str] = None
+    visita_patient_id: Optional[str] = None
+
+
+@api.patch("/internal/patients/{patient_id}")
+async def internal_edit_patient(patient_id: str, body: InternalPatientEditBody,
+                                user: dict = Depends(require_roles("staff", "admin"))):
+    """Staff/Admin edit of core identity/contact fields. Applies immediately with a
+    full audit trail (changed_by/at, field, previous, new). No hard deletes."""
+    p = await db.patients.find_one({"id": patient_id})
+    if not p:
+        raise HTTPException(status_code=404, detail="Patient not found.")
+    updates, changes = {}, []
+
+    def track(field, new_val):
+        old_val = p.get(field)
+        if new_val is not None and new_val != old_val:
+            updates[field] = new_val
+            changes.append({"field": field, "previous": old_val, "new": new_val,
+                            "changed_by": user["name"], "changed_at": now_iso()})
+
+    if body.phone is not None:
+        track("phone", identity_mod.normalize_phone(body.phone))
+    # Health card: normalize together when either number or version is being set.
+    if body.health_card_number is not None or body.health_card_version is not None:
+        try:
+            num, ver = identity_mod.normalize_health_card(
+                body.health_card_number if body.health_card_number is not None else p.get("health_card_number"),
+                body.health_card_version if body.health_card_version is not None else p.get("health_card_version"))
+        except ValueError as e:
+            raise HTTPException(status_code=400, detail=str(e))
+        track("health_card_number", num)
+        track("health_card_version", ver)
+    for f in ("health_card_issue_date", "health_card_expiry_date"):
+        val = getattr(body, f)
+        if val is not None:
+            if not identity_mod.valid_date(val):
+                raise HTTPException(status_code=400, detail="Health Card dates must be valid dates.")
+            track(f, val or None)
+    if body.visita_patient_id is not None:
+        vid = body.visita_patient_id.strip()
+        if vid and vid != p.get("visita_patient_id"):
+            clash = await db.patients.find_one({"visita_patient_id": vid, "id": {"$ne": patient_id}})
+            clash_dir = await db.patient_directory.find_one({"visita_patient_id": vid, "linked_patient_id": {"$ne": patient_id}})
+            if clash or clash_dir:
+                raise HTTPException(status_code=409, detail=f"VISITA PIN {vid} is already in use.")
+            track("visita_patient_id", vid)
+
+    if not updates:
+        return {"ok": True, "changes": 0}
+    updates["updated_at"] = now_iso()
+    await db.patients.update_one({"id": patient_id}, {"$set": updates})
+    await db.patients.update_one({"id": patient_id}, {"$push": {"identity_history": {"$each": changes}}})
+    for ch in changes:
+        await audit("patient_identity_edit", "patient", patient_id, user, meta=ch)
+    return {"ok": True, "changes": len(changes)}
+
+
+@api.post("/internal/patients/{patient_id}/health-card/{action}")
+async def internal_health_card_review(patient_id: str, action: str,
+                                      user: dict = Depends(require_roles("staff", "admin"))):
+    """Approve or reject a patient-submitted HEALTH CARD UPDATE PENDING proposal."""
+    if action not in ("approve", "reject"):
+        raise HTTPException(status_code=400, detail="Invalid action.")
+    p = await db.patients.find_one({"id": patient_id})
+    if not p:
+        raise HTTPException(status_code=404, detail="Patient not found.")
+    pending = p.get("pending_health_card")
+    if not pending:
+        raise HTTPException(status_code=400, detail="No pending Health Card update.")
+    if action == "reject":
+        await db.patients.update_one({"id": patient_id}, {"$unset": {"pending_health_card": ""}, "$set": {"updated_at": now_iso()}})
+        await audit("health_card_update_rejected", "patient", patient_id, user, meta={"proposed": pending.get("display")})
+        await notify_patient(patient_id, "Health Card update not approved",
+                             "Your Health Card update was reviewed and not approved. Your existing record remains active. Please contact the clinic.")
+        return {"ok": True, "status": "rejected"}
+    change = {"field": "health_card", "previous": identity_mod.format_health_card(p.get("health_card_number"), p.get("health_card_version")),
+              "new": pending.get("display"), "changed_by": user["name"], "changed_at": now_iso()}
+    await db.patients.update_one({"id": patient_id}, {
+        "$set": {"health_card_number": pending["health_card_number"], "health_card_version": pending["health_card_version"],
+                 "health_card_issue_date": pending.get("health_card_issue_date"),
+                 "health_card_expiry_date": pending.get("health_card_expiry_date"), "updated_at": now_iso()},
+        "$unset": {"pending_health_card": ""},
+        "$push": {"identity_history": change},
+    })
+    await audit("health_card_update_approved", "patient", patient_id, user, meta=change)
+    await notify_patient(patient_id, "Health Card update approved",
+                         "Your Health Card information has been verified and updated. Thank you.")
+    return {"ok": True, "status": "approved"}
+
 
 
 @api.get("/")

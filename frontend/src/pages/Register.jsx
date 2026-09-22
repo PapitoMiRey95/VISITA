@@ -32,7 +32,8 @@ export default function Register() {
     const [form, setForm] = useState({
         first_name: "", last_name: "", second_name: "", second_last_name: "",
         date_of_birth: "", phone: "", email: "", password: "",
-        health_card_number: "", province: "", country: "", extra_info: "",
+        health_card_number: "", health_card_version: "", health_card_issue_date: "", health_card_expiry_date: "",
+        province: "", country: "", extra_info: "",
         address: "", city: "", postal_code: "", patient_message: "", join_reason: "",
     });
     const set = (k) => (e) => setForm({ ...form, [k]: e.target.value });
@@ -44,6 +45,12 @@ export default function Register() {
 
     const submit = async (e) => {
         e.preventDefault();
+        if (type === "ohip") {
+            const num = (form.health_card_number || "").replace(/\D/g, "");
+            const ver = (form.health_card_version || "").replace(/[^A-Za-z]/g, "");
+            if (num.length !== 10) { toast.error("Health Card number must be exactly 10 digits."); return; }
+            if (ver.length !== 2) { toast.error("Version Code must be exactly 2 letters."); return; }
+        }
         setBusy(true);
         try {
             const res = await register({ ...form, patient_type: type });
@@ -148,9 +155,22 @@ export default function Register() {
                         <Field label="Date of birth" testid="reg-dob"><Input type="date" required value={form.date_of_birth} onChange={set("date_of_birth")} /></Field>
 
                         {type === "ohip" && (
-                            <Field label="Health Card Number" testid="reg-hcn">
-                                <Input required value={form.health_card_number} onChange={set("health_card_number")} placeholder="0000-000-000-XX" />
-                            </Field>
+                            <>
+                                <div className="grid grid-cols-3 gap-3">
+                                    <div className="col-span-2">
+                                        <Field label="Health Card Number (10 digits)" testid="reg-hcn">
+                                            <Input required value={form.health_card_number} onChange={set("health_card_number")} placeholder="1234 567 890" />
+                                        </Field>
+                                    </div>
+                                    <Field label="Version Code" testid="reg-hcv">
+                                        <Input required value={form.health_card_version} onChange={(e) => setForm({ ...form, health_card_version: e.target.value.toUpperCase() })} placeholder="XX" maxLength={2} />
+                                    </Field>
+                                </div>
+                                <div className="grid grid-cols-2 gap-3">
+                                    <Field label="Issue Date (optional)" testid="reg-hc-issue"><Input type="date" value={form.health_card_issue_date} onChange={set("health_card_issue_date")} /></Field>
+                                    <Field label="Expiry Date (optional)" testid="reg-hc-expiry"><Input type="date" value={form.health_card_expiry_date} onChange={set("health_card_expiry_date")} /></Field>
+                                </div>
+                            </>
                         )}
                         {type === "private" && (
                             <Field label="Province (if applicable)" testid="reg-province"><Input value={form.province} onChange={set("province")} /></Field>

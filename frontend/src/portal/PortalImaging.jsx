@@ -4,7 +4,6 @@ import { api, formatErr } from "../lib/api";
 import { usePortal, StatusPill, Card, PendingBanner } from "./shared";
 import { EmergencyNotice } from "../components/EmergencyNotice";
 import { Button } from "../components/ui/button";
-import { Input } from "../components/ui/input";
 import { Textarea } from "../components/ui/textarea";
 import { Label } from "../components/ui/label";
 
@@ -47,7 +46,27 @@ export default function PortalImaging() {
                                     className={`flex-1 py-2.5 rounded-xl border font-semibold text-sm ${f.imaging_type === v ? "bg-portal-blue text-white border-portal-blue" : "bg-white text-slate-600 border-slate-200"}`}>{l}</button>
                             ))}
                         </div>
-                        <div><Label className="font-semibold text-slate-700">Body part / region</Label><Input className="mt-1" required value={f.body_part} onChange={(e) => set("body_part", e.target.value)} data-testid="img-bodypart" /></div>
+                        <div><Label className="font-semibold text-slate-700">Body part / region</Label>
+                            <select className="mt-1 w-full h-11 border border-slate-300 rounded-md px-3 text-sm bg-white"
+                                required value={f.body_part} onChange={(e) => set("body_part", e.target.value)} data-testid="img-bodypart">
+                                <option value="" disabled>Select a body part / region…</option>
+                                <option value="Head / Skull">Head / Skull</option>
+                                <option value="Neck">Neck</option>
+                                <option value="Chest">Chest</option>
+                                <option value="Abdomen">Abdomen</option>
+                                <option value="Pelvis">Pelvis</option>
+                                <option value="Spine - Cervical">Spine - Cervical</option>
+                                <option value="Spine - Thoracic">Spine - Thoracic</option>
+                                <option value="Spine - Lumbar">Spine - Lumbar</option>
+                                <option value="Shoulder">Shoulder</option>
+                                <option value="Arm / Elbow">Arm / Elbow</option>
+                                <option value="Wrist / Hand">Wrist / Hand</option>
+                                <option value="Hip">Hip</option>
+                                <option value="Leg / Knee">Leg / Knee</option>
+                                <option value="Ankle / Foot">Ankle / Foot</option>
+                                <option value="Other">Other</option>
+                            </select>
+                        </div>
                         <div><Label className="font-semibold text-slate-700">Reason for imaging request</Label>
                             <select className="mt-1 w-full h-11 border border-slate-300 rounded-md px-3 text-sm bg-white"
                                 required value={f.reason} onChange={(e) => set("reason", e.target.value)} data-testid="img-reason">

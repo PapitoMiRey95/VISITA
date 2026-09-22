@@ -113,7 +113,7 @@ export default function Referrals() {
                             </div>
                             {showPat && (
                                 <div data-testid="ref-patient-results"
-                                    className="absolute z-30 mt-1 w-full min-w-[18rem] bg-white border border-slate-300 rounded-sm shadow-lg divide-y max-h-72 overflow-y-auto">
+                                    className="absolute z-30 mt-1 w-full min-w-[18rem] bg-white border border-slate-300 rounded-sm shadow-lg divide-y max-h-[calc(100vh-14rem)] overflow-y-auto">
                                     {patSearching ? (
                                         <div className="px-3 py-3 text-slate-400 text-xs">Searching…</div>
                                     ) : patResults.length === 0 ? (

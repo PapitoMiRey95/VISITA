@@ -1075,6 +1075,8 @@ async def _update_request(coll, entity, item_id, body: UpdateBody, user, status_
     if not doc:
         raise HTTPException(status_code=404, detail="Not found")
     old = doc.get(status_field)
+    if old == "voided" and body.action != "void":
+        raise HTTPException(status_code=409, detail="This request is archived (voided) and is read-only.")
     updates = {"updated_at": now_iso()}
     notify = False
     if body.action == "send_to_physician":

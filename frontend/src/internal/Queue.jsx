@@ -133,33 +133,43 @@ export default function Queue({ title, subtitle, endpoint, patchBase, searchPlac
                                     </div>
                                 )}
 
-                                {replyEnabled && (
-                                    <div>
-                                        <div className="text-xs uppercase text-slate-500 mb-1">Reply to patient (visible to patient)</div>
-                                        <Textarea data-testid="patient-reply" value={reply} onChange={(e) => setReply(e.target.value)} rows={2} />
-                                    </div>
+                                {selected.internal_status !== "voided" && (
+                                    <>
+                                        {replyEnabled && (
+                                            <div>
+                                                <div className="text-xs uppercase text-slate-500 mb-1">Reply to patient (visible to patient)</div>
+                                                <Textarea data-testid="patient-reply" value={reply} onChange={(e) => setReply(e.target.value)} rows={2} />
+                                            </div>
+                                        )}
+
+                                        <div>
+                                            <div className="text-xs uppercase text-slate-500 mb-1">Add internal note (staff only)</div>
+                                            <Textarea data-testid="internal-note" value={note} onChange={(e) => setNote(e.target.value)} rows={2} />
+                                        </div>
+
+                                        <div className="flex flex-wrap gap-2 pt-1">
+                                            {acts.map((a) => (
+                                                <Button key={a.label} data-testid={a.testid} disabled={busy} onClick={() => run(a.body)}
+                                                    variant={a.variant || "default"}
+                                                    className={a.variant ? "" : "bg-visita-green hover:bg-visita-greenDark text-white"}>
+                                                    {a.label}
+                                                </Button>
+                                            ))}
+                                            {enableBooking && selected.patient_id && (
+                                                <Button data-testid="act-book-appointment" disabled={busy} variant="outline"
+                                                    onClick={() => setBookOpen(true)} className="border-visita-green text-visita-greenDark">
+                                                    <CalendarPlus className="w-4 h-4 mr-1" /> Book Appointment
+                                                </Button>
+                                            )}
+                                        </div>
+                                    </>
                                 )}
 
-                                <div>
-                                    <div className="text-xs uppercase text-slate-500 mb-1">Add internal note (staff only)</div>
-                                    <Textarea data-testid="internal-note" value={note} onChange={(e) => setNote(e.target.value)} rows={2} />
-                                </div>
-
-                                <div className="flex flex-wrap gap-2 pt-1">
-                                    {acts.map((a) => (
-                                        <Button key={a.label} data-testid={a.testid} disabled={busy} onClick={() => run(a.body)}
-                                            variant={a.variant || "default"}
-                                            className={a.variant ? "" : "bg-visita-green hover:bg-visita-greenDark text-white"}>
-                                            {a.label}
-                                        </Button>
-                                    ))}
-                                    {enableBooking && selected.patient_id && (
-                                        <Button data-testid="act-book-appointment" disabled={busy} variant="outline"
-                                            onClick={() => setBookOpen(true)} className="border-visita-green text-visita-greenDark">
-                                            <CalendarPlus className="w-4 h-4 mr-1" /> Book Appointment
-                                        </Button>
-                                    )}
-                                </div>
+                                {selected.internal_status === "voided" && (
+                                    <p className="text-[11px] text-slate-500" data-testid="voided-readonly-note">
+                                        This request is archived (voided) and preserved read-only for audit history.
+                                    </p>
+                                )}
 
                                 {enableVoid && ["admin", "staff"].includes(user?.role) && selected.internal_status !== "voided" && (
                                     <div className="border border-red-200 bg-red-50/50 rounded p-2.5 space-y-2">

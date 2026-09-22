@@ -232,13 +232,16 @@ function BookSlotDialog({ slot, onClose, onDone }) {
 
     const search = async (e) => {
         e.preventDefault();
-        try { setResults((await api.get("/internal/directory", { params: { q } })).data); }
+        try { setResults((await api.get("/internal/patient-lookup", { params: { q } })).data); }
         catch (err) { toast.error(formatErr(err)); }
     };
     const submit = async () => {
         setBusy(true);
         try {
-            await api.post("/internal/calendar/book", { directory_id: patient.id, date: slot.date, time: slot.time, label: slot.label, reason: reason || null });
+            const body = { date: slot.date, time: slot.time, label: slot.label, reason: reason || null };
+            if (patient.source === "portal") body.patient_id = patient.patient_id || patient.id;
+            else body.directory_id = patient.directory_id || patient.id;
+            await api.post("/internal/calendar/book", body);
             toast.success("Appointment booked and patient notified.");
             onDone(); onClose();
         } catch (e) { toast.error(formatErr(e)); } finally { setBusy(false); }
@@ -252,13 +255,17 @@ function BookSlotDialog({ slot, onClose, onDone }) {
                     <div className="space-y-2">
                         <form onSubmit={search} className="flex gap-2">
                             <div className="relative flex-1"><Search className="w-4 h-4 text-slate-400 absolute left-2 top-2.5" />
-                                <Input className="pl-8" value={q} onChange={(e) => setQ(e.target.value)} placeholder="Patient name or VISITA ID" data-testid="cal-book-search" /></div>
+                                <Input className="pl-8" value={q} onChange={(e) => setQ(e.target.value)} placeholder="Name, DOB, phone, email, health card, or PIN" data-testid="cal-book-search" /></div>
                             <Button type="submit">Search</Button>
                         </form>
                         <div className="max-h-60 overflow-y-auto divide-y border rounded-sm">
                             {results.map((r) => (
                                 <button key={r.id} data-testid="cal-book-result" onClick={() => setPatient(r)} className="w-full text-left px-2 py-1.5 text-sm hover:bg-slate-50">
-                                    {r.last_name}, {r.first_name} · DOB {formatDate(r.date_of_birth)}
+                                    <div className="flex items-center gap-2">
+                                        <span>{r.last_name}, {r.first_name} · DOB {formatDate(r.date_of_birth)}</span>
+                                        {r.source === "portal" && <span className="text-[10px] font-bold text-emerald-700 bg-emerald-50 border border-emerald-200 rounded px-1">PORTAL</span>}
+                                    </div>
+                                    <div className="text-[11px] text-slate-400">{r.visita_patient_id ? `PIN ${r.visita_patient_id}` : "PIN Not assigned"}{r.source === "portal" ? " · Verified portal patient" : ""}</div>
                                 </button>
                             ))}
                         </div>

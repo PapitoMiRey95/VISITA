@@ -870,7 +870,8 @@ async def block_time(body: BlockTimeBody, user: dict = Depends(require_roles(*CL
 
 
 class CalendarBookBody(BaseModel):
-    directory_id: str
+    directory_id: Optional[str] = None
+    patient_id: Optional[str] = None  # verified portal patient (portal-only, no directory record)
     date: str
     time: str
     label: Optional[str] = None
@@ -880,9 +881,25 @@ class CalendarBookBody(BaseModel):
 
 @api.post("/internal/calendar/book")
 async def calendar_book(body: CalendarBookBody, user: dict = Depends(require_roles(*CLINIC_ROLES))):
-    d = await db.patient_directory.find_one({"id": body.directory_id})
-    if not d:
-        raise HTTPException(status_code=404, detail="Patient not found in directory.")
+    # Resolve the patient identity from either a directory record or a verified portal account.
+    if body.directory_id:
+        d = await db.patient_directory.find_one({"id": body.directory_id})
+        if not d:
+            raise HTTPException(status_code=404, detail="Patient not found in directory.")
+        appt_patient_id = d.get("linked_patient_id") or d["id"]
+        appt_directory_id = d["id"]
+        patient_name = f"{d.get('last_name','')}, {d.get('first_name','')}".strip(", ")
+    elif body.patient_id:
+        p = await db.patients.find_one({"id": body.patient_id})
+        if not p:
+            raise HTTPException(status_code=404, detail="Patient not found.")
+        if p.get("verification_status") != "verified":
+            raise HTTPException(status_code=400, detail="Only verified patients can be booked.")
+        appt_patient_id = p["id"]
+        appt_directory_id = p.get("matched_directory_id")
+        patient_name = f"{p.get('last_name','')}, {p.get('first_name','')}".strip(", ")
+    else:
+        raise HTTPException(status_code=400, detail="A patient must be selected.")
     time24 = avail_mod._norm_time(body.time)
     avail = await get_availability_doc()
     if not avail_mod.is_within(avail, body.date, time24):
@@ -892,10 +909,9 @@ async def calendar_book(body: CalendarBookBody, user: dict = Depends(require_rol
     if await _slot_taken(body.date, time24):
         raise HTTPException(status_code=409, detail="This time is no longer available. Please select another time.")
     ref = await next_ref("APT")
-    patient_name = f"{d.get('last_name','')}, {d.get('first_name','')}".strip(", ")
     appt = {
-        "id": str(uuid.uuid4()), "ref_number": ref, "patient_id": d.get("linked_patient_id") or d["id"],
-        "directory_id": d["id"], "patient_name": patient_name,
+        "id": str(uuid.uuid4()), "ref_number": ref, "patient_id": appt_patient_id,
+        "directory_id": appt_directory_id, "patient_name": patient_name,
         "reason": body.reason or "Office visit", "appointment_type": body.appointment_type,
         "duration": avail.get("appointment_duration"), "preferred_options": [],
         "status": "confirmed", "confirmed_date": body.date, "confirmed_time": body.label or body.time,
@@ -1851,11 +1867,15 @@ def _directory_snapshot(d: dict) -> dict:
     address_full = ", ".join([x for x in [line1, d.get("city"), d.get("province"), d.get("postal_code")] if x])
     return {
         "id": d["id"],
+        "source": "directory",
+        "patient_id": d.get("linked_patient_id"),
+        "directory_id": d["id"],
         "first_name": d.get("first_name"), "last_name": d.get("last_name"),
         "full_name": f"{d.get('last_name','')}, {d.get('first_name','')}".strip(", "),
         "visita_patient_id": d.get("visita_patient_id"),
         "date_of_birth": d.get("date_of_birth"), "age": _age_from_dob(d.get("date_of_birth")),
         "home_phone": d.get("home_phone"), "cell_phone": d.get("cell_phone"),
+        "email": d.get("email"),
         "address": d.get("address"), "unit": d.get("unit"),
         "city": d.get("city"), "province": d.get("province"), "postal_code": d.get("postal_code"),
         "address_full": address_full,
@@ -1866,26 +1886,97 @@ def _directory_snapshot(d: dict) -> dict:
     }
 
 
-@api.get("/internal/patient-lookup")
-async def internal_patient_lookup(q: str, user: dict = Depends(require_roles(*CLINIC_ROLES))):
-    """Read-only clinic patient directory lookup by name / VISITA PIN / health
-    card number / phone. Returns demographic + contact snapshot only (no clinical
-    chart). Does not modify any record."""
-    qn = (q or "").strip()
-    if len(qn) < 2:
-        return []
+def _portal_patient_snapshot(p: dict) -> dict:
+    return {
+        "id": p["id"],
+        "source": "portal",
+        "patient_id": p["id"],
+        "directory_id": p.get("matched_directory_id"),
+        "first_name": p.get("first_name"), "last_name": p.get("last_name"),
+        "full_name": f"{p.get('last_name','')}, {p.get('first_name','')}".strip(", "),
+        "visita_patient_id": p.get("visita_patient_id"),  # None -> UI shows "Not assigned"
+        "date_of_birth": p.get("date_of_birth"), "age": _age_from_dob(p.get("date_of_birth")),
+        "home_phone": None, "cell_phone": p.get("phone"),
+        "email": p.get("email"),
+        "address": None, "unit": None, "city": None, "province": p.get("province"), "postal_code": None,
+        "address_full": None,
+        "health_card_number": p.get("health_card_number"),
+        "health_card_version_code": p.get("health_card_version"),
+        "patient_status": "PORTAL_PATIENT",
+        "current_pharmacy": None,
+    }
+
+
+def _portal_search_ors(qn: str):
     ors = [
+        {"first_name": {"$regex": re.escape(qn), "$options": "i"}},
+        {"last_name": {"$regex": re.escape(qn), "$options": "i"}},
+        {"email": {"$regex": re.escape(qn), "$options": "i"}},
+        {"health_card_number": {"$regex": re.escape(qn), "$options": "i"}},
+        {"visita_patient_id": {"$regex": re.escape(qn), "$options": "i"}},
+        {"date_of_birth": {"$regex": re.escape(qn)}},
+    ]
+    digits = re.sub(r"\D", "", qn)
+    if len(digits) >= 3:
+        ors.append({"phone": {"$regex": r"\D*".join(digits)}})
+    return ors
+
+
+async def _search_patients_merged(qn: str, limit: int = 40):
+    """Unified internal patient search: VERIFIED portal patient accounts PLUS
+    existing patient_directory records. Verified portal patients are surfaced
+    first (so they're never crowded out by many directory matches). Deduped so a
+    portal account linked to a directory record appears only once."""
+    results, seen_dir, seen_pid = [], set(), set()
+
+    # 1) Verified portal patients first.
+    portal = await db.patients.find({
+        "verification_status": "verified", "active_status": True, "$or": _portal_search_ors(qn),
+    }).limit(limit).to_list(limit)
+    for p in portal:
+        mdir = p.get("matched_directory_id")
+        if mdir:
+            if mdir in seen_dir:
+                continue
+            d = await db.patient_directory.find_one({"id": mdir})
+            if d:
+                results.append(_directory_snapshot(d)); seen_dir.add(d["id"])
+                continue
+        if p["id"] in seen_pid:
+            continue
+        results.append(_portal_patient_snapshot(p)); seen_pid.add(p["id"])
+
+    # 2) Directory records (skipping any already represented via a linked portal account).
+    dir_ors = [
         {"first_name": {"$regex": re.escape(qn), "$options": "i"}},
         {"last_name": {"$regex": re.escape(qn), "$options": "i"}},
         {"norm_hcn": {"$regex": directory_mod.norm_hcn(qn)}},
         {"visita_patient_id": {"$regex": re.escape(qn), "$options": "i"}},
+        {"date_of_birth": {"$regex": re.escape(qn)}},
     ]
     digits = re.sub(r"\D", "", qn)
     if len(digits) >= 3:
         ph = {"$regex": r"\D*".join(digits)}
-        ors += [{"home_phone": ph}, {"cell_phone": ph}]
-    docs = await db.patient_directory.find({"$or": ors}).limit(40).to_list(40)
-    return [_directory_snapshot(d) for d in docs]
+        dir_ors += [{"home_phone": ph}, {"cell_phone": ph}]
+    dir_docs = await db.patient_directory.find({"$or": dir_ors}).limit(limit).to_list(limit)
+    for d in dir_docs:
+        if d["id"] in seen_dir:
+            continue
+        results.append(_directory_snapshot(d)); seen_dir.add(d["id"])
+
+    return results[:limit]
+
+
+@api.get("/internal/patient-lookup")
+async def internal_patient_lookup(q: str, user: dict = Depends(require_roles(*CLINIC_ROLES))):
+    """Read-only internal patient search across BOTH the patient_directory and
+    VERIFIED portal patient accounts. Search by name / DOB / phone / email /
+    health card / VISITA PIN. Deduped; portal-only patients are flagged
+    source='portal'. Does not modify any record."""
+    qn = (q or "").strip()
+    if len(qn) < 2:
+        return []
+    return await _search_patients_merged(qn, limit=40)
 
 
 @api.post("/internal/verifications/{patient_id}")

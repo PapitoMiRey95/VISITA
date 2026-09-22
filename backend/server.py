@@ -1907,6 +1907,19 @@ def _portal_patient_snapshot(p: dict) -> dict:
     }
 
 
+def _name_tokens_clause(qn: str):
+    """Multi-token full-name search: AND each whitespace token across first/last
+    name (order-independent), so 'maria lopez' matches first=Maria last=Lopez."""
+    toks = [t for t in re.split(r"\s+", (qn or "").strip()) if t]
+    if len(toks) < 2:
+        return None
+    return {"$and": [
+        {"$or": [{"first_name": {"$regex": re.escape(t), "$options": "i"}},
+                 {"last_name": {"$regex": re.escape(t), "$options": "i"}}]}
+        for t in toks
+    ]}
+
+
 def _portal_search_ors(qn: str):
     ors = [
         {"first_name": {"$regex": re.escape(qn), "$options": "i"}},
@@ -1919,6 +1932,9 @@ def _portal_search_ors(qn: str):
     digits = re.sub(r"\D", "", qn)
     if len(digits) >= 3:
         ors.append({"phone": {"$regex": r"\D*".join(digits)}})
+    nc = _name_tokens_clause(qn)
+    if nc:
+        ors.append(nc)
     return ors
 
 
@@ -1958,6 +1974,9 @@ async def _search_patients_merged(qn: str, limit: int = 40):
     if len(digits) >= 3:
         ph = {"$regex": r"\D*".join(digits)}
         dir_ors += [{"home_phone": ph}, {"cell_phone": ph}]
+    nc = _name_tokens_clause(qn)
+    if nc:
+        dir_ors.append(nc)
     dir_docs = await db.patient_directory.find({"$or": dir_ors}).limit(limit).to_list(limit)
     for d in dir_docs:
         if d["id"] in seen_dir:

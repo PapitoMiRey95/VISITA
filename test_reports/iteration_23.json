@@ -1,0 +1,36 @@
+{
+  "summary": "Verified merged internal patient search + calendar booking bug fix. 11/11 backend pytest tests pass (portal search by email/dob/phone/name; portal-first ordering; /internal/directory regression; dedup with matched_directory_id; booking a verified portal patient via patient_id creates appt visible in that patient's portal; unverified rejected; missing ids rejected; directory booking still works). Frontend: /internal/patients search for 'Lopez' -> Maria Lopez surfaces first with 'PIN Not assigned · VERIFIED — PORTAL PATIENT'; snapshot shows green 'VERIFIED — PORTAL PATIENT' badge and 'Not assigned' PIN. Calendar Book dialog: opening an open slot -> search 'maria' -> Maria Lopez appears first with green 'PORTAL' tag and 'PIN Not assigned · Verified portal patient'. All test data and appointments cleaned up (0 residuals). No pre-existing records modified. Availability doc untouched.",
+  "backend_issues": {
+    "critical": [],
+    "minor": [
+      {"endpoint": "/api/internal/patient-lookup", "issue": "Multi-token full-name queries return 0 results. q='maria lopez' -> 0 hits, while q='maria' and q='Lopez' each work. The regex ORs each field against the whole escaped query string, so no field contains both tokens. Impact: if staff types full name with a space, nothing appears. Suggest splitting on whitespace and ANDing token regexes across first_name/last_name (or matching against full_name)."}
+    ]
+  },
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [],
+    "design_issues": []
+  },
+  "test_report_links": [
+    "/app/backend/tests/test_internal_patient_search.py",
+    "/app/test_reports/pytest/internal_patient_search.xml"
+  ],
+  "action_items": [
+    "(Minor / optional) Improve /internal/patient-lookup so multi-token full-name searches like 'maria lopez' also find the patient. Split query on whitespace and AND per-token regexes across first_name & last_name, or index a normalized full_name field. Same fix should be considered for the directory search branch inside _search_patients_merged."
+  ],
+  "critical_code_review_comments": [
+    "server.py is 2477 lines — consider splitting into routers (patients/, calendar/, portal/, admin/) for maintainability (guideline: files >700 lines).",
+    "_search_patients_merged: portal query and directory query both use the same raw qn, causing the multi-token issue noted above.",
+    "_portal_search_ors uses `date_of_birth: {$regex: qn}` and `phone: {$regex: digits-with-\\D*}` on unindexed fields — fine at current data volumes but note for later indexing."
+  ],
+  "updated_files": [
+    "/app/backend/tests/test_internal_patient_search.py (new)"
+  ],
+  "success_rate": {"backend": "100% (11/11)", "frontend": "100% of tested flows"},
+  "test_credentials": "Staff staff@visita.demo/Staff2026!; Maria maria.lopez@demo.com/Patient2026! (id 06f6ee08-58f7-4286-82f5-7c845de99ce1)",
+  "seed_data_creation": "Two temp patients created inside tests (dedup + unverified) and one dedup-linked patient — all deleted by module teardown; two TEST_-tagged appointments (portal booking + directory booking) created and deleted along with their reminders; TEST_-tagged notifications/outbound_notifications purged. Post-run DB scan: 0 residual TEST_ appts / temp patients / TEST_ notifications / TEST_ outbound. Availability doc unchanged.",
+  "retest_needed": false,
+  "should_main_agent_self_test": false,
+  "context_for_next_testing_agent": "Backend fix is solid; regression covered by /app/backend/tests/test_internal_patient_search.py. Only outstanding polish item is multi-token name search (see minor issue). UI booking dialog uses [data-testid^='calendar-open-slot'] for open slots; Patients page uses [data-testid='patient-lookup-search'/'patient-lookup-search-btn'/'patient-lookup-result'/'patient-snapshot']. Env date 2026-09-22, TZ America/Toronto; open slots easily found in week 2026-09-22 (e.g. Thu 2026-09-24 11:30 AM).",
+  "rca of the issue": "Original bug: /internal/patient-lookup queried patient_directory only, so a portal-registered patient who was VERIFIED but not yet linked to a directory row was invisible to internal staff (and un-bookable from the calendar dialog which used the same endpoint). Fix (verified): new _search_patients_merged first queries the `patients` collection (verified+active) via _portal_search_ors (name/email/hcn/pin/dob/phone) and emits snapshots flagged source='portal', patient_status='PORTAL_PATIENT'; if a portal record has matched_directory_id, the linked directory row is emitted instead so it appears once; then any remaining directory hits are appended. calendar_book now accepts patient_id in addition to directory_id and 400s if the portal patient isn't verified or neither id is provided. /internal/directory endpoint intentionally left directory-only for AppointmentQueue's link-patient flow."
+}

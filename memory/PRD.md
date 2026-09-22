@@ -224,6 +224,13 @@ See /app/memory/test_credentials.md.
 - Root cause: get_busy_slots only counted confirmed/rescheduled, so COMPLETE/NO_SHOW freed the slot; and slot generation never filtered past times.
 - Fix (source): server.py get_busy_slots now includes ['confirmed','rescheduled','completed','no_show'] (completed/no_show keep their slot). availability.py: new _now_cutoff (America/Toronto via zoneinfo) + is_past_slot; _slots_for_day/generate_slots/calendar_range skip past dates entirely and past times on today. Endpoint guards (is_past_slot) added to create_appointment (400), select_slot (409), patient reschedule (400), calendar_book (400), internal reschedule action (400). 'approve' action intentionally has NO past guard (confirms a requested time, not an availability pick).
 - Also: internal_calendar days cap raised 14->42 (for Month view).
+
+## BUGFIX: Verified portal patients findable + bookable internally (2026-06) — testing_agent iteration_23 11/11 PASS, NOT deployed
+- Root cause: /internal/patient-lookup (Patient Lookup page + Referrals typeahead) and calendar booking queried patient_directory ONLY, so a VERIFIED portal-only patient (in `patients`, no matched_directory_id) was invisible and un-bookable.
+- Fix: server.py _search_patients_merged(qn) — VERIFIED portal patients surfaced FIRST, then directory; deduped (portal linked to a directory record shown once as the directory record). Search by name/DOB/phone/email/health-card/VISITA PIN + multi-token full-name (order-independent via _name_tokens_clause). Snapshots carry source ('portal'|'directory'), patient_id, directory_id; portal-only => patient_status 'PORTAL_PATIENT', visita_patient_id null. /internal/patient-lookup now uses this. /internal/directory LEFT directory-only (link-patient in AppointmentQueue + pharmacy intake).
+- Booking: CalendarBookBody accepts directory_id OR patient_id; calendar_book books a verified portal patient by patient_id (400 if not verified / neither id) — appt.patient_id = portal id so it appears in THAT patient's portal + confirmation goes to them. Directory booking unchanged.
+- Frontend: Patients.jsx shows green 'VERIFIED — PORTAL PATIENT' badge + PIN 'Not assigned'; Calendar BookSlotDialog searches via patient-lookup, flags PORTAL results, and books via patient_id/directory_id. No verification status changed; no existing records modified. Preview only.
+
 - Verified: complete/no_show keep slot occupied; today excludes past times; past-date open_slots []; patient+admin blocked from booking/rescheduling past (400/409); availability doc byte-identical; break/blocked rules intact. Preview only.
 
 

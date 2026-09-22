@@ -178,7 +178,7 @@ class ImagingBody(BaseModel):
 
 class BloodworkBody(BaseModel):
     reason: str
-    patient_note: Optional[str] = None
+    patient_note: Optional[str] = Field(default=None, max_length=50)
 
 
 class MessageBody(BaseModel):

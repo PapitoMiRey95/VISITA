@@ -48,7 +48,15 @@ export default function PortalImaging() {
                             ))}
                         </div>
                         <div><Label className="font-semibold text-slate-700">Body part / region</Label><Input className="mt-1" required value={f.body_part} onChange={(e) => set("body_part", e.target.value)} data-testid="img-bodypart" /></div>
-                        <div><Label className="font-semibold text-slate-700">Reason</Label><Input className="mt-1" value={f.reason} onChange={(e) => set("reason", e.target.value)} /></div>
+                        <div><Label className="font-semibold text-slate-700">Reason for imaging request</Label>
+                            <select className="mt-1 w-full h-11 border border-slate-300 rounded-md px-3 text-sm bg-white"
+                                required value={f.reason} onChange={(e) => set("reason", e.target.value)} data-testid="img-reason">
+                                <option value="" disabled>Select a reason…</option>
+                                <option value="New symptoms / pain / injury">New symptoms / pain / injury</option>
+                                <option value="Follow-up / Repeat imaging">Follow-up / Repeat imaging</option>
+                                <option value="Other">Other</option>
+                            </select>
+                        </div>
                         <div><Label className="font-semibold text-slate-700">Patient note (optional)</Label><Textarea className="mt-1" value={f.patient_note} onChange={(e) => set("patient_note", e.target.value)} /></div>
                         <div className="bg-amber-50 border border-amber-200 rounded-lg p-3 text-sm text-amber-900">
                             This does not authorize imaging. Your request will be reviewed by the clinic and physician.

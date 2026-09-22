@@ -1,0 +1,35 @@
+{
+  "summary": "Fully verified the new patient-verification-approved email + in-portal notification flow end-to-end on Preview. Backend pytest: 4/4 PASS (physician 403 role gate, staff approve creates exactly 1 email + 1 in-portal note, re-approve is a no-op due to was_verified transition guard, email HTML contains no clinical info). Frontend UI: staff (Kevin) logged in via Internal Login, opened /internal/verifications (badge shows count '2'), clicked Verify on Martinez, Sofia — 'Patient verified.' toast fired, sofia row disappeared from the pending list, badge updated to '1'. DB post-checks confirmed for sofia: verification_status='verified', portal_status='VERIFIED', verified_by='Kevin (Front Desk)', verified_at set; outbound_notifications: 1 row (channel=email, subject 'Your VIen EMR account has been verified', status='failed' for @demo.com — as expected, row still present exactly once); notifications: 1 row (title 'Account verified'). Re-approve via API (equivalent to clicking Verify again) returned 200 but did NOT create a second email or note (still 1 / 1). CLEANUP DONE: sofia restored to verification_status='pending', portal_status='PENDING_VERIFICATION', verified_by/verified_at unset, 1 email row + 1 note row deleted; robert.chen also restored to pending after backend pytest.",
+  "backend_issues": {
+    "critical": [],
+    "minor": []
+  },
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [],
+    "design_issues": []
+  },
+  "test_report_links": [
+    "/app/backend/tests/test_verification_approval.py",
+    "/app/test_reports/pytest/verification_approval.xml",
+    "/app/backend/tests/_verify_sofia_after_ui.py"
+  ],
+  "action_items": [],
+  "critical_code_review_comments": [
+    "server.py verify_patient (L1845-1875): correctly captures was_verified BEFORE $set update; role gate require_roles('staff','admin') returns 403 for physician (verified). Dedup guard `decision=='verified' and not was_verified` prevents duplicate notify on re-approve — verified end-to-end. Non-verify decisions and re-saves fall to generic 'Account update' in-portal note only (no email).",
+    "notifications.account_verified: single call site, creates 1 in-portal note + 1 email row atomically. _send_email always inserts an outbound_notifications row regardless of send success/failure (status: sent|failed|prepared) — good for auditability; @demo.com correctly logs status='failed' with row present.",
+    "email_service.account_verified_html: static server-side template gated by _assert_safe_email; contains no diagnosis/medication/reason/notes; verified programmatically.",
+    "Verifications.jsx: uses data-testid='verify-approve' / 'verify-reject'; single POST per click; invalidate + refetch on success — no accidental double-submits observed. The 'VISITA Patient ID (optional)' input is optional and does not affect the notification flow."
+  ],
+  "updated_files": [
+    "/app/backend/tests/test_verification_approval.py (new)",
+    "/app/backend/tests/_verify_sofia_after_ui.py (new — post-UI DB verifier + cleanup)"
+  ],
+  "success_rate": {"backend": "100% (4/4 pytest)", "frontend": "100% (UI approve + toast + badge decrement + list refetch)"},
+  "test_credentials": "Admin kevinrodriguez9528@gmail.com/VisitaAdmin2026!, Staff staff@visita.demo/Staff2026!, Physician PAGUAYO/Newman2013_! — all verified working. Login flow: /login -> click 'Internal Login' link -> fill identifier + password -> data-testid='login-submit'.",
+  "seed_data_creation": "None. Sofia Martinez (21244c47-d3de-4579-89fe-7a7aaf6fc3c5) and Robert Chen (492fde1d-b7ae-4016-bc67-bcb79d69e73c) were temporarily verified and then FULLY RESTORED to their original PENDING state; all created verification emails and 'Account verified' notes were deleted post-test. Demo data is unchanged.",
+  "retest_needed": false,
+  "should_main_agent_self_test": false,
+  "context_for_next_testing_agent": "Feature is production-ready as specified. Backend regression suite at /app/backend/tests/test_verification_approval.py covers role gating + dedup + no-clinical-info. If re-running, the fixture auto-resets robert.chen to pending and cleans email/note rows before + after — safe to run repeatedly. For UI, use sofia.martinez to avoid overlap with the pytest which uses robert.chen. Verifications sidebar item shows a live pending-count badge that decrements after approve — good visual signal to assert on.",
+  "rca of the issue": "N/A — feature works exactly as specified. All 8 requested behaviors (staff/admin approve, verification_status change, exactly 1 email, exactly 1 in-portal note, re-approve dedup, unrelated re-save no resend, no clinical info in email, other patient data unchanged) verified."
+}

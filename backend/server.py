@@ -617,6 +617,8 @@ async def create_appointment(body: AppointmentBody, p: dict = Depends(require_ve
     for o in options:
         if not avail_mod.is_within(avail, o.get("date"), o.get("time")):
             raise HTTPException(status_code=400, detail="A selected time is outside the clinic's available hours.")
+        if avail_mod.is_past_slot(avail, o.get("date"), o.get("time")):
+            raise HTTPException(status_code=400, detail="A selected time is in the past. Please choose an upcoming time.")
     ref = await next_ref("APT")
     opt1 = options[0]
     appt_type = body.appointment_type if body.appointment_type in ("IN_CLINIC", "TELEPHONE") else None
@@ -655,6 +657,8 @@ async def select_slot(item_id: str, body: SelectSlotBody, user: dict = Depends(g
     avail = await get_availability_doc()
     if not avail_mod.is_within(avail, slot.get("date"), slot.get("time")):
         raise HTTPException(status_code=409, detail="That time is no longer available. Please contact the clinic.")
+    if avail_mod.is_past_slot(avail, slot.get("date"), slot.get("time")):
+        raise HTTPException(status_code=409, detail="That time is in the past. Please contact the clinic.")
     updates = {
         "status": "confirmed", "selected_slot": slot,
         "confirmed_date": slot.get("date"), "confirmed_time": slot.get("label") or slot.get("time"),
@@ -719,6 +723,8 @@ async def patient_reschedule_appointment(item_id: str, body: PatientRescheduleBo
     avail = await get_availability_doc()
     if not avail_mod.is_within(avail, body.date, time24):
         raise HTTPException(status_code=400, detail="That time is outside the clinic's available hours.")
+    if avail_mod.is_past_slot(avail, body.date, time24):
+        raise HTTPException(status_code=400, detail="That time is in the past. Please choose an upcoming time.")
     if await _slot_taken(body.date, time24, exclude_id=item_id):
         raise HTTPException(status_code=409, detail="This time is no longer available. Please select another time.")
     display = body.display or f"{fmt_date_display(body.date)} · {body.label or body.time}"
@@ -736,9 +742,11 @@ async def patient_reschedule_appointment(item_id: str, body: PatientRescheduleBo
 
 
 async def get_busy_slots():
-    """VIen EMR is the source of truth: confirmed/rescheduled appointments occupy slots."""
+    """VIen EMR is the source of truth: confirmed, rescheduled, completed and
+    no-show appointments all occupy (and keep) their slot — completing or marking
+    an appointment does NOT reopen its time."""
     appts = await db.appointment_requests.find(
-        {"status": {"$in": ["confirmed", "rescheduled"]}, "confirmed_date": {"$ne": None}}).to_list(2000)
+        {"status": {"$in": ["confirmed", "rescheduled", "completed", "no_show"]}, "confirmed_date": {"$ne": None}}).to_list(2000)
     busy = set()
     for a in appts:
         t = a.get("confirmed_slot_time") or avail_mod._norm_time(a.get("confirmed_time") or "")
@@ -879,6 +887,8 @@ async def calendar_book(body: CalendarBookBody, user: dict = Depends(require_rol
     avail = await get_availability_doc()
     if not avail_mod.is_within(avail, body.date, time24):
         raise HTTPException(status_code=400, detail="That time is outside Dr. Aguayo's configured availability.")
+    if avail_mod.is_past_slot(avail, body.date, time24):
+        raise HTTPException(status_code=400, detail="That time is in the past. Please choose an upcoming time.")
     if await _slot_taken(body.date, time24):
         raise HTTPException(status_code=409, detail="This time is no longer available. Please select another time.")
     ref = await next_ref("APT")
@@ -1437,6 +1447,8 @@ async def appt_update(item_id: str, body: UpdateBody, user: dict = Depends(requi
         if not avail_mod.is_within(avail, cdate, ctime):
             raise HTTPException(status_code=400, detail="That time is outside Dr. Aguayo's configured availability.")
         time24 = avail_mod._norm_time(ctime)
+        if avail_mod.is_past_slot(avail, cdate, time24):
+            raise HTTPException(status_code=400, detail="That time is in the past. Please choose an upcoming time.")
         if await _slot_taken(cdate, time24, exclude_id=item_id):
             raise HTTPException(status_code=409, detail="This time is no longer available. Please select another time.")
         updates.update({

@@ -5,7 +5,8 @@ id="availability"). VIen EMR is the source of truth: slot generation subtracts
 `busy` times (confirmed appointments), blocked periods, closures and vacations.
 No external calendar dependency.
 """
-from datetime import date, timedelta
+from datetime import date, datetime, timedelta
+from zoneinfo import ZoneInfo
 
 WEEKDAY_KEYS = ["mon", "tue", "wed", "thu", "fri", "sat", "sun"]
 
@@ -59,8 +60,29 @@ def _norm_time(t: str) -> str:
     return f"{int(h):02d}:{int(m):02d}"
 
 
-def _slots_for_day(avail, d, dur, busy):
-    """Available slots for a single date `d`. Returns (closed, reason, slots)."""
+def _now_cutoff(avail):
+    """(today_iso, minutes_since_midnight) in the clinic timezone (America/Toronto)."""
+    tz = ZoneInfo((avail or {}).get("timezone") or "America/Toronto")
+    now = datetime.now(tz)
+    return now.date().isoformat(), now.hour * 60 + now.minute
+
+
+def is_past_slot(avail, ds: str, time_str: str) -> bool:
+    """True if the given date/time is earlier than 'now' in the clinic timezone."""
+    if not ds:
+        return False
+    today_iso, now_min = _now_cutoff(avail)
+    if ds < today_iso:
+        return True
+    if ds == today_iso and _to_min(_norm_time(time_str)) < now_min:
+        return True
+    return False
+
+
+def _slots_for_day(avail, d, dur, busy, cutoff=None):
+    """Available slots for a single date `d`. Returns (closed, reason, slots).
+
+    `cutoff` = (today_iso, now_minutes) in clinic tz; slots at or before now are omitted."""
     ds = d.isoformat()
     closures = {c.get("date"): c.get("reason") for c in avail.get("closures", [])}
     if ds in closures:
@@ -80,9 +102,19 @@ def _slots_for_day(avail, d, dur, busy):
     # Recurring daily break (applies to every working day) — never offered to patients.
     if avail.get("break_start") and avail.get("break_end"):
         day_blocks.append((_to_min(avail["break_start"]), _to_min(avail["break_end"])))
+    # Past-time cutoff: whole past days, or earlier times on today (clinic tz).
+    past_before = None
+    if cutoff:
+        today_iso, now_min = cutoff
+        if ds < today_iso:
+            return False, None, []
+        if ds == today_iso:
+            past_before = now_min
     slots, t = [], start
     while t + dur <= end:
         occupied = any(bs <= t < be for bs, be in day_blocks) or f"{ds} {t // 60:02d}:{t % 60:02d}" in busy
+        if past_before is not None and t < past_before:
+            occupied = True
         if not occupied:
             slots.append({
                 "date": ds, "weekday": d.strftime("%A"),
@@ -97,14 +129,15 @@ def generate_slots(avail: dict, days: int = 28, busy=None):
     """Return available appointment slots for the next `days` days.
 
     `busy` is a set of "YYYY-MM-DD HH:MM" strings for times already occupied by
-    confirmed VIen EMR appointments."""
+    VIen EMR appointments (confirmed/rescheduled/completed/no_show)."""
     busy = busy or set()
     avail = avail or DEFAULT_AVAILABILITY
     dur = int(avail.get("appointment_duration") or 30) or 30
+    cutoff = _now_cutoff(avail)
     today = date.today()
     out = []
     for i in range(1, days + 1):
-        _, _, slots = _slots_for_day(avail, today + timedelta(days=i), dur, busy)
+        _, _, slots = _slots_for_day(avail, today + timedelta(days=i), dur, busy, cutoff)
         out.extend(slots)
     return out
 
@@ -114,11 +147,12 @@ def calendar_range(avail: dict, start: str, days: int, busy=None):
     busy = busy or set()
     avail = avail or DEFAULT_AVAILABILITY
     dur = int(avail.get("appointment_duration") or 30) or 30
+    cutoff = _now_cutoff(avail)
     d0 = date.fromisoformat(start)
     out = []
     for i in range(days):
         d = d0 + timedelta(days=i)
-        closed, reason, slots = _slots_for_day(avail, d, dur, busy)
+        closed, reason, slots = _slots_for_day(avail, d, dur, busy, cutoff)
         out.append({"date": d.isoformat(), "weekday": d.strftime("%A"),
                     "closed": closed, "reason": reason, "open_slots": slots})
     return out

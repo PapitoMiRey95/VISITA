@@ -96,9 +96,9 @@ export default function Calendar() {
             ) : (
             <div className={`grid gap-3 ${view === "week" ? "grid-cols-1 md:grid-cols-2 xl:grid-cols-4" : "grid-cols-1 max-w-2xl"}`}>
                 {rows.map((d) => (
-                    <div key={d.date} data-testid="cal-day" className="bg-white border border-slate-300 rounded-sm p-3">
-                        <div className="flex items-center justify-between mb-2">
-                            <div className="font-semibold text-slate-800 text-sm">{d.weekday}<div className="text-xs text-slate-500">{formatDate(d.date)}</div></div>
+                    <div key={d.date} data-testid="cal-day" className="bg-white border border-slate-300 rounded-sm p-2">
+                        <div className="flex items-center justify-between mb-1.5">
+                            <div className="font-semibold text-slate-800 text-sm leading-tight">{d.weekday}<span className="text-xs text-slate-500 font-normal ml-1.5">{formatDate(d.date)}</span></div>
                             {!d.closed && (
                                 d.day_blocked ? (
                                     <button data-testid="cal-unblock" onClick={() => unblockDay(d.date)} className="text-xs text-red-600 hover:text-slate-600 flex items-center gap-1">
@@ -112,40 +112,42 @@ export default function Calendar() {
                             )}
                         </div>
                         {d.closed ? (
-                            <div className="text-xs text-slate-400 py-3 text-center italic">{d.reason || "Closed"}</div>
+                            <div className="text-xs text-slate-400 py-2 text-center italic">{d.reason || "Closed"}</div>
                         ) : (
                             <div className="space-y-1">
                                 {d.day_blocked && (
-                                    <div data-testid="cal-day-blocked" className="rounded-sm bg-red-50 border border-red-200 text-red-700 text-xs font-semibold px-2 py-1 text-center">
+                                    <div data-testid="cal-day-blocked" className="rounded-sm bg-red-50 border border-red-200 text-red-700 text-xs font-semibold px-2 py-0.5 text-center">
                                         DAY BLOCKED — remaining slots unavailable
                                     </div>
                                 )}
                                 {d.appointments.map((a) => (
                                     <div key={a.id} data-testid="cal-appt" className="rounded-sm bg-emerald-50 border border-emerald-200 px-2 py-1 text-xs">
-                                        <div className="flex justify-between items-center">
-                                            <span className="font-semibold text-slate-800">{a.label || a.time} · {a.patient_name}</span>
+                                        <div className="flex justify-between items-center gap-1">
+                                            <span className="font-semibold text-slate-800 truncate">{a.label || a.time} · {a.patient_name}</span>
                                             <StatusPill status={a.status} />
                                         </div>
-                                        {a.reason && <div className="text-slate-500 truncate">{a.reason}</div>}
-                                        <div className="mt-1"><ApptTypeEditor appt={a} onSaved={refresh} /></div>
-                                        {(a.status === "confirmed" || a.status === "rescheduled") && (
-                                            <div className="flex gap-1 mt-1">
-                                                <button className="text-[11px] text-slate-500 hover:text-visita-greenDark" onClick={() => setResched(a)} data-testid="cal-reschedule">Reschedule</button>
-                                                <button className="text-[11px] text-slate-500 hover:text-slate-800" onClick={() => act(a.id, { action: "complete" }, "Marked completed.")} data-testid="cal-complete">Complete</button>
-                                                <button className="text-[11px] text-amber-600" onClick={() => act(a.id, { action: "no_show" }, "Marked no-show.")} data-testid="cal-noshow">No-show</button>
-                                                <button className="text-[11px] text-red-600" onClick={() => act(a.id, { action: "cancel" }, "Cancelled.")} data-testid="cal-cancel">Cancel</button>
-                                            </div>
-                                        )}
+                                        {a.reason && <div className="text-slate-500 truncate leading-tight">{a.reason}</div>}
+                                        <div className="flex items-center justify-between gap-2 mt-0.5">
+                                            <ApptTypeEditor appt={a} onSaved={refresh} />
+                                            {(a.status === "confirmed" || a.status === "rescheduled") && (
+                                                <div className="flex gap-1.5 shrink-0">
+                                                    <button className="text-[11px] text-slate-500 hover:text-visita-greenDark" onClick={() => setResched(a)} data-testid="cal-reschedule">Reschedule</button>
+                                                    <button className="text-[11px] text-slate-500 hover:text-slate-800" onClick={() => act(a.id, { action: "complete" }, "Marked completed.")} data-testid="cal-complete">Complete</button>
+                                                    <button className="text-[11px] text-amber-600" onClick={() => act(a.id, { action: "no_show" }, "Marked no-show.")} data-testid="cal-noshow">No-show</button>
+                                                    <button className="text-[11px] text-red-600" onClick={() => act(a.id, { action: "cancel" }, "Cancelled.")} data-testid="cal-cancel">Cancel</button>
+                                                </div>
+                                            )}
+                                        </div>
                                     </div>
                                 ))}
                                 {d.open_slots.map((s) => (
                                     <button key={s.time} data-testid="cal-open-slot" onClick={() => setBooking({ date: d.date, time: s.time, label: s.label })}
-                                        className="w-full flex items-center gap-1 text-left rounded-sm border border-dashed border-slate-200 px-2 py-1 text-xs text-slate-500 hover:border-visita-green hover:text-visita-greenDark">
+                                        className="w-full flex items-center gap-1 text-left rounded-sm border border-dashed border-slate-200 px-2 py-0.5 text-xs text-slate-500 hover:border-visita-green hover:text-visita-greenDark">
                                         <Plus className="w-3 h-3" /> {s.label}
                                     </button>
                                 ))}
                                 {d.appointments.length === 0 && d.open_slots.length === 0 && (
-                                    <div className="text-xs text-slate-400 py-2 text-center">No availability</div>
+                                    <div className="text-xs text-slate-400 py-1.5 text-center">No availability</div>
                                 )}
                             </div>
                         )}

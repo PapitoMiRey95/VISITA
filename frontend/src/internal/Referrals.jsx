@@ -1,7 +1,7 @@
-import { useState } from "react";
+import { useState, useRef, useEffect } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { toast } from "sonner";
-import { Upload, FileText, Download, Send, CheckCircle2, History } from "lucide-react";
+import { Upload, FileText, Download, Send, CheckCircle2, History, Search } from "lucide-react";
 import { api, formatErr } from "../lib/api";
 import { useInvalidate } from "./hooks";
 import { useAuth } from "../context/AuthContext";
@@ -20,6 +20,37 @@ export default function Referrals() {
     const [meta, setMeta] = useState({ patient_name: "", specialty: "", specialist_name: "", clinic_name: "", fax_number: "" });
     const [busy, setBusy] = useState(false);
     const [q, setQ] = useState("");
+
+    // Patient search typeahead (name / HCN / VISITA PIN)
+    const [patResults, setPatResults] = useState([]);
+    const [showPat, setShowPat] = useState(false);
+    const [patSearching, setPatSearching] = useState(false);
+    const patRef = useRef(null);
+
+    useEffect(() => {
+        function onDocClick(e) {
+            if (patRef.current && !patRef.current.contains(e.target)) setShowPat(false);
+        }
+        document.addEventListener("mousedown", onDocClick);
+        return () => document.removeEventListener("mousedown", onDocClick);
+    }, []);
+
+    const searchPatients = async (val) => {
+        setMeta((m) => ({ ...m, patient_name: val }));
+        const query = val.trim();
+        if (query.length < 2) { setPatResults([]); setShowPat(false); return; }
+        setPatSearching(true);
+        try {
+            const { data } = await api.get("/internal/patient-lookup", { params: { q: query } });
+            setPatResults(data);
+            setShowPat(true);
+        } catch (err) { toast.error(formatErr(err)); } finally { setPatSearching(false); }
+    };
+
+    const pickPatient = (r) => {
+        setMeta((m) => ({ ...m, patient_name: r.full_name }));
+        setShowPat(false);
+    };
 
     const active = useQuery({ queryKey: ["queue", "/internal/referrals"], queryFn: async () => (await api.get("/internal/referrals")).data });
     const history = useQuery({ queryKey: ["queue", "/internal/referrals/history", q], queryFn: async () => (await api.get("/internal/referrals/history", { params: { q: q || undefined } })).data, enabled: tab === "history" });
@@ -72,7 +103,34 @@ export default function Referrals() {
                 <form onSubmit={upload} className="bg-white border border-slate-300 rounded-sm p-4 mb-5 space-y-3">
                     <div className="font-semibold text-slate-700 flex items-center gap-2"><Upload className="w-4 h-4 text-visita-green" /> Referral Drop-Off (upload completed PDF from VISITA EMR)</div>
                     <div className="grid grid-cols-2 md:grid-cols-3 gap-2">
-                        <div><Label className="text-xs">Patient name</Label><Input value={meta.patient_name} onChange={(e) => setMeta({ ...meta, patient_name: e.target.value })} data-testid="ref-patient" /></div>
+                        <div ref={patRef} className="relative">
+                            <Label className="text-xs">Patient name</Label>
+                            <div className="relative">
+                                <Search className="w-3.5 h-3.5 text-slate-400 absolute left-2 top-2.5" />
+                                <Input value={meta.patient_name} onChange={(e) => searchPatients(e.target.value)}
+                                    onFocus={() => { if (patResults.length) setShowPat(true); }}
+                                    placeholder="Search name, HCN, or PIN…" className="pl-7" autoComplete="off" data-testid="ref-patient" />
+                            </div>
+                            {showPat && (
+                                <div data-testid="ref-patient-results"
+                                    className="absolute z-30 mt-1 w-full min-w-[18rem] bg-white border border-slate-300 rounded-sm shadow-lg divide-y max-h-72 overflow-y-auto">
+                                    {patSearching ? (
+                                        <div className="px-3 py-3 text-slate-400 text-xs">Searching…</div>
+                                    ) : patResults.length === 0 ? (
+                                        <div className="px-3 py-3 text-slate-400 text-xs">No matching patients.</div>
+                                    ) : patResults.map((r) => (
+                                        <button key={r.id} type="button" data-testid="ref-patient-result" onClick={() => pickPatient(r)}
+                                            className="w-full text-left px-3 py-2 hover:bg-slate-50">
+                                            <div className="font-semibold text-slate-800 text-sm">{r.full_name}</div>
+                                            <div className="text-[11px] text-slate-500">
+                                                {r.visita_patient_id ? `PIN ${r.visita_patient_id}` : "No PIN"}
+                                                {r.health_card_number ? ` · HCN ${r.health_card_number}` : ""}
+                                            </div>
+                                        </button>
+                                    ))}
+                                </div>
+                            )}
+                        </div>
                         <div><Label className="text-xs">Specialty</Label><Input value={meta.specialty} onChange={(e) => setMeta({ ...meta, specialty: e.target.value })} data-testid="ref-specialty" /></div>
                         <div><Label className="text-xs">Specialist / Clinic</Label><Input value={meta.specialist_name} onChange={(e) => setMeta({ ...meta, specialist_name: e.target.value })} data-testid="ref-specialist" /></div>
                         <div><Label className="text-xs">Destination fax</Label><Input value={meta.fax_number} onChange={(e) => setMeta({ ...meta, fax_number: e.target.value })} data-testid="ref-fax" /></div>

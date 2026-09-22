@@ -12,6 +12,7 @@ import { Input } from "../components/ui/input";
 import { Textarea } from "../components/ui/textarea";
 import { Label } from "../components/ui/label";
 import BookAppointmentModal from "./BookAppointmentModal";
+import { ApptTypeBadge } from "../components/ApptTypeBadge";
 import { formatDate } from "../lib/date";
 
 export default function AppointmentQueue() {
@@ -115,17 +116,18 @@ export default function AppointmentQueue() {
                     <thead>
                         <tr className="bg-slate-100 text-left text-xs uppercase tracking-wider text-slate-600">
                             <th className="px-3 py-2 font-medium">Ref</th><th className="px-3 py-2 font-medium">Patient</th>
-                            <th className="px-3 py-2 font-medium">Reason</th><th className="px-3 py-2 font-medium">Preferred #1</th>
+                            <th className="px-3 py-2 font-medium">Reason</th><th className="px-3 py-2 font-medium">Type</th><th className="px-3 py-2 font-medium">Preferred #1</th>
                             <th className="px-3 py-2 font-medium">Status</th><th />
                         </tr>
                     </thead>
                     <tbody>
-                        {items.length === 0 && <tr><td colSpan={6} className="px-3 py-8 text-center text-slate-400">No appointment requests.</td></tr>}
+                        {items.length === 0 && <tr><td colSpan={7} className="px-3 py-8 text-center text-slate-400">No appointment requests.</td></tr>}
                         {items.map((i) => (
                             <tr key={i.id} data-testid="queue-row" onClick={() => open(i)} className="border-b border-slate-200 even:bg-slate-50/60 hover:bg-visita-bg cursor-pointer">
                                 <td className="px-3 py-2 text-slate-500">{i.ref_number}</td>
                                 <td className="px-3 py-2 font-semibold">{i.patient_name}</td>
                                 <td className="px-3 py-2">{i.reason}</td>
+                                <td className="px-3 py-2"><ApptTypeBadge type={i.appointment_type} /></td>
                                 <td className="px-3 py-2">{(i.preferred_options || [])[0] ? `${formatDate((i.preferred_options || [])[0].date)} · ${(i.preferred_options || [])[0].label || (i.preferred_options || [])[0].time}` : "—"}</td>
                                 <td className="px-3 py-2"><StatusPill status={i.status} /></td>
                                 <td className="px-3 py-2 text-right"><Button size="sm" variant="ghost" className="h-7 text-visita-green" data-testid="queue-open">Open</Button></td>
@@ -177,6 +179,7 @@ export default function AppointmentQueue() {
                                 </div>
                             )}
                             <div className="space-y-2 text-sm">
+                                <div className="flex items-center gap-2" data-testid="appt-detail-type"><ApptTypeBadge type={sel.appointment_type} size="lg" /></div>
                                 <KV label="Reason">{sel.reason}</KV>
                                 {sel.status === "confirmed" && (
                                     <div className="bg-emerald-50 border border-emerald-200 rounded-sm p-2" data-testid="appt-confirmed-block">

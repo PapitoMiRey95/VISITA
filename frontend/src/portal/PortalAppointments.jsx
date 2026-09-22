@@ -2,10 +2,11 @@ import { useMemo, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { useNavigate } from "react-router-dom";
 import { toast } from "sonner";
-import { CalendarClock, CheckCircle2, AlertTriangle, Phone, X, Clock, CalendarDays } from "lucide-react";
+import { CalendarClock, CheckCircle2, AlertTriangle, Phone, X, Clock, CalendarDays, Hospital } from "lucide-react";
 import { api, formatErr } from "../lib/api";
 import { usePortal, StatusPill, Card, PendingBanner } from "./shared";
 import { EmergencyNotice } from "../components/EmergencyNotice";
+import { ApptTypeBadge, apptTypeConfirmationLabel } from "../components/ApptTypeBadge";
 import { Button } from "../components/ui/button";
 import { Textarea } from "../components/ui/textarea";
 import { Label } from "../components/ui/label";
@@ -62,6 +63,7 @@ export default function PortalAppointments() {
 
     const [selDate, setSelDate] = useState(null);     // Date object
     const [selSlot, setSelSlot] = useState(null);     // slot object
+    const [apptType, setApptType] = useState("");     // IN_CLINIC | TELEPHONE
     const [reason, setReason] = useState("");
     const [note, setNote] = useState("");
     const [busy, setBusy] = useState(false);
@@ -83,6 +85,7 @@ export default function PortalAppointments() {
     const submit = async (e) => {
         e.preventDefault();
         if (!selSlot) return toast.error("Please select a date and time.");
+        if (!apptType) return toast.error("Please choose an appointment type (In-Clinic or Telephone).");
         if (!reason.trim()) return toast.error("Please enter a reason for the appointment.");
         setBusy(true);
         try {
@@ -96,10 +99,11 @@ export default function PortalAppointments() {
             }
             await api.post("/portal/appointments", {
                 reason: reason.trim(), patient_note: note || undefined,
+                appointment_type: apptType,
                 options: [{ date: selSlot.date, time: selSlot.time, label: selSlot.label, display: selSlot.display }],
             });
             toast.success("Appointment request submitted. The clinic will confirm your time.");
-            setSelDate(null); setSelSlot(null); setReason(""); setNote("");
+            setSelDate(null); setSelSlot(null); setApptType(""); setReason(""); setNote("");
             refetch();
         } catch (err) { toast.error(formatErr(err)); } finally { setBusy(false); }
     };
@@ -216,11 +220,35 @@ export default function PortalAppointments() {
                             </div>
                         )}
 
-                        {/* Step 3 — Reason */}
+                        {/* Step 3 — Appointment type + Reason */}
                         {selSlot && (
                             <div data-testid="appt-reason-section">
                                 <div className="flex items-center gap-2 mb-2">
                                     <span className="w-6 h-6 rounded-full bg-portal-blue text-white text-xs font-bold flex items-center justify-center">3</span>
+                                    <Label className="font-semibold text-slate-700">Appointment type</Label>
+                                </div>
+                                <div className="grid grid-cols-2 gap-3 mb-4" data-testid="appt-type-select">
+                                    {[
+                                        { v: "IN_CLINIC", title: "In-Clinic", Icon: Hospital, desc: "Attend Dr. Aguayo's office in person." },
+                                        { v: "TELEPHONE", title: "Telephone", Icon: Phone, desc: "Dr. Aguayo will call you if approved." },
+                                    ].map(({ v, title, Icon, desc }) => {
+                                        const on = apptType === v;
+                                        return (
+                                            <button type="button" key={v} data-testid={`appt-type-${v}`} onClick={() => setApptType(v)}
+                                                className={`text-left rounded-xl border p-3 transition-colors ${on
+                                                    ? "border-portal-blue bg-sky-50 ring-1 ring-portal-blue"
+                                                    : "border-slate-200 bg-white hover:border-portal-blue"}`}>
+                                                <div className="flex items-center gap-2 font-bold text-slate-800">
+                                                    <Icon className="w-4 h-4 text-portal-blue" /> {title}
+                                                </div>
+                                                <p className="text-xs text-slate-500 mt-1">{desc}</p>
+                                            </button>
+                                        );
+                                    })}
+                                </div>
+
+                                <div className="flex items-center gap-2 mb-2">
+                                    <span className="w-6 h-6 rounded-full bg-portal-blue text-white text-xs font-bold flex items-center justify-center">4</span>
                                     <Label className="font-semibold text-slate-700">Reason for appointment</Label>
                                 </div>
                                 <select required value={reason} onChange={(e) => setReason(e.target.value)} data-testid="appt-reason"
@@ -257,13 +285,14 @@ export default function PortalAppointments() {
                                 </div>
                                 <div className="text-sm text-slate-700">
                                     <div><span className="text-slate-500">When:</span> <span className="font-semibold" data-testid="appt-review-when">{formatDate(selSlot.date)} at {selSlot.label}</span></div>
-                                    {reason.trim() && <div><span className="text-slate-500">Reason:</span> <span className="font-semibold">{reason.trim()}</span></div>}
+                                    {apptType && <div className="mt-1"><span className="text-slate-500">Type:</span> <span className="font-semibold" data-testid="appt-review-type">{apptTypeConfirmationLabel(apptType)}</span></div>}
+                                    {reason.trim() && <div className="mt-1"><span className="text-slate-500">Reason:</span> <span className="font-semibold">{reason.trim()}</span></div>}
                                 </div>
-                                <p className="text-xs text-slate-500 mt-2">This request still requires clinic approval before it becomes confirmed.</p>
+                                <p className="text-xs text-slate-500 mt-2" data-testid="appt-not-confirmed-note">Your appointment type and time are not confirmed until the clinic approves your request. You will be notified once it is confirmed.</p>
                             </div>
                         )}
 
-                        <Button type="submit" disabled={busy || !selSlot || !reason.trim()} data-testid="appt-submit"
+                        <Button type="submit" disabled={busy || !selSlot || !apptType || !reason.trim()} data-testid="appt-submit"
                             className="w-full h-12 rounded-xl bg-portal-blue hover:bg-portal-blueDark text-white text-base">
                             {busy ? "Submitting…" : "Submit Appointment Request"}
                         </Button>
@@ -280,6 +309,7 @@ export default function PortalAppointments() {
                             <div>
                                 <div className="font-bold text-slate-800">{a.reason}</div>
                                 <div className="text-sm text-slate-500">{a.ref_number}</div>
+                                <div className="mt-1.5"><ApptTypeBadge type={a.appointment_type} /></div>
                             </div>
                             <StatusPill status={a.status} />
                         </div>

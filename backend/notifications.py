@@ -59,6 +59,15 @@ def confirmed_dt_utc(appt):
     return _confirmed_dt_utc(appt)
 
 
+def _type_label(appt) -> str:
+    t = (appt or {}).get("appointment_type")
+    if t == "TELEPHONE":
+        return "Telephone Appointment"
+    if t == "IN_CLINIC":
+        return "In-Clinic Appointment"
+    return "Not specified"
+
+
 def _fmt_when(appt) -> str:
     """'2026 Sep - 23 at 1:30 PM' from confirmed date/time (America/Toronto)."""
     ds, t = appt.get("confirmed_date"), _time24(appt)
@@ -124,10 +133,11 @@ async def appointment_confirmed(db, appt):
     first = (p or {}).get("first_name") or (appt.get("patient_name") or "").split(",")[-1].strip() or "there"
     when = _fmt_when(appt)
     disp = appt.get("confirmed_display") or when
+    tlabel = _type_label(appt)
     await _in_portal(db, appt["patient_id"], "Appointment confirmed",
-                     f"Your appointment with Dr. Aguayo is confirmed for {disp}. See your Patient Portal for details.")
+                     f"Your {tlabel} with Dr. Aguayo is confirmed for {disp}. See your Patient Portal for details.")
     email = (p or {}).get("email")
-    html = email_service.appointment_confirmed_html(first, disp, PORTAL_URL)
+    html = email_service.appointment_confirmed_html(first, disp, PORTAL_URL, tlabel)
     await _send_email(db, appt["patient_id"], email, "Appointment Confirmed — Dr. Aguayo", html)
     await schedule_reminders(db, appt)
 

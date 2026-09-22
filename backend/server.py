@@ -156,6 +156,7 @@ class AppointmentBody(BaseModel):
     reason: str
     options: List[dict] = []  # ranked slots [{date,time,label,display}] max 3
     patient_note: Optional[str] = None
+    appointment_type: Optional[str] = None  # IN_CLINIC | TELEPHONE
 
 
 class PrescriptionBody(BaseModel):
@@ -618,10 +619,12 @@ async def create_appointment(body: AppointmentBody, p: dict = Depends(require_ve
             raise HTTPException(status_code=400, detail="A selected time is outside the clinic's available hours.")
     ref = await next_ref("APT")
     opt1 = options[0]
+    appt_type = body.appointment_type if body.appointment_type in ("IN_CLINIC", "TELEPHONE") else None
     doc = {
         "id": str(uuid.uuid4()), "ref_number": ref, "patient_id": p["id"],
         "patient_name": f"{p['last_name']}, {p['first_name']}",
         "reason": body.reason, "patient_note": body.patient_note,
+        "appointment_type": appt_type,
         "preferred_options": options,
         "preferred_date": opt1.get("date"), "preferred_time": opt1.get("label") or opt1.get("time"),
         "status": "requested", "staff_note": None,
@@ -796,6 +799,7 @@ async def internal_calendar(start: Optional[str] = None, days: int = 7,
             "time": a.get("confirmed_slot_time") or avail_mod._norm_time(a.get("confirmed_time") or ""),
             "label": a.get("confirmed_time"), "patient_name": a.get("patient_name"),
             "status": a.get("status"), "reason": a.get("reason"),
+            "appointment_type": a.get("appointment_type"),
             "source": (a.get("booked_from") or {}).get("source_type") or "appointment",
         })
     for row in day_rows:
@@ -996,6 +1000,7 @@ async def portal_overview(user: dict = Depends(get_current_user)):
         return {
             "id": a["id"], "ref_number": a["ref_number"], "reason": a["reason"],
             "status": APPT_PATIENT_STATUS.get(a["status"]), "raw_status": a["status"],
+            "appointment_type": a.get("appointment_type"),
             "preferred_options": a.get("preferred_options", []),
             "offered_slots": a.get("offered_slots", []),
             "confirmed_date": a.get("confirmed_date"), "confirmed_time": a.get("confirmed_time"),

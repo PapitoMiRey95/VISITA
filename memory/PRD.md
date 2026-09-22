@@ -205,4 +205,12 @@ See /app/memory/test_credentials.md.
 - **Appointment confirmed email** (already existed, satisfies request): notifications.appointment_confirmed fires on staff approve / physician book / calendar book → subject "Appointment Confirmed — Dr. Aguayo", body has date (YYYY Mon - DD) + time + Dr. Aguayo, portal link; no medical reason. Logged to outbound_notifications.
 - Emails to fake @demo.com log status 'failed' gracefully (template passes the _assert_safe_email G2/G3 gate); real addresses send. Preview demo patient restored to pending after test.
 
+## Appointment Type (In-Clinic / Telephone) (2026-06) — Preview-verified (curl+DB+screenshot), NOT deployed
+- Patient booking (PortalAppointments.jsx): required Appointment type step (two selectable cards In-Clinic / Telephone with descriptions) shown before Reason; submit blocked until chosen. Review card shows "Type: In-Clinic/Telephone Appointment" + patient-facing note "Your appointment type and time are not confirmed until the clinic approves your request. You will be notified once it is confirmed." Sends appointment_type in POST /portal/appointments.
+- Backend: AppointmentBody.appointment_type (IN_CLINIC|TELEPHONE, else None); create_appointment validates+stores on NEW requests only (no backfill). Serialized in portal overview appt_view, internal /internal/appointments (raw docs), and /internal/calendar day appointments. Preserved through approve/confirm (stored on the request doc).
+- Confirmation: notifications.appointment_confirmed includes type label — in-portal "Your Telephone Appointment/In-Clinic Appointment…" + email (email_service.appointment_confirmed_html gains type_label row). _type_label -> 'Telephone Appointment' | 'In-Clinic Appointment' | 'Not specified'.
+- Badges: reusable components/ApptTypeBadge.jsx (Hospital/Phone/HelpCircle lucide icons; IN-CLINIC green, PHONE sky, NOT SPECIFIED grey). Shown in patient request cards, internal AppointmentQueue new "Type" column + detail dialog, and Admin Calendar appointment cards (only when set). Existing appts without a type show "NOT SPECIFIED".
+- DATA SAFETY: only new requests get a type; no modification/backfill of existing appointments; availability/scheduling rules unchanged. data-testids: appt-type-select, appt-type-IN_CLINIC, appt-type-TELEPHONE, appt-review-type, appt-not-confirmed-note, appt-type-badge-*, appt-detail-type.
+
+
 

@@ -129,20 +129,26 @@ def _clean(s: str) -> str:
     return (s or "").replace("<", "").replace(">", "")
 
 
-def _appt_email(heading: str, intro: str, name: str, when: str, portal_url: str) -> str:
+def _appt_email(heading: str, intro: str, name: str, when: str, portal_url: str, type_label: str = "") -> str:
     safe_name = _clean(name) or "there"
     when = _clean(when)
+    type_label = _clean(type_label)
     link = ""
     if portal_url and portal_url.startswith("https://"):
         link = (f'<p style="margin:18px 0"><a href="{portal_url}/portal" '
                 f'style="background:#0e7490;color:#fff;padding:10px 18px;border-radius:6px;'
                 f'text-decoration:none">Open Patient Portal</a></p>')
+    type_row = ""
+    if type_label:
+        type_row = (f'<p style="font-size:14px;font-weight:bold;color:#0e7490;margin:0 0 14px">'
+                    f'{type_label}</p>')
     return (
         '<table role="presentation" width="100%"><tr><td style="padding:24px;font-family:Arial,sans-serif;color:#0f172a">'
         f'<h2 style="margin:0 0 12px">{heading}</h2>'
         f'<p>Hi {safe_name},</p><p>{intro}</p>'
         f'<p style="font-size:18px;font-weight:bold;background:#ecfeff;color:#0e7490;'
-        f'padding:12px 16px;border-radius:6px;margin:14px 0">{when}</p>'
+        f'padding:12px 16px;border-radius:6px;margin:14px 0 8px">{when}</p>'
+        f'{type_row}'
         '<p><strong>Dr. Aguayo Family Practice</strong></p>'
         f'{link}'
         '<p style="font-size:12px;color:#888;margin-top:20px">Please contact the clinic if you need to reschedule '
@@ -151,9 +157,9 @@ def _appt_email(heading: str, intro: str, name: str, when: str, portal_url: str)
     )
 
 
-def appointment_confirmed_html(name: str, when: str, portal_url: str = "") -> str:
+def appointment_confirmed_html(name: str, when: str, portal_url: str = "", type_label: str = "") -> str:
     return _appt_email("Appointment Confirmed", "Your appointment with Dr. Aguayo has been confirmed for:",
-                       name, when, portal_url)
+                       name, when, portal_url, type_label)
 
 
 def appointment_reminder_html(name: str, when: str, portal_url: str = "") -> str:

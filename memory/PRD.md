@@ -218,6 +218,14 @@ See /app/memory/test_credentials.md.
 - Calendar.jsx: added Day | Week | Month toggle; MONTH is now the DEFAULT view. New MonthGrid: Google-style 7-col grid (Sun-Sat), 6 rows (42 cells), full month + spillover days dimmed; prev/next by month, Today button, today highlighted (green pill). Each cell: date number, appt count, first 3 appts (time + surname via patient_name.split(',')[0]), "+ X more"; non-working days (backend `closed` = Fri/Sat/Sun) grayed; `day_blocked` shows small red BLOCKED badge with existing confirmed appts still visible. Clicking a date opens that date in the Day view. Reuses GET /internal/calendar (same source of truth); no scheduling/availability/block changes, no drag/resize.
 - Backend server.py internal_calendar: `days` cap raised 14 -> 42 (read-only widening so Month can fetch 42 days from the grid's Sunday start). Day(1)/Week(7) unchanged. No data mutation.
 - Day + Week views unchanged (verified: Week 7 cards/30 appts, Day 1 card with type editor + reschedule/complete/no-show/cancel + block). data-testids: cal-view-month, cal-month-grid, cal-month-cell, cal-month-today, cal-month-blocked, cal-month-appt, cal-month-more.
+- Week/Day card COMPACTING (2026-06): tighter padding/margins, type editor + actions moved inline on one row, reason kept truncated — ~9 appts/column without scrolling. UI only.
+
+## BUGFIX: Completing/past slots no longer bookable (2026-06) — testing_agent iteration_22 14/14 PASS, NOT deployed
+- Root cause: get_busy_slots only counted confirmed/rescheduled, so COMPLETE/NO_SHOW freed the slot; and slot generation never filtered past times.
+- Fix (source): server.py get_busy_slots now includes ['confirmed','rescheduled','completed','no_show'] (completed/no_show keep their slot). availability.py: new _now_cutoff (America/Toronto via zoneinfo) + is_past_slot; _slots_for_day/generate_slots/calendar_range skip past dates entirely and past times on today. Endpoint guards (is_past_slot) added to create_appointment (400), select_slot (409), patient reschedule (400), calendar_book (400), internal reschedule action (400). 'approve' action intentionally has NO past guard (confirms a requested time, not an availability pick).
+- Also: internal_calendar days cap raised 14->42 (for Month view).
+- Verified: complete/no_show keep slot occupied; today excludes past times; past-date open_slots []; patient+admin blocked from booking/rescheduling past (400/409); availability doc byte-identical; break/blocked rules intact. Preview only.
+
 
 
 

@@ -1,5 +1,8 @@
 # VISITA Web Portal — PRD
 
+> 2026-06 update: Portal Account now lets patients add/update a structured Address (street/unit/city/province/postal — instant + audit) and a required Sex field (Male/Female/X) with an amber prompt when unset. New endpoints: POST /api/portal/profile/sex, POST /api/portal/profile/address; portal overview returns patient.sex/address/unit/city/province/postal_code. Bottom nav gained a Profile tab (nav-profile). Registration Create-account & Re-establish forms collect First/Second name + First/Second last name (combined client-side into first_name/last_name). Verified via testing_agent iter 25 & 26 (100%). Register-name change deployed to prod; Profile Sex/Address awaiting deploy approval.
+
+
 ## Original Problem
 Web application for Dr. Aguayo's family practice acting as a communication / request-management / appointment-approval / referral-fax-preparation / internal-task workflow layer AROUND the existing Microsoft Access VISITA EMR. It does NOT replace the EMR. Three experiences: Patient Portal (mobile-first), Clinic Staff Hub (desktop-dense, VISITA green-on-light-blue identity), Physician Hub (minimal). Plus Admin.
 

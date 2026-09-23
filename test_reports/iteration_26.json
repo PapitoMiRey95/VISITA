@@ -1,0 +1,25 @@
+{
+  "summary": "Verified new patient portal Sex + Address feature end-to-end on /portal/account and nav-profile tab. Backend: 8/8 pytest tests pass — POST /api/portal/profile/sex rejects 'Other' and empty (400), accepts Male/Female/X, persisted in overview; POST /api/portal/profile/address instant-updates and persists; both require auth. Frontend (Playwright as john.smith with sex cleared): amber acct-sex-prompt shows, Set now opens Select with exactly [Male, Female, X], saving hides amber and shows value in acct-sex, persists after reload; Address edit fills all fields, saves instantly, composed 'street #unit · city, prov · postal' displays and persists after reload; nav-profile tab present and routes to /portal/account; regression acct-edit-phone and acct-hc-update still visible.",
+  "backend_issues": {"critical": [], "minor": []},
+  "frontend_issues": {"ui_bugs": [], "integration_issues": [], "design_issues": []},
+  "test_report_links": [
+    "/app/backend/tests/test_profile_sex_address.py",
+    "/app/test_reports/pytest/profile_sex_address.xml"
+  ],
+  "action_items": [],
+  "critical_code_review_comments": [
+    "AddressUpdateBody accepts arbitrary strings with no length caps or postal-code format validation (e.g. Canadian A1A 1A1). Consider server-side sanitisation/max-length to avoid oversized payloads.",
+    "portal_update_address unconditionally overwrites all five fields to None when omitted (payload {}) because dict comprehension always includes the key. Semantically 'partial update' on address becomes a full replace; may be intentional (form always submits all fields) but worth documenting or switching to $set only for provided keys.",
+    "SexUpdateBody / AddressUpdateBody use `sex: str` and no `strip=True` at Pydantic level; endpoints trim manually — acceptable but pydantic v2 constraints (StringConstraints) would be cleaner and give consistent 422 validation.",
+    "get_patient_record is called on every profile write; ensure it is O(1) indexed on user id. No index issue observed but worth confirming for scale."
+  ],
+  "updated_files": [
+    "/app/backend/tests/test_profile_sex_address.py"
+  ],
+  "success_rate": {"backend": "100% (8/8)", "frontend": "100% (all flows: nav, amber prompt, sex save+persist, address save+persist, regression phone/HC)"},
+  "test_credentials": "john.smith@demo.com / Patient2026! (sex unset via mongo before UI test); carlos.perez@demo.com / Patient2026! used for backend all-options test.",
+  "seed_data_creation": "Set john.smith sex=Male and address='456 UI Test St, unit 12A, Toronto, ON, M4Y 1A1'. Set carlos.perez sex=X and address='789 TEST Bay St, Toronto, ON, M5H 2N1'. No other data touched.",
+  "retest_needed": false,
+  "main_agent_can_self_test": true,
+  "context_for_next_testing_agent": "Backend endpoints POST /api/portal/profile/sex and /address are stable and validated; overview exposes patient.sex/address/unit/city/province/postal_code. If main agent needs to demo the amber prompt again, unset sex on a demo patient via `db.patients.updateOne({email:'X'},{\\$unset:{sex:''}})`. nav-profile testid confirmed on bottom nav."
+}

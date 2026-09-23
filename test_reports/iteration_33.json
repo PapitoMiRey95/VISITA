@@ -1,0 +1,29 @@
+{
+  "summary": "Verified iter33 fix: Request Intake (PharmacyIntake) now searches BOTH directory + verified portal patients via /internal/patient-lookup, loads snapshot via /internal/patient-snapshot/{id} (falls back to db.patients when no directory record) and submits pharmacy-rx with EITHER directory_id OR patient_id. Backend pytest: 6/6 passed. UI e2e: portal-only Maria Lopez (PIN 9251, DIRECTORY STATUS = PORTAL_PATIENT) fully searchable, snapshot loads with source=portal + patient_id set + directory_id null, and intake submission creates RX-000030 (Pharmacy, patient_name 'Lopez, Maria', status Waiting for Physician) in the Rx queue. Directory regression: 'smith' returns SMITH, Salvador (directory), snapshot source=directory with directory_id, intake submit creates RX-000029 with patient_name 'SMITH, Salvador' also Waiting for Physician. Both flows redirect to /internal/rx and display the new items immediately with success toast 'Sent to physician Rx queue.'",
+  "backend_issues": { "critical": [], "minor": [] },
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [],
+    "design_issues": []
+  },
+  "test_report_links": [
+    "/app/backend/tests/test_pharmacy_intake_portal.py",
+    "/app/test_reports/pytest/iter33.xml",
+    "/app/test_reports/portal_rx_queue.png"
+  ],
+  "action_items": [],
+  "critical_code_review_comments": [
+    "server.py::patient_snapshot: portal branch returns 'directory_id': p.get('matched_directory_id') — for a portal patient linked to a directory record this will be non-null; the request states 'directory_id null' for portal-only. Current preview data has Maria Lopez with no matched_directory_id, so behavior matches spec, but consider adding an assertion/log path so a portal patient that DOES have a matched_directory_id doesn't accidentally get double-persisted (both directory_id and patient_id set) on pharmacy-rx submit — the frontend will send both.",
+    "PharmacyIntake.jsx::submit sends BOTH snap.directory_id and snap.patient_id. Backend then prefers directory_id when set. Consider making this preference explicit in a helper or documenting it so future callers don't get surprised (e.g. portal patient whose directory_id becomes set later)."
+  ],
+  "updated_files": [
+    "/app/backend/tests/test_pharmacy_intake_portal.py (new)"
+  ],
+  "success_rate": { "backend": "100% (6/6 passed)", "frontend": "100% (portal + directory intake flows)" },
+  "test_credentials": "staff@visita.demo / Staff2026! (identifier login on /signin) — verified working.",
+  "seed_data_creation": "Created 2 pharmacy Rx test rows this iteration: RX-000030 (portal-only Maria Lopez, TEST_UI_PortalPharm) and RX-000029 (directory SMITH Salvador, TEST_UI_DirPharm). Prior pytest also created TEST_PortalPharmacy / TEST_DirectoryPharmacy rows (RX-000028/029 range). All non-destructive; no reseed/reset performed.",
+  "retest_needed": false,
+  "should_main_agent_self_test": true,
+  "context_for_next_testing_agent": "Route path is /internal/pharmacy-intake (not /internal/rx/intake). Portal-only Maria Lopez has VISITA PIN 9251 and directory_status label 'PORTAL_PATIENT' in the snapshot side panel. The Rx queue at /internal/rx shows both PHARMACY and PATIENT source rows; pharmacy intake items show as source=PHARMACY with 'Waiting for Physician' status. Cumulative TEST_ pharmacy Rx rows in queue — safe to leave for regression.",
+  "rca of the issue": "N/A — no bugs found; the previously reported search miss for portal-only verified patients is fully resolved. patient_snapshot correctly falls back to db.patients, and create_pharmacy_rx correctly resolves via patient_id when directory_id is absent."
+}

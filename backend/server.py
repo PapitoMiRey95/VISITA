@@ -1116,8 +1116,7 @@ async def portal_update_phone(body: PhoneUpdateBody, user: dict = Depends(get_cu
 
 @api.post("/portal/profile/health-card")
 async def portal_submit_health_card(body: HealthCardUpdateBody, user: dict = Depends(get_current_user)):
-    """Patient submits a Health Card update — stored as a PENDING proposal; the
-    currently verified card stays active until Staff/Admin approves it."""
+    """Patient updates their Health Card — applied INSTANTLY (no verification queue)."""
     p = await get_patient_record(user)
     try:
         num, ver = identity_mod.normalize_health_card(body.health_card_number, body.health_card_version)
@@ -1125,20 +1124,20 @@ async def portal_submit_health_card(body: HealthCardUpdateBody, user: dict = Dep
         raise HTTPException(status_code=400, detail=str(e))
     if not identity_mod.valid_date(body.health_card_issue_date) or not identity_mod.valid_date(body.health_card_expiry_date):
         raise HTTPException(status_code=400, detail="Health Card dates must be valid dates.")
-    pending = {
+    previous = {
+        "health_card_number": p.get("health_card_number"), "health_card_version": p.get("health_card_version"),
+        "health_card_issue_date": p.get("health_card_issue_date"), "health_card_expiry_date": p.get("health_card_expiry_date"),
+    }
+    new_fields = {
         "health_card_number": num, "health_card_version": ver,
         "health_card_issue_date": body.health_card_issue_date or None,
         "health_card_expiry_date": body.health_card_expiry_date or None,
-        "display": identity_mod.format_health_card(num, ver),
-        "submitted_at": now_iso(), "status": "pending",
     }
-    await db.patients.update_one({"id": p["id"]}, {"$set": {"pending_health_card": pending, "updated_at": now_iso()}})
-    await audit("health_card_update_submitted", "patient", p["id"],
+    await db.patients.update_one({"id": p["id"]}, {"$set": {**new_fields, "pending_health_card": None, "updated_at": now_iso()}})
+    await audit("patient_health_card_update", "patient", p["id"],
                 {"id": p["id"], "name": p["first_name"], "role": "patient"},
-                meta={"proposed_display": pending["display"]})
-    await notify_svc._in_portal(db, p["id"], "Health Card update received",
-                                "Your Health Card update is pending clinic verification. Your current record stays active until approved.")
-    return {"ok": True, "pending": pending}
+                meta={"previous": previous, "new": new_fields})
+    return {"ok": True, "health_card_display": identity_mod.format_health_card(num, ver)}
 
 
 SEX_OPTIONS = ["Male", "Female", "X"]

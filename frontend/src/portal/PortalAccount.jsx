@@ -90,7 +90,7 @@ export default function PortalAccount() {
         setBusy(true);
         try {
             await api.post("/portal/profile/health-card", hc);
-            toast.success("Health Card update submitted for clinic verification.");
+            toast.success("Health Card updated.");
             setHcOpen(false); refetch();
         } catch (e) { toast.error(formatErr(e)); } finally { setBusy(false); }
     };
@@ -220,9 +220,7 @@ export default function PortalAccount() {
                             <AlertTriangle className="w-4 h-4 mt-0.5 shrink-0" /> Your Health Card appears to be expired. Please update your Health Card information.
                         </div>
                     )}
-                    {p?.health_card_update_pending ? (
-                        <div className="mt-2 text-sm text-slate-600 bg-slate-50 border border-slate-200 rounded-lg p-2" data-testid="acct-hc-pending">Update pending clinic verification.</div>
-                    ) : !hcOpen ? (
+                    {!hcOpen ? (
                         <button data-testid="acct-hc-update" className="text-portal-blueDark text-sm font-bold mt-2" onClick={() => setHcOpen(true)}>Update Health Card</button>
                     ) : (
                         <div className="mt-2 space-y-2 border-t border-slate-100 pt-2">
@@ -240,9 +238,8 @@ export default function PortalAccount() {
                                 <div><Label className="text-xs">Issue Date</Label><Input type="date" data-testid="acct-hc-issue" value={hc.health_card_issue_date} onChange={(e) => setHc({ ...hc, health_card_issue_date: e.target.value })} /></div>
                                 <div><Label className="text-xs">Expiry Date</Label><Input type="date" data-testid="acct-hc-expiry" value={hc.health_card_expiry_date} onChange={(e) => setHc({ ...hc, health_card_expiry_date: e.target.value })} /></div>
                             </div>
-                            <p className="text-xs text-slate-500">Your current Health Card stays active until the clinic verifies this update.</p>
                             <div className="flex gap-2">
-                                <Button data-testid="acct-hc-submit" disabled={busy} onClick={submitHc} className="bg-portal-blue text-white">Submit for verification</Button>
+                                <Button data-testid="acct-hc-submit" disabled={busy} onClick={submitHc} className="bg-portal-blue text-white">Save Health Card</Button>
                                 <Button variant="outline" onClick={() => setHcOpen(false)}>Cancel</Button>
                             </div>
                         </div>

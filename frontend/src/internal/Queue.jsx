@@ -3,6 +3,7 @@ import { useQuery } from "@tanstack/react-query";
 import { toast } from "sonner";
 import { Search, CalendarPlus } from "lucide-react";
 import { api, formatErr } from "../lib/api";
+import { formatDate } from "../lib/date";
 import { useInvalidate } from "./hooks";
 import { useAuth } from "../context/AuthContext";
 import {
@@ -93,18 +94,20 @@ export default function Queue({ title, subtitle, endpoint, patchBase, searchPlac
                     <thead>
                         <tr className="bg-slate-100 text-left text-xs uppercase tracking-wider text-slate-600">
                             {columns.map((col, i) => <th key={i} className="px-3 py-2 font-medium">{col.header}</th>)}
+                            <th className="px-3 py-2 font-medium">Received</th>
                             <th className="px-3 py-2" />
                         </tr>
                     </thead>
                     <tbody>
                         {items.length === 0 && (
-                            <tr><td colSpan={columns.length + 1} className="px-3 py-8 text-center text-slate-400">No items in this queue.</td></tr>
+                            <tr><td colSpan={columns.length + 2} className="px-3 py-8 text-center text-slate-400">No items in this queue.</td></tr>
                         )}
                         {items.map((item) => (
                             <tr key={item.id} data-testid="queue-row"
                                 className="border-b border-slate-200 even:bg-slate-50/60 hover:bg-visita-bg cursor-pointer"
                                 onClick={() => open(item)}>
                                 {columns.map((col, i) => <td key={i} className="px-3 py-2 align-top">{col.cell(item)}</td>)}
+                                <td className="px-3 py-2 align-top whitespace-nowrap text-slate-500" data-testid="queue-received">{item.created_at ? formatDate(item.created_at) : "—"}</td>
                                 <td className="px-3 py-2 text-right">
                                     <Button size="sm" variant="ghost" className="h-7 text-visita-green" data-testid="queue-open">Open</Button>
                                 </td>
@@ -120,6 +123,9 @@ export default function Queue({ title, subtitle, endpoint, patchBase, searchPlac
                         <>
                             <DialogHeader>
                                 <DialogTitle className="text-lg">{selected.ref_number} · {selected.patient_name}</DialogTitle>
+                                {selected.created_at && (
+                                    <p className="text-xs text-slate-500" data-testid="detail-received">Request received: {formatDate(selected.created_at)}</p>
+                                )}
                             </DialogHeader>
                             <div className="space-y-3 text-sm">
                                 {detail(selected)}

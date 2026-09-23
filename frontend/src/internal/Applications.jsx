@@ -26,8 +26,9 @@ function AppPill({ status }) {
 
 const FILTERS = [
     { key: "", label: "All" },
-    { key: "former_return", label: "Former Returns" },
-    { key: "new_patient", label: "New Patients" },
+    { key: "former_return", label: "Former Returns", param: "type" },
+    { key: "new_patient", label: "New Patients", param: "type" },
+    { key: "WAITING_LIST", label: "Waiting List", param: "status" },
 ];
 
 export default function Applications() {
@@ -39,7 +40,11 @@ export default function Applications() {
 
     const list = useQuery({
         queryKey: ["queue", "/internal/applications", filter],
-        queryFn: async () => (await api.get(`/internal/applications${filter ? `?type=${filter}` : ""}`)).data,
+        queryFn: async () => {
+            const f = FILTERS.find((x) => x.key === filter);
+            const qs = f?.param ? `?${f.param}=${f.key}` : "";
+            return (await api.get(`/internal/applications${qs}`)).data;
+        },
     });
     const items = list.data || [];
 

@@ -183,6 +183,24 @@ def appointment_cancelled_html(name: str, when: str, portal_url: str = "") -> st
                        name, when, portal_url)
 
 
+def waiting_list_html(name: str) -> str:
+    """Sent when an applicant is placed on the waiting list. No links/inputs — passes the gate."""
+    safe_name = _clean(name) or "there"
+    return (
+        '<table role="presentation" width="100%"><tr><td style="padding:24px;font-family:Arial,sans-serif;color:#0f172a">'
+        '<h2 style="margin:0 0 12px">You\'ve been placed on the waiting list</h2>'
+        f'<p>Hello {safe_name},</p>'
+        '<p>Thank you for your interest in Dr. Aguayo\'s practice. Your request has been officially '
+        'placed on our waiting list.</p>'
+        '<p>Our office will contact you when a spot becomes available and let you know when you can '
+        'book an appointment with the doctor. No further action is needed from you right now.</p>'
+        '<p style="margin-top:16px"><strong>Dr. Aguayo\'s Office</strong><br>VIen EMR</p>'
+        '<p style="font-size:12px;color:#888;margin-top:20px">This message contains no medical information. '
+        'We will never ask you for your password by email.</p>'
+        '</td></tr></table>'
+    )
+
+
 def account_activation_html(name: str, activate_url: str) -> str:
     """New-patient acceptance + set-password activation link. `activate_url` must be
     an absolute https first-party portal URL (validated by _assert_safe_email)."""

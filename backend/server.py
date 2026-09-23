@@ -2458,6 +2458,18 @@ async def application_update(item_id: str, body: ApplicationUpdateBody,
         updates["internal_status"] = "SENT_TO_PHYSICIAN"
     elif body.action == "waitlist":
         updates["internal_status"] = "WAITING_LIST"
+        email = (doc.get("email") or "").lower().strip()
+        if email and not doc.get("waitlist_email_sent"):
+            try:
+                await email_service.send_email(
+                    to=email,
+                    subject="You've been placed on Dr. Aguayo's waiting list",
+                    html=email_service.waiting_list_html(doc.get("first_name") or "there"),
+                )
+                updates["waitlist_email_sent"] = True
+                updates["waitlist_email_at"] = now_iso()
+            except Exception as e:
+                logger.warning(f"[waitlist email] failed: {e}")
     elif body.action == "review":
         updates["internal_status"] = "UNDER_REVIEW"
     elif body.action == "close":

@@ -1,7 +1,7 @@
 import { useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { toast } from "sonner";
-import { UserPlus, RotateCcw, Check, X, Send, Clock, Eye, MessageSquarePlus, IdCard } from "lucide-react";
+import { UserPlus, RotateCcw, Check, X, Send, Clock, MessageSquarePlus, IdCard } from "lucide-react";
 import { api, formatErr } from "../lib/api";
 import { useInvalidate } from "./hooks";
 import { useAuth } from "../context/AuthContext";
@@ -129,17 +129,11 @@ export default function Applications() {
                                 <div className="flex flex-col gap-1.5 items-end min-w-[190px]">
                                     {!finalDone(a) && (
                                         <>
-                                            {a.internal_status === "REQUEST_RECEIVED" && (
-                                                <Button size="sm" variant="outline" className="h-8 w-full justify-start" data-testid="app-review"
-                                                    onClick={() => patch(a.id, { action: "review" })}>
-                                                    <Eye className="w-4 h-4 mr-1" /> Mark Under Review
-                                                </Button>
-                                            )}
                                             <Button size="sm" variant="outline" className="h-8 w-full justify-start" data-testid="app-waitlist"
-                                                onClick={() => patch(a.id, { action: "waitlist" })}>
+                                                onClick={() => patch(a.id, { action: "waitlist" }, "Added to waiting list.")}>
                                                 <Clock className="w-4 h-4 mr-1" /> Add to Waiting List
                                             </Button>
-                                            {a.internal_status !== "SENT_TO_PHYSICIAN" && (
+                                            {!physician && a.internal_status !== "SENT_TO_PHYSICIAN" && (
                                                 <Button size="sm" variant="outline" className="h-8 w-full justify-start" data-testid="app-send-physician"
                                                     onClick={() => patch(a.id, { action: "send_to_physician" }, "Sent to physician.")}>
                                                     <Send className="w-4 h-4 mr-1" /> Send to Physician

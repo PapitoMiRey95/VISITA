@@ -1,5 +1,5 @@
 import { useNavigate } from "react-router-dom";
-import { Calendar, Pill, FileHeart, MessageSquare, ClipboardList, Scan, Droplet, ChevronRight } from "lucide-react";
+import { Calendar, Pill, FileHeart, MessageSquare, ClipboardList, Scan, Droplet, ChevronRight, User } from "lucide-react";
 import { EmergencyNotice } from "../components/EmergencyNotice";
 import { usePortal, PendingBanner } from "./shared";
 
@@ -11,6 +11,7 @@ const TILES = [
     { to: "/portal/referrals", icon: FileHeart, title: "Referral Status", color: "text-violet-500", testid: "tile-referrals" },
     { to: "/portal/messages", icon: MessageSquare, title: "Message the Clinic", color: "text-amber-500", testid: "tile-messages" },
     { to: "/portal/requests", icon: ClipboardList, title: "My Requests", color: "text-slate-500", testid: "tile-requests" },
+    { to: "/portal/account", icon: User, title: "My Profile", color: "text-teal-500", testid: "tile-profile" },
 ];
 
 export default function PortalHome() {

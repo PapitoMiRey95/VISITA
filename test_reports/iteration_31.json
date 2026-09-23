@@ -1,0 +1,27 @@
+{
+  "summary": "Frontend-only test of the internal mobile navigation fix in InternalLayout.jsx. Verified on mobile 390x844 (staff@visita.demo) and desktop 1440x900. Mobile hamburger (internal-mobile-menu) is visible, desktop aside is hidden, drawer (internal-mobile-nav) opens on tap and closes after link tap, Calendar navigates and renders content, and Patients/Rx regression links work with badges rendering. On desktop, aside is visible, hamburger hidden, Calendar click works. All acceptance criteria pass.",
+  "backend_issues": {"critical": [], "minor": []},
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [],
+    "design_issues": [
+      {"screen": "Internal mobile drawer (Sheet)", "issues": ["Radix a11y warning: `DialogContent` requires a `DialogTitle` for internal-mobile-nav. Add a VisuallyHidden SheetTitle inside SheetContent to silence the console error and improve screen-reader support. Non-blocking."]}
+    ]
+  },
+  "test_report_links": [],
+  "action_items": [
+    "Optional: Add a VisuallyHidden <SheetTitle>Navigation</SheetTitle> (and optional SheetDescription) inside SheetContent in InternalLayout.jsx to fix Radix Dialog a11y console errors."
+  ],
+  "critical_code_review_comments": [
+    "InternalLayout renders the nav twice in DOM (aside + Sheet). data-testid values are duplicated. Tests must scope selectors (e.g. within [data-testid=internal-mobile-nav] or aside) or Playwright's .first will resolve to the hidden node. Consider making testids unique (e.g. sidebar-calendar vs mobile-sidebar-calendar) to avoid ambiguity.",
+    "Missing SheetTitle inside SheetContent triggers Radix a11y console errors on every open."
+  ],
+  "updated_files": [],
+  "success_rate": {"backend": "n/a", "frontend": "100%"},
+  "test_credentials": "staff@visita.demo / Staff2026! via /signin identifier field (verified working).",
+  "seed_data_creation": "None",
+  "retest_needed": false,
+  "should_main_agent_self_test": true,
+  "context_for_next_testing_agent": "Mobile nav fix is confirmed working. When testing internal nav links via Playwright, scope selectors to either aside (desktop) or [data-testid=internal-mobile-nav] (mobile) because sidebar-<label> testids are duplicated between the hidden desktop aside and the Sheet drawer.",
+  "rca of the issue": "N/A - bug fix verified."
+}

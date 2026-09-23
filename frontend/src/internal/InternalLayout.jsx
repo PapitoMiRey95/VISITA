@@ -7,7 +7,7 @@ import {
 import { useAuth } from "../context/AuthContext";
 import { useCounters } from "./hooks";
 import { Logo } from "../components/Logo";
-import { Sheet, SheetContent, SheetTrigger } from "../components/ui/sheet";
+import { Sheet, SheetContent, SheetTrigger, SheetTitle } from "../components/ui/sheet";
 
 export default function InternalLayout() {
     const { user, logout } = useAuth();
@@ -47,13 +47,13 @@ export default function InternalLayout() {
               ...(role === "admin" ? [{ to: "/internal/settings", icon: SettingsIcon, label: "Settings", key: null }] : []),
           ];
 
-    const renderNav = (onNavigate) => items.map((it) => (
+    const renderNav = (onNavigate, prefix = "sidebar") => items.map((it) => (
         <NavLink
             key={it.to}
             to={it.to}
             end={it.end}
             onClick={onNavigate}
-            data-testid={`sidebar-${it.label.toLowerCase().replace(/[^a-z]/g, "-")}`}
+            data-testid={`${prefix}-${it.label.toLowerCase().replace(/[^a-z]/g, "-")}`}
             className={({ isActive }) =>
                 `flex items-center justify-between px-3 py-2 mx-2 my-0.5 rounded-sm text-sm font-medium transition-colors duration-75 ${
                     isActive ? "bg-visita-green text-white" : "text-slate-700 hover:bg-visita-greenLight"
@@ -83,10 +83,11 @@ export default function InternalLayout() {
                             </button>
                         </SheetTrigger>
                         <SheetContent side="left" className="w-64 p-0 bg-white overflow-y-auto" data-testid="internal-mobile-nav">
+                            <SheetTitle className="sr-only">Navigation</SheetTitle>
                             <div className="h-12 bg-visita-ribbon flex items-center px-4">
                                 <Logo variant="dark" iconClass="h-7 w-7" textClass="text-base" />
                             </div>
-                            <div className="py-2">{renderNav(() => setMobileOpen(false))}</div>
+                            <div className="py-2">{renderNav(() => setMobileOpen(false), "mobile-sidebar")}</div>
                         </SheetContent>
                     </Sheet>
                     <Logo variant="dark" iconClass="h-8 w-8" textClass="text-base" />

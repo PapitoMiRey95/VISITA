@@ -1,7 +1,7 @@
 import { Outlet, useNavigate, NavLink, useLocation } from "react-router-dom";
 import { useMemo } from "react";
 import { useQuery } from "@tanstack/react-query";
-import { Home, Calendar, Pill, MessageSquare, ClipboardList, Bell, LogOut } from "lucide-react";
+import { Home, Calendar, Pill, MessageSquare, ClipboardList, Bell, LogOut, User } from "lucide-react";
 import { api } from "../lib/api";
 import { useAuth } from "../context/AuthContext";
 import { Logo } from "../components/Logo";
@@ -12,6 +12,7 @@ const NAV = [
     { to: "/portal/prescriptions", icon: Pill, label: "Rx", testid: "nav-prescriptions" },
     { to: "/portal/messages", icon: MessageSquare, label: "Messages", testid: "nav-messages" },
     { to: "/portal/requests", icon: ClipboardList, label: "Requests", testid: "nav-requests" },
+    { to: "/portal/account", icon: User, label: "Profile", testid: "nav-profile" },
 ];
 
 export default function PortalLayout() {

@@ -162,7 +162,7 @@ export default function Patients() {
                                 {results.map((r) => (
                                     <button key={r.id} data-testid="patient-lookup-result" onClick={() => pick(r)}
                                         className={`w-full text-left px-3 py-2.5 hover:bg-slate-50 ${selected?.id === r.id ? "bg-visita-greenLight" : ""}`}>
-                                        <div className="font-semibold text-slate-800">{r.full_name}</div>
+                                        <div className="font-semibold text-slate-800">{formatPatientName(r)}</div>
                                         <div className="text-xs text-slate-500">
                                             {r.visita_patient_id ? `PIN ${r.visita_patient_id}` : "PIN Not assigned"} · DOB {formatDate(r.date_of_birth)} · {statusLabel(r.patient_status)}
                                         </div>

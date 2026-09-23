@@ -1,0 +1,31 @@
+{
+  "summary": "Iteration 28: Verified NEW-patient acceptance flow end-to-end (backend + frontend). Physician Accept button label is 'Accept' for new_patient and 'Accept back to practice' for former_return; WAITING_LIST filter (data-testid app-filter-WAITING_LIST) exists and filters correctly. Accepting a new_patient application via PATCH /api/internal/applications/{id} {action:'accept'} creates users(role=patient, pending_activation=true), patients(verification_status=verified, 4-digit visita_patient_id), patient_directory(patient_status=ACTIVE, linked_patient_id) and account_activations row. POST /api/auth/activate/validate returns {ok, email, name} for a valid token and 400 for bad/used/expired; POST /api/auth/activate rejects password<8 (400), succeeds with {token,user(role=patient)} and is single-use (2nd call 400). Login with new password works. GET /api/portal/overview after activation includes 'Welcome to VIen EMR' notification. UI /activate?uid&token=BAD shows data-testid activate-invalid with 'Go to Sign in'; with valid token shows activate-form and after submitting matching >=8 char password redirects to /portal (auto-login). Former-return acceptance flips matched directory to ACTIVE and does NOT create a new user (regression preserved). Backend pytest: 10/10 passed. Frontend UI test: all assertions passed. Note: physician password Newman2013_! works (must_change_password gate not blocking).",
+  "backend_issues": { "critical": [], "minor": [] },
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [],
+    "design_issues": []
+  },
+  "test_report_links": [
+    "/app/backend/tests/test_new_patient_accept_activation.py",
+    "/app/test_reports/pytest/iter28_accept.xml"
+  ],
+  "action_items": [],
+  "critical_code_review_comments": [
+    "server.py ~2892 lines - continue trend toward router splits (auth, applications, portal, internal) for maintainability.",
+    "_accept_new_patient sends activation email inside the accept handler; if email delivery fails it only logs a warning. Acceptable given the token is still in DB, but consider surfacing a 'resend activation email' internal action if this becomes a support pattern.",
+    "account_activation link only sent when APP_BASE_URL starts with https:// — good gate. Also verify APP_BASE_URL is set in production .env before enabling for real patients.",
+    "_valid_activation compares expires_at using fromisoformat but stores ISO with tz — works because .isoformat() on aware datetime keeps tz; keep both writers tz-aware to avoid naive/aware comparison ValueError."
+  ],
+  "updated_files": [
+    "/app/backend/tests/test_new_patient_accept_activation.py (new)",
+    "/tmp/mint_activation.py (helper for UI-side token minting during test only)"
+  ],
+  "success_rate": { "backend": "100%", "frontend": "100%" },
+  "test_credentials": "Physician PAGUAYO / Newman2013_! (identifier field on /signin). Newly-activated test patients created during run: activate.ui.<ts>@resend.dev with password MyActivate123!; multiple newpat.iter28.<ts>@resend.dev and newpat.uitest.<ts>@resend.dev created.",
+  "seed_data_creation": "Created ~7 new patient_applications (APP-000017..022) and 1 former-return application during backend + UI runs; each accepted new-patient one also created ACTIVE directory + verified patient + pending_activation user. Data left in place per PRODUCTION DATA SAFETY (do NOT reseed).",
+  "retest_needed": false,
+  "should_main_agent_self_test": false,
+  "context_for_next_testing_agent": "Backend test file /app/backend/tests/test_new_patient_accept_activation.py runs with -n 0 (pytest-xdist serial) because it uses class-level state across steps. Physician login uses field name 'identifier' but the frontend input has data-testid=login-email. To drive the activation UI, mint a token by writing to db.account_activations {user_id, token_hash=authlib.hash_password(TOKEN), expires_at=now+72h iso, used:False} — see /tmp/mint_activation.py. Physician PAGUAYO password currently accepts 'Newman2013_!' (must_change_password already cleared).",
+  "rca of the issue": "No bug. Feature implemented correctly and all acceptance criteria pass end-to-end."
+}

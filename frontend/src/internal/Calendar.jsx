@@ -150,9 +150,7 @@ export default function Calendar() {
                                                 <div className="flex gap-1.5 shrink-0">
                                                     <button className="text-[11px] text-slate-500 hover:text-visita-greenDark" onClick={() => setResched(a)} data-testid="cal-reschedule">Reschedule</button>
                                                     <button className="text-[11px] text-slate-500 hover:text-slate-800" onClick={() => act(a.id, { action: "complete" }, "Marked completed.")} data-testid="cal-complete">Complete</button>
-                                                    {a.appointment_type !== "IN_CLINIC" && (
-                                                        <button className="text-[11px] text-amber-600" onClick={() => act(a.id, { action: "no_show" }, "Marked no-show.")} data-testid="cal-noshow">No-show</button>
-                                                    )}
+                                                    <button className="text-[11px] text-amber-600" onClick={() => act(a.id, { action: "no_show" }, "Marked no-show.")} data-testid="cal-noshow">No-show</button>
                                                     <button className="text-[11px] text-red-600" onClick={() => act(a.id, { action: "cancel" }, "Cancelled.")} data-testid="cal-cancel">Cancel</button>
                                                 </div>
                                             )}

@@ -2332,7 +2332,11 @@ async def assign_application_pin(item_id: str, body: AssignPinBody,
                                               {"$set": {"visita_patient_id": vid, "updated_at": now_iso()}})
     await db.patient_applications.update_one({"id": item_id}, {"$set": {"created_visita_patient_id": vid, "updated_at": now_iso()}})
     if old_pin and old_pin != vid:
-        await db.visita_pins.delete_one({"_id": old_pin, "patient_id": pid})
+        # Permanently retire the previous PIN — kept in the registry so it is never
+        # suggested again nor reassigned to any other patient.
+        await db.visita_pins.update_one({"_id": old_pin}, {"$set": {
+            "patient_id": None, "retired": True,
+            "retired_from_patient": pid, "retired_at": now_iso()}}, upsert=True)
     await audit("assign_visita_pin", "patient", pid, user,
                 meta={"application_id": item_id, "previous": old_pin, "new": vid})
     return {"ok": True, "visita_patient_id": vid, "changed": True}
@@ -2872,8 +2876,9 @@ async def internal_edit_patient(patient_id: str, body: InternalPatientEditBody,
                 raise HTTPException(status_code=400, detail="VISITA PIN must be a 4-digit number.")
             clash = await db.patients.find_one({"visita_patient_id": vid, "id": {"$ne": patient_id}})
             clash_dir = await db.patient_directory.find_one({"visita_patient_id": vid, "linked_patient_id": {"$ne": patient_id}})
-            if clash or clash_dir:
-                raise HTTPException(status_code=409, detail=f"VISITA PIN {vid} is already in use.")
+            claim = await db.visita_pins.find_one({"_id": vid})
+            if clash or clash_dir or (claim and claim.get("patient_id") != patient_id):
+                raise HTTPException(status_code=409, detail=f"VISITA PIN {vid} is already in use or retired.")
             track("visita_patient_id", vid)
 
     if not updates:
@@ -2881,6 +2886,21 @@ async def internal_edit_patient(patient_id: str, body: InternalPatientEditBody,
     updates["updated_at"] = now_iso()
     await db.patients.update_one({"id": patient_id}, {"$set": updates})
     await db.patients.update_one({"id": patient_id}, {"$push": {"identity_history": {"$each": changes}}})
+    if "visita_patient_id" in updates:
+        new_vid = updates["visita_patient_id"]
+        old_vid = p.get("visita_patient_id")
+        # Atomically reserve the new PIN in the registry.
+        await db.visita_pins.update_one({"_id": new_vid},
+                                        {"$set": {"patient_id": patient_id, "created_at": now_iso()}}, upsert=True)
+        # Keep the linked directory record in sync.
+        if p.get("matched_directory_id"):
+            await db.patient_directory.update_one({"id": p["matched_directory_id"]},
+                                                  {"$set": {"visita_patient_id": new_vid, "updated_at": now_iso()}})
+        # Permanently retire the previous PIN — never suggested or reassigned.
+        if old_vid and old_vid != new_vid:
+            await db.visita_pins.update_one({"_id": old_vid}, {"$set": {
+                "patient_id": None, "retired": True,
+                "retired_from_patient": patient_id, "retired_at": now_iso()}}, upsert=True)
     for ch in changes:
         await audit("patient_identity_edit", "patient", patient_id, user, meta=ch)
     return {"ok": True, "changes": len(changes)}

@@ -42,7 +42,7 @@ export default function Patients() {
     const [form, setForm] = useState({});
     const [busy, setBusy] = useState(false);
     const { user } = useAuth();
-    const canEdit = ["admin", "staff"].includes(user?.role) && selected?.source === "portal";
+    const canEdit = ["admin", "staff", "physician"].includes(user?.role) && selected?.source === "portal";
     const searchRef = useRef(null);
 
     const reloadSelected = async () => {

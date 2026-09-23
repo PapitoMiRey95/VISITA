@@ -2756,7 +2756,7 @@ class InternalPatientEditBody(BaseModel):
 
 @api.patch("/internal/patients/{patient_id}")
 async def internal_edit_patient(patient_id: str, body: InternalPatientEditBody,
-                                user: dict = Depends(require_roles("staff", "admin"))):
+                                user: dict = Depends(require_roles("staff", "admin", "physician"))):
     """Staff/Admin edit of core identity/contact fields. Applies immediately with a
     full audit trail (changed_by/at, field, previous, new). No hard deletes."""
     p = await db.patients.find_one({"id": patient_id})
@@ -2812,7 +2812,7 @@ async def internal_edit_patient(patient_id: str, body: InternalPatientEditBody,
 
 @api.post("/internal/patients/{patient_id}/health-card/{action}")
 async def internal_health_card_review(patient_id: str, action: str,
-                                      user: dict = Depends(require_roles("staff", "admin"))):
+                                      user: dict = Depends(require_roles("staff", "admin", "physician"))):
     """Approve or reject a patient-submitted HEALTH CARD UPDATE PENDING proposal."""
     if action not in ("approve", "reject"):
         raise HTTPException(status_code=400, detail="Invalid action.")

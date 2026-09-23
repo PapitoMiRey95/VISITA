@@ -1,0 +1,30 @@
+{
+  "summary": "Iteration 29: Verified VISITA PIN suggestions + assign/change flow end-to-end on the internal Applications page. Backend GET /api/internal/visita-pin/suggestions returns 5 unique unused 4-digit strings; count clamped to 1..10 (count=50 -> 10; count=3 -> 3); requires auth (401/403 without token). POST /api/internal/applications/{id}/assign-pin: 200 with {ok:true, visita_patient_id, changed:true} on valid new pin; updates patients.visita_patient_id + linked patient_directory.visita_patient_id + application.created_visita_patient_id; releases the old PIN (verified by re-assigning old PIN back = 200); 400 for '12' and 'abcd'; 409 when the requested PIN is already used by another patient; 404 for unknown application id. Frontend: staff login -> Applications -> New Patients filter shows PIN panels on ACCEPTED new_patient cards. Change PIN button opens editor, 5 suggested chips render, clicking chip fills the manual input, Save calls the API, editor closes, and app-pin-current updates to the new PIN. Manual input strips non-digits and caps at 4 chars (typed 'ab12cd34ef' -> '1234'). Invalid 2-digit save is blocked client-side with a toast 'VISITA PIN must be a 4-digit number.'; PIN does not change. WAITING_LIST filter tab (app-filter-WAITING_LIST) still present (iter-28 regression preserved). Backend pytest 12/12 passed.",
+  "backend_issues": { "critical": [], "minor": [] },
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [],
+    "design_issues": []
+  },
+  "test_report_links": [
+    "/app/backend/tests/test_visita_pin_assign.py",
+    "/app/test_reports/pytest/iter29_pin.xml"
+  ],
+  "action_items": [],
+  "critical_code_review_comments": [
+    "server.py suggestions endpoint builds full 9000-int pool + shuffles each call - fine at current scale but O(n) memory each call; consider random sampling with retry when 'used' is small.",
+    "assign-pin uniqueness check across patients + directory + visita_pins is good but the 3 lookups + upsert + 2 updates + delete are not wrapped in a transaction. If the process crashes mid-way the PIN could be claimed in visita_pins but not written to patients. Consider a Mongo multi-document txn or an idempotent reconciler.",
+    "Frontend openPin() sets pinVal to created_visita_patient_id but the Save button will accept saving the SAME pin (backend returns changed:false 200). UX still OK but consider disabling Save when pinVal === current.",
+    "openPin() calls suggestions endpoint every time editor opens - fine but no loading spinner beyond 'Loading suggestions…' text; consider disabling Save until suggestions or manual 4-digit input is ready."
+  ],
+  "updated_files": [
+    "/app/backend/tests/test_visita_pin_assign.py (new)"
+  ],
+  "success_rate": { "backend": "100%", "frontend": "100%" },
+  "test_credentials": "Staff staff@visita.demo / Staff2026!; Physician PAGUAYO / Newman2013_! (login uses 'identifier' but data-testid=login-email input).",
+  "seed_data_creation": "No new applications created this iteration - reused existing ACCEPTED new_patient cards from iter 28 (APP-000021/022). PINs of at least one accepted patient were bounced between values during testing then restored via re-assign (final PIN 7393 on the tested card).",
+  "retest_needed": false,
+  "should_main_agent_self_test": false,
+  "context_for_next_testing_agent": "Use /app/backend/tests/test_visita_pin_assign.py as regression. It uses dotenv to load REACT_APP_BACKEND_URL from /app/frontend/.env. Run: pytest backend/tests/test_visita_pin_assign.py -n 0. Some tests will opportunistically create a new accepted application if none exist. Frontend selectors confirmed: app-pin-panel, app-pin-current, app-assign-pin, app-pin-editor, app-pin-option, app-pin-input, app-pin-save (all working).",
+  "rca of the issue": "No bug. Feature works per spec."
+}

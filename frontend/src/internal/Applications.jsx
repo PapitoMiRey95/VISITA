@@ -210,7 +210,7 @@ export default function Applications() {
                                             <div className="flex gap-2 items-center">
                                                 <Input className="h-8 w-28 font-mono" maxLength={4} inputMode="numeric" data-testid="app-pin-input"
                                                     value={pinVal} onChange={(e) => setPinVal(e.target.value.replace(/\D/g, "").slice(0, 4))} placeholder="0000" />
-                                                <Button size="sm" className="h-8 bg-visita-green hover:bg-visita-greenDark text-white" disabled={pinBusy} data-testid="app-pin-save" onClick={() => savePin(a.id)}>Save PIN</Button>
+                                                <Button size="sm" className="h-8 bg-visita-green hover:bg-visita-greenDark text-white" disabled={pinBusy || pinVal === (a.created_visita_patient_id || "") || !/^\d{4}$/.test(pinVal)} data-testid="app-pin-save" onClick={() => savePin(a.id)}>Save PIN</Button>
                                                 <Button size="sm" variant="outline" className="h-8" onClick={() => setPinOpen(null)}>Cancel</Button>
                                             </div>
                                         </div>

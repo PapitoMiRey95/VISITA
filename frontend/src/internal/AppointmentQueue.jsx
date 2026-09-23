@@ -211,8 +211,10 @@ export default function AppointmentQueue() {
                                             </Button>
                                             <Button size="sm" variant="outline" data-testid="appt-complete" disabled={busy}
                                                 onClick={() => act({ action: "complete" })}>Completed</Button>
-                                            <Button size="sm" variant="outline" className="text-amber-700 border-amber-200" data-testid="appt-noshow" disabled={busy}
-                                                onClick={() => act({ action: "no_show" })}>No Show</Button>
+                                            {sel.appointment_type !== "IN_CLINIC" && (
+                                                <Button size="sm" variant="outline" className="text-amber-700 border-amber-200" data-testid="appt-noshow" disabled={busy}
+                                                    onClick={() => act({ action: "no_show" })}>No Show</Button>
+                                            )}
                                             <Button size="sm" variant="outline" className="text-red-600 border-red-200" data-testid="appt-cancel"
                                                 disabled={busy} onClick={() => act({ action: "cancel", staff_note: staffNote || undefined })}>
                                                 Cancel

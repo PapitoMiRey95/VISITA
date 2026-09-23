@@ -1060,6 +1060,10 @@ async def portal_overview(user: dict = Depends(get_current_user)):
                     "patient_type": p["patient_type"], "verification_status": p["verification_status"],
                     "visita_patient_id": p.get("visita_patient_id"),
                     "phone": p.get("phone"), "email": p.get("email"),
+                    "sex": p.get("sex"),
+                    "address": p.get("address"), "unit": p.get("unit"),
+                    "city": p.get("city"), "province": p.get("province"),
+                    "postal_code": p.get("postal_code"),
                     "health_card_display": identity_mod.format_health_card(p.get("health_card_number"), p.get("health_card_version")),
                     "health_card_issue_date": p.get("health_card_issue_date"),
                     "health_card_expiry_date": p.get("health_card_expiry_date"),
@@ -1136,6 +1140,50 @@ async def portal_submit_health_card(body: HealthCardUpdateBody, user: dict = Dep
                                 "Your Health Card update is pending clinic verification. Your current record stays active until approved.")
     return {"ok": True, "pending": pending}
 
+
+SEX_OPTIONS = ["Male", "Female", "X"]
+
+
+class SexUpdateBody(BaseModel):
+    sex: str
+
+
+class AddressUpdateBody(BaseModel):
+    address: Optional[str] = None
+    unit: Optional[str] = None
+    city: Optional[str] = None
+    province: Optional[str] = None
+    postal_code: Optional[str] = None
+
+
+@api.post("/portal/profile/sex")
+async def portal_update_sex(body: SexUpdateBody, user: dict = Depends(get_current_user)):
+    p = await get_patient_record(user)
+    val = (body.sex or "").strip()
+    if val not in SEX_OPTIONS:
+        raise HTTPException(status_code=400, detail="Please select a valid sex.")
+    old = p.get("sex")
+    await db.patients.update_one({"id": p["id"]}, {"$set": {"sex": val, "updated_at": now_iso()}})
+    await audit("patient_sex_update", "patient", p["id"],
+                {"id": p["id"], "name": p["first_name"], "role": "patient"},
+                meta={"previous": old, "new": val})
+    return {"ok": True, "sex": val}
+
+
+@api.post("/portal/profile/address")
+async def portal_update_address(body: AddressUpdateBody, user: dict = Depends(get_current_user)):
+    p = await get_patient_record(user)
+    fields = {}
+    for k, v in {"address": body.address, "unit": body.unit, "city": body.city,
+                 "province": body.province, "postal_code": body.postal_code}.items():
+        fields[k] = (v.strip() or None) if isinstance(v, str) else v
+    previous = {k: p.get(k) for k in fields}
+    to_set = {**fields, "updated_at": now_iso()}
+    await db.patients.update_one({"id": p["id"]}, {"$set": to_set})
+    await audit("patient_address_update", "patient", p["id"],
+                {"id": p["id"], "name": p["first_name"], "role": "patient"},
+                meta={"previous": previous, "new": fields})
+    return {"ok": True, **fields}
 
 
 @api.post("/portal/notifications/read")

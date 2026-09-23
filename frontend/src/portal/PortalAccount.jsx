@@ -1,7 +1,7 @@
 import { useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { toast } from "sonner";
-import { LogOut, BellRing, IdCard, Phone, CreditCard, AlertTriangle, Clock, Mail } from "lucide-react";
+import { LogOut, BellRing, IdCard, Phone, CreditCard, AlertTriangle, Clock, Mail, MapPin, User } from "lucide-react";
 import { api, formatErr } from "../lib/api";
 import { useAuth } from "../context/AuthContext";
 import { usePortal, Card } from "./shared";
@@ -9,6 +9,9 @@ import { formatDate } from "../lib/date";
 import { Button } from "../components/ui/button";
 import { Input } from "../components/ui/input";
 import { Label } from "../components/ui/label";
+import { Select, SelectTrigger, SelectValue, SelectContent, SelectItem } from "../components/ui/select";
+
+const SEX_OPTIONS = ["Male", "Female", "X"];
 
 const TYPE_LABEL = { ohip: "OHIP Patient", private: "Private / Uninsured", tourist: "Tourist / Visitor" };
 
@@ -29,6 +32,10 @@ export default function PortalAccount() {
 
     const [editPhone, setEditPhone] = useState(false);
     const [phone, setPhone] = useState("");
+    const [editSex, setEditSex] = useState(false);
+    const [sex, setSex] = useState("");
+    const [editAddr, setEditAddr] = useState(false);
+    const [addr, setAddr] = useState({ address: "", unit: "", city: "", province: "", postal_code: "" });
     const [hcOpen, setHcOpen] = useState(false);
     const [hc, setHc] = useState({ health_card_number: "", health_card_version: "", health_card_issue_date: "", health_card_expiry_date: "" });
     const [busy, setBusy] = useState(false);
@@ -45,6 +52,33 @@ export default function PortalAccount() {
             await api.post("/portal/profile/phone", { phone });
             toast.success("Phone number updated.");
             setEditPhone(false); refetch();
+        } catch (e) { toast.error(formatErr(e)); } finally { setBusy(false); }
+    };
+
+    const saveSex = async () => {
+        if (!sex) return toast.error("Please select your sex.");
+        setBusy(true);
+        try {
+            await api.post("/portal/profile/sex", { sex });
+            toast.success("Sex updated.");
+            setEditSex(false); refetch();
+        } catch (e) { toast.error(formatErr(e)); } finally { setBusy(false); }
+    };
+
+    const openAddr = () => {
+        setAddr({
+            address: p?.address || "", unit: p?.unit || "", city: p?.city || "",
+            province: p?.province || "", postal_code: p?.postal_code || "",
+        });
+        setEditAddr(true);
+    };
+
+    const saveAddress = async () => {
+        setBusy(true);
+        try {
+            await api.post("/portal/profile/address", addr);
+            toast.success("Address updated.");
+            setEditAddr(false); refetch();
         } catch (e) { toast.error(formatErr(e)); } finally { setBusy(false); }
     };
 
@@ -78,6 +112,18 @@ export default function PortalAccount() {
                 </div>
             </Card>
 
+            {p && !p.sex && !editSex && (
+                <div className="rounded-xl border border-amber-300 bg-amber-50 p-4 flex items-start gap-3" data-testid="acct-sex-prompt">
+                    <AlertTriangle className="w-5 h-5 text-amber-600 mt-0.5 shrink-0" />
+                    <div className="flex-1">
+                        <div className="font-bold text-amber-900">Please add your sex</div>
+                        <div className="text-sm text-amber-800">This information is required for your medical record.</div>
+                        <button data-testid="acct-sex-prompt-set" className="mt-2 text-portal-blueDark text-sm font-bold"
+                            onClick={() => { setSex(""); setEditSex(true); }}>Set now</button>
+                    </div>
+                </div>
+            )}
+
             <Card>
                 <div className="font-bold text-slate-700 mb-1">My Information</div>
 
@@ -100,6 +146,57 @@ export default function PortalAccount() {
                 </div>
 
                 {p?.email && <Row icon={Mail} label="Email" testid="acct-email">{p.email}</Row>}
+
+                <div className="py-2 border-t border-slate-100">
+                    <div className="flex items-center justify-between">
+                        <div className="flex items-center gap-2 text-slate-500 text-sm"><User className="w-4 h-4" /> Sex <span className="text-red-500">*</span></div>
+                        {!editSex && <button data-testid="acct-edit-sex" className="text-portal-blueDark text-sm font-bold" onClick={() => { setSex(p?.sex || ""); setEditSex(true); }}>{p?.sex ? "Edit" : "Add"}</button>}
+                    </div>
+                    {!editSex ? (
+                        <div className="font-semibold text-slate-800 mt-0.5" data-testid="acct-sex">{p?.sex || "Not set"}</div>
+                    ) : (
+                        <div className="flex gap-2 mt-1">
+                            <Select value={sex} onValueChange={setSex}>
+                                <SelectTrigger data-testid="acct-sex-trigger" className="flex-1"><SelectValue placeholder="Select sex" /></SelectTrigger>
+                                <SelectContent>
+                                    {SEX_OPTIONS.map((o) => <SelectItem key={o} value={o} data-testid={`acct-sex-opt-${o}`}>{o}</SelectItem>)}
+                                </SelectContent>
+                            </Select>
+                            <Button data-testid="acct-sex-save" disabled={busy} onClick={saveSex} className="bg-portal-blue text-white">Save</Button>
+                            <Button variant="outline" onClick={() => setEditSex(false)}>Cancel</Button>
+                        </div>
+                    )}
+                </div>
+
+                <div className="py-2 border-t border-slate-100">
+                    <div className="flex items-center justify-between">
+                        <div className="flex items-center gap-2 text-slate-500 text-sm"><MapPin className="w-4 h-4" /> Address</div>
+                        {!editAddr && <button data-testid="acct-edit-address" className="text-portal-blueDark text-sm font-bold" onClick={openAddr}>{(p?.address || p?.city) ? "Edit" : "Add"}</button>}
+                    </div>
+                    {!editAddr ? (
+                        <div className="font-semibold text-slate-800 mt-0.5" data-testid="acct-address">
+                            {[[p?.address, p?.unit ? `#${p.unit}` : ""].filter(Boolean).join(" "),
+                              [p?.city, p?.province].filter(Boolean).join(", "),
+                              p?.postal_code].filter(Boolean).join(" · ") || "—"}
+                        </div>
+                    ) : (
+                        <div className="mt-1 space-y-2">
+                            <div className="grid grid-cols-3 gap-2">
+                                <div className="col-span-2"><Label className="text-xs">Street address</Label><Input data-testid="acct-address-street" value={addr.address} onChange={(e) => setAddr({ ...addr, address: e.target.value })} placeholder="123 Main St" /></div>
+                                <div><Label className="text-xs">Unit / Apt</Label><Input data-testid="acct-address-unit" value={addr.unit} onChange={(e) => setAddr({ ...addr, unit: e.target.value })} placeholder="Optional" /></div>
+                            </div>
+                            <div className="grid grid-cols-3 gap-2">
+                                <div><Label className="text-xs">City</Label><Input data-testid="acct-address-city" value={addr.city} onChange={(e) => setAddr({ ...addr, city: e.target.value })} /></div>
+                                <div><Label className="text-xs">Province</Label><Input data-testid="acct-address-province" value={addr.province} onChange={(e) => setAddr({ ...addr, province: e.target.value })} placeholder="ON" /></div>
+                                <div><Label className="text-xs">Postal code</Label><Input data-testid="acct-address-postal" value={addr.postal_code} onChange={(e) => setAddr({ ...addr, postal_code: e.target.value })} placeholder="A1A 1A1" /></div>
+                            </div>
+                            <div className="flex gap-2">
+                                <Button data-testid="acct-address-save" disabled={busy} onClick={saveAddress} className="bg-portal-blue text-white">Save</Button>
+                                <Button variant="outline" onClick={() => setEditAddr(false)}>Cancel</Button>
+                            </div>
+                        </div>
+                    )}
+                </div>
 
                 <div className="py-2 border-t border-slate-100">
                     <div className="flex items-center justify-between">

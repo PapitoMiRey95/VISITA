@@ -37,6 +37,7 @@ export default function Register() {
         address: "", city: "", postal_code: "", patient_message: "", join_reason: "",
     });
     const set = (k) => (e) => setForm({ ...form, [k]: e.target.value });
+    const joinName = (a, b) => [a, b].map((s) => (s || "").replace(/\s+/g, " ").trim()).filter(Boolean).join(" ");
 
     const choose = (t) => {
         setType(t);
@@ -53,7 +54,9 @@ export default function Register() {
         }
         setBusy(true);
         try {
-            const res = await register({ ...form, patient_type: type });
+            const first_name = joinName(form.first_name, form.second_name);
+            const last_name = joinName(form.last_name, form.second_last_name);
+            const res = await register({ ...form, first_name, last_name, patient_type: type });
             if (res?.former_detected) {
                 setFormer({ message: res.message, prefill: res.prefill || {} });
                 setForm((f) => ({ ...f, ...(res.prefill || {}) }));
@@ -74,7 +77,7 @@ export default function Register() {
         setBusy(true);
         try {
             const { data } = await api.post("/applications/return-request", {
-                first_name: form.first_name, last_name: form.last_name, date_of_birth: form.date_of_birth,
+                first_name: joinName(form.first_name, form.second_name), last_name: joinName(form.last_name, form.second_last_name), date_of_birth: form.date_of_birth,
                 health_card_number: form.health_card_number || null, phone: form.phone, email: form.email,
                 address: form.address || null, city: form.city || null, province: form.province || null,
                 postal_code: form.postal_code || null, patient_message: form.patient_message || null,
@@ -150,7 +153,11 @@ export default function Register() {
 
                         <div className="grid grid-cols-2 gap-3">
                             <Field label="First name" testid="reg-first"><Input required value={form.first_name} onChange={set("first_name")} /></Field>
-                            <Field label="Last name" testid="reg-last"><Input required value={form.last_name} onChange={set("last_name")} /></Field>
+                            <Field label="Second name" testid="reg-second"><Input value={form.second_name} onChange={set("second_name")} placeholder="Optional" /></Field>
+                        </div>
+                        <div className="grid grid-cols-2 gap-3">
+                            <Field label="First last name" testid="reg-last"><Input required value={form.last_name} onChange={set("last_name")} /></Field>
+                            <Field label="Second last name" testid="reg-second-last"><Input value={form.second_last_name} onChange={set("second_last_name")} placeholder="Optional" /></Field>
                         </div>
                         <Field label="Date of birth" testid="reg-dob"><Input type="date" required value={form.date_of_birth} onChange={set("date_of_birth")} /></Field>
 
@@ -222,7 +229,11 @@ export default function Register() {
 
                         <div className="grid grid-cols-2 gap-3">
                             <Field label="First name" testid="re-first"><Input required value={form.first_name} onChange={set("first_name")} /></Field>
-                            <Field label="Last name" testid="re-last"><Input required value={form.last_name} onChange={set("last_name")} /></Field>
+                            <Field label="Second name" testid="re-second"><Input value={form.second_name} onChange={set("second_name")} placeholder="Optional" /></Field>
+                        </div>
+                        <div className="grid grid-cols-2 gap-3">
+                            <Field label="First last name" testid="re-last"><Input required value={form.last_name} onChange={set("last_name")} /></Field>
+                            <Field label="Second last name" testid="re-second-last"><Input value={form.second_last_name} onChange={set("second_last_name")} placeholder="Optional" /></Field>
                         </div>
                         <Field label="Date of birth" testid="re-dob"><Input type="date" required value={form.date_of_birth} onChange={set("date_of_birth")} /></Field>
                         <Field label="OHIP / Health Card Number" testid="re-hcn"><Input value={form.health_card_number} onChange={set("health_card_number")} placeholder="0000-000-000-XX" /></Field>

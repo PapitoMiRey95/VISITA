@@ -2256,6 +2256,9 @@ def _serialize_application(a: dict) -> dict:
         "directory_match": a.get("directory_match"), "matched_directory_id": a.get("matched_directory_id"),
         "internal_notes": a.get("internal_notes", []), "history": a.get("history", []),
         "accepted_by": a.get("accepted_by"), "accepted_at": a.get("accepted_at"),
+        "account_created_user_id": a.get("account_created_user_id"),
+        "created_patient_id": a.get("created_patient_id"),
+        "created_visita_patient_id": a.get("created_visita_patient_id"),
         "created_at": a.get("created_at"), "updated_at": a.get("updated_at"),
     }
 
@@ -2272,6 +2275,62 @@ async def applications_queue(type: Optional[str] = None, status: Optional[str] =
         query["internal_status"] = status
     docs = await db.patient_applications.find(query).sort("created_at", -1).to_list(500)
     return [_serialize_application(a) for a in docs]
+
+
+@api.get("/internal/visita-pin/suggestions")
+async def visita_pin_suggestions(count: int = 5, user: dict = Depends(require_roles(*CLINIC_ROLES))):
+    """Return a few currently-unused 4-digit VISITA PIN options for staff to pick from.
+    Suggestions are NOT reserved until assigned."""
+    import random as _random
+    count = max(1, min(int(count or 5), 10))
+    used = await identity_mod.collect_used_pins(db)
+    pool = [str(n) for n in range(1000, 10000) if str(n) not in used]
+    _random.shuffle(pool)
+    return {"suggestions": pool[:count]}
+
+
+class AssignPinBody(BaseModel):
+    pin: str
+
+
+@api.post("/internal/applications/{item_id}/assign-pin")
+async def assign_application_pin(item_id: str, body: AssignPinBody,
+                                 user: dict = Depends(require_roles(*CLINIC_ROLES))):
+    """Assign / change the VISITA PIN for the portal patient created from an accepted
+    new-patient application. Updates the patient record + its linked directory record
+    and re-claims the PIN in the registry."""
+    app = await db.patient_applications.find_one({"id": item_id})
+    if not app:
+        raise HTTPException(status_code=404, detail="Application not found.")
+    pid = app.get("created_patient_id")
+    if not pid:
+        raise HTTPException(status_code=400, detail="No portal patient is linked to this application yet.")
+    vid = (body.pin or "").strip()
+    if not re.fullmatch(r"\d{4}", vid):
+        raise HTTPException(status_code=400, detail="VISITA PIN must be a 4-digit number.")
+    p = await db.patients.find_one({"id": pid})
+    if not p:
+        raise HTTPException(status_code=404, detail="Linked patient not found.")
+    old_pin = p.get("visita_patient_id")
+    if vid == old_pin:
+        return {"ok": True, "visita_patient_id": vid, "changed": False}
+    # Uniqueness across patients, directory and the PIN claim registry.
+    clash = await db.patients.find_one({"visita_patient_id": vid, "id": {"$ne": pid}})
+    clash_dir = await db.patient_directory.find_one({"visita_patient_id": vid, "linked_patient_id": {"$ne": pid}})
+    claim = await db.visita_pins.find_one({"_id": vid})
+    if clash or clash_dir or (claim and claim.get("patient_id") != pid):
+        raise HTTPException(status_code=409, detail=f"VISITA PIN {vid} is already in use.")
+    await db.visita_pins.update_one({"_id": vid}, {"$set": {"patient_id": pid, "created_at": now_iso()}}, upsert=True)
+    await db.patients.update_one({"id": pid}, {"$set": {"visita_patient_id": vid, "updated_at": now_iso()}})
+    if p.get("matched_directory_id"):
+        await db.patient_directory.update_one({"id": p["matched_directory_id"]},
+                                              {"$set": {"visita_patient_id": vid, "updated_at": now_iso()}})
+    await db.patient_applications.update_one({"id": item_id}, {"$set": {"created_visita_patient_id": vid, "updated_at": now_iso()}})
+    if old_pin and old_pin != vid:
+        await db.visita_pins.delete_one({"_id": old_pin, "patient_id": pid})
+    await audit("assign_visita_pin", "patient", pid, user,
+                meta={"application_id": item_id, "previous": old_pin, "new": vid})
+    return {"ok": True, "visita_patient_id": vid, "changed": True}
 
 
 async def _accept_new_patient(doc, actor):

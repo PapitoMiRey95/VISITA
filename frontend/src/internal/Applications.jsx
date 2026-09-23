@@ -1,7 +1,7 @@
 import { useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { toast } from "sonner";
-import { UserPlus, RotateCcw, Check, X, Send, Clock, Eye, MessageSquarePlus } from "lucide-react";
+import { UserPlus, RotateCcw, Check, X, Send, Clock, Eye, MessageSquarePlus, IdCard } from "lucide-react";
 import { api, formatErr } from "../lib/api";
 import { useInvalidate } from "./hooks";
 import { useAuth } from "../context/AuthContext";
@@ -37,6 +37,10 @@ export default function Applications() {
     const invalidate = useInvalidate();
     const [filter, setFilter] = useState("");
     const [noteDraft, setNoteDraft] = useState({});
+    const [pinOpen, setPinOpen] = useState(null);      // application id whose PIN editor is open
+    const [pinSug, setPinSug] = useState([]);          // suggested PINs
+    const [pinVal, setPinVal] = useState("");
+    const [pinBusy, setPinBusy] = useState(false);
 
     const list = useQuery({
         queryKey: ["queue", "/internal/applications", filter],
@@ -58,6 +62,24 @@ export default function Applications() {
     };
 
     const finalDone = (a) => ["ACCEPTED", "NOT_ACCEPTING", "CLOSED"].includes(a.internal_status);
+
+    const openPin = async (a) => {
+        setPinOpen(a.id); setPinVal(a.created_visita_patient_id || ""); setPinSug([]);
+        try {
+            const { data } = await api.get("/internal/visita-pin/suggestions", { params: { count: 5 } });
+            setPinSug(data.suggestions || []);
+        } catch (e) { toast.error(formatErr(e)); }
+    };
+
+    const savePin = async (id) => {
+        if (!/^\d{4}$/.test(pinVal)) return toast.error("VISITA PIN must be a 4-digit number.");
+        setPinBusy(true);
+        try {
+            await api.post(`/internal/applications/${id}/assign-pin`, { pin: pinVal });
+            toast.success(`VISITA PIN ${pinVal} assigned.`);
+            setPinOpen(null); invalidate(); list.refetch();
+        } catch (e) { toast.error(formatErr(e)); } finally { setPinBusy(false); }
+    };
 
     return (
         <div className="animate-fade-in max-w-4xl">
@@ -155,6 +177,44 @@ export default function Applications() {
                                             {c.visita_patient_id ? ` · VISITA #${c.visita_patient_id}` : ""}
                                         </div>
                                     ))}
+                                </div>
+                            )}
+
+                            {!isFormer && a.internal_status === "ACCEPTED" && a.created_patient_id && (
+                                <div className="mt-3 border-t border-slate-200 pt-3" data-testid="app-pin-panel">
+                                    <div className="flex items-center justify-between gap-2">
+                                        <div className="flex items-center gap-2 text-sm">
+                                            <IdCard className="w-4 h-4 text-visita-green" />
+                                            <span className="text-slate-500">VISITA PIN / ID:</span>
+                                            <span className="font-bold text-slate-800" data-testid="app-pin-current">{a.created_visita_patient_id || "Not assigned"}</span>
+                                        </div>
+                                        {pinOpen !== a.id && (
+                                            <Button size="sm" variant="outline" className="h-8" data-testid="app-assign-pin" onClick={() => openPin(a)}>
+                                                {a.created_visita_patient_id ? "Change PIN" : "Assign PIN"}
+                                            </Button>
+                                        )}
+                                    </div>
+                                    {pinOpen === a.id && (
+                                        <div className="mt-2 space-y-2" data-testid="app-pin-editor">
+                                            <div className="text-xs text-slate-500">Pick a suggested number or enter your own (4 digits):</div>
+                                            <div className="flex flex-wrap gap-1.5">
+                                                {pinSug.map((s) => (
+                                                    <button key={s} type="button" data-testid="app-pin-option"
+                                                        onClick={() => setPinVal(s)}
+                                                        className={`px-2.5 py-1 rounded-sm text-sm font-mono border ${pinVal === s ? "bg-visita-green text-white border-visita-green" : "bg-white text-slate-700 border-slate-300 hover:bg-slate-50"}`}>
+                                                        {s}
+                                                    </button>
+                                                ))}
+                                                {pinSug.length === 0 && <span className="text-xs text-slate-400">Loading suggestions…</span>}
+                                            </div>
+                                            <div className="flex gap-2 items-center">
+                                                <Input className="h-8 w-28 font-mono" maxLength={4} inputMode="numeric" data-testid="app-pin-input"
+                                                    value={pinVal} onChange={(e) => setPinVal(e.target.value.replace(/\D/g, "").slice(0, 4))} placeholder="0000" />
+                                                <Button size="sm" className="h-8 bg-visita-green hover:bg-visita-greenDark text-white" disabled={pinBusy} data-testid="app-pin-save" onClick={() => savePin(a.id)}>Save PIN</Button>
+                                                <Button size="sm" variant="outline" className="h-8" onClick={() => setPinOpen(null)}>Cancel</Button>
+                                            </div>
+                                        </div>
+                                    )}
                                 </div>
                             )}
 

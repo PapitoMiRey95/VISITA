@@ -1,0 +1,27 @@
+{
+  "summary": "Verified INSTANT Health Card update on /portal/account for maria.lopez@demo.com. Backend pytest (6/6) and Playwright UI both pass. POST /api/portal/profile/health-card writes directly, returns {ok:true, health_card_display:'1234 567 890 XD'}, and GET /api/portal/overview immediately reflects new fields with health_card_update_pending=false and no pending_health_card object. Toast reads 'Health Card updated.' with no 'pending clinic verification' text; new masked value appears in acct-hc immediately and persists after reload. Validation (10 digits + 2 letters) still blocks bad input. Expiry alarm banners intact: acct-hc-warn-soon with badge 'Expiring soon' at expiry <=60d, acct-hc-warn-expired with badge 'Expired' when past. Regression: phone edit (acct-edit-phone/acct-phone-save) applies instantly. Restored Maria Lopez to a valid future expiry (2028-09-22) at end.",
+  "backend_issues": { "critical": [], "minor": [] },
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [],
+    "design_issues": []
+  },
+  "test_report_links": [
+    "/app/backend/tests/test_hc_instant_update.py",
+    "/app/test_reports/pytest/iter27_hc.xml"
+  ],
+  "action_items": [],
+  "critical_code_review_comments": [
+    "server.py is now ~2741 lines - consider splitting into routers (portal, internal, auth, applications) for maintainability.",
+    "portal_submit_health_card audit payload logs previous HC number/version in plaintext ('before' dict) - acceptable for internal audit collection but ensure this collection is access-controlled and not exposed via any API."
+  ],
+  "updated_files": [
+    "/app/backend/tests/test_hc_instant_update.py (new)"
+  ],
+  "success_rate": { "backend": "100%", "frontend": "100%" },
+  "test_credentials": "maria.lopez@demo.com / Patient2026! (identifier field on /signin)",
+  "seed_data_creation": "None. Only edited Maria Lopez's health card values, sex and phone remained unchanged; restored HC to expiry 2028-09-22 at test end.",
+  "retest_needed": false,
+  "should_main_agent_self_test": false,
+  "context_for_next_testing_agent": "Instant HC update flow is stable. Maria Lopez's HC is set to 1234567890 / XD, issue 2022-01-01, expiry 2028-09-22 after this run. If a next test needs a specific expiry state, set it via POST /api/portal/profile/health-card then restore. Backend field is 'identifier' for login."
+}

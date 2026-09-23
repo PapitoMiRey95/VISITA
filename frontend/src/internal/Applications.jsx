@@ -126,7 +126,7 @@ export default function Applications() {
                                             {physician && (
                                                 <Button size="sm" className="h-8 w-full justify-start bg-visita-green hover:bg-visita-greenDark text-white" data-testid="app-accept"
                                                     onClick={() => patch(a.id, { action: "accept" }, "Patient accepted.")}>
-                                                    <Check className="w-4 h-4 mr-1" /> Accept back to practice
+                                                    <Check className="w-4 h-4 mr-1" /> {isFormer ? "Accept back to practice" : "Accept"}
                                                 </Button>
                                             )}
                                             {physician && (

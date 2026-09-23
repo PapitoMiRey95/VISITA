@@ -183,6 +183,29 @@ def appointment_cancelled_html(name: str, when: str, portal_url: str = "") -> st
                        name, when, portal_url)
 
 
+def account_activation_html(name: str, activate_url: str) -> str:
+    """New-patient acceptance + set-password activation link. `activate_url` must be
+    an absolute https first-party portal URL (validated by _assert_safe_email)."""
+    safe_name = _clean(name) or "there"
+    return (
+        '<table role="presentation" width="100%"><tr><td style="padding:24px;font-family:Arial,sans-serif;color:#0f172a">'
+        '<h2 style="margin:0 0 12px">You\'ve been accepted as a patient</h2>'
+        f'<p>Hello {safe_name},</p>'
+        '<p>Dr. Aguayo\'s office has accepted you as a patient and created your VIen EMR '
+        'patient portal account.</p>'
+        '<p>To finish activating your portal, set your password using the secure button below. '
+        'This link expires in 72 hours.</p>'
+        f'<p style="margin:18px 0"><a href="{activate_url}" '
+        'style="background:#0e7490;color:#fff;padding:10px 18px;border-radius:6px;'
+        'text-decoration:none">Set Your Password &amp; Activate Portal</a></p>'
+        '<p style="margin-top:16px"><strong>Dr. Aguayo\'s Office</strong><br>VIen EMR</p>'
+        '<p style="font-size:12px;color:#888;margin-top:20px">If you did not expect this email you can '
+        'safely ignore it. This message contains no medical information. '
+        'We will never ask you for your password by email.</p>'
+        '</td></tr></table>'
+    )
+
+
 def account_verified_html(name: str, portal_url: str = "") -> str:
     safe_name = _clean(name) or "there"
     link = ""

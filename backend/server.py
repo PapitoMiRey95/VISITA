@@ -578,6 +578,71 @@ async def reset_password(body: ResetBody):
     return {"ok": True}
 
 
+class ActivateValidateBody(BaseModel):
+    uid: str
+    token: str
+
+
+class ActivateSetBody(BaseModel):
+    uid: str
+    token: str
+    new_password: str
+
+
+async def _valid_activation(uid: str, token: str):
+    rec = await db.account_activations.find_one({"user_id": uid})
+    if not rec or rec.get("used"):
+        return None
+    try:
+        if datetime.fromisoformat(rec["expires_at"]) < datetime.now(timezone.utc):
+            return None
+    except Exception:
+        return None
+    if not authlib.verify_password(token, rec["token_hash"]):
+        return None
+    return rec
+
+
+@api.post("/auth/activate/validate")
+async def activate_validate(body: ActivateValidateBody):
+    rec = await _valid_activation(body.uid, body.token)
+    if not rec:
+        raise HTTPException(status_code=400, detail="This activation link is invalid or has expired. Please contact the clinic.")
+    try:
+        u = await db.users.find_one({"_id": ObjectId(body.uid)})
+    except Exception:
+        u = None
+    if not u:
+        raise HTTPException(status_code=400, detail="This activation link is invalid or has expired. Please contact the clinic.")
+    return {"ok": True, "email": u.get("email"), "name": u.get("name")}
+
+
+@api.post("/auth/activate")
+async def activate_set(body: ActivateSetBody):
+    if len((body.new_password or "")) < 8:
+        raise HTTPException(status_code=400, detail="Password must be at least 8 characters.")
+    rec = await _valid_activation(body.uid, body.token)
+    if not rec:
+        raise HTTPException(status_code=400, detail="This activation link is invalid or has expired. Please contact the clinic.")
+    try:
+        u = await db.users.find_one({"_id": ObjectId(body.uid)})
+    except Exception:
+        u = None
+    if not u:
+        raise HTTPException(status_code=400, detail="This activation link is invalid or has expired. Please contact the clinic.")
+    await db.users.update_one({"_id": u["_id"]}, {"$set": {
+        "password_hash": authlib.hash_password(body.new_password),
+        "pending_activation": False, "must_change_password": False,
+        "password_changed_at": now_iso(),
+    }})
+    await db.account_activations.update_one({"user_id": body.uid}, {"$set": {"used": True, "used_at": now_iso()}})
+    await audit("account_activated", "user", body.uid,
+                {"id": body.uid, "name": u.get("name"), "role": u.get("role")})
+    access = authlib.create_access_token(body.uid, u.get("email"), u["role"])
+    fresh = await db.users.find_one({"_id": u["_id"]})
+    return {"token": access, "user": serialize_user(fresh)}
+
+
 @api.get("/auth/me")
 async def me(user: dict = Depends(get_current_user)):
     if user["role"] == "patient" and user.get("patient_id"):
@@ -2209,6 +2274,85 @@ async def applications_queue(type: Optional[str] = None, status: Optional[str] =
     return [_serialize_application(a) for a in docs]
 
 
+async def _accept_new_patient(doc, actor):
+    """On physician acceptance of a NEW-patient application: create an ACTIVE
+    directory record + a portal patient account, email a single-use set-password
+    activation link, and drop an in-portal welcome notification. If a user already
+    exists for the email, skip account creation."""
+    email = (doc.get("email") or "").lower().strip()
+    if email and await db.users.find_one({"email": email}):
+        return {"account_created": False, "reason": "email_exists"}
+
+    patient_id = str(uuid.uuid4())
+    pin = await identity_mod.assign_visita_pin(db, patient_id)
+    first, last = doc.get("first_name", ""), doc.get("last_name", "")
+
+    dir_id = str(uuid.uuid4())
+    await db.patient_directory.insert_one({
+        "id": dir_id, "visita_patient_id": pin,
+        "first_name": first, "last_name": last,
+        "date_of_birth": directory_mod.norm_dob(doc.get("date_of_birth")),
+        "health_card_number": None, "health_card_version_code": None, "sex_code": None,
+        "address": doc.get("address"), "unit": None, "city": doc.get("city"),
+        "province": doc.get("province"), "postal_code": doc.get("postal_code"),
+        "home_phone": None, "cell_phone": doc.get("phone"), "email": email or None,
+        "patient_status": directory_mod.ACTIVE, "source_close_marker": None,
+        "linked_patient_id": patient_id,
+        "norm_first": directory_mod.norm_name(first), "norm_last": directory_mod.norm_name(last),
+        "norm_dob": directory_mod.norm_dob(doc.get("date_of_birth")), "norm_hcn": "",
+        "import_source": "new_patient_acceptance", "created_from_application_id": doc["id"],
+        "imported_at": now_iso(), "updated_at": now_iso(),
+    })
+
+    await db.patients.insert_one({
+        "id": patient_id, "visita_patient_id": pin,
+        "first_name": first, "last_name": last, "date_of_birth": doc.get("date_of_birth"),
+        "health_card_number": None, "health_card_version": None,
+        "health_card_issue_date": None, "health_card_expiry_date": None,
+        "phone": doc.get("phone"), "email": email,
+        "address": doc.get("address"), "city": doc.get("city"),
+        "province": doc.get("province"), "postal_code": doc.get("postal_code"),
+        "country": doc.get("country"), "patient_type": None,
+        "verification_status": "verified", "portal_status": "ACTIVE",
+        "matched_directory_id": dir_id, "preferred_language": doc.get("preferred_language", "en"),
+        "active_status": True, "is_demo": False, "created_from_application_id": doc["id"],
+        "created_at": now_iso(), "updated_at": now_iso(),
+    })
+
+    res = await db.users.insert_one({
+        "email": email, "password_hash": authlib.hash_password(secrets.token_urlsafe(24)),
+        "name": f"{first} {last}".strip(), "role": "patient", "patient_id": patient_id,
+        "active": True, "pending_activation": True, "created_at": now_iso(),
+    })
+    uid = str(res.inserted_id)
+
+    token = secrets.token_urlsafe(32)
+    await db.account_activations.update_one({"user_id": uid}, {"$set": {
+        "user_id": uid, "token_hash": authlib.hash_password(token),
+        "expires_at": (datetime.now(timezone.utc) + timedelta(hours=72)).isoformat(),
+        "used": False, "created_at": now_iso(),
+    }}, upsert=True)
+
+    portal_url = (os.environ.get("APP_BASE_URL") or notify_svc.PORTAL_URL or "").strip().rstrip("/")
+    if email and portal_url and portal_url.startswith("https://"):
+        activate_url = f"{portal_url}/activate?uid={uid}&token={token}"
+        try:
+            await email_service.send_email(
+                to=email,
+                subject="You've been accepted — activate your VIen EMR portal",
+                html=email_service.account_activation_html(first or "there", activate_url),
+            )
+        except Exception as e:
+            logger.warning(f"[activation email] failed: {e}")
+
+    await notify_svc._in_portal(db, patient_id, "Welcome to VIen EMR",
+                                "Dr. Aguayo's office has accepted you as a patient. Check your email to set "
+                                "your password and activate your patient portal.")
+    await audit("new_patient_account_created", "patient", patient_id, actor,
+                meta={"application_id": doc["id"], "user_id": uid, "visita_patient_id": pin})
+    return {"account_created": True, "user_id": uid, "patient_id": patient_id, "visita_patient_id": pin}
+
+
 @api.patch("/internal/applications/{item_id}")
 async def application_update(item_id: str, body: ApplicationUpdateBody,
                              user: dict = Depends(require_roles(*CLINIC_ROLES))):
@@ -2244,6 +2388,13 @@ async def application_update(item_id: str, body: ApplicationUpdateBody,
                     await audit("physician_reactivation", "patient_directory", d["id"], user,
                                 old_status=directory_mod.FORMER_CLOSED, new_status=directory_mod.ACTIVE,
                                 meta={"application_id": item_id})
+            # New-patient acceptance: create ACTIVE directory + portal account + activation email
+            elif doc.get("application_type") == "new_patient" and old != "ACCEPTED" and not doc.get("account_created_user_id"):
+                result = await _accept_new_patient(doc, user)
+                if result.get("account_created"):
+                    updates["account_created_user_id"] = result["user_id"]
+                    updates["created_patient_id"] = result["patient_id"]
+                    updates["created_visita_patient_id"] = result.get("visita_patient_id")
     elif body.action == "send_to_physician":
         updates["internal_status"] = "SENT_TO_PHYSICIAN"
     elif body.action == "waitlist":

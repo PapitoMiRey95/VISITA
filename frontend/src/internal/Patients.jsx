@@ -16,6 +16,17 @@ const HC_BADGE = {
 };
 const HC_LABEL = { VALID: "VALID", EXPIRING_SOON: "EXPIRING SOON", EXPIRED: "EXPIRED", INCOMPLETE: "INCOMPLETE" };
 
+// Display names as "LASTNAMES, First Names" (last names ALWAYS uppercase, first names Title Case).
+const titleCaseName = (s) =>
+    (s || "").trim().toLowerCase().replace(/(^|[\s'\-])([\p{L}])/gu, (_, sep, ch) => sep + ch.toUpperCase());
+function formatPatientName(p) {
+    if (!p) return "—";
+    const last = (p.last_name || "").trim().toUpperCase();
+    const first = titleCaseName(p.first_name || "");
+    if (last && first) return `${last}, ${first}`;
+    return last || first || p.full_name || "—";
+}
+
 function statusLabel(s) {
     if (!s) return "—";
     if (s === "PORTAL_PATIENT") return "VERIFIED — PORTAL PATIENT";
@@ -171,7 +182,7 @@ export default function Patients() {
                 <div className="bg-white border border-slate-300 rounded-sm p-5 max-w-3xl" data-testid="patient-snapshot">
                     <div className="flex items-center justify-between mb-3">
                         <div>
-                            <h2 className="text-lg font-bold text-slate-900">{selected.full_name}</h2>
+                            <h2 className="text-lg font-bold text-slate-900" data-testid="patient-name">{formatPatientName(selected)}</h2>
                             <span className={`inline-block mt-1 px-2 py-0.5 rounded-sm text-xs ${selected.source === "portal" ? "bg-emerald-100 text-emerald-800 font-semibold" : "bg-slate-100 text-slate-600"}`}>{statusLabel(selected.patient_status)}</span>
                         </div>
                         <div className="flex items-center gap-3">

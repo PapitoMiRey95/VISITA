@@ -58,7 +58,24 @@ export default function Calendar() {
 
     const refresh = () => { invalidate(); cal.refetch(); };
     const act = async (id, body, msg) => {
-        try { await api.patch(`/internal/appointments/${id}`, body); toast.success(msg); refresh(); }
+        try {
+            await api.patch(`/internal/appointments/${id}`, body);
+            if (body.action === "no_show" || body.action === "complete") {
+                toast.success(msg, {
+                    action: {
+                        label: "Undo",
+                        onClick: async () => {
+                            try { await api.patch(`/internal/appointments/${id}`, { action: "undo_status" }); toast.success("Reverted to Confirmed."); refresh(); }
+                            catch (e) { toast.error(formatErr(e)); }
+                        },
+                    },
+                    duration: 8000,
+                });
+            } else {
+                toast.success(msg);
+            }
+            refresh();
+        }
         catch (e) { toast.error(formatErr(e)); }
     };
     const unblockDay = async (date) => {

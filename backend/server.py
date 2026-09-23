@@ -1688,6 +1688,11 @@ async def appt_update(item_id: str, body: UpdateBody, user: dict = Depends(requi
         updates.update({"status": "completed", "completed_at": now_iso(), "completed_by": user["name"]})
     elif body.action == "no_show":
         updates.update({"status": "no_show", "completed_at": now_iso(), "marked_by": user["name"]})
+    elif body.action == "undo_status":
+        if old not in ("no_show", "completed"):
+            raise HTTPException(status_code=400, detail="Only a completed or no-show appointment can be reverted.")
+        updates.update({"status": "confirmed", "reverted_from": old,
+                        "reverted_by": user["name"], "reverted_at": now_iso()})
     if body.assigned_to is not None:
         updates["assigned_to"] = body.assigned_to
 

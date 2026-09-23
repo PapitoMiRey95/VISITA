@@ -82,11 +82,27 @@ export default function AppointmentQueue() {
         });
     };
 
+    const undoStatus = async (id) => {
+        try {
+            await api.patch(`/internal/appointments/${id}`, { action: "undo_status" });
+            toast.success("Reverted to Confirmed.");
+            invalidate(); list.refetch();
+        } catch (e) { toast.error(formatErr(e)); }
+    };
+
     const act = async (body) => {
         setBusy(true);
+        const id = sel.id;
         try {
-            await api.patch(`/internal/appointments/${sel.id}`, body);
-            toast.success("Appointment updated.");
+            await api.patch(`/internal/appointments/${id}`, body);
+            if (body.action === "no_show" || body.action === "complete") {
+                toast.success(body.action === "no_show" ? "Marked as No Show." : "Marked as Completed.", {
+                    action: { label: "Undo", onClick: () => undoStatus(id) },
+                    duration: 8000,
+                });
+            } else {
+                toast.success("Appointment updated.");
+            }
             invalidate(); list.refetch(); close();
         } catch (e) { toast.error(formatErr(e)); } finally { setBusy(false); }
     };

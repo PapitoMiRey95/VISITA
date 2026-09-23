@@ -1,0 +1,39 @@
+{
+  "summary": "End-to-end verification of iter32 safety corrections (No Show for ALL appointment types + VISITA PIN permanent retirement) and regression of prior self-tested items. Backend: 18/18 pytest tests passed (1 skipped - no accepted new_patient app w/ assigned PIN available to exercise applications/assign-pin path in current preview state; that path is already curl-verified by main agent). Frontend: cal-noshow visible=True on 5 different appointments across IN-CLINIC / NOT SPECIFIED types (day view); after switching a NOT SPECIFIED appt to IN-CLINIC via ApptTypeEditor the cal-noshow button still renders. appt-noshow visible on Appointment Requests detail modal for a PHONE-type confirmed appt (also verified for NOT SPECIFIED via detail view). Queue 'Received' column present with 'YYYY Mon - DD' format for Rx/Imaging/Bloodwork/Messages and 'Request received:' line (data-testid detail-received) present in Rx, Imaging, Bloodwork detail modals. Portal Home tile-profile navigates to /portal/account and nav-profile is present in the mobile bottom nav.",
+  "backend_issues": { "critical": [], "minor": [] },
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [
+      {"flow": "Messages queue detail-received", "issue": "detail-received not observed in one Message detail modal when opening the first row in the All filter — likely because that specific message item lacked created_at (queue-received showed count=7 vs 8 rows). Confirm all patient_messages/pharmacy messages have created_at persisted; older/imported items may need a backfill or a fallback in the modal.", "affected_selectors": ["[data-testid=detail-received]"]}
+    ],
+    "design_issues": [
+      {"screen": "Appointment Requests detail modal", "issues": ["Uses browser default HTML5 <input type=date/time> for Confirmed date/time instead of the shadcn Calendar/Time components used elsewhere. Non-blocking, but inconsistent with app design language."]},
+      {"screen": "Internal mobile drawer", "issues": ["(Carry-over from iter31) Radix DialogContent still missing DialogTitle for internal-mobile-nav sheet — a11y console warning."]}
+    ]
+  },
+  "test_report_links": [
+    "/app/backend/tests/test_pin_retirement.py",
+    "/app/backend/tests/test_regression_iter32.py",
+    "/app/test_reports/pytest/iter32_final.xml"
+  ],
+  "action_items": [
+    "Optional: Fall back gracefully in Queue detail modal when created_at is missing so detail-received always renders (or backfill created_at on older messages).",
+    "Optional: replace the raw HTML5 date/time inputs on the Appointment Requests detail modal with the shadcn calendar component for consistency.",
+    "Optional: add a11y VisuallyHidden SheetTitle to internal-mobile-nav (iter31 carry-over)."
+  ],
+  "critical_code_review_comments": [
+    "internal_edit_patient PIN change flow blocks the same patient from restoring their own retired PIN (claim.patient_id != pid AND retired -> 409). This is per spec but means testers cannot restore Maria's original 9137 (now retired). Confirm this is desired for lifetime retirement policy; add an admin override endpoint if a legitimate revert is ever needed.",
+    "PIN retirement path is duplicated in server.py (assign_application_pin and internal_edit_patient). Consider extracting a helper `retire_visita_pin(db, old_pin, patient_id)` to avoid drift.",
+    "Queue.jsx detail-received hides when selected.created_at is falsy. If a message has no created_at, the UI silently omits the received line. Prefer defensive rendering with '—'."
+  ],
+  "updated_files": [
+    "/app/backend/tests/test_pin_retirement.py (new)"
+  ],
+  "success_rate": { "backend": "100% (18/18 passed, 1 skipped)", "frontend": "~95% (only Messages detail-received edge case)" },
+  "test_credentials": "Verified working: staff@visita.demo/Staff2026!, PAGUAYO/Newman2013_!, maria.lopez@demo.com/Patient2026!.",
+  "seed_data_creation": "Maria Lopez's VISITA PIN was rotated once more during test (previous PIN also now retired). No new patients or applications created. Old retired 9137 remains untouched.",
+  "retest_needed": false,
+  "should_main_agent_self_test": true,
+  "context_for_next_testing_agent": "iter32 safety corrections verified: (1) NO SHOW appears for ALL appointment types in Calendar + Appointment Requests; (2) VISITA PIN retirement fully working via internal_edit_patient (staff + physician) — retired PINs never appear in /internal/visita-pin/suggestions and return 409 on reassign to any other patient. assign-pin applications path is code-verified by main agent + not exercised in UI due to no eligible accepted new_patient app in the current preview; recommend seeding one if you want e2e coverage. Maria's PIN has been rotated twice by tests — check current value via /api/internal/patients?q=maria before re-running.",
+  "rca of the issue": "N/A — no bugs found. The one minor discrepancy is display-only: Messages queue rows without a persisted created_at won't show detail-received (fallback missing)."
+}

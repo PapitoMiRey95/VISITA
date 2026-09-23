@@ -123,9 +123,7 @@ export default function Queue({ title, subtitle, endpoint, patchBase, searchPlac
                         <>
                             <DialogHeader>
                                 <DialogTitle className="text-lg">{selected.ref_number} · {selected.patient_name}</DialogTitle>
-                                {selected.created_at && (
-                                    <p className="text-xs text-slate-500" data-testid="detail-received">Request received: {formatDate(selected.created_at)}</p>
-                                )}
+                                <p className="text-xs text-slate-500" data-testid="detail-received">Request received: {selected.created_at ? formatDate(selected.created_at) : "—"}</p>
                             </DialogHeader>
                             <div className="space-y-3 text-sm">
                                 {detail(selected)}

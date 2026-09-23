@@ -1,5 +1,8 @@
 # VISITA Web Portal — PRD
 
+> 2026-06 SAFETY CORRECTIONS (verified iter 32): (1) NO SHOW is available for ALL appointment types (IN_CLINIC, TELEPHONE, NOT SPECIFIED) in both Calendar and Appointment Requests — earlier "hide No Show for in-clinic" edits were reverted. (2) VISITA PIN RETIREMENT: changing a patient's PIN now permanently RETIRES the old pin (kept in visita_pins with patient_id=null, retired=true, retired_from_patient) across BOTH change paths (POST /internal/applications/{id}/assign-pin AND PATCH /internal/patients/{id}); retired pins never appear in /internal/visita-pin/suggestions and return 409 on reassignment; identity_history/audit preserves patient/old-pin/new-pin/changed_by/changed_at. Undo No Show (action undo_status) reverts no_show/completed -> confirmed.
+> DEPLOY NOTE: Production must set APP_BASE_URL=https://visitaemr.com (Preview keeps its own preview URL) for new-patient activation email links.
+
 > 2026-06 update: Portal Account now lets patients add/update a structured Address (street/unit/city/province/postal — instant + audit) and a required Sex field (Male/Female/X) with an amber prompt when unset. New endpoints: POST /api/portal/profile/sex, POST /api/portal/profile/address; portal overview returns patient.sex/address/unit/city/province/postal_code. Bottom nav gained a Profile tab (nav-profile). Registration Create-account & Re-establish forms collect First/Second name + First/Second last name (combined client-side into first_name/last_name). Verified via testing_agent iter 25 & 26 (100%). Register-name change deployed to prod; Profile Sex/Address awaiting deploy approval.
 
 

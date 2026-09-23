@@ -1378,7 +1378,8 @@ async def rx_update(item_id: str, body: UpdateBody, user: dict = Depends(require
 
 # ----------------------------- Pharmacy Rx intake -----------------------------
 class PharmacyRxBody(BaseModel):
-    directory_id: str
+    directory_id: Optional[str] = None
+    patient_id: Optional[str] = None
     pharmacy: str
     medications: List[str]
     selected_active_meds: Optional[List[str]] = []
@@ -1401,39 +1402,71 @@ def _age_from_dob(dob: Optional[str]) -> Optional[int]:
 @api.get("/internal/patient-snapshot/{directory_id}")
 async def patient_snapshot(directory_id: str, user: dict = Depends(require_roles(*CLINIC_ROLES))):
     d = await db.patient_directory.find_one({"id": directory_id})
-    if not d:
-        raise HTTPException(status_code=404, detail="Patient not found in directory.")
-    # Fields marked (VISITA) are model-ready placeholders for future read-only sync.
+    if d:
+        # Fields marked (VISITA) are model-ready placeholders for future read-only sync.
+        return {
+            "directory_id": d["id"],
+            "patient_id": d.get("linked_patient_id") or d["id"],
+            "source": "directory",
+            "first_name": d.get("first_name"), "last_name": d.get("last_name"),
+            "visita_patient_id": d.get("visita_patient_id"),
+            "date_of_birth": d.get("date_of_birth"), "age": _age_from_dob(d.get("date_of_birth")),
+            "phone": d.get("cell_phone") or d.get("home_phone"),
+            "patient_status": d.get("patient_status"),
+            "linked_patient_id": d.get("linked_patient_id"),
+            "medications": d.get("medications", []),                # VISITA (read-only, future)
+            "last_visit_date": d.get("last_visit_date"),            # VISITA
+            "last_visit_plan": d.get("last_visit_plan"),            # VISITA
+            "current_pharmacy": d.get("current_pharmacy"),          # VISITA
+        }
+    # Portal-only patient (verified account with no linked directory record).
+    p = await db.patients.find_one({"id": directory_id})
+    if not p:
+        raise HTTPException(status_code=404, detail="Patient not found.")
     return {
-        "directory_id": d["id"],
-        "first_name": d.get("first_name"), "last_name": d.get("last_name"),
-        "visita_patient_id": d.get("visita_patient_id"),
-        "date_of_birth": d.get("date_of_birth"), "age": _age_from_dob(d.get("date_of_birth")),
-        "phone": d.get("cell_phone") or d.get("home_phone"),
-        "patient_status": d.get("patient_status"),
-        "linked_patient_id": d.get("linked_patient_id"),
-        "medications": d.get("medications", []),                # VISITA (read-only, future)
-        "last_visit_date": d.get("last_visit_date"),            # VISITA
-        "last_visit_plan": d.get("last_visit_plan"),            # VISITA
-        "current_pharmacy": d.get("current_pharmacy"),          # VISITA
+        "directory_id": p.get("matched_directory_id"),
+        "patient_id": p["id"],
+        "source": "portal",
+        "first_name": p.get("first_name"), "last_name": p.get("last_name"),
+        "visita_patient_id": p.get("visita_patient_id"),
+        "date_of_birth": p.get("date_of_birth"), "age": _age_from_dob(p.get("date_of_birth")),
+        "phone": p.get("phone"),
+        "patient_status": "PORTAL_PATIENT",
+        "linked_patient_id": p["id"],
+        "medications": [],
+        "last_visit_date": None,
+        "last_visit_plan": None,
+        "current_pharmacy": None,
     }
 
 
 @api.post("/internal/pharmacy-rx")
 async def create_pharmacy_rx(body: PharmacyRxBody, user: dict = Depends(require_roles(*CLINIC_ROLES))):
-    d = await db.patient_directory.find_one({"id": body.directory_id})
-    if not d:
-        raise HTTPException(status_code=404, detail="Patient not found in directory.")
+    d = await db.patient_directory.find_one({"id": body.directory_id}) if body.directory_id else None
+    p = None
+    if not d and body.patient_id:
+        p = await db.patients.find_one({"id": body.patient_id})
+    if not d and not p:
+        raise HTTPException(status_code=404, detail="Patient not found.")
     meds = [m.strip() for m in body.medications if m and m.strip()]
     if not meds:
         raise HTTPException(status_code=400, detail="Please add at least one requested medication.")
     ref = await next_ref("RX")
-    patient_name = f"{d.get('last_name','')}, {d.get('first_name','')}".strip(", ")
+    if d:
+        patient_name = f"{d.get('last_name','')}, {d.get('first_name','')}".strip(", ")
+        rx_patient_id = d.get("linked_patient_id") or d["id"]
+        rx_directory_id = d["id"]
+        rx_vid = d.get("visita_patient_id")
+    else:
+        patient_name = f"{p.get('last_name','')}, {p.get('first_name','')}".strip(", ")
+        rx_patient_id = p["id"]
+        rx_directory_id = p.get("matched_directory_id")
+        rx_vid = p.get("visita_patient_id")
     doc = {
         "id": str(uuid.uuid4()), "ref_number": ref,
         "source": "pharmacy",
-        "patient_id": d.get("linked_patient_id") or d["id"],
-        "directory_id": d["id"], "visita_patient_id": d.get("visita_patient_id"),
+        "patient_id": rx_patient_id,
+        "directory_id": rx_directory_id, "visita_patient_id": rx_vid,
         "patient_name": patient_name,
         "medication_name": "; ".join(meds), "strength": None,
         "medications": meds, "selected_active_meds": body.selected_active_meds or [],
@@ -1449,7 +1482,7 @@ async def create_pharmacy_rx(body: PharmacyRxBody, user: dict = Depends(require_
     }
     await db.prescription_requests.insert_one({**doc})
     await audit("pharmacy_intake", "prescription", doc["id"], user, new_status="waiting_physician",
-                meta={"pharmacy": body.pharmacy, "directory_id": d["id"]})
+                meta={"pharmacy": body.pharmacy, "directory_id": rx_directory_id, "patient_id": rx_patient_id})
     doc.pop("_id", None)
     return doc
 

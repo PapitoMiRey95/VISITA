@@ -27,7 +27,7 @@ export default function PharmacyIntake() {
         if (!query.trim()) return;
         setSearching(true);
         try {
-            const { data } = await api.get("/internal/directory", { params: { q: query.trim() } });
+            const { data } = await api.get("/internal/patient-lookup", { params: { q: query.trim() } });
             setResults(data);
         } catch (err) { toast.error(formatErr(err)); } finally { setSearching(false); }
     };
@@ -52,7 +52,7 @@ export default function PharmacyIntake() {
         setBusy(true);
         try {
             await api.post("/internal/pharmacy-rx", {
-                directory_id: snap.directory_id, pharmacy: f.pharmacy, medications,
+                directory_id: snap.directory_id, patient_id: snap.patient_id, pharmacy: f.pharmacy, medications,
                 selected_active_meds: selectedActive, duration_qty: f.duration_qty || null,
                 pharmacy_note: f.pharmacy_note || null, received_via: f.received_via,
                 internal_note: f.internal_note || null,
@@ -84,7 +84,7 @@ export default function PharmacyIntake() {
                         <Button type="submit" disabled={searching} data-testid="intake-search-btn">{searching ? "…" : "Search"}</Button>
                     </form>
                     <div className="mt-3 divide-y border border-slate-200 rounded-sm max-h-80 overflow-y-auto">
-                        {results.length === 0 && <div className="px-3 py-4 text-slate-400 text-sm">Search the VISITA patient directory.</div>}
+                        {results.length === 0 && <div className="px-3 py-4 text-slate-400 text-sm">Search VISITA patients (directory + portal accounts) by name, DOB, phone or VISITA PIN.</div>}
                         {results.map((r) => (
                             <button key={r.id} data-testid="intake-result" onClick={() => selectPatient(r.id)}
                                 className="w-full text-left px-3 py-2 text-sm hover:bg-slate-50 flex justify-between">

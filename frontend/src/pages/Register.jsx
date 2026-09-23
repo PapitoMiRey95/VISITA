@@ -95,8 +95,8 @@ export default function Register() {
         e.preventDefault();
         setBusy(true);
         try {
-            const first = [form.first_name, form.second_name].map((s) => s.trim()).filter(Boolean).join(" ");
-            const last = [form.last_name, form.second_last_name].map((s) => s.trim()).filter(Boolean).join(" ");
+            const first = joinName(form.first_name, form.second_name);
+            const last = joinName(form.last_name, form.second_last_name);
             const message = [form.join_reason, form.patient_message.trim()].filter(Boolean).join(" — ");
             const { data } = await api.post("/applications/new-patient", {
                 first_name: first, last_name: last, date_of_birth: form.date_of_birth,

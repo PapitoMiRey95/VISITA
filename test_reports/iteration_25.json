@@ -1,0 +1,31 @@
+{
+  "summary": "Verified Register.jsx name-field expansion (First/Second name + First/Second last name) across all three registration flows (Create-account for OHIP+Private, Re-establish Care, and New-patient). Frontend joinName() correctly combines and trims. Backend contract is unchanged and persists the combined values verbatim. All 6 pytest tests passed; all UI flows pass; payloads inspected on wire confirm combined first_name / last_name values.",
+  "backend_issues": {"critical": [], "minor": []},
+  "frontend_issues": {"ui_bugs": [], "integration_issues": [], "design_issues": []},
+  "test_report_links": [
+    "/app/backend/tests/test_register_name_combining.py",
+    "/app/test_reports/pytest/register_name_combining.xml"
+  ],
+  "action_items": [],
+  "critical_code_review_comments": [
+    "Register.jsx submit() for OHIP/Private/Tourist uses joinName() but also spreads the entire form (including now-unused second_name/second_last_name) into the register payload. Backend RegisterBody currently ignores unknown fields, but for cleanliness those two extras should be stripped before POST to avoid silent schema drift.",
+    "submitNewPatient() re-implements the join inline (map+trim+filter+join) instead of reusing joinName(); duplicated logic — extract to a single helper.",
+    "Backend still calls `.strip()` on the incoming first_name/last_name in /auth/register, /applications/return-request, and /applications/new-patient, but does NOT collapse interior double spaces. Frontend does; anyone hitting the API directly could store 'Juan  Carlos'. Consider normalising server-side (`re.sub(r'\\s+', ' ', s).strip()`)."
+  ],
+  "updated_files": ["/app/backend/tests/test_register_name_combining.py"],
+  "success_rate": {"backend": "100% (6/6)", "frontend": "100% (all flows)"},
+  "test_credentials": "Admin kevinrodriguez9528@gmail.com / VisitaAdmin2026! used for /api/internal/verifications verification.",
+  "seed_data_creation": "Created several TEST_-prefixed patient registrations (pending) and one APP-000010 return-request against former patient 'Ahmed Mohammed KUTBI' (DOB 1990-01-21, HCN 0000000005). Also two new-patient applications. All are pending review only — no production data mutated.",
+  "retest_needed": false,
+  "main_agent_can_self_test": true,
+  "context_for_next_testing_agent": "The four-field name UI is stable. Backend accepts and stores combined names verbatim. If future iterations want stronger enforcement, add server-side space-collapse. Baseline confirmed against iteration_24.",
+  "verification_matrix": {
+    "reg-first/second/last/second-last testids present with correct required/placeholder attrs": "PASS",
+    "OHIP submit joins Juan+Carlos -> 'Juan Carlos', Pérez+López -> 'Pérez López'": "PASS (wire payload)",
+    "Blank optional trims to 'Maria' / 'Gomez' with no double/leading/trailing spaces": "PASS (wire payload + stored value)",
+    "Accents/hyphens/apostrophes preserved (José, María-José, O'Connor)": "PASS (stored value)",
+    "Re-establish form (re-first/second/last/second-last) combines and posts to /applications/return-request": "PASS (wire payload + APP-ref confirmation shown)",
+    "New-patient form (np-first/second/last/second-last) present": "PASS",
+    "Internal directory search matches partial compound last name (ROMERO -> ROMERO CUAHUEY)": "PASS"
+  }
+}

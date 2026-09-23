@@ -1,0 +1,29 @@
+{
+  "summary": "Iteration 30 — Verified: (1) 'Mark Under Review' button (data-testid app-review) is completely absent for both STAFF and PHYSICIAN on Applications page (count=0 in both roles). (2) STAFF sees app-send-physician (13 buttons) and app-waitlist (13) but not app-accept/decline. (3) PHYSICIAN correctly HIDES app-send-physician (count=0) while still showing app-waitlist (13), app-accept (13), app-decline (13), app-close (13). (4) Backend waitlist idempotent email verified with new pytest: created @resend.dev applicant via public POST /api/applications/new-patient, first PATCH {action:'waitlist'} sets internal_status=WAITING_LIST + waitlist_email_sent=true + waitlist_email_at (Resend logs 202 Accepted); second PATCH does NOT change waitlist_email_at (no resend). (5) Regression: WAITING_LIST filter tab (app-filter-WAITING_LIST) present, clicking shows 4 waitlisted items. Backend pytest 2/2 passed.",
+  "backend_issues": { "critical": [], "minor": [] },
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [],
+    "design_issues": []
+  },
+  "test_report_links": [
+    "/app/backend/tests/test_waitlist_email.py",
+    "/app/test_reports/pytest/iter30_waitlist.xml"
+  ],
+  "action_items": [],
+  "critical_code_review_comments": [
+    "_serialize_application does NOT include waitlist_email_sent/waitlist_email_at — the frontend cannot reflect whether the applicant has been emailed. Not a functional bug (backend guards resend on server-side), but staff has no UX signal after clicking 'Add to Waiting List'. Consider exposing these fields so the UI can show 'Waitlist email sent on <date>'.",
+  "Applications.jsx Save PIN button is currently disabled when pinVal===current — good. Consider a similar disable/tooltip on app-waitlist once waitlist_email_sent=true so staff know the email was already sent (currently toast just says 'Added to waiting list.' every click).",
+  "email_service.waiting_list_html is invoked with fallback name 'there' when first_name missing — fine, but consider using last_name as fallback before 'there' for a more personalized message."
+  ],
+  "updated_files": [
+    "/app/backend/tests/test_waitlist_email.py (new)"
+  ],
+  "success_rate": { "backend": "100%", "frontend": "100%" },
+  "test_credentials": "Staff staff@visita.demo / Staff2026!; Physician PAGUAYO / Newman2013_!. Login field 'identifier' via /signin; response returns key 'token' (not access_token).",
+  "seed_data_creation": "Created 2 new-patient applications with unique @resend.dev emails during backend test (test_create_new_patient_application_public + test_waitlist_first_time_sends_second_time_does_not). Both remain in DB; the second one is on WAITING_LIST with waitlist_email_sent=true. No reseed/reset performed.",
+  "retest_needed": false,
+  "should_main_agent_self_test": false,
+  "context_for_next_testing_agent": "Backend regression file: /app/backend/tests/test_waitlist_email.py — loads REACT_APP_BACKEND_URL from /app/frontend/.env and MONGO_URL/DB_NAME from /app/backend/.env; uses pymongo to check waitlist_email_sent/waitlist_email_at since /internal/applications serializer doesn't expose them. Run with: pytest backend/tests/test_waitlist_email.py -v -o 'addopts=' (default pytest.ini uses xdist which can fail for this simple file). Staff can create applications via public POST /api/applications/new-patient (no auth). Physician login uses username 'PAGUAYO' as identifier.",
+  "rca of the issue": "No bug. Feature works per spec — button visibility rules and one-shot email guard both verified."
+}

@@ -620,7 +620,33 @@ async def partner_update_profile(body: PartnerProfileBody, user: dict = Depends(
     if "locations" in updates:
         updates["locations"] = orgs_mod.ensure_ids(updates["locations"], "loc")
     if "providers" in updates:
-        updates["providers"] = orgs_mod.ensure_ids(updates["providers"], "prov")
+        # Providers are a SEPARATE entity: canonical records live in the global
+        # `providers` registry (stable global id, reusable across organizations),
+        # while the org only stores an AFFILIATION (provider_id + which of this
+        # org's locations they work at). This lets one provider be affiliated with
+        # multiple organizations in the future without duplicating identity.
+        valid_loc_ids = {l.get("id") for l in (updates.get("locations")
+                         if "locations" in updates else org.get("locations", [])) if l.get("id")}
+        now = now_iso()
+        affiliations = []
+        for p in updates["providers"]:
+            name = (p.get("name") or "").strip()
+            if not name:
+                continue
+            specialties = (p.get("specialties") or p.get("specialty") or "").strip()
+            loc_ids = [lid for lid in (p.get("location_ids") or []) if lid in valid_loc_ids]
+            pid = p.get("id") or p.get("provider_id")
+            existing = await db.providers.find_one({"id": pid}) if pid else None
+            if existing:
+                await db.providers.update_one({"id": pid}, {"$set": {"name": name, "specialties": specialties, "updated_at": now}})
+            else:
+                pid = f"prov_{uuid.uuid4().hex[:10]}"
+                await db.providers.insert_one({"id": pid, "name": name, "specialties": specialties,
+                                               "created_by_org_id": user["organization_id"],
+                                               "created_at": now, "updated_at": now})
+            affiliations.append({"id": pid, "provider_id": pid, "name": name,
+                                 "specialty": specialties, "location_ids": loc_ids})
+        updates["providers"] = affiliations
     if not updates:
         return {"organization": orgs_mod.serialize_org(org)}
     updates["updated_at"] = now_iso()

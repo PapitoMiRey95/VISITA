@@ -44,13 +44,20 @@ export default function PartnerProfile() {
     useEffect(() => { load(); }, []);
 
     const set = (k) => (e) => setForm({ ...form, [k]: e.target.value });
-    const addProvider = () => setForm({ ...form, providers: [...form.providers, { name: "", specialty: "" }] });
+    const addProvider = () => setForm({ ...form, providers: [...form.providers, { name: "", specialty: "", location_ids: [] }] });
     const setProvider = (i, k, v) => {
         const p = [...form.providers]; p[i] = { ...p[i], [k]: v }; setForm({ ...form, providers: p });
     };
+    const toggleProviderLoc = (i, locId) => {
+        const p = [...form.providers];
+        const cur = p[i].location_ids || [];
+        p[i] = { ...p[i], location_ids: cur.includes(locId) ? cur.filter((x) => x !== locId) : [...cur, locId] };
+        setForm({ ...form, providers: p });
+    };
     const removeProvider = (i) => setForm({ ...form, providers: form.providers.filter((_, x) => x !== i) });
 
-    const addLocation = () => setForm({ ...form, locations: [...form.locations, { label: "", address: "", city: "", province: "", postal_code: "", phone: "", fax: "", business_hours: "" }] });
+    const newLocId = () => "loc_" + Math.random().toString(36).slice(2, 10);
+    const addLocation = () => setForm({ ...form, locations: [...form.locations, { id: newLocId(), label: "", address: "", city: "", province: "", postal_code: "", phone: "", fax: "", business_hours: "" }] });
     const setLoc = (i, k, v) => { const l = [...form.locations]; l[i] = { ...l[i], [k]: v }; setForm({ ...form, locations: l }); };
     const removeLocation = (i) => setForm({ ...form, locations: form.locations.filter((_, x) => x !== i) });
 
@@ -229,10 +236,29 @@ export default function PartnerProfile() {
                     <div className="space-y-2">
                         {form.providers.length === 0 && <p className="text-xs text-slate-400">No providers added yet.</p>}
                         {form.providers.map((p, i) => (
-                            <div key={i} className="flex gap-2 items-center" data-testid={`p-provider-${i}`}>
-                                <Input placeholder="Name" value={p.name} onChange={(e) => setProvider(i, "name", e.target.value)} data-testid={`p-provider-name-${i}`} />
-                                <Input placeholder="Specialty" value={p.specialty} onChange={(e) => setProvider(i, "specialty", e.target.value)} data-testid={`p-provider-spec-${i}`} />
-                                <button type="button" onClick={() => removeProvider(i)} className="text-slate-400 hover:text-red-600 shrink-0"><X className="w-4 h-4" /></button>
+                            <div key={p.id || i} className="rounded-lg border border-slate-200 p-3 space-y-2" data-testid={`p-provider-${i}`}>
+                                <div className="flex gap-2 items-center">
+                                    <Input placeholder="Name" value={p.name} onChange={(e) => setProvider(i, "name", e.target.value)} data-testid={`p-provider-name-${i}`} />
+                                    <Input placeholder="Specialties (comma-separated)" value={p.specialty || p.specialties || ""} onChange={(e) => setProvider(i, "specialty", e.target.value)} data-testid={`p-provider-spec-${i}`} />
+                                    <button type="button" onClick={() => removeProvider(i)} className="text-slate-400 hover:text-red-600 shrink-0"><X className="w-4 h-4" /></button>
+                                </div>
+                                {form.locations.filter((l) => l.id).length > 0 && (
+                                    <div>
+                                        <div className="text-xs text-slate-500 mb-1">Works at location(s):</div>
+                                        <div className="flex flex-wrap gap-1.5">
+                                            {form.locations.filter((l) => l.id).map((l) => {
+                                                const on = (p.location_ids || []).includes(l.id);
+                                                return (
+                                                    <button type="button" key={l.id} data-testid={`p-provider-${i}-loc-${l.id}`}
+                                                        onClick={() => toggleProviderLoc(i, l.id)}
+                                                        className={`px-2 py-1 rounded-full text-xs font-medium border transition-colors ${on ? "bg-cyan-500 text-white border-cyan-500" : "bg-white text-slate-600 border-slate-200 hover:border-cyan-400"}`}>
+                                                        {l.label || l.address || "Location"}
+                                                    </button>
+                                                );
+                                            })}
+                                        </div>
+                                    </div>
+                                )}
                             </div>
                         ))}
                     </div>

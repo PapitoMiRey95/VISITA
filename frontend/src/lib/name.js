@@ -21,3 +21,16 @@ export function formatPatientName(p) {
     if (last && first) return `${last}, ${first}`;
     return last || first || p.full_name || "—";
 }
+
+// Format an already-combined backend name string. Backend builds patient_name /
+// full_name as "Last, First", so uppercase only the segment before the comma and
+// preserve the first/middle names. Comma-less/free-text values are left untouched.
+export function formatCombinedName(name) {
+    if (!name) return "—";
+    const s = String(name).trim();
+    const i = s.indexOf(",");
+    if (i === -1) return s;
+    const last = s.slice(0, i).trim().toUpperCase();
+    const first = s.slice(i + 1).trim();
+    return first ? `${last}, ${first}` : last;
+}

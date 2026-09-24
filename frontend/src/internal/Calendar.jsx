@@ -3,6 +3,7 @@ import { useQuery } from "@tanstack/react-query";
 import { toast } from "sonner";
 import { ChevronLeft, ChevronRight, CalendarDays, Ban, Plus, Search } from "lucide-react";
 import { api, formatErr } from "../lib/api";
+import { formatLastFirst, formatCombinedName } from "../lib/name";
 import { formatDate } from "../lib/date";
 import { ApptTypeEditor } from "../components/ApptTypeEditor";
 import { useInvalidate } from "./hooks";
@@ -140,7 +141,7 @@ export default function Calendar() {
                                 {d.appointments.map((a) => (
                                     <div key={a.id} data-testid="cal-appt" className="rounded-sm bg-emerald-50 border border-emerald-200 px-2 py-1 text-xs">
                                         <div className="flex justify-between items-center gap-1">
-                                            <span className="font-semibold text-slate-800 truncate">{a.label || a.time} · {a.patient_name}</span>
+                                            <span className="font-semibold text-slate-800 truncate">{a.label || a.time} · {formatCombinedName(a.patient_name)}</span>
                                             <StatusPill status={a.status} />
                                         </div>
                                         {a.reason && <div className="text-slate-500 truncate leading-tight">{a.reason}</div>}
@@ -225,7 +226,7 @@ function MonthGrid({ anchor, rows, onPickDate }) {
                             <div className="mt-1 space-y-0.5">
                                 {appts.slice(0, 3).map((a) => (
                                     <div key={a.id} data-testid="cal-month-appt" className="text-[10px] leading-tight truncate rounded-sm bg-emerald-50 text-emerald-800 px-1 py-0.5">
-                                        <span className="font-semibold">{a.time}</span> {(a.patient_name || "").split(",")[0]}
+                                        <span className="font-semibold">{a.time}</span> {(a.patient_name || "").split(",")[0].toUpperCase()}
                                     </div>
                                 ))}
                                 {appts.length > 3 && (
@@ -279,7 +280,7 @@ function BookSlotDialog({ slot, onClose, onDone }) {
                             {results.map((r) => (
                                 <button key={r.id} data-testid="cal-book-result" onClick={() => setPatient(r)} className="w-full text-left px-2 py-1.5 text-sm hover:bg-slate-50">
                                     <div className="flex items-center gap-2">
-                                        <span>{r.last_name}, {r.first_name} · DOB {formatDate(r.date_of_birth)}</span>
+                                        <span>{formatLastFirst(r.last_name, r.first_name)} · DOB {formatDate(r.date_of_birth)}</span>
                                         {r.source === "portal" && <span className="text-[10px] font-bold text-emerald-700 bg-emerald-50 border border-emerald-200 rounded px-1">PORTAL</span>}
                                     </div>
                                     <div className="text-[11px] text-slate-400">{r.visita_patient_id ? `PIN ${r.visita_patient_id}` : "PIN Not assigned"}{r.source === "portal" ? " · Verified portal patient" : ""}</div>
@@ -289,7 +290,7 @@ function BookSlotDialog({ slot, onClose, onDone }) {
                     </div>
                 ) : (
                     <div className="space-y-3 text-sm">
-                        <div>Patient: <b>{patient.last_name}, {patient.first_name}</b> <button className="text-xs text-slate-400 ml-2" onClick={() => setPatient(null)}>change</button></div>
+                        <div>Patient: <b>{formatLastFirst(patient.last_name, patient.first_name)}</b> <button className="text-xs text-slate-400 ml-2" onClick={() => setPatient(null)}>change</button></div>
                         <Input value={reason} onChange={(e) => setReason(e.target.value)} placeholder="Reason (optional)" data-testid="cal-book-reason" />
                         <Button disabled={busy} onClick={submit} className="w-full bg-visita-green hover:bg-visita-greenDark text-white" data-testid="cal-book-confirm">Confirm & Book</Button>
                     </div>

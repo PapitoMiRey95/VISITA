@@ -5,6 +5,7 @@ import Queue, { KV } from "./Queue";
 import { useAuth } from "../context/AuthContext";
 import { StatusPill } from "./statusPill";
 import { formatDateTime } from "../lib/date";
+import { formatCombinedName } from "../lib/name";
 import { openAttachment, formatErr } from "../lib/api";
 import { Button } from "../components/ui/button";
 
@@ -29,7 +30,7 @@ function SourceBadge({ source }) {
 const COLUMNS = [
     { header: "Source", cell: (i) => <SourceBadge source={i.source} /> },
     { header: "Ref", cell: (i) => <span className="text-slate-500">{i.ref_number}</span> },
-    { header: "Patient", cell: (i) => <span className="font-semibold">{i.patient_name}</span> },
+    { header: "Patient", cell: (i) => <span className="font-semibold">{formatCombinedName(i.patient_name)}</span> },
     { header: "Medication", cell: (i) => `${i.medication_name || ""} ${i.strength || ""}`.trim() },
     { header: "Detail", cell: (i) => (i.source === "pharmacy" ? (i.pharmacy || "") : `${i.requested_months || ""} mo`) },
     { header: "Status", cell: (i) => <StatusPill status={i.internal_status} /> },

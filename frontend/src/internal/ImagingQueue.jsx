@@ -2,6 +2,7 @@ import Queue, { KV } from "./Queue";
 import { useAuth } from "../context/AuthContext";
 import { StatusPill } from "./statusPill";
 import { formatDateTime } from "../lib/date";
+import { formatCombinedName } from "../lib/name";
 
 const STATUSES = [
     { label: "New", value: "new" },
@@ -41,7 +42,7 @@ export default function ImagingQueue() {
             sourceType="imaging"
             columns={[
                 { header: "Ref", cell: (i) => <span className="text-slate-500">{i.ref_number}</span> },
-                { header: "Patient", cell: (i) => <span className="font-semibold">{i.patient_name}</span> },
+                { header: "Patient", cell: (i) => <span className="font-semibold">{formatCombinedName(i.patient_name)}</span> },
                 { header: "Type", cell: (i) => <span className="capitalize">{i.imaging_type}</span> },
                 { header: "Body Part", cell: (i) => i.body_part },
                 { header: "Status", cell: (i) => <StatusPill status={i.internal_status} /> },

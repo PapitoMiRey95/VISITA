@@ -223,7 +223,7 @@ export default function Patients() {
                         </div>
                     ) : (
                     <>
-                    <Row label="Full Name" testid="snap-name">{selected.full_name}</Row>
+                    <Row label="Full Name" testid="snap-name">{formatPatientName(selected)}</Row>
                     <Row label="VISITA PIN / ID" testid="snap-pin"><span className="inline-flex items-center gap-1"><IdCard className="w-3.5 h-3.5 text-slate-400" />{selected.visita_patient_id || "Not assigned"}</span></Row>
                     <Row label="DOB" testid="snap-dob">{formatDate(selected.date_of_birth)}</Row>
                     <Row label="Age" testid="snap-age">{selected.age != null ? `${selected.age}` : "—"}</Row>

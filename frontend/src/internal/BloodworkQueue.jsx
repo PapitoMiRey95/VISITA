@@ -2,6 +2,7 @@ import Queue, { KV } from "./Queue";
 import { useAuth } from "../context/AuthContext";
 import { StatusPill } from "./statusPill";
 import { formatDateTime } from "../lib/date";
+import { formatCombinedName } from "../lib/name";
 
 const STATUSES = [
     { label: "New", value: "new" },
@@ -44,7 +45,7 @@ export default function BloodworkQueue() {
             sourceType="bloodwork"
             columns={[
                 { header: "Ref", cell: (i) => <span className="text-slate-500">{i.ref_number}</span> },
-                { header: "Patient", cell: (i) => <span className="font-semibold">{i.patient_name}</span> },
+                { header: "Patient", cell: (i) => <span className="font-semibold">{formatCombinedName(i.patient_name)}</span> },
                 { header: "Reason", cell: (i) => i.reason },
                 { header: "Status", cell: (i) => <StatusPill status={i.internal_status} /> },
             ]}

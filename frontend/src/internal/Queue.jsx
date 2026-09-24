@@ -3,6 +3,7 @@ import { useQuery } from "@tanstack/react-query";
 import { toast } from "sonner";
 import { Search, CalendarPlus } from "lucide-react";
 import { api, formatErr } from "../lib/api";
+import { formatCombinedName } from "../lib/name";
 import { formatDate } from "../lib/date";
 import { useInvalidate } from "./hooks";
 import { useAuth } from "../context/AuthContext";
@@ -122,7 +123,7 @@ export default function Queue({ title, subtitle, endpoint, patchBase, searchPlac
                     {selected && (
                         <>
                             <DialogHeader>
-                                <DialogTitle className="text-lg">{selected.ref_number} · {selected.patient_name}</DialogTitle>
+                                <DialogTitle className="text-lg">{selected.ref_number} · {formatCombinedName(selected.patient_name)}</DialogTitle>
                                 <p className="text-xs text-slate-500" data-testid="detail-received">Request received: {selected.created_at ? formatDate(selected.created_at) : "—"}</p>
                             </DialogHeader>
                             <div className="space-y-3 text-sm">

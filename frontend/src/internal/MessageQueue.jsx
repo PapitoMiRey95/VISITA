@@ -4,6 +4,7 @@ import Queue, { KV } from "./Queue";
 import { useAuth } from "../context/AuthContext";
 import { StatusPill } from "./statusPill";
 import { openAttachment, formatErr } from "../lib/api";
+import { formatCombinedName } from "../lib/name";
 
 const STATUSES = [
     { label: "New", value: "new" },
@@ -55,7 +56,7 @@ export default function MessageQueue() {
                 { header: "From", cell: (i) => (
                     i.source === "pharmacy"
                         ? <span className="font-semibold text-indigo-700">{i.pharmacy_name}</span>
-                        : <span className="font-semibold">{i.patient_name}</span>
+                        : <span className="font-semibold">{formatCombinedName(i.patient_name)}</span>
                 ) },
                 { header: "Subject", cell: (i) => i.subject || "—" },
                 { header: "Status", cell: (i) => <StatusPill status={i.status} /> },
@@ -65,7 +66,7 @@ export default function MessageQueue() {
                     {i.source === "pharmacy" && (
                         <div className="rounded-sm bg-indigo-50 border border-indigo-100 px-2 py-1.5 text-xs text-indigo-700">
                             <b>PHARMACY</b> — {i.pharmacy_name}
-                            {i.patient_name && i.patient_name !== i.pharmacy_name && <> · Patient: {i.patient_name}</>}
+                            {i.patient_name && i.patient_name !== i.pharmacy_name && <> · Patient: {formatCombinedName(i.patient_name)}</>}
                             {i.linked_rx_ref && <> · Rx: {i.linked_rx_ref}</>}
                         </div>
                     )}

@@ -3,6 +3,7 @@ import { useQuery } from "@tanstack/react-query";
 import { toast } from "sonner";
 import { Search, CalendarClock } from "lucide-react";
 import { api, formatErr } from "../lib/api";
+import { formatLastFirst, formatCombinedName } from "../lib/name";
 import { useInvalidate } from "./hooks";
 import { StatusPill } from "./statusPill";
 import { KV } from "./Queue";
@@ -142,7 +143,7 @@ export default function AppointmentQueue() {
                         {items.map((i) => (
                             <tr key={i.id} data-testid="queue-row" onClick={() => open(i)} className="border-b border-slate-200 even:bg-slate-50/60 hover:bg-visita-bg cursor-pointer">
                                 <td className="px-3 py-2 text-slate-500">{i.ref_number}</td>
-                                <td className="px-3 py-2 font-semibold">{i.patient_name}</td>
+                                <td className="px-3 py-2 font-semibold">{formatCombinedName(i.patient_name)}</td>
                                 <td className="px-3 py-2">{i.reason}</td>
                                 <td className="px-3 py-2"><ApptTypeBadge type={i.appointment_type} /></td>
                                 <td className="px-3 py-2">{(i.preferred_options || [])[0] ? `${formatDate((i.preferred_options || [])[0].date)} · ${(i.preferred_options || [])[0].label || (i.preferred_options || [])[0].time}` : "—"}</td>
@@ -158,13 +159,13 @@ export default function AppointmentQueue() {
                 <DialogContent className="max-w-lg font-plex max-h-[90vh] overflow-y-auto">
                     {sel && (
                         <>
-                            <DialogHeader><DialogTitle>{sel.ref_number} · {sel.patient_name}</DialogTitle></DialogHeader>
+                            <DialogHeader><DialogTitle>{sel.ref_number} · {formatCombinedName(sel.patient_name)}</DialogTitle></DialogHeader>
                             {sel.patient_link_required && (
                                 <div className="bg-amber-50 border border-amber-200 rounded-sm p-2 mb-1" data-testid="patient-link-required">
                                     <div className="flex items-center justify-between gap-2">
                                         <div className="text-xs text-amber-800">
                                             <span className="font-bold">PATIENT LINK REQUIRED</span>
-                                            <div>Imported as: <span className="font-semibold">{sel.original_imported_name || sel.patient_name}</span></div>
+                                            <div>Imported as: <span className="font-semibold">{formatCombinedName(sel.original_imported_name || sel.patient_name)}</span></div>
                                         </div>
                                         <Button size="sm" variant="outline" className="text-amber-800 border-amber-300" data-testid="link-patient-open"
                                             onClick={() => setLinkOpen((v) => !v)}>{linkOpen ? "Close" : "Link Patient"}</Button>
@@ -183,7 +184,7 @@ export default function AppointmentQueue() {
                                                 {linkResults.map((r) => (
                                                     <div key={r.id} className="flex items-center justify-between gap-2 px-2 py-1.5" data-testid="link-patient-result">
                                                         <div className="text-xs">
-                                                            <div className="font-semibold text-slate-800">{r.last_name}, {r.first_name}</div>
+                                                            <div className="font-semibold text-slate-800">{formatLastFirst(r.last_name, r.first_name)}</div>
                                                             <div className="text-slate-500">DOB {formatDate(r.date_of_birth)} · VISITA {r.visita_patient_id || "—"} · {r.patient_status}</div>
                                                         </div>
                                                         <Button size="sm" variant="outline" disabled={linkBusy} onClick={() => linkPatient(r.id)}

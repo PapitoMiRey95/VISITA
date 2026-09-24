@@ -3,6 +3,7 @@ import { useQuery } from "@tanstack/react-query";
 import { toast } from "sonner";
 import { Upload, FileText, Download, Send, CheckCircle2, History, Search } from "lucide-react";
 import { api, formatErr } from "../lib/api";
+import { formatCombinedName } from "../lib/name";
 import { useInvalidate } from "./hooks";
 import { useAuth } from "../context/AuthContext";
 import { Button } from "../components/ui/button";
@@ -150,7 +151,7 @@ export default function Referrals() {
                                     ) : patResults.map((r) => (
                                         <button key={r.id} type="button" data-testid="ref-patient-result" onClick={() => pickPatient(r)}
                                             className="w-full text-left px-3 py-2 hover:bg-slate-50">
-                                            <div className="font-semibold text-slate-800 text-sm">{r.full_name}</div>
+                                            <div className="font-semibold text-slate-800 text-sm">{formatCombinedName(r.full_name)}</div>
                                             <div className="text-[11px] text-slate-500">
                                                 {r.visita_patient_id ? `PIN ${r.visita_patient_id}` : "No PIN"}
                                                 {r.health_card_number ? ` · HCN ${r.health_card_number}` : ""}
@@ -208,7 +209,7 @@ export default function Referrals() {
                             <div className="flex items-center gap-3 text-sm min-w-0">
                                 <FileText className="w-8 h-8 text-visita-green flex-shrink-0" />
                                 <div className="min-w-0">
-                                    <div className="font-semibold text-slate-800">{r.patient_name} · {r.specialty || "Referral"}</div>
+                                    <div className="font-semibold text-slate-800">{formatCombinedName(r.patient_name)} · {r.specialty || "Referral"}</div>
                                     <div className="text-slate-500 text-xs">{r.ref_number} · {r.specialist_name || ""} {r.clinic_name ? `(${r.clinic_name})` : ""} · Fax: {r.fax_number || "—"} · {r.referral_date}</div>
                                     <div className="text-xs text-emerald-600 font-semibold flex items-center gap-1"><CheckCircle2 className="w-3 h-3" /> PDF available</div>
                                 </div>
@@ -231,7 +232,7 @@ export default function Referrals() {
                         {(history.data || []).map((r) => (
                             <div key={r.id} className="bg-white border border-slate-300 rounded-sm p-3 flex items-center justify-between gap-3 text-sm">
                                 <div>
-                                    <div className="font-semibold text-slate-800">{r.patient_name} · {r.specialty || "Referral"}</div>
+                                    <div className="font-semibold text-slate-800">{formatCombinedName(r.patient_name)} · {r.specialty || "Referral"}</div>
                                     <div className="text-slate-500 text-xs">{r.ref_number} · Faxed by {r.faxed_by} · {r.faxed_at ? formatDateTime(r.faxed_at) : ""}</div>
                                 </div>
                                 <Button size="sm" variant="outline" onClick={() => getPdf(r, false)}>Open PDF</Button>

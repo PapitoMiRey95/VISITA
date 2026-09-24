@@ -3,6 +3,7 @@ import { useNavigate, Link } from "react-router-dom";
 import { toast } from "sonner";
 import { Search, Pill, User, ArrowLeft, Send, ClipboardList } from "lucide-react";
 import { api, formatErr } from "../lib/api";
+import { formatLastFirst } from "../lib/name";
 import { formatDate } from "../lib/date";
 import { Button } from "../components/ui/button";
 import { Input } from "../components/ui/input";
@@ -88,7 +89,7 @@ export default function PharmacyIntake() {
                         {results.map((r) => (
                             <button key={r.id} data-testid="intake-result" onClick={() => selectPatient(r.id)}
                                 className="w-full text-left px-3 py-2 text-sm hover:bg-slate-50 flex justify-between">
-                                <span className="font-semibold">{r.last_name}, {r.first_name}</span>
+                                <span className="font-semibold">{formatLastFirst(r.last_name, r.first_name)}</span>
                                 <span className="text-slate-500 text-xs">DOB {formatDate(r.date_of_birth)} · {r.visita_patient_id ? `#${r.visita_patient_id}` : r.patient_status}</span>
                             </button>
                         ))}
@@ -156,7 +157,7 @@ export default function PharmacyIntake() {
                             <button className="text-xs text-slate-400 hover:text-slate-600" onClick={() => setSnap(null)} data-testid="intake-change-patient">Change</button>
                         </div>
                         <div className="text-sm space-y-1">
-                            <Row label="Name">{snap.last_name}, {snap.first_name}</Row>
+                            <Row label="Name">{formatLastFirst(snap.last_name, snap.first_name)}</Row>
                             <Row label="VISITA PIN / ID">{snap.visita_patient_id || "—"}</Row>
                             <Row label="DOB">{formatDate(snap.date_of_birth)}</Row>
                             <Row label="Age">{snap.age != null ? `${snap.age} y` : "—"}</Row>

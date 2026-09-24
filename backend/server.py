@@ -171,8 +171,12 @@ class PartnerProfileBody(BaseModel):
     languages: Optional[str] = None
     business_hours: Optional[str] = None
     referral_instructions: Optional[str] = None
-    referral_addressed_to: Optional[str] = None  # "organization" | "specific_provider"
-    providers: Optional[List[dict]] = None       # [{name, specialty}]
+    referral_addressed_to: Optional[str] = None  # legacy — kept for compatibility
+    referral_destination: Optional[str] = None   # "organization" | "specific_provider"
+    referral_provider_id: Optional[str] = None
+    photos: Optional[List[str]] = None            # image URLs
+    locations: Optional[List[dict]] = None        # [{id,label,address,city,province,postal_code,phone,fax,business_hours}]
+    providers: Optional[List[dict]] = None        # [{id,name,specialties}]
 
 
 class OrgVerificationBody(BaseModel):
@@ -576,7 +580,8 @@ async def partner_register(body: PartnerRegisterBody):
         "postal_code": None, "fax": None, "description": None,
         "specialties": None, "services": None, "languages": None,
         "business_hours": None, "referral_instructions": None,
-        "referral_addressed_to": None, "providers": [],
+        "referral_addressed_to": None, "referral_destination": None,
+        "referral_provider_id": None, "photos": [], "locations": [], "providers": [],
         "created_at": now, "updated_at": now,
     }
     await db.organizations.insert_one({**org})
@@ -612,6 +617,10 @@ async def partner_update_profile(body: PartnerProfileBody, user: dict = Depends(
     updates = {k: v for k, v in body.dict(exclude_unset=True).items()}
     if updates.get("phone"):
         updates["phone"] = identity_mod.normalize_phone(updates["phone"])
+    if "locations" in updates:
+        updates["locations"] = orgs_mod.ensure_ids(updates["locations"], "loc")
+    if "providers" in updates:
+        updates["providers"] = orgs_mod.ensure_ids(updates["providers"], "prov")
     if not updates:
         return {"organization": orgs_mod.serialize_org(org)}
     updates["updated_at"] = now_iso()

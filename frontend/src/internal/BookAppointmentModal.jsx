@@ -3,6 +3,7 @@ import { useQuery } from "@tanstack/react-query";
 import { toast } from "sonner";
 import { CalendarClock } from "lucide-react";
 import { api, formatErr } from "../lib/api";
+import { formatCombinedName } from "../lib/name";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "../components/ui/dialog";
 import { Button } from "../components/ui/button";
 import { Input } from "../components/ui/input";
@@ -56,7 +57,7 @@ export default function BookAppointmentModal({ open, onClose, onDone, mode = "bo
                 </DialogHeader>
                 <div className="space-y-3 text-sm">
                     <div className="text-slate-600">
-                        Patient: <b>{source?.patient_name}</b>
+                        Patient: <b>{formatCombinedName(source?.patient_name)}</b>
                         {sourceType && mode === "book" && <> · from {sourceType} <b>{source?.ref_number}</b></>}
                     </div>
                     {mode === "book" && (

@@ -33,6 +33,10 @@ export default function PartnerProfile() {
                 languages: data.organization.languages || "", business_hours: data.organization.business_hours || "",
                 referral_instructions: data.organization.referral_instructions || "",
                 referral_addressed_to: data.organization.referral_addressed_to || "",
+                referral_destination: data.organization.referral_destination || "",
+                referral_provider_id: data.organization.referral_provider_id || "",
+                photos: data.organization.photos || [],
+                locations: data.organization.locations || [],
                 providers: data.organization.providers || [],
             });
         } catch (e) { toast.error(formatErr(e)); }
@@ -46,10 +50,18 @@ export default function PartnerProfile() {
     };
     const removeProvider = (i) => setForm({ ...form, providers: form.providers.filter((_, x) => x !== i) });
 
+    const addLocation = () => setForm({ ...form, locations: [...form.locations, { label: "", address: "", city: "", province: "", postal_code: "", phone: "", fax: "", business_hours: "" }] });
+    const setLoc = (i, k, v) => { const l = [...form.locations]; l[i] = { ...l[i], [k]: v }; setForm({ ...form, locations: l }); };
+    const removeLocation = (i) => setForm({ ...form, locations: form.locations.filter((_, x) => x !== i) });
+
+    const addPhoto = () => setForm({ ...form, photos: [...form.photos, ""] });
+    const setPhoto = (i, v) => { const p = [...form.photos]; p[i] = v; setForm({ ...form, photos: p }); };
+    const removePhoto = (i) => setForm({ ...form, photos: form.photos.filter((_, x) => x !== i) });
+
     const save = async () => {
         setBusy(true);
         try {
-            const payload = { ...form, providers: form.providers.filter((p) => (p.name || "").trim()) };
+            const payload = { ...form, providers: form.providers.filter((p) => (p.name || "").trim()), photos: form.photos.filter((u) => (u || "").trim()), locations: form.locations.filter((l) => (l.label || l.address || "").trim()) };
             const { data } = await api.put("/partner/profile", payload);
             setOrg(data.organization);
             toast.success("Organization profile saved.");
@@ -126,15 +138,84 @@ export default function PartnerProfile() {
                 <F label="Business Hours"><Textarea data-testid="p-hours" value={form.business_hours} onChange={set("business_hours")} placeholder="Mon–Fri 9:00–17:00…" /></F>
 
                 <F label="Referral Instructions"><Textarea data-testid="p-referral-instructions" value={form.referral_instructions} onChange={set("referral_instructions")} /></F>
-                <F label="Referrals should be addressed to">
-                    <Select value={form.referral_addressed_to} onValueChange={(v) => setForm({ ...form, referral_addressed_to: v })}>
-                        <SelectTrigger data-testid="p-referral-to-trigger"><SelectValue placeholder="Select…" /></SelectTrigger>
+                <F label="Referral destination preference">
+                    <Select value={form.referral_destination} onValueChange={(v) => setForm({ ...form, referral_destination: v })}>
+                        <SelectTrigger data-testid="p-referral-dest-trigger"><SelectValue placeholder="Select…" /></SelectTrigger>
                         <SelectContent>
-                            <SelectItem value="organization">The organization</SelectItem>
+                            <SelectItem value="organization">Organization / General Intake</SelectItem>
                             <SelectItem value="specific_provider">A specific provider</SelectItem>
                         </SelectContent>
                     </Select>
                 </F>
+                {form.referral_destination === "specific_provider" && (
+                    <F label="Referral provider">
+                        <Select value={form.referral_provider_id} onValueChange={(v) => setForm({ ...form, referral_provider_id: v })}>
+                            <SelectTrigger data-testid="p-referral-provider-trigger"><SelectValue placeholder="Select a provider…" /></SelectTrigger>
+                            <SelectContent>
+                                {form.providers.filter((p) => p.id && (p.name || "").trim()).map((p) => (
+                                    <SelectItem key={p.id} value={p.id}>{p.name}{p.specialty ? ` · ${p.specialty}` : ""}</SelectItem>
+                                ))}
+                            </SelectContent>
+                        </Select>
+                        {form.providers.filter((p) => p.id).length === 0 && (
+                            <p className="text-xs text-slate-400 mt-1">Add and save providers below first, then pick one here.</p>
+                        )}
+                    </F>
+                )}
+
+                {/* Locations */}
+                <div>
+                    <div className="flex items-center justify-between mb-1">
+                        <Label className="text-sm font-semibold text-slate-700">Locations</Label>
+                        <button type="button" onClick={addLocation} data-testid="p-add-location"
+                            className="inline-flex items-center gap-1 text-sm font-semibold text-cyan-700 hover:text-cyan-600">
+                            <Plus className="w-4 h-4" /> Add location
+                        </button>
+                    </div>
+                    <div className="space-y-3">
+                        {form.locations.length === 0 && <p className="text-xs text-slate-400">No locations added yet.</p>}
+                        {form.locations.map((l, i) => (
+                            <div key={l.id || i} className="rounded-lg border border-slate-200 p-3 space-y-2" data-testid={`p-location-${i}`}>
+                                <div className="flex items-center justify-between">
+                                    <Input placeholder="Location label (e.g. Main Office)" value={l.label} onChange={(e) => setLoc(i, "label", e.target.value)} data-testid={`p-location-label-${i}`} />
+                                    <button type="button" onClick={() => removeLocation(i)} className="ml-2 text-slate-400 hover:text-red-600 shrink-0"><X className="w-4 h-4" /></button>
+                                </div>
+                                <Input placeholder="Street address" value={l.address} onChange={(e) => setLoc(i, "address", e.target.value)} data-testid={`p-location-address-${i}`} />
+                                <div className="grid grid-cols-3 gap-2">
+                                    <Input placeholder="City" value={l.city} onChange={(e) => setLoc(i, "city", e.target.value)} />
+                                    <Input placeholder="Province" value={l.province} onChange={(e) => setLoc(i, "province", e.target.value)} />
+                                    <Input placeholder="Postal" value={l.postal_code} onChange={(e) => setLoc(i, "postal_code", e.target.value)} />
+                                </div>
+                                <div className="grid grid-cols-2 gap-2">
+                                    <Input placeholder="Phone" value={l.phone} onChange={(e) => setLoc(i, "phone", e.target.value)} />
+                                    <Input placeholder="Fax" value={l.fax} onChange={(e) => setLoc(i, "fax", e.target.value)} />
+                                </div>
+                                <Textarea placeholder="Business hours for this location" value={l.business_hours} onChange={(e) => setLoc(i, "business_hours", e.target.value)} data-testid={`p-location-hours-${i}`} />
+                            </div>
+                        ))}
+                    </div>
+                </div>
+
+                {/* Photos */}
+                <div>
+                    <div className="flex items-center justify-between mb-1">
+                        <Label className="text-sm font-semibold text-slate-700">Photos</Label>
+                        <button type="button" onClick={addPhoto} data-testid="p-add-photo"
+                            className="inline-flex items-center gap-1 text-sm font-semibold text-cyan-700 hover:text-cyan-600">
+                            <Plus className="w-4 h-4" /> Add photo URL
+                        </button>
+                    </div>
+                    <div className="space-y-2">
+                        {form.photos.length === 0 && <p className="text-xs text-slate-400">Add image links (logo, clinic photos).</p>}
+                        {form.photos.map((u, i) => (
+                            <div key={i} className="flex gap-2 items-center" data-testid={`p-photo-${i}`}>
+                                {u ? <img src={u} alt="" className="w-10 h-10 rounded object-cover border border-slate-200 shrink-0" onError={(e) => { e.target.style.visibility = "hidden"; }} /> : <span className="w-10 h-10 rounded bg-slate-100 shrink-0" />}
+                                <Input placeholder="https://…" value={u} onChange={(e) => setPhoto(i, e.target.value)} data-testid={`p-photo-url-${i}`} />
+                                <button type="button" onClick={() => removePhoto(i)} className="text-slate-400 hover:text-red-600 shrink-0"><X className="w-4 h-4" /></button>
+                            </div>
+                        ))}
+                    </div>
+                </div>
 
                 {/* Providers */}
                 <div>

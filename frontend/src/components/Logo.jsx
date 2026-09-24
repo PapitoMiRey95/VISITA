@@ -8,7 +8,7 @@ export function Logo({ variant = "light", iconClass = "h-8 w-8", textClass = "te
             <img src="/vien-logo.png" alt="VIen EMR" className={`${iconClass} object-contain select-none`} draggable="false" />
             {showText && (
                 <span className={`font-bold tracking-tight leading-none ${textClass}`}>
-                    <span className={vien}>VIen</span>
+                    <span className={vien}>VIsita</span>
                     <span className={emr}> EMR</span>
                 </span>
             )}

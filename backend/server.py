@@ -1498,7 +1498,7 @@ async def counters(user: dict = Depends(require_roles(*CLINIC_ROLES))):
         dmsg = await db.internal_messages.count_documents({"recipient_role": "physician", "status": {"$ne": "completed"}})
         bld = await db.bloodwork_requests.count_documents({"internal_status": "waiting_physician"})
         apps = await db.patient_applications.count_documents({"internal_status": {"$in": APP_ACTIVE}})
-        return {"role": "physician", "counters": {"rx": rx, "imaging": img, "bloodwork": bld, "messages": pmsg + dmsg, "applications": apps}}
+        return {"role": "physician", "counters": {"rx": rx, "imaging": img, "bloodwork": bld, "messages": pmsg, "doctor_tasks": dmsg, "applications": apps}}
     rx = await db.prescription_requests.count_documents({"internal_status": {"$in": RX_ACTIVE}})
     referrals = await db.referrals.count_documents({"ready_to_fax": True, "faxed": False})
     img = await db.imaging_requests.count_documents({"internal_status": {"$in": IMG_ACTIVE}})

@@ -28,7 +28,7 @@ export default function InternalLayout() {
               { to: "/internal/messages", icon: MessageSquare, label: "Messages", key: "messages" },
               { to: "/internal/applications", icon: UserPlus, label: "Applications", key: "applications" },
               { to: "/internal/calendar", icon: CalendarDays, label: "Calendar", key: null },
-              { to: "/internal/tasks", icon: Send, label: "Intercom", key: null },
+              { to: "/internal/tasks", icon: Send, label: "Intercom", key: "doctor_tasks" },
               { to: "/internal/referrals", icon: ClipboardCheck, label: "Referral Drop-Off", key: null },
               { to: "/internal/providers", icon: Stethoscope, label: "Providers", key: null },
           ]

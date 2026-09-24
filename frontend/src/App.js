@@ -6,6 +6,7 @@ import { RoleRoute, HomeRedirect } from "./components/RoleRoute";
 import Landing from "./pages/Landing";
 import SignIn from "./pages/SignIn";
 import Register from "./pages/Register";
+import PartnerRegister from "./pages/PartnerRegister";
 import ChangePassword from "./pages/ChangePassword";
 import ForgotPassword from "./pages/ForgotPassword";
 import Activate from "./pages/Activate";
@@ -36,6 +37,10 @@ import Verifications from "./internal/Verifications";
 import Applications from "./internal/Applications";
 import Settings from "./internal/Settings";
 import Patients from "./internal/Patients";
+import Organizations from "./internal/Organizations";
+
+import PartnerLayout from "./partner/PartnerLayout";
+import PartnerProfile from "./partner/PartnerProfile";
 
 import PharmacyLayout from "./pharmacy/PharmacyLayout";
 import PharmacyRx from "./pharmacy/PharmacyRx";
@@ -52,6 +57,7 @@ function App() {
                     <Route path="/login" element={<Landing />} />
                     <Route path="/signin" element={<SignIn />} />
                     <Route path="/register" element={<Register />} />
+                    <Route path="/partners/register" element={<PartnerRegister />} />
                     <Route path="/change-password" element={<ChangePassword />} />
                     <Route path="/forgot-password" element={<ForgotPassword />} />
                     <Route path="/activate" element={<Activate />} />
@@ -96,7 +102,19 @@ function App() {
                         <Route path="referrals" element={<Referrals />} />
                         <Route path="verifications" element={<Verifications />} />
                         <Route path="applications" element={<Applications />} />
+                        <Route path="organizations" element={<Organizations />} />
                         <Route path="settings" element={<Settings />} />
+                    </Route>
+
+                    <Route
+                        path="/partner"
+                        element={
+                            <RoleRoute roles={["partner"]}>
+                                <PartnerLayout />
+                            </RoleRoute>
+                        }
+                    >
+                        <Route index element={<PartnerProfile />} />
                     </Route>
 
                     <Route

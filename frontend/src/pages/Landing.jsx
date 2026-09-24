@@ -93,10 +93,16 @@ export default function Landing() {
                             </span>
                             <h3 className="text-sm font-bold text-slate-100 tracking-tight">{t("auth:landing.partners.title")}</h3>
                             <p className="text-[11px] uppercase tracking-widest text-slate-500 mt-0.5 mb-4">{t("auth:landing.partners.roles")}</p>
-                            <Button data-testid="partner-login" onClick={() => nav("/signin?partner=1")}
-                                variant="outline" className="mt-auto h-10 border-white/15 bg-transparent text-slate-100 hover:bg-white/10 font-semibold">
-                                {t("auth:landing.partners.login")}
-                            </Button>
+                            <div className="mt-auto grid grid-cols-1 gap-2">
+                                <Button data-testid="partner-login" onClick={() => nav("/signin?partner=1")}
+                                    variant="outline" className="h-10 border-white/15 bg-transparent text-slate-100 hover:bg-white/10 font-semibold">
+                                    {t("auth:landing.partners.signIn")}
+                                </Button>
+                                <Button data-testid="partner-register" onClick={() => nav("/partners/register")}
+                                    className="h-10 bg-cyan-500 hover:bg-cyan-400 text-[#04121f] font-bold">
+                                    <UserPlus className="w-4 h-4 mr-1.5" /> {t("auth:landing.partners.register")}
+                                </Button>
+                            </div>
                         </div>
                     </div>
 

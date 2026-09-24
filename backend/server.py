@@ -24,6 +24,7 @@ import directory as directory_mod
 import email_service
 import identity as identity_mod
 import notifications as notify_svc
+import organizations as orgs_mod
 import storage
 from db import (APPT_PATIENT_STATUS, BLD_ACTIVE, BLD_PATIENT_STATUS, IMG_ACTIVE,
                 IMG_PATIENT_STATUS, MSG_ACTIVE, MSG_PATIENT_STATUS, RX_ACTIVE,
@@ -54,6 +55,7 @@ def serialize_user(u: dict) -> dict:
         "mfa_enabled": u.get("mfa_enabled", False),
         "pharmacy_id": u.get("pharmacy_id"),
         "pharmacy_name": u.get("pharmacy_name"),
+        "organization_id": u.get("organization_id"),
     }
 
 
@@ -138,6 +140,44 @@ class LoginBody(BaseModel):
     identifier: Optional[str] = None
     email: Optional[str] = None
     password: str
+
+
+class PartnerRegisterBody(BaseModel):
+    organization_name: str
+    organization_type: str
+    contact_first_name: str
+    contact_last_name: str
+    email: EmailStr
+    phone: str
+    city: str
+    province: str
+    password: str = Field(min_length=8)
+    confirm_password: str
+    address: Optional[str] = None
+    website: Optional[str] = None
+
+
+class PartnerProfileBody(BaseModel):
+    phone: Optional[str] = None
+    address: Optional[str] = None
+    city: Optional[str] = None
+    province: Optional[str] = None
+    postal_code: Optional[str] = None
+    website: Optional[str] = None
+    fax: Optional[str] = None
+    description: Optional[str] = None
+    specialties: Optional[str] = None
+    services: Optional[str] = None
+    languages: Optional[str] = None
+    business_hours: Optional[str] = None
+    referral_instructions: Optional[str] = None
+    referral_addressed_to: Optional[str] = None  # "organization" | "specific_provider"
+    providers: Optional[List[dict]] = None       # [{name, specialty}]
+
+
+class OrgVerificationBody(BaseModel):
+    status: str
+    note: Optional[str] = None
 
 
 class ChangePwBody(BaseModel):
@@ -494,6 +534,140 @@ async def login(body: LoginBody):
         raise HTTPException(status_code=403, detail="This account has been disabled. Contact the clinic.")
     token = authlib.create_access_token(str(user["_id"]), user.get("email") or user.get("username"), user["role"])
     return {"token": token, "user": serialize_user(user)}
+
+
+# ----------------------------- Partner (Organization) -----------------------------
+@api.post("/partner/register")
+async def partner_register(body: PartnerRegisterBody):
+    if body.password != body.confirm_password:
+        raise HTTPException(status_code=400, detail="Passwords do not match.")
+    if body.organization_type not in orgs_mod.ORG_TYPES:
+        raise HTTPException(status_code=400, detail="Please select a valid organization type.")
+    email = body.email.lower()
+    if await db.users.find_one({"email": email}):
+        raise HTTPException(status_code=400, detail="An account with this email already exists.")
+
+    # Soft duplicate guard (name + city) — flag only, never auto-merge or block.
+    nname = orgs_mod.norm_name(body.organization_name)
+    dup = await db.organizations.find_one({
+        "norm_name": nname,
+        "city": {"$regex": f"^{re.escape(body.city.strip())}$", "$options": "i"},
+    })
+
+    org_id = str(uuid.uuid4())
+    now = now_iso()
+    org = {
+        "id": org_id,
+        "organization_name": body.organization_name.strip(),
+        "norm_name": nname,
+        "organization_type": body.organization_type,
+        "contact_first_name": body.contact_first_name.strip(),
+        "contact_last_name": body.contact_last_name.strip(),
+        "email": email,
+        "phone": identity_mod.normalize_phone(body.phone),
+        "city": body.city.strip(),
+        "province": body.province.strip(),
+        "address": (body.address or "").strip() or None,
+        "website": (body.website or "").strip() or None,
+        "source": "PARTNER_SUBMITTED",
+        "verification_status": "UNVERIFIED",
+        "possible_duplicate": bool(dup),
+        # Profile fields (built later by the partner in onboarding)
+        "postal_code": None, "fax": None, "description": None,
+        "specialties": None, "services": None, "languages": None,
+        "business_hours": None, "referral_instructions": None,
+        "referral_addressed_to": None, "providers": [],
+        "created_at": now, "updated_at": now,
+    }
+    await db.organizations.insert_one({**org})
+    res = await db.users.insert_one({
+        "email": email, "password_hash": authlib.hash_password(body.password),
+        "name": f"{body.contact_first_name} {body.contact_last_name}".strip(),
+        "role": "partner", "organization_id": org_id, "active": True, "created_at": now,
+    })
+    uid = str(res.inserted_id)
+    await audit("register", "organization", org_id,
+                {"id": uid, "name": org["organization_name"], "role": "partner"},
+                new_status="UNVERIFIED",
+                meta={"type": body.organization_type, "source": "PARTNER_SUBMITTED",
+                      "possible_duplicate": bool(dup)})
+    token = authlib.create_access_token(uid, email, "partner")
+    user = await db.users.find_one({"_id": res.inserted_id})
+    return {"token": token, "user": serialize_user(user)}
+
+
+@api.get("/partner/me")
+async def partner_me(user: dict = Depends(require_roles("partner"))):
+    org = await db.organizations.find_one({"id": user.get("organization_id")})
+    if not org:
+        raise HTTPException(status_code=404, detail="Organization not found.")
+    return {"user": user, "organization": orgs_mod.serialize_org(org)}
+
+
+@api.put("/partner/profile")
+async def partner_update_profile(body: PartnerProfileBody, user: dict = Depends(require_roles("partner"))):
+    org = await db.organizations.find_one({"id": user.get("organization_id")})
+    if not org:
+        raise HTTPException(status_code=404, detail="Organization not found.")
+    updates = {k: v for k, v in body.dict(exclude_unset=True).items()}
+    if updates.get("phone"):
+        updates["phone"] = identity_mod.normalize_phone(updates["phone"])
+    if not updates:
+        return {"organization": orgs_mod.serialize_org(org)}
+    updates["updated_at"] = now_iso()
+    await db.organizations.update_one({"id": user["organization_id"]}, {"$set": updates})
+    await audit("update", "organization", user["organization_id"],
+                {"id": user["id"], "name": org["organization_name"], "role": "partner"},
+                meta={"fields": list(updates.keys())})
+    org = await db.organizations.find_one({"id": user["organization_id"]})
+    return {"organization": orgs_mod.serialize_org(org)}
+
+
+@api.get("/partner/org-types")
+async def partner_org_types():
+    return {"types": orgs_mod.ORG_TYPES}
+
+
+# ----------------------------- Internal: Organizations directory -----------------------------
+@api.get("/internal/organizations")
+async def internal_organizations(type: Optional[str] = None, status: Optional[str] = None,
+                                 q: Optional[str] = None,
+                                 user: dict = Depends(require_roles(*CLINIC_ROLES))):
+    query = {}
+    if type:
+        query["organization_type"] = type
+    if status:
+        query["verification_status"] = status
+    if q:
+        qn = q.strip()
+        query["$or"] = [
+            {"organization_name": {"$regex": re.escape(qn), "$options": "i"}},
+            {"email": {"$regex": re.escape(qn), "$options": "i"}},
+            {"city": {"$regex": re.escape(qn), "$options": "i"}},
+        ]
+    docs = await db.organizations.find(query).sort("created_at", -1).to_list(500)
+    return [orgs_mod.serialize_org(d) for d in docs]
+
+
+@api.post("/internal/organizations/{org_id}/verification")
+async def set_org_verification(org_id: str, body: OrgVerificationBody,
+                               user: dict = Depends(require_roles(*CLINIC_ROLES))):
+    if body.status not in orgs_mod.VERIFICATION_STATUSES:
+        raise HTTPException(status_code=400, detail="Invalid verification status.")
+    org = await db.organizations.find_one({"id": org_id})
+    if not org:
+        raise HTTPException(status_code=404, detail="Organization not found.")
+    prev = org.get("verification_status")
+    await db.organizations.update_one({"id": org_id},
+                                      {"$set": {"verification_status": body.status, "updated_at": now_iso()}})
+    # SUSPENDED blocks the partner login; any other status re-enables it. UNVERIFIED stays active.
+    await db.users.update_one({"organization_id": org_id, "role": "partner"},
+                              {"$set": {"active": body.status != "SUSPENDED"}})
+    await audit("status_change", "organization", org_id,
+                {"id": user["id"], "name": user["name"], "role": user["role"]},
+                old_status=prev, new_status=body.status, meta={"note": body.note})
+    org = await db.organizations.find_one({"id": org_id})
+    return orgs_mod.serialize_org(org)
 
 
 @api.post("/auth/change-password")

@@ -35,7 +35,7 @@ export default function SignIn() {
                 return;
             }
             toast.success(t("auth:signin.welcomeBack", { name: u.name?.split(" ")[0] || "" }));
-            nav(u.role === "patient" ? "/portal" : u.role === "pharmacy" ? "/pharmacy" : "/internal", { replace: true });
+            nav(u.role === "patient" ? "/portal" : u.role === "pharmacy" ? "/pharmacy" : u.role === "partner" ? "/partner" : "/internal", { replace: true });
         } catch (err) {
             toast.error(formatErr(err));
         } finally {

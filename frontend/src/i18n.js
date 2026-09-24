@@ -1,6 +1,5 @@
 import i18n from "i18next";
 import { initReactI18next } from "react-i18next";
-import LanguageDetector from "i18next-browser-languagedetector";
 
 import enCommon from "./locales/en/common.json";
 import enAuth from "./locales/en/auth.json";
@@ -27,12 +26,12 @@ const resources = {
 };
 
 i18n
-    .use(LanguageDetector)
     .use(initReactI18next)
     .init({
         resources,
-        // Phase 1: force English active. Detection config is present so we can
-        // enable per-user language switching later without re-architecting.
+        // Phase 1: English is the only enabled language. The i18n architecture
+        // (namespaces, fallback, changeLanguage) is ready so per-user language
+        // switching can be enabled later without re-architecting.
         lng: "en",
         fallbackLng: "en",
         supportedLngs: SUPPORTED_LANGUAGES,
@@ -40,11 +39,6 @@ i18n
         defaultNS: "common",
         returnEmptyString: false,
         interpolation: { escapeValue: false },
-        detection: {
-            order: ["localStorage", "navigator"],
-            caches: ["localStorage"],
-            lookupLocalStorage: "visita_lang",
-        },
     });
 
 export default i18n;

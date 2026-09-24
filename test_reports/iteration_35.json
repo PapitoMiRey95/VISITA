@@ -1,0 +1,28 @@
+{
+  "summary": "Phase 1 i18n foundation frontend verification. Landing (/login), SignIn (patient/internal/partner), Activate (invalid state), patient portal shell (nav + PortalHome tiles), auth end-to-end (patient -> /portal, staff -> /internal), and mobile 390px landing were all tested. Found and fixed one critical bug: PortalHome tiles were displaying raw i18n keys (tiles.appointments, tiles.prescriptions, etc.) because tkey values were missing the 'home.' prefix required by the JSON structure at portal.home.tiles.*. After fix, all 8 tiles render correct English text. No raw i18n keys remain on any converted screen. ES/FR selector items are properly disabled (aria-disabled=true, title='Coming soon'). Auth flows unchanged and functional.",
+  "backend_issues": {"critical": [], "minor": []},
+  "frontend_issues": {
+    "ui_bugs": [
+      {"component": "PortalHome tiles", "issue": "FIXED - tkey used bare 'tiles.<name>' but JSON path is portal.home.tiles.<name>, resulting in raw keys 'tiles.appointments' etc. displayed on the portal home screen. Prefixed all TILES tkeys with 'home.'. Verified after fix: all 8 tiles render English labels correctly.", "selector": "[data-testid^='tile-']", "priority": "HIGH"}
+    ],
+    "integration_issues": [],
+    "design_issues": []
+  },
+  "test_report_links": [],
+  "action_items": [
+    "None blocking. Optional: consider adding a lightweight dev-time sanity check (e.g. i18next missingKeyHandler console.warn) to catch similar tkey/JSON path mismatches during Phase 2 language conversions."
+  ],
+  "critical_code_review_comments": [
+    "PortalHome.jsx used useTranslation(['portal']) with tkey 'tiles.x' but portal.json nests tiles under home.tiles.x. Same pattern in PortalLayout NAV correctly uses namespaced 'portal:nav.home'. Recommend consistency: either always namespaced ('portal:home.tiles.x') or always relative to defaultNS - mixed style is bug-prone.",
+    "SignIn.jsx 'Back' button (line 57) still hardcoded 'Back' rather than t('common:actions.back'). Minor inconsistency for Phase 1 scope but noted.",
+    "i18n.js uses LanguageDetector with localStorage caching + lookupLocalStorage='visita_lang'; combined with lng:'en' this forces English on first load but a stale visita_lang='es'/'fr' entry in localStorage from a future test could override. Consider ignoring detector until Phase 2 or restricting to supportedLngs=ENABLED_LANGUAGES."
+  ],
+  "updated_files": ["/app/frontend/src/portal/PortalHome.jsx"],
+  "success_rate": {"backend": "N/A", "frontend": "100% after fix (1 critical bug found and fixed)"},
+  "test_credentials": "Patient maria.lopez@demo.com / Patient2026! (worked). Staff staff@visita.demo / Staff2026! (worked, routed to /internal).",
+  "seed_data_creation": "None",
+  "retest_needed": false,
+  "should_main_agent_self_test": true,
+  "context_for_next_testing_agent": "Phase 1 i18n complete and verified. Converted files: Landing, SignIn, Activate, PortalLayout (nav), PortalHome (tiles). Still hardcoded English (Phase 2 pending, not bugs): Register, Re-establish Care, PortalAccount, PortalAppointments, Bloodwork, Imaging, Prescriptions, Referrals, Messages, MyRequests. When Phase 2 lands, watch for the same class of bug (tkey path vs JSON path mismatch) - PortalHome had it.",
+  "rca of the issue": "PortalHome.jsx defined TILES entries with tkey values like 'tiles.appointments'. useTranslation(['portal']) sets 'portal' as the default namespace, so t('tiles.appointments') resolved to portal.tiles.appointments which does NOT exist in en/portal.json - the tiles are nested under 'home': portal.home.tiles.appointments. i18next with returnEmptyString:false and no missingKeyHandler simply returned the key string, which then rendered on the UI as 'tiles.appointments' etc. Fix: prefixed each tkey with 'home.' -> 'home.tiles.appointments'. Verified by re-logging in as Maria Lopez and confirming all 8 tiles show correct English labels."
+}

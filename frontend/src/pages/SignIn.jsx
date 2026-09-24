@@ -53,7 +53,7 @@ export default function SignIn() {
                 <div className="w-full max-w-sm">
                     <button onClick={() => nav("/login")} data-testid="signin-back"
                         className="flex items-center gap-1 text-slate-400 hover:text-slate-200 text-sm mb-3">
-                        <ChevronLeft className="w-4 h-4" /> Back
+                        <ChevronLeft className="w-4 h-4" /> {t("common:actions.back")}
                     </button>
 
                     <form onSubmit={submit}

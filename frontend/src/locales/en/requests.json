@@ -1,1 +1,132 @@
-{}
+{
+  "form": {
+    "submitRequest": "Submit Request",
+    "submitting": "Submitting…",
+    "sending": "Sending…",
+    "noRequestsYet": "No requests yet.",
+    "selectReason": "Select a reason…",
+    "additionalNoteOptional": "Additional note (optional)",
+    "patientNoteOptional": "Patient note (optional)",
+    "reasonOther": "Other",
+    "back": "Back",
+    "send": "Send"
+  },
+  "statuses": {
+    "Completed": "Completed",
+    "Appointment Confirmed": "Appointment Confirmed",
+    "Under Review": "Under Review",
+    "Received": "Received",
+    "Appointment Requested": "Appointment Requested",
+    "Appointment Required": "Appointment Required",
+    "New Time Suggested": "New Time Suggested",
+    "More Information Requested": "More Information Requested",
+    "Declined": "Declined"
+  },
+  "pendingBanner": {
+    "rejected": "We were unable to verify your account. Please contact the clinic for assistance.",
+    "pendingTitle": "Account verification pending",
+    "pendingBody": "Our clinic staff are reviewing your account. You can explore the portal, but requests can be submitted once your account is verified. No further action is required from you at this time."
+  },
+  "bloodwork": {
+    "title": "Bloodwork Request",
+    "reasonLabel": "Reason for bloodwork request",
+    "reasonRoutine": "Routine / Annual bloodwork",
+    "reasonFollowup": "Follow-up / Repeat bloodwork",
+    "reasonSymptoms": "New symptoms or health concern",
+    "disclaimer": "You do not need to choose specific tests. Dr. Aguayo decides whether bloodwork is appropriate and which tests to order. Your request will be reviewed by the physician.",
+    "listTitle": "Your bloodwork requests",
+    "defaultLabel": "Bloodwork",
+    "toast": "Bloodwork request received."
+  },
+  "imaging": {
+    "title": "X-Ray / Ultrasound Request",
+    "typeXray": "X-Ray",
+    "typeUltrasound": "Ultrasound",
+    "bodyPartLabel": "Body part / region",
+    "bodyPartPlaceholder": "Select a body part / region…",
+    "reasonLabel": "Reason for imaging request",
+    "reasonSymptoms": "New symptoms / pain / injury",
+    "reasonFollowup": "Follow-up / Repeat imaging",
+    "disclaimer": "This does not authorize imaging. Your request will be reviewed by the clinic and physician.",
+    "listTitle": "Your imaging requests",
+    "toast": "Imaging request submitted for clinic review.",
+    "bodyParts": {
+      "Head / Skull": "Head / Skull",
+      "Neck": "Neck",
+      "Chest": "Chest",
+      "Abdomen": "Abdomen",
+      "Pelvis": "Pelvis",
+      "Cervical Spine": "Cervical Spine",
+      "Thoracic Spine": "Thoracic Spine",
+      "Lumbar Spine": "Lumbar Spine",
+      "Shoulder": "Shoulder",
+      "Arm / Elbow": "Arm / Elbow",
+      "Wrist / Hand": "Wrist / Hand",
+      "Hip": "Hip",
+      "Leg / Knee": "Leg / Knee",
+      "Ankle / Foot": "Ankle / Foot"
+    }
+  },
+  "rx": {
+    "title": "Prescription Request",
+    "medicationName": "Medication name",
+    "strength": "Strength",
+    "directions": "Directions (if known)",
+    "requestedSupply": "Requested supply",
+    "month": "{{count}} month",
+    "months": "{{count}} months",
+    "deliveryMethod": "Delivery method",
+    "pickup": "Pickup",
+    "sendToPharmacy": "Send to Pharmacy",
+    "selectSavedPharmacy": "Select saved pharmacy",
+    "choose": "— Choose —",
+    "orEnterNewPharmacy": "Or enter a new pharmacy",
+    "newPharmacyPlaceholder": "Name, address, fax",
+    "submit": "Submit Prescription Request",
+    "listTitle": "Your prescription requests",
+    "toast": "Prescription request received."
+  },
+  "messages": {
+    "title": "Message the Clinic",
+    "introFallback": "What can we help you with?",
+    "messageForDoctor": "Message for Doctor",
+    "other": "Other",
+    "subject": "Subject",
+    "message": "Message",
+    "listTitle": "Your messages",
+    "noneYet": "No messages yet.",
+    "you": "You",
+    "clinic": "Clinic",
+    "toast": "Message sent to the clinic.",
+    "routes": {
+      "Appointment": "Appointment",
+      "Prescription": "Prescription",
+      "New Referral": "New Referral",
+      "Referral Status": "Referral Status",
+      "X-Ray / Ultrasound": "X-Ray / Ultrasound"
+    }
+  },
+  "referrals": {
+    "title": "Referral Status",
+    "needNewTitle": "Need a new referral?",
+    "needNewFallback": "A medical appointment may be required before a new referral can be issued.",
+    "requestAppointment": "Request an Appointment",
+    "yourReferrals": "Your referrals",
+    "none": "You have no referrals on file.",
+    "lastUpdated": "LAST UPDATED:"
+  },
+  "myRequests": {
+    "title": "My Requests",
+    "subtitle": "A summary of everything you've sent to the clinic.",
+    "none": "You have not submitted any requests yet.",
+    "requestSuffix": "Request",
+    "types": {
+      "Appointment": "Appointment",
+      "Prescription": "Prescription",
+      "Imaging": "Imaging",
+      "Message": "Message",
+      "Bloodwork": "Bloodwork",
+      "Referral": "Referral"
+    }
+  }
+}

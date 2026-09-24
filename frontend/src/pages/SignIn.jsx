@@ -16,6 +16,7 @@ export default function SignIn() {
     const nav = useNavigate();
     const [params] = useSearchParams();
     const internal = params.get("internal") === "1";
+    const partner = params.get("partner") === "1";
     const [identifier, setIdentifier] = useState("");
     const [password, setPassword] = useState("");
     const [showPassword, setShowPassword] = useState(false);
@@ -59,10 +60,10 @@ export default function SignIn() {
                             <Logo variant="dark" iconClass="h-11 w-11" showText={false} />
                             <div>
                                 <h2 className="text-lg font-bold text-slate-100 leading-tight">
-                                    {internal ? "Internal login" : "Sign in"}
+                                    {partner ? "Partner login" : internal ? "Clinic login" : "Sign in"}
                                 </h2>
                                 <p className="text-xs text-slate-400">
-                                    {internal ? "Admin, staff, and physician" : "Current patients of Dr. Aguayo"}
+                                    {partner ? "Pharmacies and healthcare partners" : internal ? "Admin, staff, and physician" : "Current patients of Dr. Aguayo"}
                                 </p>
                             </div>
                         </div>
@@ -71,7 +72,7 @@ export default function SignIn() {
                         <Input id="email" data-testid="login-email" type="text" required value={identifier}
                             onChange={(e) => setIdentifier(e.target.value)}
                             className="mt-1 mb-4 bg-[#0f1e30] border-white/10 text-slate-100 placeholder:text-slate-500 focus-visible:ring-cyan-400/60"
-                            placeholder={internal ? "USERNAME" : "you@example.com"} />
+                            placeholder={internal ? "USERNAME" : partner ? "you@pharmacy.com" : "you@example.com"} />
 
                         <Label htmlFor="password" className="text-[11px] uppercase tracking-widest text-slate-400">Password</Label>
                         <div className="relative mt-1 mb-6">
@@ -89,7 +90,7 @@ export default function SignIn() {
 
                         <Button data-testid="login-submit" type="submit" disabled={busy}
                             className="w-full bg-cyan-500 hover:bg-cyan-400 text-[#04121f] font-bold tracking-wide">
-                            {busy ? <Loader2 className="w-4 h-4 animate-spin" /> : (internal ? "Sign in to VIen EMR" : "Sign in")}
+                            {busy ? <Loader2 className="w-4 h-4 animate-spin" /> : (internal ? "Sign in to VIsita EMR" : partner ? "Partner sign in" : "Sign in")}
                         </Button>
 
                         <div className="text-center mt-4">
@@ -98,7 +99,7 @@ export default function SignIn() {
                             </Link>
                         </div>
 
-                        {!internal && (
+                        {!internal && !partner && (
                             <p className="text-sm text-center text-slate-400 mt-5">
                                 Existing clinic patient without an account?{" "}
                                 <Link to="/register" data-testid="go-register" className="text-cyan-300 font-semibold hover:underline">Register</Link>

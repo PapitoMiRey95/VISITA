@@ -4,7 +4,6 @@ import { Button } from "../components/ui/button";
 import { Logo } from "../components/Logo";
 
 const BG = "https://customer-assets-4nw71qhi.emergentagent.net/job_visita-admin/artifacts/ndj1izcs_ChatGPT%20Image%20Sep%2018%2C%202026%2C%2010_35_01%20AM.png";
-const LANGS = ["EN", "ES", "FR"];
 
 export default function Landing() {
     const nav = useNavigate();
@@ -15,15 +14,21 @@ export default function Landing() {
             <div className="absolute inset-0 bg-gradient-to-r from-[#060b16]/96 via-[#0a1524]/86 to-[#0a1524]/60" aria-hidden />
             <div className="absolute inset-0 visita-scanlines" aria-hidden />
 
-            {/* Language selector — reserved slot (not yet functional) */}
-            <div data-testid="lang-selector" title="Language — coming soon"
-                className="absolute top-4 right-4 z-20 flex items-center rounded-full border border-white/10 bg-[#0b1524]/70 backdrop-blur px-1 py-0.5">
-                {LANGS.map((l) => (
-                    <span key={l}
-                        className={`px-2 py-0.5 text-[11px] font-semibold rounded-full tracking-wide ${l === "EN" ? "bg-cyan-500/20 text-cyan-200" : "text-slate-500"}`}>
+            {/* Language selector — EN active; ES/FR reserved (translations not yet available) */}
+            <div data-testid="lang-selector"
+                className="absolute top-4 right-4 z-20 flex items-center gap-0.5 rounded-full border border-white/10 bg-[#0b1524]/70 backdrop-blur px-1 py-0.5">
+                <span data-testid="lang-en" aria-current="true"
+                    className="px-2 py-0.5 text-[11px] font-semibold rounded-full tracking-wide bg-cyan-500/20 text-cyan-200">
+                    EN
+                </span>
+                {["ES", "FR"].map((l) => (
+                    <span key={l} data-testid={`lang-${l.toLowerCase()}`}
+                        aria-disabled="true" title="Coming soon"
+                        className="px-2 py-0.5 text-[11px] font-semibold rounded-full tracking-wide text-slate-600 cursor-not-allowed select-none">
                         {l}
                     </span>
                 ))}
+                <span className="pl-1 pr-1.5 text-[9px] uppercase tracking-widest text-slate-500 hidden sm:inline">Coming soon</span>
             </div>
 
             <div className="relative z-10 min-h-screen flex flex-col lg:flex-row lg:items-center lg:justify-between px-6 py-12 lg:px-16 gap-10">

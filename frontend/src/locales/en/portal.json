@@ -46,6 +46,41 @@
     "toastSex": "Sex updated.",
     "toastAddress": "Address updated.",
     "toastHealthCard": "Health Card updated.",
-    "errSelectSex": "Please select your sex."
+    "toastNotificationsRead": "Notifications marked as read.",
+    "errSelectSex": "Please select your sex.",
+    "errHcNumber": "Health Card number must be exactly 10 digits.",
+    "errVersionCode": "Version Code must be exactly 2 letters.",
+    "title": "Account",
+    "patientFallback": "Patient",
+    "verified": "Verified",
+    "verificationPending": "Verification pending",
+    "typeOhip": "OHIP Patient",
+    "typePrivate": "Private / Uninsured",
+    "typeTourist": "Tourist / Visitor",
+    "visitaPin": "VISITA PIN",
+    "notAssigned": "Not assigned",
+    "cellPhone": "Cell Phone",
+    "notOnFile": "Not on file",
+    "issue": "Issue",
+    "expiry": "Expiry",
+    "hcIncomplete": "Health Card information incomplete.",
+    "hcWarnSoon": "Your Health Card will expire soon. Please update your Health Card information after renewal.",
+    "hcWarnExpired": "Your Health Card appears to be expired. Please update your Health Card information.",
+    "notifications": "Notifications",
+    "markAllRead": "Mark all read",
+    "noNotifications": "No notifications.",
+    "signOut": "Sign out",
+    "streetPlaceholder": "123 Main St",
+    "hcStatus": {
+      "VALID": "Valid",
+      "EXPIRING_SOON": "Expiring soon",
+      "EXPIRED": "Expired",
+      "INCOMPLETE": "Incomplete"
+    },
+    "sexOptions": {
+      "Male": "Male",
+      "Female": "Female",
+      "X": "X"
+    }
   }
 }

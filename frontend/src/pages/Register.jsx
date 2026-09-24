@@ -1,5 +1,6 @@
 import { useState } from "react";
 import { useNavigate, Link, useSearchParams } from "react-router-dom";
+import { useTranslation } from "react-i18next";
 import { toast } from "sonner";
 import { ChevronLeft, Loader2, Clock } from "lucide-react";
 import { useAuth } from "../context/AuthContext";
@@ -10,16 +11,20 @@ import { Label } from "../components/ui/label";
 import { Select, SelectTrigger, SelectValue, SelectContent, SelectItem } from "../components/ui/select";
 import { Logo } from "../components/Logo";
 
-const TYPES = [
-    { key: "ohip", title: "Yes — OHIP patient", desc: "I have an Ontario Health Card" },
-    { key: "private", title: "Yes — Private / Uninsured patient", desc: "I pay privately for visits" },
-    { key: "tourist", title: "Tourist / Visitor", desc: "I am visiting from another country" },
-    { key: "none", title: "I am not currently a patient", desc: "I have not seen Dr. Aguayo before" },
+const TYPE_KEYS = ["ohip", "private", "tourist", "none"];
+// Reason values are sent to the backend and MUST remain in English.
+const NP_REASONS = [
+    { value: "I don't have a family doctor", k: "noFamilyDoctor" },
+    { value: "My doctor is retiring", k: "doctorRetiring" },
+    { value: "My doctor moved away", k: "doctorMoved" },
+    { value: "I am new to the city", k: "newToCity" },
+    { value: "Doctor–patient relationship ended", k: "relationshipEnded" },
 ];
 
 export default function Register() {
     const { register } = useAuth();
     const nav = useNavigate();
+    const { t } = useTranslation(["auth", "common"]);
     const [params] = useSearchParams();
     const isNew = params.get("new") === "1";
     // steps: 1=choose, 2=current form, 99=new-patient form, "former"=neutral notice,
@@ -38,10 +43,11 @@ export default function Register() {
     });
     const set = (k) => (e) => setForm({ ...form, [k]: e.target.value });
     const joinName = (a, b) => [a, b].map((s) => (s || "").replace(/\s+/g, " ").trim()).filter(Boolean).join(" ");
+    const optional = t("common:status.optional");
 
-    const choose = (t) => {
-        setType(t);
-        setStep(t === "none" ? 99 : 2);
+    const choose = (tp) => {
+        setType(tp);
+        setStep(tp === "none" ? 99 : 2);
     };
 
     const submit = async (e) => {
@@ -49,8 +55,8 @@ export default function Register() {
         if (type === "ohip") {
             const num = (form.health_card_number || "").replace(/\D/g, "");
             const ver = (form.health_card_version || "").replace(/[^A-Za-z]/g, "");
-            if (num.length !== 10) { toast.error("Health Card number must be exactly 10 digits."); return; }
-            if (ver.length !== 2) { toast.error("Version Code must be exactly 2 letters."); return; }
+            if (num.length !== 10) { toast.error(t("auth:register.errHcNumber")); return; }
+            if (ver.length !== 2) { toast.error(t("auth:register.errVersionCode")); return; }
         }
         setBusy(true);
         try {
@@ -63,7 +69,7 @@ export default function Register() {
                 setStep("former");
                 return;
             }
-            toast.success("Account created. Verification pending.");
+            toast.success(t("auth:register.accountCreated"));
             nav("/portal", { replace: true });
         } catch (err) {
             toast.error(formatErr(err));
@@ -122,24 +128,24 @@ export default function Register() {
 
                 {step === 1 && (
                     <div className="animate-fade-in">
-                        <h1 className="text-2xl font-bold text-slate-900 mb-1">Welcome</h1>
-                        <p className="text-slate-600 mb-5">Are you currently a patient of Dr. Aguayo?</p>
+                        <h1 className="text-2xl font-bold text-slate-900 mb-1">{t("auth:register.welcome")}</h1>
+                        <p className="text-slate-600 mb-5">{t("auth:register.currentPatientQ")}</p>
                         <div className="space-y-3">
-                            {TYPES.map((t) => (
+                            {TYPE_KEYS.map((k) => (
                                 <button
-                                    key={t.key}
-                                    data-testid={`reg-type-${t.key}`}
-                                    onClick={() => choose(t.key)}
+                                    key={k}
+                                    data-testid={`reg-type-${k}`}
+                                    onClick={() => choose(k)}
                                     className="w-full text-left bg-white rounded-2xl border border-slate-200 p-5 shadow-sm hover:border-portal-blue hover:shadow transition active:scale-[0.99]"
                                 >
-                                    <div className="font-bold text-slate-900">{t.title}</div>
-                                    <div className="text-sm text-slate-500">{t.desc}</div>
+                                    <div className="font-bold text-slate-900">{t(`auth:register.types.${k}.title`)}</div>
+                                    <div className="text-sm text-slate-500">{t(`auth:register.types.${k}.desc`)}</div>
                                 </button>
                             ))}
                         </div>
                         <p className="text-center text-sm text-slate-600 mt-6">
-                            Already registered?{" "}
-                            <Link to="/signin" className="text-portal-blueDark font-bold hover:underline">Sign in</Link>
+                            {t("auth:register.alreadyRegistered")}{" "}
+                            <Link to="/signin" className="text-portal-blueDark font-bold hover:underline">{t("auth:register.signIn")}</Link>
                         </p>
                     </div>
                 )}
@@ -147,74 +153,74 @@ export default function Register() {
                 {step === 2 && (
                     <form onSubmit={submit} data-testid="register-current-form" className="bg-white rounded-2xl border border-slate-200 p-6 shadow-sm animate-fade-in space-y-4">
                         <button type="button" onClick={() => setStep(1)} className="flex items-center text-slate-500 text-sm">
-                            <ChevronLeft className="w-4 h-4" /> Back
+                            <ChevronLeft className="w-4 h-4" /> {t("common:actions.back")}
                         </button>
-                        <h2 className="text-xl font-bold text-slate-900">Create your account</h2>
+                        <h2 className="text-xl font-bold text-slate-900">{t("auth:register.createAccount")}</h2>
 
                         <div className="grid grid-cols-2 gap-3">
-                            <Field label="First name" testid="reg-first"><Input required value={form.first_name} onChange={set("first_name")} /></Field>
-                            <Field label="Second name" testid="reg-second"><Input value={form.second_name} onChange={set("second_name")} placeholder="Optional" /></Field>
+                            <Field label={t("auth:register.firstName")} testid="reg-first"><Input required value={form.first_name} onChange={set("first_name")} /></Field>
+                            <Field label={t("auth:register.secondName")} testid="reg-second"><Input value={form.second_name} onChange={set("second_name")} placeholder={optional} /></Field>
                         </div>
                         <div className="grid grid-cols-2 gap-3">
-                            <Field label="First last name" testid="reg-last"><Input required value={form.last_name} onChange={set("last_name")} /></Field>
-                            <Field label="Second last name" testid="reg-second-last"><Input value={form.second_last_name} onChange={set("second_last_name")} placeholder="Optional" /></Field>
+                            <Field label={t("auth:register.firstLastName")} testid="reg-last"><Input required value={form.last_name} onChange={set("last_name")} /></Field>
+                            <Field label={t("auth:register.secondLastName")} testid="reg-second-last"><Input value={form.second_last_name} onChange={set("second_last_name")} placeholder={optional} /></Field>
                         </div>
-                        <Field label="Date of birth" testid="reg-dob"><Input type="date" required value={form.date_of_birth} onChange={set("date_of_birth")} /></Field>
+                        <Field label={t("auth:register.dob")} testid="reg-dob"><Input type="date" required value={form.date_of_birth} onChange={set("date_of_birth")} /></Field>
 
                         {type === "ohip" && (
                             <>
                                 <div className="grid grid-cols-3 gap-3">
                                     <div className="col-span-2">
-                                        <Field label="Health Card Number (10 digits)" testid="reg-hcn">
+                                        <Field label={t("auth:register.hcNumberLabel")} testid="reg-hcn">
                                             <Input required value={form.health_card_number} onChange={set("health_card_number")} placeholder="1234 567 890" />
                                         </Field>
                                     </div>
-                                    <Field label="Version Code" testid="reg-hcv">
+                                    <Field label={t("auth:register.versionCode")} testid="reg-hcv">
                                         <Input required value={form.health_card_version} onChange={(e) => setForm({ ...form, health_card_version: e.target.value.toUpperCase() })} placeholder="XX" maxLength={2} />
                                     </Field>
                                 </div>
                                 <div className="grid grid-cols-2 gap-3">
-                                    <Field label="Issue Date (optional)" testid="reg-hc-issue"><Input type="date" value={form.health_card_issue_date} onChange={set("health_card_issue_date")} /></Field>
-                                    <Field label="Expiry Date (optional)" testid="reg-hc-expiry"><Input type="date" value={form.health_card_expiry_date} onChange={set("health_card_expiry_date")} /></Field>
+                                    <Field label={t("auth:register.issueDateOptional")} testid="reg-hc-issue"><Input type="date" value={form.health_card_issue_date} onChange={set("health_card_issue_date")} /></Field>
+                                    <Field label={t("auth:register.expiryDateOptional")} testid="reg-hc-expiry"><Input type="date" value={form.health_card_expiry_date} onChange={set("health_card_expiry_date")} /></Field>
                                 </div>
                             </>
                         )}
                         {type === "private" && (
-                            <Field label="Province (if applicable)" testid="reg-province"><Input value={form.province} onChange={set("province")} /></Field>
+                            <Field label={t("auth:register.provinceIfApplicable")} testid="reg-province"><Input value={form.province} onChange={set("province")} /></Field>
                         )}
                         {type === "tourist" && (
-                            <Field label="Country" testid="reg-country"><Input required value={form.country} onChange={set("country")} /></Field>
+                            <Field label={t("auth:register.country")} testid="reg-country"><Input required value={form.country} onChange={set("country")} /></Field>
                         )}
 
-                        <Field label="Phone" testid="reg-phone"><Input required value={form.phone} onChange={set("phone")} placeholder="(416) 555-0000" /></Field>
-                        <Field label="Email" testid="reg-email"><Input type="email" required value={form.email} onChange={set("email")} /></Field>
-                        <Field label="Password" testid="reg-password"><Input type="password" required minLength={6} value={form.password} onChange={set("password")} /></Field>
+                        <Field label={t("auth:register.phone")} testid="reg-phone"><Input required value={form.phone} onChange={set("phone")} placeholder="(416) 555-0000" /></Field>
+                        <Field label={t("auth:register.email")} testid="reg-email"><Input type="email" required value={form.email} onChange={set("email")} /></Field>
+                        <Field label={t("auth:register.password")} testid="reg-password"><Input type="password" required minLength={6} value={form.password} onChange={set("password")} /></Field>
                         {(type === "private" || type === "tourist") && (
-                            <Field label="Additional identifying info (optional)" testid="reg-extra"><Input value={form.extra_info} onChange={set("extra_info")} /></Field>
+                            <Field label={t("auth:register.extraInfoOptional")} testid="reg-extra"><Input value={form.extra_info} onChange={set("extra_info")} /></Field>
                         )}
 
                         <div className="bg-amber-50 border border-amber-200 rounded-lg p-3 text-sm text-amber-900">
-                            Your account will be reviewed by clinic staff before full access is granted.
+                            {t("auth:register.reviewNotice")}
                         </div>
 
                         <Button data-testid="reg-submit" type="submit" disabled={busy}
                             className="w-full bg-portal-blue hover:bg-portal-blueDark text-white text-base h-12 rounded-xl">
-                            {busy ? <Loader2 className="w-4 h-4 animate-spin" /> : "Create account"}
+                            {busy ? <Loader2 className="w-4 h-4 animate-spin" /> : t("auth:register.createAccountBtn")}
                         </Button>
                     </form>
                 )}
 
                 {step === "former" && (
                     <div className="bg-white rounded-2xl border border-slate-200 p-6 shadow-sm animate-fade-in" data-testid="former-notice">
-                        <h2 className="text-xl font-bold text-slate-900 mb-3">Before we continue</h2>
+                        <h2 className="text-xl font-bold text-slate-900 mb-3">{t("auth:register.former.title")}</h2>
                         <p className="text-slate-600 mb-5 leading-relaxed">{former?.message}</p>
                         <Button data-testid="reestablish-start" onClick={() => setStep("reestablish")}
                             className="w-full bg-portal-blue hover:bg-portal-blueDark text-white text-base h-12 rounded-xl">
-                            Request to Re-establish Care
+                            {t("auth:register.former.reestablishBtn")}
                         </Button>
                         <p className="text-center text-sm text-slate-600 mt-5">
-                            Already have portal access?{" "}
-                            <Link to="/signin" className="text-portal-blueDark font-bold hover:underline">Sign in</Link>
+                            {t("auth:register.former.alreadyPortal")}{" "}
+                            <Link to="/signin" className="text-portal-blueDark font-bold hover:underline">{t("auth:register.signIn")}</Link>
                         </p>
                     </div>
                 )}
@@ -222,33 +228,33 @@ export default function Register() {
                 {step === "reestablish" && (
                     <form onSubmit={submitReestablish} data-testid="reestablish-form" className="bg-white rounded-2xl border border-slate-200 p-6 shadow-sm animate-fade-in space-y-4">
                         <button type="button" onClick={() => setStep("former")} className="flex items-center text-slate-500 text-sm">
-                            <ChevronLeft className="w-4 h-4" /> Back
+                            <ChevronLeft className="w-4 h-4" /> {t("common:actions.back")}
                         </button>
-                        <h2 className="text-xl font-bold text-slate-900">Request to Re-establish Care</h2>
-                        <p className="text-sm text-slate-500">Please confirm or update your details below.</p>
+                        <h2 className="text-xl font-bold text-slate-900">{t("auth:register.reestablish.title")}</h2>
+                        <p className="text-sm text-slate-500">{t("auth:register.reestablish.subtitle")}</p>
 
                         <div className="grid grid-cols-2 gap-3">
-                            <Field label="First name" testid="re-first"><Input required value={form.first_name} onChange={set("first_name")} /></Field>
-                            <Field label="Second name" testid="re-second"><Input value={form.second_name} onChange={set("second_name")} placeholder="Optional" /></Field>
+                            <Field label={t("auth:register.firstName")} testid="re-first"><Input required value={form.first_name} onChange={set("first_name")} /></Field>
+                            <Field label={t("auth:register.secondName")} testid="re-second"><Input value={form.second_name} onChange={set("second_name")} placeholder={optional} /></Field>
                         </div>
                         <div className="grid grid-cols-2 gap-3">
-                            <Field label="First last name" testid="re-last"><Input required value={form.last_name} onChange={set("last_name")} /></Field>
-                            <Field label="Second last name" testid="re-second-last"><Input value={form.second_last_name} onChange={set("second_last_name")} placeholder="Optional" /></Field>
+                            <Field label={t("auth:register.firstLastName")} testid="re-last"><Input required value={form.last_name} onChange={set("last_name")} /></Field>
+                            <Field label={t("auth:register.secondLastName")} testid="re-second-last"><Input value={form.second_last_name} onChange={set("second_last_name")} placeholder={optional} /></Field>
                         </div>
-                        <Field label="Date of birth" testid="re-dob"><Input type="date" required value={form.date_of_birth} onChange={set("date_of_birth")} /></Field>
-                        <Field label="OHIP / Health Card Number" testid="re-hcn"><Input value={form.health_card_number} onChange={set("health_card_number")} placeholder="0000-000-000-XX" /></Field>
-                        <Field label="Phone" testid="re-phone"><Input required value={form.phone} onChange={set("phone")} /></Field>
-                        <Field label="Email" testid="re-email"><Input type="email" required value={form.email} onChange={set("email")} /></Field>
-                        <Field label="Address (optional)" testid="re-address"><Input value={form.address} onChange={set("address")} /></Field>
+                        <Field label={t("auth:register.dob")} testid="re-dob"><Input type="date" required value={form.date_of_birth} onChange={set("date_of_birth")} /></Field>
+                        <Field label={t("auth:register.reestablish.hcNumber")} testid="re-hcn"><Input value={form.health_card_number} onChange={set("health_card_number")} placeholder="0000-000-000-XX" /></Field>
+                        <Field label={t("auth:register.phone")} testid="re-phone"><Input required value={form.phone} onChange={set("phone")} /></Field>
+                        <Field label={t("auth:register.email")} testid="re-email"><Input type="email" required value={form.email} onChange={set("email")} /></Field>
+                        <Field label={t("auth:register.reestablish.addressOptional")} testid="re-address"><Input value={form.address} onChange={set("address")} /></Field>
                         <div className="grid grid-cols-2 gap-3">
-                            <Field label="City" testid="re-city"><Input value={form.city} onChange={set("city")} /></Field>
-                            <Field label="Postal code" testid="re-postal"><Input value={form.postal_code} onChange={set("postal_code")} /></Field>
+                            <Field label={t("auth:register.reestablish.city")} testid="re-city"><Input value={form.city} onChange={set("city")} /></Field>
+                            <Field label={t("auth:register.reestablish.postalCode")} testid="re-postal"><Input value={form.postal_code} onChange={set("postal_code")} /></Field>
                         </div>
-                        <Field label="Message (optional)" testid="re-message"><Input value={form.patient_message} onChange={set("patient_message")} placeholder="Anything you'd like the clinic to know" /></Field>
+                        <Field label={t("auth:register.reestablish.messageOptional")} testid="re-message"><Input value={form.patient_message} onChange={set("patient_message")} placeholder={t("auth:register.reestablish.messagePlaceholder")} /></Field>
 
                         <Button data-testid="reestablish-submit" type="submit" disabled={busy}
                             className="w-full bg-portal-blue hover:bg-portal-blueDark text-white text-base h-12 rounded-xl">
-                            {busy ? <Loader2 className="w-4 h-4 animate-spin" /> : "Submit request"}
+                            {busy ? <Loader2 className="w-4 h-4 animate-spin" /> : t("auth:register.reestablish.submit")}
                         </Button>
                     </form>
                 )}
@@ -256,48 +262,45 @@ export default function Register() {
                 {step === 99 && (
                     <form onSubmit={submitNewPatient} data-testid="new-patient-form" className="bg-white rounded-2xl border border-slate-200 p-6 shadow-sm animate-fade-in space-y-4">
                         <button type="button" onClick={() => (isNew ? nav("/login") : setStep(1))} className="flex items-center text-slate-500 text-sm">
-                            <ChevronLeft className="w-4 h-4" /> Back
+                            <ChevronLeft className="w-4 h-4" /> {t("common:actions.back")}
                         </button>
-                        <h2 className="text-xl font-bold text-slate-900">New patient request</h2>
+                        <h2 className="text-xl font-bold text-slate-900">{t("auth:register.newPatient.title")}</h2>
                         <p className="text-slate-600 text-sm leading-relaxed">
-                            New patients are accepted by request. Please share your details and our staff will follow up.
-                            Submitting a request does not guarantee acceptance as a patient.
+                            {t("auth:register.newPatient.intro")}
                         </p>
 
                         <div className="grid grid-cols-2 gap-3">
-                            <Field label="First name" testid="np-first"><Input required value={form.first_name} onChange={set("first_name")} /></Field>
-                            <Field label="Second name" testid="np-second"><Input value={form.second_name} onChange={set("second_name")} placeholder="Optional" /></Field>
+                            <Field label={t("auth:register.firstName")} testid="np-first"><Input required value={form.first_name} onChange={set("first_name")} /></Field>
+                            <Field label={t("auth:register.secondName")} testid="np-second"><Input value={form.second_name} onChange={set("second_name")} placeholder={optional} /></Field>
                         </div>
                         <div className="grid grid-cols-2 gap-3">
-                            <Field label="First last name" testid="np-last"><Input required value={form.last_name} onChange={set("last_name")} /></Field>
-                            <Field label="Second last name" testid="np-second-last"><Input value={form.second_last_name} onChange={set("second_last_name")} placeholder="Optional" /></Field>
+                            <Field label={t("auth:register.firstLastName")} testid="np-last"><Input required value={form.last_name} onChange={set("last_name")} /></Field>
+                            <Field label={t("auth:register.secondLastName")} testid="np-second-last"><Input value={form.second_last_name} onChange={set("second_last_name")} placeholder={optional} /></Field>
                         </div>
-                        <Field label="Date of birth" testid="np-dob"><Input type="date" required value={form.date_of_birth} onChange={set("date_of_birth")} /></Field>
-                        <Field label="Phone" testid="np-phone"><Input required value={form.phone} onChange={set("phone")} /></Field>
-                        <Field label="Email" testid="np-email"><Input type="email" required value={form.email} onChange={set("email")} /></Field>
+                        <Field label={t("auth:register.dob")} testid="np-dob"><Input type="date" required value={form.date_of_birth} onChange={set("date_of_birth")} /></Field>
+                        <Field label={t("auth:register.phone")} testid="np-phone"><Input required value={form.phone} onChange={set("phone")} /></Field>
+                        <Field label={t("auth:register.email")} testid="np-email"><Input type="email" required value={form.email} onChange={set("email")} /></Field>
                         <div className="grid grid-cols-2 gap-3">
-                            <Field label="City" testid="np-city"><Input value={form.city} onChange={set("city")} /></Field>
-                            <Field label="Province" testid="np-province"><Input value={form.province} onChange={set("province")} /></Field>
+                            <Field label={t("auth:register.newPatient.city")} testid="np-city"><Input value={form.city} onChange={set("city")} /></Field>
+                            <Field label={t("auth:register.newPatient.province")} testid="np-province"><Input value={form.province} onChange={set("province")} /></Field>
                         </div>
-                        <Field label="Reason for request" testid="np-reason">
+                        <Field label={t("auth:register.newPatient.reasonLabel")} testid="np-reason">
                             <Select value={form.join_reason} onValueChange={(v) => setForm({ ...form, join_reason: v })}>
                                 <SelectTrigger data-testid="np-reason-trigger" className="w-full">
-                                    <SelectValue placeholder="Select a reason" />
+                                    <SelectValue placeholder={t("auth:register.newPatient.reasonPlaceholder")} />
                                 </SelectTrigger>
                                 <SelectContent>
-                                    <SelectItem value="I don't have a family doctor">I don't have a family doctor</SelectItem>
-                                    <SelectItem value="My doctor is retiring">My doctor is retiring</SelectItem>
-                                    <SelectItem value="My doctor moved away">My doctor moved away</SelectItem>
-                                    <SelectItem value="I am new to the city">I am new to the city</SelectItem>
-                                    <SelectItem value="Doctor–patient relationship ended">Doctor–patient relationship ended</SelectItem>
+                                    {NP_REASONS.map((r) => (
+                                        <SelectItem key={r.value} value={r.value}>{t(`auth:register.newPatient.reasons.${r.k}`)}</SelectItem>
+                                    ))}
                                 </SelectContent>
                             </Select>
                         </Field>
-                        <Field label="Additional message (optional)" testid="np-message"><Input value={form.patient_message} onChange={set("patient_message")} placeholder="Anything else you'd like the clinic to know" /></Field>
+                        <Field label={t("auth:register.newPatient.additionalMessageOptional")} testid="np-message"><Input value={form.patient_message} onChange={set("patient_message")} placeholder={t("auth:register.newPatient.messagePlaceholder")} /></Field>
 
                         <Button data-testid="new-patient-submit" type="submit" disabled={busy}
                             className="w-full bg-portal-blue hover:bg-portal-blueDark text-white text-base h-12 rounded-xl">
-                            {busy ? <Loader2 className="w-4 h-4 animate-spin" /> : "Submit request"}
+                            {busy ? <Loader2 className="w-4 h-4 animate-spin" /> : t("auth:register.newPatient.submit")}
                         </Button>
                     </form>
                 )}
@@ -307,14 +310,14 @@ export default function Register() {
                         <div className="w-14 h-14 rounded-full bg-portal-blue/10 flex items-center justify-center mx-auto mb-4">
                             <Clock className="w-7 h-7 text-portal-blueDark" />
                         </div>
-                        <h2 className="text-xl font-bold text-slate-900 mb-2">Request received</h2>
+                        <h2 className="text-xl font-bold text-slate-900 mb-2">{t("auth:register.done.title")}</h2>
                         <p className="text-slate-600 leading-relaxed mb-4">{confirm?.message}</p>
                         {confirm?.ref_number && (
-                            <p className="text-sm text-slate-500 mb-5">Reference: <span className="font-semibold text-slate-700">{confirm.ref_number}</span></p>
+                            <p className="text-sm text-slate-500 mb-5">{t("auth:register.done.reference")} <span className="font-semibold text-slate-700">{confirm.ref_number}</span></p>
                         )}
                         <Button data-testid="application-done" onClick={() => nav("/login")}
                             className="w-full bg-portal-blue hover:bg-portal-blueDark text-white h-11 rounded-xl">
-                            Done
+                            {t("auth:register.done.done")}
                         </Button>
                     </div>
                 )}

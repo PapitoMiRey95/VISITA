@@ -1,6 +1,7 @@
 import { useMemo, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { useNavigate } from "react-router-dom";
+import { useTranslation } from "react-i18next";
 import { toast } from "sonner";
 import { CalendarClock, CheckCircle2, AlertTriangle, Phone, X, Clock, CalendarDays, Hospital } from "lucide-react";
 import { api, formatErr } from "../lib/api";
@@ -20,6 +21,7 @@ const dateFromIso = (s) => {
     return new Date(y, m - 1, d);
 };
 
+// Reason values are sent to the backend and MUST remain in English.
 const REASON_OPTIONS = [
     "New Medical Concern", "Follow-Up", "Discuss Test Results", "Medication Review",
     "Prescription / Refill", "Bloodwork Review", "Imaging Review", "Referral Discussion",
@@ -29,6 +31,7 @@ const NOTE_MAX = 200;
 
 export default function PortalAppointments() {
     const { overview, refetch } = usePortal();
+    const { t } = useTranslation(["requests", "common"]);
     const nav = useNavigate();
     const p = overview.data?.patient;
     const verified = p?.verification_status === "verified";
@@ -84,9 +87,9 @@ export default function PortalAppointments() {
 
     const submit = async (e) => {
         e.preventDefault();
-        if (!selSlot) return toast.error("Please select a date and time.");
-        if (!apptType) return toast.error("Please choose an appointment type (In-Clinic or Telephone).");
-        if (!reason.trim()) return toast.error("Please enter a reason for the appointment.");
+        if (!selSlot) return toast.error(t("requests:appointments.toasts.selectDateTime"));
+        if (!apptType) return toast.error(t("requests:appointments.toasts.selectType"));
+        if (!reason.trim()) return toast.error(t("requests:appointments.toasts.enterReason"));
         setBusy(true);
         try {
             // Re-check the slot is still open right before submitting (it may have been taken).
@@ -94,7 +97,7 @@ export default function PortalAppointments() {
             const stillOpen = fresh.some((s) => s.date === selSlot.date && s.time === selSlot.time);
             if (!stillOpen) {
                 setSelSlot(null);
-                toast.error("This appointment time is no longer available. Please select another time.");
+                toast.error(t("requests:appointments.toasts.noLongerAvailable"));
                 return;
             }
             await api.post("/portal/appointments", {
@@ -102,7 +105,7 @@ export default function PortalAppointments() {
                 appointment_type: apptType,
                 options: [{ date: selSlot.date, time: selSlot.time, label: selSlot.label, display: selSlot.display }],
             });
-            toast.success("Appointment request submitted. The clinic will confirm your time.");
+            toast.success(t("requests:appointments.toasts.requestSubmitted"));
             setSelDate(null); setSelSlot(null); setApptType("IN_CLINIC"); setReason(""); setNote("");
             refetch();
         } catch (err) { toast.error(formatErr(err)); } finally { setBusy(false); }
@@ -110,31 +113,31 @@ export default function PortalAppointments() {
 
     const confirmSlot = async (apptId) => {
         const index = selecting[apptId];
-        if (index === undefined) return toast.error("Please select a time.");
+        if (index === undefined) return toast.error(t("requests:appointments.toasts.selectTime"));
         try {
             await api.post(`/portal/appointments/${apptId}/select`, { index });
-            toast.success("Appointment confirmed!");
+            toast.success(t("requests:appointments.toasts.confirmed"));
             refetch();
         } catch (err) { toast.error(formatErr(err)); }
     };
 
     const cancelAppt = async (id) => {
-        if (!window.confirm("Cancel this appointment? This can't be undone online.")) return;
+        if (!window.confirm(t("requests:appointments.toasts.confirmCancel"))) return;
         try {
             await api.post(`/portal/appointments/${id}/cancel`);
-            toast.success("Appointment cancelled.");
+            toast.success(t("requests:appointments.toasts.cancelled"));
             refetch();
         } catch (err) { toast.error(formatErr(err)); }
     };
 
     const submitReschedule = async (id) => {
-        if (reschedPick === "") return toast.error("Choose a new time.");
+        if (reschedPick === "") return toast.error(t("requests:appointments.toasts.chooseNewTime"));
         const slot = slots[Number(reschedPick)];
         try {
             await api.post(`/portal/appointments/${id}/reschedule`, {
                 date: slot.date, time: slot.time, label: slot.label, display: slot.display,
             });
-            toast.success("Appointment rescheduled.");
+            toast.success(t("requests:appointments.toasts.rescheduled"));
             setReschedId(null); setReschedPick("");
             refetch();
         } catch (err) { toast.error(formatErr(err)); }
@@ -142,7 +145,7 @@ export default function PortalAppointments() {
 
     return (
         <div className="space-y-5 animate-fade-in">
-            <h1 className="text-2xl font-bold text-slate-900">Request an Appointment</h1>
+            <h1 className="text-2xl font-bold text-slate-900">{t("requests:appointments.title")}</h1>
             <EmergencyNotice />
             {p && <PendingBanner status={p.verification_status} />}
 
@@ -150,11 +153,11 @@ export default function PortalAppointments() {
                 <div data-testid="outstanding-fee-banner" className="bg-red-50 border border-red-200 text-red-800 rounded-xl p-4 text-sm flex gap-2">
                     <AlertTriangle className="w-5 h-5 flex-shrink-0" />
                     <div>
-                        <p className="font-bold mb-1">Outstanding late-cancellation fee</p>
-                        Please contact the clinic to resolve the outstanding late-cancellation fee before scheduling another appointment.
+                        <p className="font-bold mb-1">{t("requests:appointments.feeTitle")}</p>
+                        {t("requests:appointments.feeBody")}
                         <div className="mt-2">
                             <Button size="sm" variant="outline" data-testid="fee-contact-clinic" onClick={() => nav("/portal/messages")}>
-                                <Phone className="w-4 h-4 mr-1" /> Contact Clinic
+                                <Phone className="w-4 h-4 mr-1" /> {t("requests:appointments.contactClinic")}
                             </Button>
                         </div>
                     </div>
@@ -168,12 +171,12 @@ export default function PortalAppointments() {
                         <div>
                             <div className="flex items-center gap-2 mb-2">
                                 <span className="w-6 h-6 rounded-full bg-portal-blue text-white text-xs font-bold flex items-center justify-center">1</span>
-                                <Label className="font-semibold text-slate-700">Select a date</Label>
+                                <Label className="font-semibold text-slate-700">{t("requests:appointments.step1")}</Label>
                             </div>
-                            <p className="text-xs text-slate-500 mb-2">Dr. Aguayo sees patients Monday–Thursday. Only dates with availability can be selected.</p>
-                            {slotsQ.isLoading && <p className="text-sm text-slate-400">Loading available dates…</p>}
+                            <p className="text-xs text-slate-500 mb-2">{t("requests:appointments.step1Hint")}</p>
+                            {slotsQ.isLoading && <p className="text-sm text-slate-400">{t("requests:appointments.loadingDates")}</p>}
                             {!slotsQ.isLoading && availableDates.size === 0 && (
-                                <p className="text-sm text-amber-700">No available dates right now — please message the clinic.</p>
+                                <p className="text-sm text-amber-700">{t("requests:appointments.noDates")}</p>
                             )}
                             {availableDates.size > 0 && (
                                 <div className="inline-block rounded-2xl border border-slate-200 bg-white" data-testid="appt-calendar">
@@ -198,12 +201,12 @@ export default function PortalAppointments() {
                             <div data-testid="appt-time-section">
                                 <div className="flex items-center gap-2 mb-2">
                                     <span className="w-6 h-6 rounded-full bg-portal-blue text-white text-xs font-bold flex items-center justify-center">2</span>
-                                    <Label className="font-semibold text-slate-700">Select an available time</Label>
+                                    <Label className="font-semibold text-slate-700">{t("requests:appointments.step2")}</Label>
                                 </div>
                                 <p className="text-xs text-slate-500 mb-2 flex items-center gap-1">
                                     <CalendarDays className="w-3.5 h-3.5" /> {formatDate(selIso)} · America/Toronto
                                 </p>
-                                {dayTimes.length === 0 && <p className="text-sm text-amber-700">No times left on this date. Please pick another day.</p>}
+                                {dayTimes.length === 0 && <p className="text-sm text-amber-700">{t("requests:appointments.noTimesLeft")}</p>}
                                 <div className="grid grid-cols-3 sm:grid-cols-4 gap-2">
                                     {dayTimes.map((s) => {
                                         const on = selSlot && selSlot.time === s.time && selSlot.date === s.date;
@@ -225,12 +228,12 @@ export default function PortalAppointments() {
                             <div data-testid="appt-reason-section">
                                 <div className="flex items-center gap-2 mb-2">
                                     <span className="w-6 h-6 rounded-full bg-portal-blue text-white text-xs font-bold flex items-center justify-center">3</span>
-                                    <Label className="font-semibold text-slate-700">Appointment type</Label>
+                                    <Label className="font-semibold text-slate-700">{t("requests:appointments.appointmentType")}</Label>
                                 </div>
                                 <div className="grid grid-cols-2 gap-3 mb-4" data-testid="appt-type-select">
                                     {[
-                                        { v: "IN_CLINIC", title: "In-Clinic", Icon: Hospital, desc: "Attend Dr. Aguayo's office in person." },
-                                        { v: "TELEPHONE", title: "Telephone", Icon: Phone, desc: "Dr. Aguayo will call you if approved." },
+                                        { v: "IN_CLINIC", title: t("requests:appointments.inClinic"), Icon: Hospital, desc: t("requests:appointments.inClinicDesc") },
+                                        { v: "TELEPHONE", title: t("requests:appointments.telephone"), Icon: Phone, desc: t("requests:appointments.telephoneDesc") },
                                     ].map(({ v, title, Icon, desc }) => {
                                         const on = apptType === v;
                                         return (
@@ -249,29 +252,29 @@ export default function PortalAppointments() {
 
                                 <div className="flex items-center gap-2 mb-2">
                                     <span className="w-6 h-6 rounded-full bg-portal-blue text-white text-xs font-bold flex items-center justify-center">4</span>
-                                    <Label className="font-semibold text-slate-700">Reason for appointment</Label>
+                                    <Label className="font-semibold text-slate-700">{t("requests:appointments.reasonLabel")}</Label>
                                 </div>
                                 <select required value={reason} onChange={(e) => setReason(e.target.value)} data-testid="appt-reason"
                                     className="w-full border border-slate-200 rounded-xl h-11 px-2 bg-white">
-                                    <option value="">— Select a reason —</option>
-                                    {REASON_OPTIONS.map((r) => <option key={r} value={r}>{r}</option>)}
+                                    <option value="">{t("requests:appointments.reasonPlaceholder")}</option>
+                                    {REASON_OPTIONS.map((r) => <option key={r} value={r}>{t(`requests:appointments.reasons.${r}`)}</option>)}
                                 </select>
                                 {reason === "Other" && (
                                     <p className="text-xs text-slate-500 mt-1" data-testid="appt-other-hint">
-                                        Please briefly explain in the Short note below.
+                                        {t("requests:appointments.otherHint")}
                                     </p>
                                 )}
                                 <div className="mt-3">
                                     <div className="flex items-center justify-between">
-                                        <Label className="font-semibold text-slate-700">Short note (optional)</Label>
+                                        <Label className="font-semibold text-slate-700">{t("requests:appointments.shortNoteOptional")}</Label>
                                         <span className="text-xs text-slate-400" data-testid="appt-note-counter">{note.length} / {NOTE_MAX}</span>
                                     </div>
                                     <Textarea className="mt-1" value={note} maxLength={NOTE_MAX} data-testid="appt-note"
                                         onChange={(e) => setNote(e.target.value.slice(0, NOTE_MAX))} />
                                     <p className="text-xs text-slate-400 mt-1">
-                                        Need to send a longer message? Use the{" "}
+                                        {t("requests:appointments.longerMessagePre")}{" "}
                                         <button type="button" onClick={() => nav("/portal/messages")} data-testid="appt-note-messages-link"
-                                            className="text-portal-blue font-semibold underline">Messages</button>{" "}section.
+                                            className="text-portal-blue font-semibold underline">{t("requests:appointments.messagesLink")}</button>{" "}{t("requests:appointments.longerMessagePost")}
                                     </p>
                                 </div>
                             </div>
@@ -281,28 +284,28 @@ export default function PortalAppointments() {
                         {selSlot && (
                             <div className="bg-sky-50 border border-sky-200 rounded-xl p-3" data-testid="appt-review">
                                 <div className="flex items-center gap-2 text-sky-900 font-bold text-sm mb-1">
-                                    <Clock className="w-4 h-4" /> Review
+                                    <Clock className="w-4 h-4" /> {t("requests:appointments.review")}
                                 </div>
                                 <div className="text-sm text-slate-700">
-                                    <div><span className="text-slate-500">When:</span> <span className="font-semibold" data-testid="appt-review-when">{formatDate(selSlot.date)} at {selSlot.label}</span></div>
-                                    {apptType && <div className="mt-1"><span className="text-slate-500">Type:</span> <span className="font-semibold" data-testid="appt-review-type">{apptTypeConfirmationLabel(apptType)}</span></div>}
-                                    {reason.trim() && <div className="mt-1"><span className="text-slate-500">Reason:</span> <span className="font-semibold">{reason.trim()}</span></div>}
+                                    <div><span className="text-slate-500">{t("requests:appointments.when")}</span> <span className="font-semibold" data-testid="appt-review-when">{formatDate(selSlot.date)} {t("requests:appointments.at")} {selSlot.label}</span></div>
+                                    {apptType && <div className="mt-1"><span className="text-slate-500">{t("requests:appointments.type")}</span> <span className="font-semibold" data-testid="appt-review-type">{apptTypeConfirmationLabel(apptType)}</span></div>}
+                                    {reason.trim() && <div className="mt-1"><span className="text-slate-500">{t("requests:appointments.reason")}</span> <span className="font-semibold">{t(`requests:appointments.reasons.${reason.trim()}`, reason.trim())}</span></div>}
                                 </div>
-                                <p className="text-xs text-slate-500 mt-2" data-testid="appt-not-confirmed-note">Your appointment type and time are not confirmed until the clinic approves your request. You will be notified once it is confirmed.</p>
+                                <p className="text-xs text-slate-500 mt-2" data-testid="appt-not-confirmed-note">{t("requests:appointments.notConfirmedNote")}</p>
                             </div>
                         )}
 
                         <Button type="submit" disabled={busy || !selSlot || !apptType || !reason.trim()} data-testid="appt-submit"
                             className="w-full h-12 rounded-xl bg-portal-blue hover:bg-portal-blueDark text-white text-base">
-                            {busy ? "Submitting…" : "Submit Appointment Request"}
+                            {busy ? t("requests:appointments.submitting") : t("requests:appointments.submit")}
                         </Button>
                     </form>
                 </Card>
             )}
 
             <div className="space-y-3">
-                <h2 className="font-bold text-slate-700">Your appointment requests</h2>
-                {list.length === 0 && <p className="text-slate-500 text-sm">No requests yet.</p>}
+                <h2 className="font-bold text-slate-700">{t("requests:appointments.yourRequests")}</h2>
+                {list.length === 0 && <p className="text-slate-500 text-sm">{t("requests:appointments.noRequests")}</p>}
                 {list.map((a) => (
                     <Card key={a.id} className="p-4" data-testid="appt-card">
                         <div className="flex justify-between items-start gap-2">
@@ -324,27 +327,27 @@ export default function PortalAppointments() {
                                     <div className="flex gap-2" data-testid={`appt-actions-${a.id}`}>
                                         <Button size="sm" variant="outline" data-testid={`patient-reschedule-${a.id}`}
                                             onClick={() => { setReschedId(a.id); setReschedPick(""); }}>
-                                            <CalendarClock className="w-4 h-4 mr-1" /> Reschedule
+                                            <CalendarClock className="w-4 h-4 mr-1" /> {t("requests:appointments.reschedule")}
                                         </Button>
                                         <Button size="sm" variant="outline" className="text-red-600 border-red-200"
                                             data-testid={`patient-cancel-${a.id}`} onClick={() => cancelAppt(a.id)}>
-                                            <X className="w-4 h-4 mr-1" /> Cancel
+                                            <X className="w-4 h-4 mr-1" /> {t("requests:appointments.cancel")}
                                         </Button>
                                     </div>
                                 )}
 
                                 {a.can_self_modify && reschedId === a.id && (
                                     <div className="bg-sky-50 border border-sky-200 rounded-xl p-3" data-testid={`reschedule-picker-${a.id}`}>
-                                        <Label className="text-xs text-slate-600">Choose a new time</Label>
+                                        <Label className="text-xs text-slate-600">{t("requests:appointments.chooseNewTime")}</Label>
                                         <select data-testid={`reschedule-select-${a.id}`} value={reschedPick} onChange={(e) => setReschedPick(e.target.value)}
                                             className="w-full border border-slate-200 rounded-xl h-11 px-2 mt-1 bg-white">
-                                            <option value="">— Select a time —</option>
+                                            <option value="">{t("requests:appointments.selectTime")}</option>
                                             {slots.map((s, idx) => <option key={`${s.date}-${s.time}`} value={idx}>{s.display}</option>)}
                                         </select>
                                         <div className="flex gap-2 mt-2">
                                             <Button size="sm" data-testid={`reschedule-confirm-${a.id}`} onClick={() => submitReschedule(a.id)}
-                                                className="bg-portal-blue hover:bg-portal-blueDark text-white">Confirm New Time</Button>
-                                            <Button size="sm" variant="ghost" onClick={() => setReschedId(null)}>Back</Button>
+                                                className="bg-portal-blue hover:bg-portal-blueDark text-white">{t("requests:appointments.confirmNewTime")}</Button>
+                                            <Button size="sm" variant="ghost" onClick={() => setReschedId(null)}>{t("requests:appointments.back")}</Button>
                                         </div>
                                     </div>
                                 )}
@@ -352,14 +355,12 @@ export default function PortalAppointments() {
                                 {!a.can_self_modify && (
                                     <div className="bg-amber-50 border border-amber-200 rounded-xl p-3 text-sm text-amber-900" data-testid={`within-24h-notice-${a.id}`}>
                                         <div className="flex items-center gap-2 font-bold mb-1">
-                                            <AlertTriangle className="w-4 h-4" /> Within 24 hours
+                                            <AlertTriangle className="w-4 h-4" /> {t("requests:appointments.within24Title")}
                                         </div>
-                                        Online cancellation and rescheduling are no longer available because this appointment is within 24 hours.
-                                        Late cancellations are subject to a $40 fee. If you need to cancel or reschedule, please contact Dr. Aguayo's office.
-                                        The outstanding fee must be resolved with the clinic before a new appointment can be scheduled.
+                                        {t("requests:appointments.within24Body")}
                                         <div className="mt-2">
                                             <Button size="sm" variant="outline" data-testid={`contact-clinic-${a.id}`} onClick={() => nav("/portal/messages")}>
-                                                <Phone className="w-4 h-4 mr-1" /> Contact Clinic
+                                                <Phone className="w-4 h-4 mr-1" /> {t("requests:appointments.contactClinic")}
                                             </Button>
                                         </div>
                                     </div>
@@ -370,9 +371,9 @@ export default function PortalAppointments() {
                         {a.raw_status === "alternatives_offered" && (
                             <div className="mt-3 bg-sky-50 border border-sky-200 rounded-xl p-3" data-testid="offered-slots">
                                 <div className="flex items-center gap-2 text-sky-800 font-bold text-sm mb-2">
-                                    <CalendarClock className="w-4 h-4" /> Select an appointment time
+                                    <CalendarClock className="w-4 h-4" /> {t("requests:appointments.selectApptTime")}
                                 </div>
-                                <p className="text-xs text-slate-600 mb-2">The time you requested wasn't available. Please choose one of these:</p>
+                                <p className="text-xs text-slate-600 mb-2">{t("requests:appointments.notAvailableChoose")}</p>
                                 <div className="space-y-2">
                                     {(a.offered_slots || []).map((s, idx) => (
                                         <label key={s.display || idx} data-testid={`offer-option-${idx}`}
@@ -385,13 +386,13 @@ export default function PortalAppointments() {
                                 </div>
                                 <Button onClick={() => confirmSlot(a.id)} data-testid={`confirm-slot-${a.id}`}
                                     className="mt-3 w-full h-11 rounded-xl bg-portal-blue hover:bg-portal-blueDark text-white">
-                                    Confirm This Time
+                                    {t("requests:appointments.confirmThisTime")}
                                 </Button>
                             </div>
                         )}
 
                         {a.staff_note && a.raw_status !== "alternatives_offered" && (
-                            <div className="text-sm text-slate-600 mt-2">Note: {a.staff_note}</div>
+                            <div className="text-sm text-slate-600 mt-2">{t("requests:appointments.note")} {a.staff_note}</div>
                         )}
                     </Card>
                 ))}

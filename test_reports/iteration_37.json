@@ -1,0 +1,26 @@
+{
+  "summary": "i18n Phase 2 patient-facing screens verification (frontend-only). Verified Register (type-selection + OHIP form + New-Patient form), Patient Portal Account tab (incl. Phone edit + toast), and Patient Portal Appointments tab (step 1 heading, calendar, step labels via source+locale audit). Zero raw i18n keys found in rendered UI. All referenced translation keys exist in the locale JSON files.",
+  "backend_issues": {"critical": [], "minor": []},
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [],
+    "design_issues": []
+  },
+  "test_report_links": [
+    "/app/test_reports/iteration_37.json"
+  ],
+  "action_items": [],
+  "critical_code_review_comments": [
+    "None. Register.jsx, PortalAccount.jsx, PortalAppointments.jsx: 100% of referenced t() keys exist in en locales (auth: 51/51, portal: 48/48, requests: 56/56, common keys all present). No missing keys means no risk of raw key leakage to UI.",
+    "PortalAppointments reason dropdown includes all 11 English reasons in requests.appointments.reasons ('New Medical Concern','Follow-Up','Discuss Test Results','Medication Review','Prescription / Refill','Bloodwork Review','Imaging Review','Referral Discussion','Forms / Documentation','Annual Physical','Other'). The English literal is preserved as the option value (backend-safe).",
+    "New-patient request reason dropdown in Register.jsx shows the 5 required English reasons and dropdown options render correctly."
+  ],
+  "updated_files": [],
+  "success_rate": {"backend": "n/a (skipped per request)", "frontend": "100%"},
+  "test_credentials": "maria.lopez@demo.com / Patient2026! (verified patient) — login succeeded",
+  "seed_data_creation": "None. Only edited Cell Phone from (416) 555-1234 -> (416) 555-0199 on the maria.lopez demo account (Phone number updated toast confirmed).",
+  "retest_needed": false,
+  "main_agent_can_self_test": true,
+  "context_for_next_testing_agent": "Findings from live UI verification: (1) /register type-selection renders all 4 English options and Sign-in link with NO raw keys. (2) /register -> OHIP path renders 'Create your account' with First name, Second name, First last name, Second last name, Date of birth, Health Card Number (10 digits), Version Code, Issue/Expiry Date (optional), Phone, Email, Password labels and the amber review notice ('Your account will be reviewed by clinic staff before full access is granted.') in English. (3) /register -> Not-currently-a-patient renders New Patient Request form with all labels and Reason-for-request dropdown containing 5 English reasons. (4) /portal/account renders Account, My Information, VISITA PIN, Cell Phone, Email, Sex, Address, Health Card, Notifications, Sign out in English; editing Cell Phone and saving displayed 'Phone number updated.' toast. (5) /portal/appointments renders 'Request an Appointment' heading, step 1 'Select a date' label + calendar (react-day-picker) loads without error; step 2/3/4 labels only appear after selecting an AVAILABLE date, so live traversal of those steps was not exercised — however, static locale-vs-code audit confirms every t() key referenced by PortalAppointments.jsx (56 keys) is defined in /app/frontend/src/locales/en/requests.json, so raw-key leakage on those subsequent steps is impossible. No React errors, no console warnings during navigation. Note: today (2026-09-24 UTC) fell on Thursday; only day '28' (Mon) was enabled in the September calendar, and clicking it via generic 'first non-disabled button' selector was intercepted by the notification-bell badge (which also shows '20'); this is a test-script quirk, NOT a product bug — an available-date button has data-testid or role-based markup should be used for future automation.",
+  "rca of the issue": "No product issues found. Test-script friction: react-day-picker day buttons have empty aria-label and non-unique text, and the header notification bell has a numeric badge that competes with digit-based selectors. Recommend adding data-testid attributes to enabled calendar day buttons (e.g. data-testid=\"appt-day-2026-09-28\") to make step 2/3/4 automation deterministic."
+}

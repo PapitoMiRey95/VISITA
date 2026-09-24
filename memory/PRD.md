@@ -256,3 +256,15 @@ See /app/memory/test_credentials.md.
 
 
 
+
+## i18n Phase 2 COMPLETE + Landing brand copy (2026-09-24) — testing_agent iteration_37 100% PASS, NOT deployed
+- Landing brand copy updated (EN only, text/display only): common.json practice -> "Connected Healthcare Network"; tagline -> "Secure access for patients, clinics, physicians, pharmacies, and healthcare partners." No routing/auth/role/data change. ES/FR intentionally NOT mirrored (stay inactive placeholders).
+- i18n Phase 2 conversion completed for the 3 remaining patient-facing screens to i18next keys (EN only active):
+  - Register.jsx -> auth:register.* (type options, current/re-establish/new-patient forms, done screen). Backend-bound values kept as English literals (new-patient reasons); only display translated.
+  - PortalAccount.jsx -> portal:account.* (title, My Information rows, HC status/warnings, notifications, sign out, toasts). Sex options + patient_type map display via keys; values stay English.
+  - PortalAppointments.jsx -> requests:appointments.* (steps, type cards, 11 reason options, review, toasts, list/reschedule/24h/offered-slots). Reason option values stay English literals (backend-safe).
+- Verified: zero raw i18n keys leak (all t() keys exist: auth 51/51, portal 48/48, requests 56/56); Phone edit toast works; calendar loads.
+- SCAN — remaining hardcoded patient-facing English strings (NOT yet converted, outside this task's 3-file scope):
+  - components/ApptTypeBadge.jsx: "PHONE"/"NOT SPECIFIED" badge labels; "Telephone Appointment"/"In-Clinic Appointment"/"Not specified" confirmation labels.
+  - pages/SignIn.jsx: password show/hide aria-labels and email placeholder examples (minor).
+  - Other patient portal modules (PortalHome, PortalBloodwork, PortalImaging, PortalMessages, PortalPrescriptions, PortalReferrals, PortalMyRequests, shared.jsx StatusPill) were converted in earlier phases; re-scan before enabling ES/FR.

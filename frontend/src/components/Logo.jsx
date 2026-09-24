@@ -9,7 +9,7 @@ export function Logo({ variant = "light", iconClass = "h-8 w-8", textClass = "te
             {showText && (
                 <span className={`font-bold tracking-tight leading-none ${textClass}`}>
                     <span className={vien}>VIsita</span>
-                    <span className={emr}> EMR</span>
+                    <span className={emr}> EMR Network</span>
                 </span>
             )}
         </div>

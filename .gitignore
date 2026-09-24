@@ -31,9 +31,20 @@ dist/
 dist
 
 # Environment files (comprehensive coverage)
-
+.env
+.env.*
+!.env.example
+backend/.env
+frontend/.env
 *token.json*
 *credentials.json*
+
+# PHI / patient data imports — never commit real patient data
+backend/data/*.xlsx
+backend/data/*.xls
+backend/data/*.csv
+*.xlsx
+*.xls
 
 # Logs and debug files
 npm-debug.log*

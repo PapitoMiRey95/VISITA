@@ -1286,7 +1286,7 @@ async def counters(user: dict = Depends(require_roles(*CLINIC_ROLES))):
 def _search_filter(q: Optional[str], fields):
     if not q:
         return {}
-    return {"$or": [{f: {"$regex": q, "$options": "i"}} for f in fields]}
+    return {"$or": [{f: {"$regex": re.escape(q), "$options": "i"}} for f in fields]}
 
 
 # ----------------------------- Generic request updater -----------------------------
@@ -2080,10 +2080,10 @@ async def search_directory(q: Optional[str] = None, status: Optional[str] = None
     if q:
         qn = q.strip()
         query["$or"] = [
-            {"first_name": {"$regex": qn, "$options": "i"}},
-            {"last_name": {"$regex": qn, "$options": "i"}},
+            {"first_name": {"$regex": re.escape(qn), "$options": "i"}},
+            {"last_name": {"$regex": re.escape(qn), "$options": "i"}},
             {"norm_hcn": {"$regex": directory_mod.norm_hcn(qn)}},
-            {"visita_patient_id": {"$regex": qn, "$options": "i"}},
+            {"visita_patient_id": {"$regex": re.escape(qn), "$options": "i"}},
         ]
     docs = await db.patient_directory.find(query).limit(50).to_list(50)
     return [directory_mod.serialize_candidate(d) for d in docs]
@@ -2614,7 +2614,8 @@ async def pharmacy_search(q: str, user: dict = Depends(require_roles("pharmacy")
     qn = (q or "").strip()
     if len(qn) < 2:
         return []
-    query = {"$or": [
+    # Pharmacy refill workflow is for current patients only — exclude former/closed records.
+    query = {"patient_status": {"$ne": "FORMER_CLOSED"}, "$or": [
         {"first_name": {"$regex": re.escape(qn), "$options": "i"}},
         {"last_name": {"$regex": re.escape(qn), "$options": "i"}},
         {"norm_hcn": {"$regex": directory_mod.norm_hcn(qn)}},
@@ -2628,7 +2629,7 @@ async def pharmacy_search(q: str, user: dict = Depends(require_roles("pharmacy")
 async def pharmacy_patient(directory_id: str, user: dict = Depends(require_roles("pharmacy"))):
     _pharmacy_of(user)
     d = await db.patient_directory.find_one({"id": directory_id})
-    if not d:
+    if not d or d.get("patient_status") == "FORMER_CLOSED":
         raise HTTPException(status_code=404, detail="Patient not found in directory.")
     return _pharmacy_patient_identity(d)
 
@@ -2992,10 +2993,11 @@ async def cron_appointment_reminders(background: BackgroundTasks,
 
 app.include_router(api)
 
+_DEFAULT_CORS = "https://visitaemr.com,https://www.visitaemr.com,https://visita-admin.preview.emergentagent.com"
 app.add_middleware(
     CORSMiddleware,
     allow_credentials=True,
-    allow_origins=os.environ.get("CORS_ORIGINS", "*").split(","),
+    allow_origins=[o.strip() for o in os.environ.get("CORS_ORIGINS", _DEFAULT_CORS).split(",") if o.strip()],
     allow_methods=["*"],
     allow_headers=["*"],
 )

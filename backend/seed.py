@@ -7,6 +7,17 @@ import storage
 from db import next_ref, now_iso
 
 
+def _flag(name: str) -> bool:
+    """Truthy only when the env var is explicitly enabled (1/true/yes)."""
+    return os.environ.get(name, "").strip().lower() in ("1", "true", "yes")
+
+
+def _migrations_enabled() -> bool:
+    """One-time data imports/backfills run ONLY as an explicit opt-in migration,
+    never as part of normal production startup."""
+    return _flag("ALLOW_DATA_MIGRATIONS")
+
+
 def make_pdf(lines):
     """Build a tiny but valid single-page PDF from text lines."""
     text_ops = "BT /F1 14 Tf 40 740 Td 18 TL "
@@ -92,18 +103,20 @@ async def _make_patient(db, authlib, first, last, dob, ptype, phone, email,
 
 
 async def seed_all(db, authlib):
-    # 1. Owner/admin (always ensured)
-    admin_email = os.environ.get("ADMIN_EMAIL", "admin@example.com").lower()
-    admin_pw = os.environ.get("ADMIN_PASSWORD", "admin123")
-    existing = await db.users.find_one({"email": admin_email})
-    if not existing:
-        await db.users.insert_one({
-            "email": admin_email, "password_hash": authlib.hash_password(admin_pw),
-            "name": "Kevin Rodriguez", "role": "admin", "patient_id": None,
-            "active": True, "created_at": now_iso(),
-        })
-    elif not authlib.verify_password(admin_pw, existing["password_hash"]):
-        await db.users.update_one({"email": admin_email}, {"$set": {"password_hash": authlib.hash_password(admin_pw)}})
+    # 1. Owner/admin — CREATE-IF-MISSING ONLY. An existing admin password is
+    # NEVER overwritten on startup, and there is NO default password fallback.
+    admin_email = os.environ.get("ADMIN_EMAIL")
+    admin_pw = os.environ.get("ADMIN_PASSWORD")
+    if admin_email:
+        admin_email = admin_email.lower()
+        existing = await db.users.find_one({"email": admin_email})
+        if not existing and admin_pw:
+            await db.users.insert_one({
+                "email": admin_email, "password_hash": authlib.hash_password(admin_pw),
+                "name": "Kevin Rodriguez", "role": "admin", "patient_id": None,
+                "active": True, "created_at": now_iso(),
+            })
+        # If the admin already exists, it is left completely untouched.
 
     # settings & templates
     if not await db.settings.find_one({"id": "clinic"}):
@@ -120,8 +133,10 @@ async def seed_all(db, authlib):
     if not await db.settings.find_one({"id": "availability"}):
         await db.settings.insert_one({**avail_mod.DEFAULT_AVAILABILITY})
 
-    # one-time patient directory import (829 ACTIVE + 2157 FORMER_CLOSED)
-    if not await db.app_meta.find_one({"id": "directory_v1"}):
+    # one-time patient directory import (real PHI) — runs ONLY as an explicit,
+    # opt-in data migration (ALLOW_DATA_MIGRATIONS), never during normal startup.
+    # The existing 'directory_v1' marker still prevents any re-import.
+    if _migrations_enabled() and not await db.app_meta.find_one({"id": "directory_v1"}):
         import directory as directory_mod
         try:
             count = await directory_mod.import_directory(db)
@@ -133,8 +148,9 @@ async def seed_all(db, authlib):
             import logging
             logging.getLogger("visita").error(f"Directory import failed: {e}")
 
-    # one-time migration: give legacy appointment requests slot-based options
-    if not await db.app_meta.find_one({"id": "appt_v2"}):
+    # one-time migration: give legacy appointment requests slot-based options.
+    # Opt-in migration only (ALLOW_DATA_MIGRATIONS); never during normal startup.
+    if _migrations_enabled() and not await db.app_meta.find_one({"id": "appt_v2"}):
         avail = await db.settings.find_one({"id": "availability"}, {"_id": 0}) or avail_mod.DEFAULT_AVAILABILITY
         slots = avail_mod.generate_slots(avail, days=21)
         legacy = await db.appointment_requests.find({"preferred_options": {"$exists": False}}).to_list(500)
@@ -154,23 +170,24 @@ async def seed_all(db, authlib):
             }})
         await db.app_meta.insert_one({"id": "appt_v2", "at": now_iso()})
 
-    # physician account: username login + forced temp-password change (one-time)
+    # physician account — CREATE-IF-MISSING ONLY, env-gated. Never overwrites an
+    # existing physician password, and there is NO default password fallback.
     if not await db.app_meta.find_one({"id": "phys_v2"}):
-        uname = os.environ.get("PHYSICIAN_USERNAME", "PAGUAYO")
-        temp = os.environ.get("PHYSICIAN_TEMP_PASSWORD", "ChangeMe#2026")
+        uname = os.environ.get("PHYSICIAN_USERNAME")
+        temp = os.environ.get("PHYSICIAN_TEMP_PASSWORD")
         phys = await db.users.find_one({"role": "physician"})
-        payload = {
-            "username": uname, "name": "Dr. Pablo Aguayo", "role": "physician",
-            "password_hash": authlib.hash_password(temp), "must_change_password": True,
-            "mfa_enabled": False, "patient_id": None, "active": True,
-        }
         if phys:
-            await db.users.update_one({"_id": phys["_id"]}, {"$set": payload})
-        else:
-            payload["email"] = "doctor@visita.demo"
-            payload["created_at"] = now_iso()
-            await db.users.insert_one(payload)
-        await db.app_meta.insert_one({"id": "phys_v2", "at": now_iso()})
+            # An existing physician is left completely untouched.
+            await db.app_meta.insert_one({"id": "phys_v2", "at": now_iso()})
+        elif uname and temp:
+            await db.users.insert_one({
+                "username": uname, "name": "Dr. Pablo Aguayo", "role": "physician",
+                "email": "doctor@visita.demo",
+                "password_hash": authlib.hash_password(temp), "must_change_password": True,
+                "mfa_enabled": False, "patient_id": None, "active": True,
+                "created_at": now_iso(),
+            })
+            await db.app_meta.insert_one({"id": "phys_v2", "at": now_iso()})
 
     # Pharmacy portal account — env-gated, CREATE-IF-MISSING ONLY.
     # Never overwrites an existing account/password. Nothing is created unless
@@ -192,7 +209,12 @@ async def seed_all(db, authlib):
                 "created_at": now_iso(),
             })
 
-    # guard demo
+    # guard demo — demo accounts/data are created ONLY when demo seeding is
+    # explicitly enabled (ALLOW_DEMO_SEEDING) AND only once. PRODUCTION MUST keep
+    # ALLOW_DEMO_SEEDING=false, so demo staff/physician/patients/clinical data are
+    # never created on the live database. The seeded_v1 marker alone is NOT relied on.
+    if not _flag("ALLOW_DEMO_SEEDING"):
+        return
     if await db.app_meta.find_one({"id": "seeded_v1"}):
         return
 

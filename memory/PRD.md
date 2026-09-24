@@ -280,3 +280,7 @@ See /app/memory/test_credentials.md.
 - Pharmacy Portal + all existing auth untouched.
 - Tested: testing_agent iteration_38 = 100% (8/8 scenarios) + backend curl E2E. Partner pages are English-only (not i18n) for now.
 - Optional future polish: persistent "account suspended" error on partner login 403; multi-location + photo uploads; link pharmacies/imported clinics/providers into the same organization/directory architecture; referral data-sharing permissions.
+
+## Name casing in Verifications (2026-09-24, Preview)
+- Extracted shared name helper `frontend/src/lib/name.js` (titleCaseName, formatLastFirst, formatPatientName): last names ALWAYS uppercase, first names Title Case, "LASTNAMES, First Names".
+- Verifications.jsx now renders the patient name (data-testid=verification-name) and suggested-candidate names via formatLastFirst → last names uppercase for staff/admin/physician. Patients.jsx refactored to import the shared helper (no behavior change). Self-tested via screenshot.

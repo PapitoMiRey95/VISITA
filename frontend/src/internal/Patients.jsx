@@ -3,6 +3,7 @@ import { toast } from "sonner";
 import { UserSearch, Search, MapPin, Phone, IdCard, Building2, Lock, RefreshCw, Pencil, ShieldCheck, X } from "lucide-react";
 import { api, formatErr } from "../lib/api";
 import { formatDate } from "../lib/date";
+import { formatPatientName } from "../lib/name";
 import { useAuth } from "../context/AuthContext";
 import { Input } from "../components/ui/input";
 import { Label } from "../components/ui/label";
@@ -15,17 +16,6 @@ const HC_BADGE = {
     INCOMPLETE: "bg-slate-100 text-slate-500",
 };
 const HC_LABEL = { VALID: "VALID", EXPIRING_SOON: "EXPIRING SOON", EXPIRED: "EXPIRED", INCOMPLETE: "INCOMPLETE" };
-
-// Display names as "LASTNAMES, First Names" (last names ALWAYS uppercase, first names Title Case).
-const titleCaseName = (s) =>
-    (s || "").trim().toLowerCase().replace(/(^|[\s'\-])([\p{L}])/gu, (_, sep, ch) => sep + ch.toUpperCase());
-function formatPatientName(p) {
-    if (!p) return "—";
-    const last = (p.last_name || "").trim().toUpperCase();
-    const first = titleCaseName(p.first_name || "");
-    if (last && first) return `${last}, ${first}`;
-    return last || first || p.full_name || "—";
-}
 
 function statusLabel(s) {
     if (!s) return "—";

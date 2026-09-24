@@ -8,6 +8,7 @@ import { Button } from "../components/ui/button";
 import { Input } from "../components/ui/input";
 import { Label } from "../components/ui/label";
 import { formatDate } from "../lib/date";
+import { formatLastFirst } from "../lib/name";
 
 const TYPE = { ohip: "OHIP", private: "Private / Uninsured", tourist: "Tourist / Visitor" };
 
@@ -47,7 +48,7 @@ export default function Verifications() {
                                         {REVIEW[p.review_queue][0]}
                                     </span>
                                 )}
-                                <div className="font-bold text-slate-800 text-base">{p.last_name}, {p.first_name}</div>
+                                <div className="font-bold text-slate-800 text-base" data-testid="verification-name">{formatLastFirst(p.last_name, p.first_name)}</div>
                                 <div className="text-slate-600">DOB: {formatDate(p.date_of_birth)} · {TYPE[p.patient_type] || p.patient_type}</div>
                                 <div className="text-slate-600">Phone: {p.phone} · Email: {p.email}</div>
                                 {p.health_card_masked && <div className="text-slate-600">Health Card: {p.health_card_masked}</div>}
@@ -62,7 +63,7 @@ export default function Verifications() {
                                         </div>
                                         {p.directory_match.candidates.map((c) => (
                                             <div key={c.id} data-testid="verification-candidate" className="text-xs text-slate-600 bg-emerald-50 rounded-sm px-2 py-1 mb-1">
-                                                {c.last_name}, {c.first_name} · DOB {formatDate(c.date_of_birth)} · HC {c.health_card_masked || "—"}
+                                                {formatLastFirst(c.last_name, c.first_name)} · DOB {formatDate(c.date_of_birth)} · HC {c.health_card_masked || "—"}
                                                 {c.visita_patient_id ? ` · VISITA #${c.visita_patient_id}` : ""} · {c.city || ""} {c.province || ""}
                                             </div>
                                         ))}

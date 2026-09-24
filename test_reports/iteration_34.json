@@ -1,0 +1,37 @@
+{
+  "summary": "Frontend smoke test of reorganized Landing.jsx (/login) with 3 access groups (Patients / Clinic Team / Partners) + disabled EN/ES/FR language selector, plus SignIn.jsx header copy variants and post-login routing regressions. Executed 36 UI/integration checks — 100% pass.",
+  "backend_issues": {"critical": [], "minor": []},
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [],
+    "design_issues": []
+  },
+  "checks_performed": [
+    "lang-selector visible with EN highlighted (aria-current=true, cyan class)",
+    "lang-es & lang-fr aria-disabled='true', title='Coming soon', cursor-not-allowed; clicks cause no navigation",
+    "'Coming soon' label visible next to language selector (sm+ viewports)",
+    "All pathway/button data-testids present: pathway-patients, pathway-clinic, pathway-partners, patient-signin, patient-register, patient-new-request, clinic-login, partner-login",
+    "patient-signin -> /signin, header 'Sign in' + 'Current patients of Dr. Aguayo'",
+    "patient-register -> /register",
+    "patient-new-request -> /register?new=1",
+    "clinic-login -> /signin?internal=1, header 'Clinic login' + 'Admin, staff, and physician'",
+    "partner-login -> /signin?partner=1, header 'Partner login' + 'Pharmacies and healthcare partners'",
+    "Patient login (maria.lopez@demo.com/Patient2026!) -> /portal",
+    "Staff login (staff@visita.demo/Staff2026!) -> /internal",
+    "Pharmacy login (1670dufferin/Preview-Rotate-Test-9!) -> /change-password (must_change_password=True from seed, per iteration_16 credentials; SignIn.jsx routes pharmacy role to /pharmacy after password change — expected behavior, auth working end-to-end)",
+    "Mobile 390px: no horizontal overflow, lang-selector visible top-right, Patients card primary (height 232.5px > Clinic card 180.5px), Clinic & Partners stacked vertically (y=539 vs y=735.5)"
+  ],
+  "test_report_links": [],
+  "action_items": [],
+  "critical_code_review_comments": [
+    "Minor: 'Coming soon' text is hidden below sm breakpoint (hidden sm:inline). The aria-disabled + title tooltip still communicate the state on mobile, but a visible affordance would be clearer. Not a bug — matches request wording ('Coming soon indication/tooltip').",
+    "Landing.jsx is clean, self-contained (~113 lines), uses proper data-testids, semantic aria attributes, and env-agnostic navigation. No issues found."
+  ],
+  "updated_files": [],
+  "success_rate": {"backend": "N/A (frontend-only test)", "frontend": "100% (36/36 checks)"},
+  "test_credentials": "Used credentials from /app/memory/test_credentials.md — all present and valid.",
+  "seed_data_creation": "None",
+  "retest_needed": false,
+  "main_agent_can_self_test": true,
+  "context_for_next_testing_agent": "Landing (/login) reorganization + disabled ES/FR language selector + SignIn header variants (internal/partner) all verified. Pharmacy login lands on /change-password because seeded temp password has must_change_password=True — not a bug; the redirect to /pharmacy after password change is enforced by SignIn.jsx line 36. If retesting pharmacy->/pharmacy directly, either complete change-password flow first, or reset must_change_password=False in the users collection for 1670dufferin."
+}

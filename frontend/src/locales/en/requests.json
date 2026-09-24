@@ -20,7 +20,8 @@
     "Appointment Required": "Appointment Required",
     "New Time Suggested": "New Time Suggested",
     "More Information Requested": "More Information Requested",
-    "Declined": "Declined"
+    "Declined": "Declined",
+    "Cancelled": "Cancelled"
   },
   "pendingBanner": {
     "rejected": "We were unable to verify your account. Please contact the clinic for assistance.",

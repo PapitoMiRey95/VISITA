@@ -1,0 +1,24 @@
+{
+  "summary": "Phase 2 (partial) i18n frontend verification for patient REQUEST flows. Logged in as maria.lopez@demo.com / Patient2026! and exhaustively verified /portal/bloodwork, /portal/imaging, /portal/prescriptions, /portal/messages, /portal/referrals, /portal/requests, plus StatusPill/PendingBanner (via shared.jsx). NO raw i18n keys (requests:*, form.*, statuses.*, bloodwork.*, imaging.*, rx.*, messages.*, referrals.*, myRequests.*, pendingBanner.*) appear anywhere on the converted screens. All English headings, buttons, placeholders, dropdown options, disclaimers, counters, list titles render exactly as spec. Critical: select option VALUES (not just display text) remain English (e.g. 'Chest', 'Routine / Annual bloodwork', 'New symptoms / pain / injury') — DOM inspection confirmed value === textContent for all option elements, so backend payloads remain unchanged. Live bloodwork submit succeeded (new BLD- entry appeared in list with 'Received' status pill). StatusPill regression clean — Received, Under Review, Cancelled all render as expected English labels with prior colors. Mobile 390px: no horizontal overflow on request pages. Phase 1 regression (nav labels, portal shell) still fine. No console errors on tested flows.",
+  "backend_issues": {"critical": [], "minor": []},
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [],
+    "design_issues": []
+  },
+  "test_report_links": [],
+  "action_items": [],
+  "critical_code_review_comments": [
+    "shared.jsx StatusPill uses t(`statuses.${status}`, status) with English label as fallback — good pattern (safe against missing keys). However 'Cancelled' is not present in en/requests.json statuses map (only Completed, Appointment Confirmed, Under Review, Received, Appointment Requested, Appointment Required, New Time Suggested, More Information Requested, Declined). Right now it falls back to raw 'Cancelled' which is the desired English, but when ES/FR ship in a later phase this status will silently stay in English. Add 'Cancelled' (and any other actually-emitted statuses) to the statuses object before adding non-English locales.",
+    "PortalMessages route buttons: 'Message for Doctor' and 'Other' are defined as top-level keys under messages.* while the other five ('Appointment', 'Prescription', 'New Referral', 'Referral Status', 'X-Ray / Ultrasound') live under messages.routes.*. Inconsistent nesting is bug-prone during ES/FR translation. Suggest moving all seven route labels under messages.routes.* for consistency.",
+    "requests.json has separate 'form.submitting' and 'form.sending' — fine. Prescriptions submit uses its own rx.submit but its busy state should also use a namespaced key (verify PortalPrescriptions.jsx uses form.submitting or add rx.submitting for clarity)."
+  ],
+  "updated_files": [],
+  "success_rate": {"backend": "N/A", "frontend": "100% (all Phase 2 patient request screens pass; 0 raw keys, 0 blank labels, English values preserved in select options, submit flows work)"},
+  "test_credentials": "maria.lopez@demo.com / Patient2026! (verified patient, worked as expected)",
+  "seed_data_creation": "Created 1 test bloodwork request via UI (BLD auto-numbered) during submission test; preview only, no reset performed per instructions.",
+  "retest_needed": false,
+  "should_main_agent_self_test": true,
+  "context_for_next_testing_agent": "Phase 2 patient request flows + StatusPill/PendingBanner are cleanly i18n-converted with English intact and API payload values preserved. Still hardcoded English (Phase 2 pending, DO NOT flag): Register, Re-establish Care, PortalAccount, PortalAppointments/booking. When ES/FR keys are added, also add 'Cancelled' status to statuses map (currently only render-fallbacks to English), and unify messages.* route keys under messages.routes.* (see code review). Baseline moved from iteration_35 to iteration_36.",
+  "rca of the issue": "No issues found."
+}

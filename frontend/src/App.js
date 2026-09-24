@@ -38,6 +38,7 @@ import Applications from "./internal/Applications";
 import Settings from "./internal/Settings";
 import Patients from "./internal/Patients";
 import Organizations from "./internal/Organizations";
+import Providers from "./internal/Providers";
 
 import PartnerLayout from "./partner/PartnerLayout";
 import PartnerProfile from "./partner/PartnerProfile";
@@ -103,6 +104,7 @@ function App() {
                         <Route path="verifications" element={<Verifications />} />
                         <Route path="applications" element={<Applications />} />
                         <Route path="organizations" element={<Organizations />} />
+                        <Route path="providers" element={<Providers />} />
                         <Route path="settings" element={<Settings />} />
                     </Route>
 

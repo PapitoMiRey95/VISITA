@@ -5,6 +5,14 @@
 export const titleCaseName = (s) =>
     (s || "").trim().toLowerCase().replace(/(^|[\s'\-])([\p{L}])/gu, (_, sep, ch) => sep + ch.toUpperCase());
 
+// Live-normalize a patient surname field as they type: uppercase (accents,
+// apostrophes, hyphens, and compound surnames preserved), strip leading spaces,
+// and collapse accidental repeated spaces. A single trailing space is allowed so
+// users can type compound surnames. Never rejects lowercase input.
+export function normalizeSurnameInput(value) {
+    return (value || "").replace(/^\s+/, "").replace(/\s{2,}/g, " ").toUpperCase();
+}
+
 // Format from separate first/last fields (last uppercase, first title case).
 export function formatLastFirst(lastName, firstName) {
     const last = (lastName || "").trim().toUpperCase();

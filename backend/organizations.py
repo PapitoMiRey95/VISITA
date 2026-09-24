@@ -60,6 +60,45 @@ def compute_completeness(o: dict) -> int:
     return round(filled / len(checks) * 100)
 
 
+def build_provider_view(provider: dict, orgs: list) -> dict:
+    """Resolve a global provider record into an internal read-only view showing
+    every organization it is affiliated with and the locations linked at each.
+    `orgs` is the full list of organization docs (already loaded once by caller)."""
+    pid = provider.get("id")
+    affiliations = []
+    created_by_name = None
+    for o in (orgs or []):
+        if o.get("id") == provider.get("created_by_org_id"):
+            created_by_name = o.get("organization_name")
+        loc_by_id = {l.get("id"): l for l in (o.get("locations") or []) if isinstance(l, dict)}
+        for aff in (o.get("providers") or []):
+            if not isinstance(aff, dict):
+                continue
+            if (aff.get("provider_id") or aff.get("id")) != pid:
+                continue
+            locs = []
+            for lid in (aff.get("location_ids") or []):
+                loc = loc_by_id.get(lid)
+                if loc:
+                    label = (loc.get("label") or loc.get("address") or "").strip() or "Location"
+                    where = ", ".join([s for s in [loc.get("city"), loc.get("province")] if s])
+                    locs.append({"id": lid, "label": label, "where": where})
+            affiliations.append({
+                "organization_id": o.get("id"),
+                "organization_name": o.get("organization_name"),
+                "organization_type": o.get("organization_type"),
+                "locations": locs,
+            })
+    return {
+        "id": pid,
+        "name": provider.get("name"),
+        "specialties": provider.get("specialties") or "",
+        "created_by_org_id": provider.get("created_by_org_id"),
+        "created_by_org_name": created_by_name,
+        "affiliations": affiliations,
+    }
+
+
 def serialize_org(o: dict) -> dict:
     """Return a JSON-safe org dict (drops Mongo _id, adds completeness)."""
     d = {k: v for k, v in o.items() if k != "_id"}

@@ -10,6 +10,7 @@ import { Input } from "../components/ui/input";
 import { Label } from "../components/ui/label";
 import { Select, SelectTrigger, SelectValue, SelectContent, SelectItem } from "../components/ui/select";
 import { Logo } from "../components/Logo";
+import { normalizeSurnameInput } from "../lib/name";
 
 const TYPE_KEYS = ["ohip", "private", "tourist", "none"];
 // Reason values are sent to the backend and MUST remain in English.
@@ -42,6 +43,8 @@ export default function Register() {
         address: "", city: "", postal_code: "", patient_message: "", join_reason: "",
     });
     const set = (k) => (e) => setForm({ ...form, [k]: e.target.value });
+    // Surname fields auto-uppercase live while preserving accents/apostrophes/hyphens.
+    const setSurname = (k) => (e) => setForm({ ...form, [k]: normalizeSurnameInput(e.target.value) });
     const joinName = (a, b) => [a, b].map((s) => (s || "").replace(/\s+/g, " ").trim()).filter(Boolean).join(" ");
     const optional = t("common:status.optional");
 
@@ -162,8 +165,8 @@ export default function Register() {
                             <Field label={t("auth:register.secondName")} testid="reg-second"><Input value={form.second_name} onChange={set("second_name")} placeholder={optional} /></Field>
                         </div>
                         <div className="grid grid-cols-2 gap-3">
-                            <Field label={t("auth:register.firstLastName")} testid="reg-last"><Input required value={form.last_name} onChange={set("last_name")} /></Field>
-                            <Field label={t("auth:register.secondLastName")} testid="reg-second-last"><Input value={form.second_last_name} onChange={set("second_last_name")} placeholder={optional} /></Field>
+                            <Field label={t("auth:register.firstLastName")} testid="reg-last"><Input required value={form.last_name} onChange={setSurname("last_name")} /></Field>
+                            <Field label={t("auth:register.secondLastName")} testid="reg-second-last"><Input value={form.second_last_name} onChange={setSurname("second_last_name")} placeholder={optional} /></Field>
                         </div>
                         <Field label={t("auth:register.dob")} testid="reg-dob"><Input type="date" required value={form.date_of_birth} onChange={set("date_of_birth")} /></Field>
 
@@ -238,8 +241,8 @@ export default function Register() {
                             <Field label={t("auth:register.secondName")} testid="re-second"><Input value={form.second_name} onChange={set("second_name")} placeholder={optional} /></Field>
                         </div>
                         <div className="grid grid-cols-2 gap-3">
-                            <Field label={t("auth:register.firstLastName")} testid="re-last"><Input required value={form.last_name} onChange={set("last_name")} /></Field>
-                            <Field label={t("auth:register.secondLastName")} testid="re-second-last"><Input value={form.second_last_name} onChange={set("second_last_name")} placeholder={optional} /></Field>
+                            <Field label={t("auth:register.firstLastName")} testid="re-last"><Input required value={form.last_name} onChange={setSurname("last_name")} /></Field>
+                            <Field label={t("auth:register.secondLastName")} testid="re-second-last"><Input value={form.second_last_name} onChange={setSurname("second_last_name")} placeholder={optional} /></Field>
                         </div>
                         <Field label={t("auth:register.dob")} testid="re-dob"><Input type="date" required value={form.date_of_birth} onChange={set("date_of_birth")} /></Field>
                         <Field label={t("auth:register.reestablish.hcNumber")} testid="re-hcn"><Input value={form.health_card_number} onChange={set("health_card_number")} placeholder="0000-000-000-XX" /></Field>
@@ -274,8 +277,8 @@ export default function Register() {
                             <Field label={t("auth:register.secondName")} testid="np-second"><Input value={form.second_name} onChange={set("second_name")} placeholder={optional} /></Field>
                         </div>
                         <div className="grid grid-cols-2 gap-3">
-                            <Field label={t("auth:register.firstLastName")} testid="np-last"><Input required value={form.last_name} onChange={set("last_name")} /></Field>
-                            <Field label={t("auth:register.secondLastName")} testid="np-second-last"><Input value={form.second_last_name} onChange={set("second_last_name")} placeholder={optional} /></Field>
+                            <Field label={t("auth:register.firstLastName")} testid="np-last"><Input required value={form.last_name} onChange={setSurname("last_name")} /></Field>
+                            <Field label={t("auth:register.secondLastName")} testid="np-second-last"><Input value={form.second_last_name} onChange={setSurname("second_last_name")} placeholder={optional} /></Field>
                         </div>
                         <Field label={t("auth:register.dob")} testid="np-dob"><Input type="date" required value={form.date_of_birth} onChange={set("date_of_birth")} /></Field>
                         <Field label={t("auth:register.phone")} testid="np-phone"><Input required value={form.phone} onChange={set("phone")} /></Field>

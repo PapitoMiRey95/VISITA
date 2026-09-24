@@ -705,6 +705,28 @@ async def set_org_verification(org_id: str, body: OrgVerificationBody,
     return orgs_mod.serialize_org(org)
 
 
+# ----------------------------- Internal: Provider registry (read-only) -----------------------------
+@api.get("/internal/providers")
+async def internal_providers(q: Optional[str] = None,
+                             user: dict = Depends(require_roles(*CLINIC_ROLES))):
+    """Read-only Provider → Organization → Location inspection view for clinic
+    staff. Providers are global entities; affiliations (with linked locations)
+    are resolved from the organizations collection. No PHI is exposed."""
+    providers = await db.providers.find({}).sort("name", 1).to_list(1000)
+    orgs = await db.organizations.find({}).to_list(1000)
+    rows = [orgs_mod.build_provider_view(p, orgs) for p in providers]
+    if q and q.strip():
+        qn = q.strip().lower()
+        def match(r):
+            if qn in (r.get("name") or "").lower():
+                return True
+            if qn in (r.get("specialties") or "").lower():
+                return True
+            return any(qn in (a.get("organization_name") or "").lower() for a in r.get("affiliations", []))
+        rows = [r for r in rows if match(r)]
+    return rows
+
+
 @api.post("/auth/change-password")
 async def change_password(body: ChangePwBody, user: dict = Depends(get_current_user)):
     doc = await db.users.find_one({"_id": ObjectId(user["id"])})

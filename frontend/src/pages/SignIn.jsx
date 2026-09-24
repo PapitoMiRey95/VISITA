@@ -1,6 +1,7 @@
 import { useState } from "react";
 import { useNavigate, Link, useSearchParams } from "react-router-dom";
 import { toast } from "sonner";
+import { useTranslation } from "react-i18next";
 import { Loader2, ChevronLeft, Eye, EyeOff } from "lucide-react";
 import { useAuth } from "../context/AuthContext";
 import { formatErr } from "../lib/api";
@@ -13,6 +14,7 @@ const BG = "https://customer-assets-4nw71qhi.emergentagent.net/job_visita-admin/
 
 export default function SignIn() {
     const { login } = useAuth();
+    const { t } = useTranslation(["common", "auth"]);
     const nav = useNavigate();
     const [params] = useSearchParams();
     const internal = params.get("internal") === "1";
@@ -28,11 +30,11 @@ export default function SignIn() {
         try {
             const u = await login(identifier.trim(), password);
             if (u.must_change_password) {
-                toast.message("Please set a new password to continue.");
+                toast.message(t("auth:signin.mustChangePassword"));
                 nav("/change-password", { replace: true });
                 return;
             }
-            toast.success(`Welcome back, ${u.name?.split(" ")[0] || ""}`);
+            toast.success(t("auth:signin.welcomeBack", { name: u.name?.split(" ")[0] || "" }));
             nav(u.role === "patient" ? "/portal" : u.role === "pharmacy" ? "/pharmacy" : "/internal", { replace: true });
         } catch (err) {
             toast.error(formatErr(err));
@@ -60,21 +62,21 @@ export default function SignIn() {
                             <Logo variant="dark" iconClass="h-11 w-11" showText={false} />
                             <div>
                                 <h2 className="text-lg font-bold text-slate-100 leading-tight">
-                                    {partner ? "Partner login" : internal ? "Clinic login" : "Sign in"}
+                                    {partner ? t("auth:signin.titlePartner") : internal ? t("auth:signin.titleClinic") : t("auth:signin.titlePatient")}
                                 </h2>
                                 <p className="text-xs text-slate-400">
-                                    {partner ? "Pharmacies and healthcare partners" : internal ? "Admin, staff, and physician" : "Current patients of Dr. Aguayo"}
+                                    {partner ? t("auth:signin.subPartner") : internal ? t("auth:signin.subClinic") : t("auth:signin.subPatient")}
                                 </p>
                             </div>
                         </div>
 
-                        <Label htmlFor="email" className="text-[11px] uppercase tracking-widest text-slate-400">Email or Username</Label>
+                        <Label htmlFor="email" className="text-[11px] uppercase tracking-widest text-slate-400">{t("auth:signin.emailLabel")}</Label>
                         <Input id="email" data-testid="login-email" type="text" required value={identifier}
                             onChange={(e) => setIdentifier(e.target.value)}
                             className="mt-1 mb-4 bg-[#0f1e30] border-white/10 text-slate-100 placeholder:text-slate-500 focus-visible:ring-cyan-400/60"
                             placeholder={internal ? "USERNAME" : partner ? "you@pharmacy.com" : "you@example.com"} />
 
-                        <Label htmlFor="password" className="text-[11px] uppercase tracking-widest text-slate-400">Password</Label>
+                        <Label htmlFor="password" className="text-[11px] uppercase tracking-widest text-slate-400">{t("auth:signin.passwordLabel")}</Label>
                         <div className="relative mt-1 mb-6">
                             <Input id="password" data-testid="login-password" type={showPassword ? "text" : "password"} required value={password}
                                 onChange={(e) => setPassword(e.target.value)}
@@ -90,19 +92,19 @@ export default function SignIn() {
 
                         <Button data-testid="login-submit" type="submit" disabled={busy}
                             className="w-full bg-cyan-500 hover:bg-cyan-400 text-[#04121f] font-bold tracking-wide">
-                            {busy ? <Loader2 className="w-4 h-4 animate-spin" /> : (internal ? "Sign in to VIsita EMR" : partner ? "Partner sign in" : "Sign in")}
+                            {busy ? <Loader2 className="w-4 h-4 animate-spin" /> : (internal ? t("auth:signin.submitClinic") : partner ? t("auth:signin.submitPartner") : t("auth:signin.submitPatient"))}
                         </Button>
 
                         <div className="text-center mt-4">
                             <Link to="/forgot-password" data-testid="forgot-password-link" className="text-xs text-slate-400 hover:text-cyan-200">
-                                Forgot password?
+                                {t("auth:signin.forgot")}
                             </Link>
                         </div>
 
                         {!internal && !partner && (
                             <p className="text-sm text-center text-slate-400 mt-5">
-                                Existing clinic patient without an account?{" "}
-                                <Link to="/register" data-testid="go-register" className="text-cyan-300 font-semibold hover:underline">Register</Link>
+                                {t("auth:signin.registerPrompt")}{" "}
+                                <Link to="/register" data-testid="go-register" className="text-cyan-300 font-semibold hover:underline">{t("auth:signin.registerLink")}</Link>
                             </p>
                         )}
                     </form>

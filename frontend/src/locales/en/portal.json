@@ -1,0 +1,51 @@
+{
+  "nav": {
+    "home": "Home",
+    "appts": "Appts",
+    "rx": "Rx",
+    "messages": "Messages",
+    "requests": "Requests",
+    "profile": "Profile"
+  },
+  "home": {
+    "greeting": "Hello,",
+    "patientFallback": "Patient",
+    "tiles": {
+      "appointments": "Request an Appointment",
+      "prescriptions": "Prescription Request",
+      "bloodwork": "Bloodwork Request",
+      "imaging": "X-Ray / Ultrasound",
+      "referrals": "Referral Status",
+      "messages": "Message the Clinic",
+      "requests": "My Requests",
+      "profile": "My Profile"
+    }
+  },
+  "account": {
+    "myInformation": "My Information",
+    "sexPromptTitle": "Please add your sex",
+    "sexPromptDesc": "This information is required for your medical record.",
+    "sexLabel": "Sex",
+    "addressLabel": "Address",
+    "phoneLabel": "Phone",
+    "emailLabel": "Email",
+    "streetLabel": "Street address",
+    "unitLabel": "Unit / Apt",
+    "cityLabel": "City",
+    "provinceLabel": "Province",
+    "postalLabel": "Postal code",
+    "selectSex": "Select sex",
+    "healthCard": "Health Card",
+    "updateHealthCard": "Update Health Card",
+    "saveHealthCard": "Save Health Card",
+    "hcNumber": "Health Card Number",
+    "hcVersion": "Version",
+    "hcIssue": "Issue Date",
+    "hcExpiry": "Expiry Date",
+    "toastPhone": "Phone number updated.",
+    "toastSex": "Sex updated.",
+    "toastAddress": "Address updated.",
+    "toastHealthCard": "Health Card updated.",
+    "errSelectSex": "Please select your sex."
+  }
+}

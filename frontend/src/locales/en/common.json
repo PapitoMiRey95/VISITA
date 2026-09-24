@@ -1,0 +1,19 @@
+{
+  "brand": { "vien": "VIsita", "emr": " EMR" },
+  "practice": "Dr. Aguayo Family Practice",
+  "tagline": "Secure portal for appointments, prescriptions, referrals, and clinic communication.",
+  "language": { "comingSoon": "Coming soon" },
+  "emergencyNotice": "Not for emergencies. If you are experiencing a medical emergency, call 911 or go to the nearest Emergency Department.",
+  "actions": {
+    "signIn": "Sign In",
+    "register": "Register",
+    "save": "Save",
+    "cancel": "Cancel",
+    "edit": "Edit",
+    "add": "Add",
+    "back": "Back",
+    "logout": "Logout",
+    "setNow": "Set now"
+  },
+  "status": { "loading": "Loading…", "notSet": "Not set", "optional": "Optional" }
+}

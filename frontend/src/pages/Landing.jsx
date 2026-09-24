@@ -1,4 +1,5 @@
 import { useNavigate } from "react-router-dom";
+import { useTranslation } from "react-i18next";
 import { LogIn, UserPlus, UserRound, ArrowRight, Stethoscope, Building2 } from "lucide-react";
 import { Button } from "../components/ui/button";
 import { Logo } from "../components/Logo";
@@ -7,6 +8,7 @@ const BG = "https://customer-assets-4nw71qhi.emergentagent.net/job_visita-admin/
 
 export default function Landing() {
     const nav = useNavigate();
+    const { t } = useTranslation(["common", "auth"]);
 
     return (
         <div className="relative min-h-screen w-full overflow-hidden font-plex">
@@ -23,12 +25,12 @@ export default function Landing() {
                 </span>
                 {["ES", "FR"].map((l) => (
                     <span key={l} data-testid={`lang-${l.toLowerCase()}`}
-                        aria-disabled="true" title="Coming soon"
+                        aria-disabled="true" title={t("common:language.comingSoon")}
                         className="px-2 py-0.5 text-[11px] font-semibold rounded-full tracking-wide text-slate-600 cursor-not-allowed select-none">
                         {l}
                     </span>
                 ))}
-                <span className="pl-1 pr-1.5 text-[9px] uppercase tracking-widest text-slate-500 hidden sm:inline">Coming soon</span>
+                <span className="pl-1 pr-1.5 text-[9px] uppercase tracking-widest text-slate-500 hidden sm:inline">{t("common:language.comingSoon")}</span>
             </div>
 
             <div className="relative z-10 min-h-screen flex flex-col lg:flex-row lg:items-center lg:justify-between px-6 py-12 lg:px-16 gap-10">
@@ -36,10 +38,8 @@ export default function Landing() {
                 <div className="max-w-xl">
                     <Logo variant="dark" iconClass="h-20 w-20 lg:h-28 lg:w-28 drop-shadow-[0_0_30px_rgba(23,179,196,0.35)]"
                         textClass="text-4xl sm:text-5xl lg:text-6xl" />
-                    <p className="mt-4 text-lg text-slate-200/90 font-semibold tracking-wide">Dr. Aguayo Family Practice</p>
-                    <p className="mt-2 max-w-md text-sm text-slate-400 leading-relaxed">
-                        Secure portal for appointments, prescriptions, referrals, and clinic communication.
-                    </p>
+                    <p className="mt-4 text-lg text-slate-200/90 font-semibold tracking-wide">{t("common:practice")}</p>
+                    <p className="mt-2 max-w-md text-sm text-slate-400 leading-relaxed">{t("common:tagline")}</p>
                     <div className="mt-6 h-px w-40 bg-gradient-to-r from-cyan-400/50 to-transparent" />
                 </div>
 
@@ -52,24 +52,22 @@ export default function Landing() {
                             <span className="flex h-9 w-9 items-center justify-center rounded-md bg-cyan-500/15 border border-cyan-400/30">
                                 <UserRound className="w-5 h-5 text-cyan-300" />
                             </span>
-                            <h2 className="text-xl font-bold text-slate-100 tracking-tight">Patients</h2>
+                            <h2 className="text-xl font-bold text-slate-100 tracking-tight">{t("auth:landing.patients.title")}</h2>
                         </div>
-                        <p className="text-sm text-slate-400 leading-relaxed mb-4">
-                            Access your appointments, prescriptions, referrals, and messages.
-                        </p>
+                        <p className="text-sm text-slate-400 leading-relaxed mb-4">{t("auth:landing.patients.desc")}</p>
                         <div className="grid grid-cols-2 gap-3">
                             <Button data-testid="patient-signin" onClick={() => nav("/signin")}
                                 className="bg-cyan-500 hover:bg-cyan-400 text-[#04121f] font-bold h-11">
-                                <LogIn className="w-4 h-4 mr-1.5" /> Sign In
+                                <LogIn className="w-4 h-4 mr-1.5" /> {t("common:actions.signIn")}
                             </Button>
                             <Button data-testid="patient-register" onClick={() => nav("/register")}
                                 variant="outline" className="h-11 border-cyan-400/40 bg-transparent text-cyan-200 hover:bg-cyan-500/10 hover:text-cyan-100 font-semibold">
-                                <UserPlus className="w-4 h-4 mr-1.5" /> Register
+                                <UserPlus className="w-4 h-4 mr-1.5" /> {t("common:actions.register")}
                             </Button>
                         </div>
                         <button data-testid="patient-new-request" onClick={() => nav("/register?new=1")}
                             className="mt-4 inline-flex items-center gap-1.5 text-sm font-semibold text-slate-300 hover:text-cyan-200 transition-colors">
-                            New patient? Request care <ArrowRight className="w-4 h-4" />
+                            {t("auth:landing.patients.newRequest")} <ArrowRight className="w-4 h-4" />
                         </button>
                     </div>
 
@@ -80,11 +78,11 @@ export default function Landing() {
                             <span className="flex h-9 w-9 items-center justify-center rounded-md bg-white/5 border border-white/10 mb-2">
                                 <Stethoscope className="w-5 h-5 text-slate-200" />
                             </span>
-                            <h3 className="text-sm font-bold text-slate-100 tracking-tight">Clinic Team</h3>
-                            <p className="text-[11px] uppercase tracking-widest text-slate-500 mt-0.5 mb-4">Admin · Staff · Physician</p>
+                            <h3 className="text-sm font-bold text-slate-100 tracking-tight">{t("auth:landing.clinic.title")}</h3>
+                            <p className="text-[11px] uppercase tracking-widest text-slate-500 mt-0.5 mb-4">{t("auth:landing.clinic.roles")}</p>
                             <Button data-testid="clinic-login" onClick={() => nav("/signin?internal=1")}
                                 variant="outline" className="mt-auto h-10 border-white/15 bg-transparent text-slate-100 hover:bg-white/10 font-semibold">
-                                Clinic Login
+                                {t("auth:landing.clinic.login")}
                             </Button>
                         </div>
 
@@ -93,19 +91,16 @@ export default function Landing() {
                             <span className="flex h-9 w-9 items-center justify-center rounded-md bg-white/5 border border-white/10 mb-2">
                                 <Building2 className="w-5 h-5 text-slate-200" />
                             </span>
-                            <h3 className="text-sm font-bold text-slate-100 tracking-tight">Partners</h3>
-                            <p className="text-[11px] uppercase tracking-widest text-slate-500 mt-0.5 mb-4">Pharmacies &amp; healthcare partners</p>
+                            <h3 className="text-sm font-bold text-slate-100 tracking-tight">{t("auth:landing.partners.title")}</h3>
+                            <p className="text-[11px] uppercase tracking-widest text-slate-500 mt-0.5 mb-4">{t("auth:landing.partners.roles")}</p>
                             <Button data-testid="partner-login" onClick={() => nav("/signin?partner=1")}
                                 variant="outline" className="mt-auto h-10 border-white/15 bg-transparent text-slate-100 hover:bg-white/10 font-semibold">
-                                Partner Login
+                                {t("auth:landing.partners.login")}
                             </Button>
                         </div>
                     </div>
 
-                    <p className="text-[11px] leading-relaxed text-slate-500/80 pt-1">
-                        Not for emergencies. If you are experiencing a medical emergency, call 911 or go to the nearest
-                        Emergency Department.
-                    </p>
+                    <p className="text-[11px] leading-relaxed text-slate-500/80 pt-1">{t("common:emergencyNotice")}</p>
                 </div>
             </div>
         </div>

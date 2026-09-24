@@ -1,22 +1,24 @@
 import { Outlet, useNavigate, NavLink, useLocation } from "react-router-dom";
 import { useMemo } from "react";
 import { useQuery } from "@tanstack/react-query";
+import { useTranslation } from "react-i18next";
 import { Home, Calendar, Pill, MessageSquare, ClipboardList, Bell, LogOut, User } from "lucide-react";
 import { api } from "../lib/api";
 import { useAuth } from "../context/AuthContext";
 import { Logo } from "../components/Logo";
 
 const NAV = [
-    { to: "/portal", icon: Home, label: "Home", end: true, testid: "nav-home" },
-    { to: "/portal/appointments", icon: Calendar, label: "Appts", testid: "nav-appointments" },
-    { to: "/portal/prescriptions", icon: Pill, label: "Rx", testid: "nav-prescriptions" },
-    { to: "/portal/messages", icon: MessageSquare, label: "Messages", testid: "nav-messages" },
-    { to: "/portal/requests", icon: ClipboardList, label: "Requests", testid: "nav-requests" },
-    { to: "/portal/account", icon: User, label: "Profile", testid: "nav-profile" },
+    { to: "/portal", icon: Home, tkey: "portal:nav.home", end: true, testid: "nav-home" },
+    { to: "/portal/appointments", icon: Calendar, tkey: "portal:nav.appts", testid: "nav-appointments" },
+    { to: "/portal/prescriptions", icon: Pill, tkey: "portal:nav.rx", testid: "nav-prescriptions" },
+    { to: "/portal/messages", icon: MessageSquare, tkey: "portal:nav.messages", testid: "nav-messages" },
+    { to: "/portal/requests", icon: ClipboardList, tkey: "portal:nav.requests", testid: "nav-requests" },
+    { to: "/portal/account", icon: User, tkey: "portal:nav.profile", testid: "nav-profile" },
 ];
 
 export default function PortalLayout() {
     const { user, logout } = useAuth();
+    const { t } = useTranslation(["portal"]);
     const nav = useNavigate();
     const loc = useLocation();
 
@@ -78,7 +80,7 @@ export default function PortalLayout() {
                             <NavLink key={n.to} to={n.to} end={n.end} data-testid={n.testid}
                                 className="flex flex-col items-center justify-center gap-0.5 py-2 min-h-[56px] flex-1">
                                 <n.icon className={`w-5 h-5 ${active ? "text-portal-blue" : "text-slate-400"}`} />
-                                <span className={`text-[11px] font-semibold ${active ? "text-portal-blue" : "text-slate-400"}`}>{n.label}</span>
+                                <span className={`text-[11px] font-semibold ${active ? "text-portal-blue" : "text-slate-400"}`}>{t(n.tkey)}</span>
                             </NavLink>
                         );
                     })}

@@ -11,6 +11,9 @@ import time
 import uuid
 import pytest
 import requests
+from dotenv import load_dotenv
+
+load_dotenv("/app/backend/.env")
 
 def _load_frontend_url():
     try:
@@ -27,7 +30,7 @@ BASE_URL = _load_frontend_url().rstrip("/")
 assert BASE_URL, "REACT_APP_BACKEND_URL missing"
 
 ADMIN_EMAIL = "kevinrodriguez9528@gmail.com"
-ADMIN_PASSWORD = "VisitaAdmin2026!"
+ADMIN_PASSWORD = os.environ["TEST_ADMIN_PASSWORD"]
 
 
 # ------------------------------------------------------------------ helpers

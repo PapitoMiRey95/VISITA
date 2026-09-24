@@ -27,11 +27,11 @@ MONGO_URL = os.environ.get("MONGO_URL")
 DB_NAME = os.environ.get("DB_NAME")
 
 ADMIN_EMAIL = "kevinrodriguez9528@gmail.com"
-ADMIN_PASSWORD = "VisitaAdmin2026!"
+ADMIN_PASSWORD = os.environ["TEST_ADMIN_PASSWORD"]
 STAFF_EMAIL = "staff@visita.demo"
-STAFF_PASSWORD = "Staff2026!"
+STAFF_PASSWORD = os.environ["TEST_STAFF_PASSWORD"]
 PHYSICIAN_USER = "PAGUAYO"
-PHYSICIAN_PASSWORD = "Newman2013_!"
+PHYSICIAN_PASSWORD = os.environ["TEST_PHYSICIAN_PASSWORD"]
 
 # The two pending demo patients
 ROBERT_ID = "492fde1d-b7ae-4016-bc67-bcb79d69e73c"  # robert.chen@demo.com — used for backend test

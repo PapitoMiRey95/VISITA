@@ -29,6 +29,7 @@ export default function Activate() {
                 setInfo(data); setState("valid");
             } catch { setState("invalid"); }
         })();
+        // eslint-disable-next-line react-hooks/exhaustive-deps -- re-validate only when the link params change
     }, [uid, token]);
 
     const submit = async (e) => {

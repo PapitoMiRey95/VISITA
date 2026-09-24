@@ -3,6 +3,9 @@ import os
 import datetime as dt
 import requests
 import pytest
+from dotenv import load_dotenv
+
+load_dotenv("/app/backend/.env")
 
 BASE_URL = os.environ.get("REACT_APP_BACKEND_URL", "").rstrip("/")
 if not BASE_URL:
@@ -13,7 +16,7 @@ if not BASE_URL:
                 BASE_URL = line.split("=", 1)[1].strip().rstrip("/")
 
 EMAIL = "maria.lopez@demo.com"
-PASSWORD = "Patient2026!"
+PASSWORD = os.environ["TEST_PATIENT_PASSWORD"]
 
 
 @pytest.fixture(scope="module")

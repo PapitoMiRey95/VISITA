@@ -63,7 +63,7 @@ export default function Patients() {
             const { data } = await api.get("/internal/patient-lookup", { params: { q } });
             const fresh = data.find((r) => (r.patient_id && r.patient_id === selected.patient_id) || r.id === selected.id);
             if (fresh) setSelected(fresh);
-        } catch { /* noop */ }
+        } catch (e) { console.error("Failed to reload selected patient:", e); }
     };
 
     const startEdit = () => {
@@ -103,6 +103,7 @@ export default function Patients() {
         }
         document.addEventListener("mousedown", onDocClick);
         return () => document.removeEventListener("mousedown", onDocClick);
+        // eslint-disable-next-line react-hooks/exhaustive-deps -- mount-only listener; searchRef is a stable ref
     }, []);
 
     const run = async (e) => {

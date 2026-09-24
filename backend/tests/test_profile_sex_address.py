@@ -2,6 +2,9 @@
 import os
 import pytest
 import requests
+from dotenv import load_dotenv
+
+load_dotenv("/app/backend/.env")
 
 BASE_URL = os.environ.get("REACT_APP_BACKEND_URL", "").rstrip("/")
 if not BASE_URL:
@@ -11,7 +14,7 @@ if not BASE_URL:
             if line.startswith("REACT_APP_BACKEND_URL="):
                 BASE_URL = line.strip().split("=", 1)[1].rstrip("/")
 
-PASSWORD = "Patient2026!"
+PASSWORD = os.environ["TEST_PATIENT_PASSWORD"]
 
 
 def _login(identifier):

@@ -18,6 +18,51 @@ def _migrations_enabled() -> bool:
     return _flag("ALLOW_DATA_MIGRATIONS")
 
 
+# --- One-time security remediation: deactivate known demo/test accounts ---
+# Exact allowlist (staff + demo/test patients). No wildcards. active=false only.
+DEMO_DISABLE_ALLOWLIST = [
+    "staff@visita.demo",
+    "maria.lopez@demo.com", "john.smith@demo.com", "carlos.perez@demo.com",
+    "linda.nguyen@demo.com", "ahmed.khan@demo.com", "sofia.martinez@demo.com",
+    "robert.chen@demo.com",
+    "test_p2_222d90dd@demo.com", "test_p2_27c02446@demo.com", "test_p2_1d758b99@demo.com",
+    "test_p2_a1e3492b@demo.com", "test_reg_51cdbed7@demo.com",
+]
+# Never modified regardless of allowlist (real owner + pending-clarification accounts).
+DEMO_DISABLE_KEEP = {
+    "kevinrodriguez9528@gmail.com", "jorgemessi6426@gmail.com", "waglucio50@gmail.com",
+}
+DEMO_DISABLE_REASON = "security-remediation: demo/test account deactivation (source-known credentials)"
+
+
+async def _disable_demo_accounts(db):
+    """Set active=false on the exact allowlist ONLY. Never deletes, never edits
+    passwords or any other field, never touches related/workflow/audit records.
+    Idempotent (skips already-inactive). Writes one account_disabled audit per hit."""
+    import logging
+    now = now_iso()
+    disabled = 0
+    for email in DEMO_DISABLE_ALLOWLIST:
+        e = email.lower()
+        if e in DEMO_DISABLE_KEEP:
+            continue
+        u = await db.users.find_one({"email": e}, {"_id": 1, "role": 1, "active": 1})
+        if not u or u.get("role") not in ("staff", "patient") or u.get("active") is False:
+            continue
+        await db.users.update_one({"_id": u["_id"], "active": {"$ne": False}}, {"$set": {
+            "active": False, "disabled_by": "security-remediation",
+            "disabled_at": now, "disabled_reason": DEMO_DISABLE_REASON,
+        }})
+        await db.audit_logs.insert_one({
+            "action": "account_disabled", "entity": "user", "entity_id": str(u["_id"]),
+            "actor": {"id": None, "name": "security-remediation", "role": "system"},
+            "meta": {"email": e, "role": u.get("role"), "reason": DEMO_DISABLE_REASON}, "at": now,
+        })
+        disabled += 1
+    logging.getLogger("visita").info(f"[remediation] disabled {disabled} demo/test account(s)")
+    return disabled
+
+
 def make_pdf(lines):
     """Build a tiny but valid single-page PDF from text lines."""
     text_ops = "BT /F1 14 Tf 40 740 Td 18 TL "
@@ -208,6 +253,13 @@ async def seed_all(db, authlib):
                 "patient_id": None, "active": True, "must_change_password": True,
                 "created_at": now_iso(),
             })
+
+    # One-time SECURITY REMEDIATION — deactivate known demo/test accounts.
+    # Runs ONLY when explicitly enabled (RUN_DISABLE_DEMO_ACCOUNTS_V1) and only
+    # once (disable_demo_v1 marker). Preview must NOT set this flag.
+    if _flag("RUN_DISABLE_DEMO_ACCOUNTS_V1") and not await db.app_meta.find_one({"id": "disable_demo_v1"}):
+        n = await _disable_demo_accounts(db)
+        await db.app_meta.insert_one({"id": "disable_demo_v1", "at": now_iso(), "disabled": n})
 
     # guard demo — demo accounts/data are created ONLY when demo seeding is
     # explicitly enabled (ALLOW_DEMO_SEEDING) AND only once. PRODUCTION MUST keep

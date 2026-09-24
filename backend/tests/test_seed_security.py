@@ -122,3 +122,65 @@ def test_existing_physician_not_overwritten(monkeypatch):
     finally:
         _run(client.drop_database(name))
         client.close()
+
+
+def _seed_and_disable(db, monkeypatch, extra_emails=None):
+    monkeypatch.setenv("ADMIN_EMAIL", "owner@example.com")
+    monkeypatch.setenv("ADMIN_PASSWORD", "OriginalPass123!")
+    monkeypatch.setenv("RUN_DISABLE_DEMO_ACCOUNTS_V1", "true")
+
+
+def test_disable_migration_allowlist_and_guard(monkeypatch):
+    _clear_flags(monkeypatch)
+    monkeypatch.setenv("RUN_DISABLE_DEMO_ACCOUNTS_V1", "true")
+    monkeypatch.setenv("ADMIN_EMAIL", "owner@example.com")
+    monkeypatch.setenv("ADMIN_PASSWORD", "OriginalPass123!")
+    client, db, name = _new_db()
+    try:
+        # seed the exact demo/test accounts + guard accounts + a real staff person
+        from seed import DEMO_DISABLE_ALLOWLIST
+        docs = []
+        for e in DEMO_DISABLE_ALLOWLIST:
+            role = "staff" if e == "staff@visita.demo" else "patient"
+            docs.append({"email": e, "role": role, "active": True, "password_hash": "x"})
+        # guard accounts (must NOT be disabled)
+        docs.append({"email": "kevinrodriguez9528@gmail.com", "role": "admin", "active": True, "password_hash": "x"})
+        docs.append({"email": "jorgemessi6426@gmail.com", "role": "patient", "active": True, "password_hash": "x"})
+        docs.append({"email": "waglucio50@gmail.com", "role": "patient", "active": True, "password_hash": "x"})
+        _run(db.users.insert_many(docs))
+        _run(seed_all(db, authlib))
+        # all 13 allowlist accounts inactive with audit fields
+        for e in DEMO_DISABLE_ALLOWLIST:
+            u = _run(db.users.find_one({"email": e}))
+            assert u["active"] is False, f"{e} not disabled"
+            assert u.get("disabled_by") == "security-remediation"
+            assert u.get("disabled_at") and u.get("disabled_reason")
+        # exactly 13 audit entries
+        assert _run(db.audit_logs.count_documents({"action": "account_disabled"})) == 13
+        # guard accounts untouched
+        for e in ["kevinrodriguez9528@gmail.com", "jorgemessi6426@gmail.com", "waglucio50@gmail.com"]:
+            u = _run(db.users.find_one({"email": e}))
+            assert u["active"] is True, f"guard {e} was modified"
+            assert "disabled_by" not in u
+        # marker set
+        assert _run(db.app_meta.find_one({"id": "disable_demo_v1"})) is not None
+    finally:
+        _run(client.drop_database(name))
+        client.close()
+
+
+def test_disable_migration_idempotent(monkeypatch):
+    _clear_flags(monkeypatch)
+    monkeypatch.setenv("RUN_DISABLE_DEMO_ACCOUNTS_V1", "true")
+    monkeypatch.setenv("ADMIN_EMAIL", "owner@example.com")
+    monkeypatch.setenv("ADMIN_PASSWORD", "OriginalPass123!")
+    client, db, name = _new_db()
+    try:
+        from seed import DEMO_DISABLE_ALLOWLIST
+        _run(db.users.insert_one({"email": "staff@visita.demo", "role": "staff", "active": True, "password_hash": "x"}))
+        _run(seed_all(db, authlib))
+        _run(seed_all(db, authlib))  # second run must not add more audit entries
+        assert _run(db.audit_logs.count_documents({"action": "account_disabled"})) == 1
+    finally:
+        _run(client.drop_database(name))
+        client.close()

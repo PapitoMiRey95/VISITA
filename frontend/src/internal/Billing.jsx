@@ -1,7 +1,7 @@
 import { useState, useRef, useEffect, useCallback } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { toast } from "sonner";
-import { Receipt, Plus, Search, X, UserRound, Send, CheckCircle2, Ban, FileText, Loader2 } from "lucide-react";
+import { Receipt, Plus, Search, X, UserRound, Send, CheckCircle2, Ban, FileText, Loader2, Info } from "lucide-react";
 import { api, formatErr, openAttachment } from "../lib/api";
 import { useInvalidate } from "./hooks";
 import { useAuth } from "../context/AuthContext";
@@ -48,7 +48,7 @@ function PatientPicker({ selected, onSelect, onClear }) {
         return (
             <div data-testid="inv-patient-selected" className="flex items-start justify-between gap-2 rounded-sm border border-visita-green/40 bg-visita-greenLight px-2.5 py-2">
                 <div className="min-w-0">
-                    <div className="font-semibold text-slate-800 text-sm flex items-center gap-1.5"><UserRound className="w-3.5 h-3.5 text-visita-greenDark" /> {formatPatientName(selected)}</div>
+                    <div className="font-semibold text-slate-800 text-sm flex items-center gap-1.5"><UserRound className="w-3.5 h-3.5 text-visita-greenDark" /> {formatPatientName(selected)} <CoverageBadge type={selected.patient_type} /></div>
                     <span className="text-xs text-slate-500">PIN: {selected.visita_patient_id || "Not assigned"} · DOB: {formatDate(selected.date_of_birth) || "—"}</span>
                 </div>
                 <button type="button" data-testid="inv-patient-clear" onClick={onClear} className="text-slate-400 hover:text-red-600 shrink-0"><X className="w-4 h-4" /></button>
@@ -69,7 +69,7 @@ function PatientPicker({ selected, onSelect, onClear }) {
                     {!loading && results.length === 0 && <div className="px-3 py-3 text-xs text-slate-400">No registered portal patients found. Invoices require a portal account.</div>}
                     {!loading && results.map((r) => (
                         <button key={r.id} type="button" data-testid="inv-patient-result" onClick={() => { onSelect(r); setOpen(false); setQ(""); }} className="w-full text-left px-3 py-2 hover:bg-slate-50">
-                            <div className="font-semibold text-slate-800 text-sm">{formatPatientName(r)}</div>
+                            <div className="font-semibold text-slate-800 text-sm">{formatPatientName(r)} <CoverageBadge type={r.patient_type} /></div>
                             <span className="text-xs text-slate-500">PIN: {r.visita_patient_id || "Not assigned"} · DOB: {formatDate(r.date_of_birth) || "—"}</span>
                         </button>
                     ))}
@@ -110,6 +110,12 @@ function CreateInvoice({ onCreated }) {
         <div className="bg-white border border-slate-200 rounded-lg p-4 space-y-3" data-testid="inv-create">
             <div className="font-bold text-slate-800 flex items-center gap-2"><Plus className="w-4 h-4" /> New Invoice</div>
             <div><Label className="text-xs">Patient</Label><PatientPicker selected={patient} onSelect={setPatient} onClear={() => setPatient(null)} /></div>
+            {patient?.patient_type === "ohip" && (
+                <div className="flex items-start gap-2 bg-sky-50 border border-sky-200 rounded-md p-2.5 text-xs text-sky-800" data-testid="ohip-billing-notice">
+                    <Info className="w-4 h-4 flex-shrink-0 mt-0.5" />
+                    <span>This is an <span className="font-semibold">OHIP patient</span>. Some services are not covered by OHIP and may require payment. Creating this invoice does not change the patient's coverage.</span>
+                </div>
+            )}
             <div className="grid grid-cols-2 gap-2">
                 <div><Label className="text-xs">Service description</Label><Input data-testid="inv-desc" value={desc} onChange={(e) => setDesc(e.target.value)} placeholder="e.g. Medical letter" /></div>
                 <div><Label className="text-xs">Service code (optional)</Label><Input data-testid="inv-code" value={code} onChange={(e) => setCode(e.target.value)} /></div>
@@ -139,6 +145,13 @@ function CreateInvoice({ onCreated }) {
 }
 
 const FILTERS = ["", "DRAFT", "ISSUED", "PAYMENT_SUBMITTED", "PAID", "VOID"];
+
+const COVERAGE = { ohip: ["OHIP", "bg-sky-100 text-sky-700"], private: ["Private", "bg-amber-100 text-amber-700"], uninsured: ["Uninsured", "bg-amber-100 text-amber-700"], tourist: ["Tourist", "bg-violet-100 text-violet-700"] };
+function CoverageBadge({ type }) {
+    if (!type) return null;
+    const [label, cls] = COVERAGE[type] || [type, "bg-slate-100 text-slate-600"];
+    return <span className={`inline-block px-1.5 py-0.5 rounded-sm text-[10px] font-bold ${cls}`}>{label}</span>;
+}
 
 export default function Billing() {
     const invalidate = useInvalidate();
@@ -196,6 +209,7 @@ export default function Billing() {
                                 <div className="font-semibold text-slate-800">{formatCombinedName(inv.patient_name)}</div>
                                 <div className="text-xs text-slate-500">{inv.invoice_number} · {inv.service_description}</div>
                                 <div className="text-xs text-slate-400 mt-0.5">{PAYMENT_MODE[inv.payment_mode] || inv.payment_mode}{inv.issue_date ? ` · Issued ${formatDate(inv.issue_date)}` : ""}</div>
+                                {inv.patient_coverage === "ohip" && <span className="inline-block mt-1 px-1.5 py-0.5 rounded-sm text-[10px] font-bold bg-sky-100 text-sky-700" data-testid={`inv-context-${inv.id}`}>OHIP — UNINSURED SERVICE</span>}
                             </div>
                             <div className="text-right shrink-0">
                                 <div className="font-extrabold text-slate-900">{formatMoney(inv.amount, inv.currency)}</div>

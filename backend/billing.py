@@ -74,13 +74,23 @@ def _proof_meta(doc: dict) -> dict:
     }
 
 
+def _billing_context(coverage) -> str:
+    """Human label separating the patient's coverage from the invoice reason."""
+    if coverage == "ohip":
+        return "OHIP PATIENT — UNINSURED SERVICE"
+    return "PRIVATE / UNINSURED SERVICE"
+
+
 def invoice_internal(doc: dict) -> dict:
     """Full billing view for staff/physician/admin (no storage paths)."""
+    coverage = doc.get("patient_coverage")
     return {
         "id": doc["id"],
         "invoice_number": doc.get("invoice_number"),
         "patient_id": doc.get("patient_id"),
         "patient_name": doc.get("patient_name"),
+        "patient_coverage": coverage,
+        "billing_context": _billing_context(coverage),
         "private_request_id": doc.get("private_request_id"),
         "appointment_id": doc.get("appointment_id"),
         "is_no_show": doc.get("is_no_show", False),
@@ -105,10 +115,13 @@ def invoice_internal(doc: dict) -> dict:
 
 def invoice_public(doc: dict, etransfer_email: str = None) -> dict:
     """Patient-facing view — no internal notes, includes payment instructions."""
+    coverage = doc.get("patient_coverage")
     return {
         "id": doc["id"],
         "invoice_number": doc.get("invoice_number"),
         "private_request_id": doc.get("private_request_id"),
+        "billing_context": _billing_context(coverage),
+        "ohip_uninsured": coverage == "ohip",
         "service_code": doc.get("service_code"),
         "service_description": doc.get("service_description"),
         "amount": doc.get("amount"),

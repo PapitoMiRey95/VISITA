@@ -1711,6 +1711,7 @@ async def _create_invoice(patient: dict, *, service_description, amount, payment
         "patient_name": f"{patient.get('last_name','')}, {patient.get('first_name','')}".strip(", "),
         "private_request_id": private_request_id,
         "appointment_id": appointment_id, "is_no_show": is_no_show,
+        "patient_coverage": patient.get("patient_type"),
         "service_code": (service_code or "").strip() or None, "service_description": desc,
         "amount": amt, "currency": "CAD",
         "status": status, "payment_mode": payment_mode,

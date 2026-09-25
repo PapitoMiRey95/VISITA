@@ -21,6 +21,7 @@ from starlette.middleware.cors import CORSMiddleware
 import auth as authlib
 import availability as avail_mod
 import attachments as attach_mod
+import private_reasons
 import directory as directory_mod
 import email_service
 import identity as identity_mod
@@ -1177,6 +1178,7 @@ async def internal_calendar(start: Optional[str] = None, days: int = 7,
             "label": a.get("confirmed_time"), "patient_name": a.get("patient_name"),
             "status": a.get("status"), "reason": a.get("reason"),
             "appointment_type": a.get("appointment_type"),
+            "is_private": bool(a.get("is_private")),
             "source": (a.get("booked_from") or {}).get("source_type") or "appointment",
         })
     for row in day_rows:
@@ -1296,6 +1298,336 @@ async def calendar_book(body: CalendarBookBody, user: dict = Depends(require_rol
     await notify_svc.appointment_confirmed(db, appt)
     appt.pop("_id", None)
     return appt
+
+
+# ============================ PRIVATE / UNINSURED WORKFLOW (Phase 1) ============================
+PRIVATE_TYPES = {"private", "tourist", "uninsured"}
+PRIVATE_STATUS = {"REQUESTED", "IN_REVIEW", "OFFERED", "AWAITING_PATIENT",
+                  "CONFIRMED", "COMPLETED", "DECLINED", "CANCELLED"}
+DEFAULT_ETRANSFER_EMAIL = "dufferinpatients@gmail.com"
+DEFAULT_PRIVATE_HOURS = "Monday–Wednesday, 5:30 PM–9:00 PM"
+
+
+async def get_private_config():
+    doc = await db.settings.find_one({"id": "private_config"}) or {}
+    return {
+        "etransfer_email": doc.get("etransfer_email") or DEFAULT_ETRANSFER_EMAIL,
+        "private_hours": doc.get("private_hours") or DEFAULT_PRIVATE_HOURS,
+        "private_days": doc.get("private_days") or ["mon", "tue", "wed"],
+        "private_window": doc.get("private_window") or {"start": "17:30", "end": "21:00"},
+    }
+
+
+class PrivateRequestBody(BaseModel):
+    preference_mode: str            # SPECIFIC | OTHER | NO_PREFERENCE
+    preferred_date: Optional[str] = None
+    preferred_time: Optional[str] = None
+    reason_codes: List[str] = []
+    note: Optional[str] = None
+
+
+class PrivateMessageBody(BaseModel):
+    message: str
+
+
+class PrivateOfferBody(BaseModel):
+    date: str
+    time: str
+    label: Optional[str] = None
+    note: Optional[str] = None
+
+
+class PrivateReasonBody(BaseModel):
+    reason: Optional[str] = None
+
+
+def pr_actor(user):
+    return user.get("name") or user.get("email") or "patient"
+
+
+def serialize_private(pr: dict) -> dict:
+    return {k: v for k, v in pr.items() if k != "_id"}
+
+
+async def _notify_physician_new_private(pr: dict):
+    await db.internal_messages.insert_one({
+        "id": str(uuid.uuid4()), "ref_number": await next_ref("TSK"),
+        "sender_name": "System", "sender_user_id": None,
+        "recipient_role": "physician", "patient_id": pr.get("patient_id"),
+        "patient_name": pr.get("patient_name"),
+        "message": f"New PRIVATE / UNINSURED appointment request {pr['ref_number']} submitted.",
+        "status": "pending", "created_at": now_iso(), "updated_at": now_iso(),
+        "source": "private_request", "private_request_id": pr["id"],
+    })
+
+
+async def _private_patient_note(pr, title, body):
+    if pr.get("patient_id"):
+        await notify_svc._in_portal(db, pr["patient_id"], title, body)
+
+
+async def _create_private_appointment(pr: dict, ds: str, time_str: str, label, actor_name: str):
+    avail = await get_availability_doc()
+    time24 = avail_mod._norm_time(time_str)
+    busy = await get_busy_slots()
+    err = avail_mod.private_conflict(avail, ds, time24, busy)
+    if err:
+        raise HTTPException(status_code=409, detail=err)
+    ref = await next_ref("APT")
+    appt = {
+        "id": str(uuid.uuid4()), "ref_number": ref, "patient_id": pr["patient_id"],
+        "directory_id": pr.get("directory_id"), "patient_name": pr.get("patient_name"),
+        "reason": pr.get("reason_label") or "Private consultation",
+        "appointment_type": "PRIVATE", "is_private": True,
+        "duration": avail.get("appointment_duration"), "preferred_options": [],
+        "status": "confirmed", "confirmed_date": ds,
+        "confirmed_time": label or time_str, "confirmed_slot_time": time24,
+        "confirmed_display": f"{fmt_date_display(ds)} · {label or time_str}",
+        "approved_by": actor_name, "approved_at": now_iso(), "booked_by": actor_name,
+        "booked_from": {"source_type": "private_request", "source_id": pr["id"]},
+        "assigned_to": None, "internal_notes": [],
+        "history": [{"status": "confirmed", "at": now_iso(), "by": actor_name, "note": "Private request confirmed"}],
+        "created_at": now_iso(), "updated_at": now_iso(), "completed_at": None,
+    }
+    await db.appointment_requests.insert_one({**appt})
+    await notify_svc.appointment_confirmed(db, appt)
+    appt.pop("_id", None)
+    return appt
+
+
+@api.get("/config/private")
+async def config_private(user: dict = Depends(get_current_user)):
+    return await get_private_config()
+
+
+@api.get("/config/reasons")
+async def config_reasons(user: dict = Depends(get_current_user)):
+    return private_reasons.REASON_TAXONOMY
+
+
+@api.post("/portal/private-requests")
+async def create_private_request(body: PrivateRequestBody, user: dict = Depends(get_current_user)):
+    p = await get_patient_record(user)
+    if (p.get("patient_type") or "ohip") not in PRIVATE_TYPES:
+        raise HTTPException(status_code=403, detail="This request type is only for private/uninsured/visitor patients.")
+    if body.preference_mode not in {"SPECIFIC", "OTHER", "NO_PREFERENCE"}:
+        raise HTTPException(status_code=400, detail="Invalid preference selection.")
+    labels = private_reasons.validate_path(body.reason_codes)
+    if not labels:
+        raise HTTPException(status_code=400, detail="Please choose a complete reason for your visit.")
+    if body.preference_mode in {"SPECIFIC", "OTHER"} and not (body.preferred_date and body.preferred_time):
+        raise HTTPException(status_code=400, detail="Please provide your preferred date and approximate time.")
+    now = now_iso()
+    actor = pr_actor(user)
+    pr = {
+        "id": str(uuid.uuid4()), "ref_number": await next_ref("PRV"),
+        "patient_id": p["id"], "directory_id": p.get("matched_directory_id"),
+        "patient_name": f"{p.get('last_name','')}, {p.get('first_name','')}".strip(", "),
+        "patient_type": p.get("patient_type"),
+        "preference_mode": body.preference_mode,
+        "preferred_date": body.preferred_date, "preferred_time": body.preferred_time,
+        "reason_codes": body.reason_codes, "reason_path": labels,
+        "reason_label": labels[-1], "note": (body.note or "").strip()[:500] or None,
+        "payment_mode": None, "status": "REQUESTED",
+        "offered_date": None, "offered_time": None, "offered_label": None,
+        "confirmed_appointment_id": None,
+        "thread": [], "history": [{"status": "REQUESTED", "at": now, "by": actor}],
+        "created_at": now, "updated_at": now,
+    }
+    await db.private_requests.insert_one({**pr})
+    await _notify_physician_new_private(pr)
+    await audit("private_request_submitted", "private_request", pr["id"], user, new_status="REQUESTED")
+    return serialize_private(pr)
+
+
+@api.get("/portal/private-requests")
+async def my_private_requests(user: dict = Depends(get_current_user)):
+    p = await get_patient_record(user)
+    return await db.private_requests.find({"patient_id": p["id"]}, {"_id": 0}).sort("created_at", -1).to_list(200)
+
+
+async def _get_owned_private(user, rid):
+    p = await get_patient_record(user)
+    pr = await db.private_requests.find_one({"id": rid})
+    if not pr or pr.get("patient_id") != p["id"]:
+        raise HTTPException(status_code=404, detail="Request not found.")
+    return p, pr
+
+
+@api.get("/portal/private-requests/{rid}")
+async def my_private_request(rid: str, user: dict = Depends(get_current_user)):
+    _, pr = await _get_owned_private(user, rid)
+    return serialize_private(pr)
+
+
+@api.post("/portal/private-requests/{rid}/messages")
+async def private_patient_message(rid: str, body: PrivateMessageBody, user: dict = Depends(get_current_user)):
+    _, pr = await _get_owned_private(user, rid)
+    msg = {"from": "patient", "by": pr_actor(user), "message": body.message.strip()[:1000], "at": now_iso()}
+    await db.private_requests.update_one({"id": rid}, {"$push": {"thread": msg}, "$set": {"updated_at": now_iso()}})
+    await db.internal_messages.insert_one({
+        "id": str(uuid.uuid4()), "ref_number": await next_ref("TSK"), "sender_name": pr.get("patient_name"),
+        "recipient_role": "physician", "patient_id": pr.get("patient_id"), "patient_name": pr.get("patient_name"),
+        "message": f"Patient replied on private request {pr['ref_number']}.", "status": "pending",
+        "created_at": now_iso(), "updated_at": now_iso(), "source": "private_request", "private_request_id": rid,
+    })
+    await audit("private_request_message", "private_request", rid, user)
+    return {"ok": True}
+
+
+@api.post("/portal/private-requests/{rid}/accept")
+async def private_patient_accept(rid: str, user: dict = Depends(get_current_user)):
+    _, pr = await _get_owned_private(user, rid)
+    if pr.get("status") not in {"OFFERED", "AWAITING_PATIENT"}:
+        raise HTTPException(status_code=400, detail="There is no offer awaiting your acceptance.")
+    appt = await _create_private_appointment(pr, pr["offered_date"], pr["offered_time"], pr.get("offered_label"), pr_actor(user))
+    await db.private_requests.update_one({"id": rid}, {"$set": {
+        "status": "CONFIRMED", "confirmed_appointment_id": appt["id"], "updated_at": now_iso()},
+        "$push": {"history": {"status": "CONFIRMED", "at": now_iso(), "by": pr_actor(user), "note": "Patient accepted offer"}}})
+    await audit("private_appointment_accepted", "private_request", rid, user, new_status="CONFIRMED")
+    return {"ok": True, "appointment_id": appt["id"]}
+
+
+@api.post("/portal/private-requests/{rid}/decline")
+async def private_patient_decline(rid: str, body: PrivateReasonBody, user: dict = Depends(get_current_user)):
+    _, pr = await _get_owned_private(user, rid)
+    if pr.get("status") not in {"OFFERED", "AWAITING_PATIENT"}:
+        raise HTTPException(status_code=400, detail="Nothing to decline.")
+    await db.private_requests.update_one({"id": rid}, {"$set": {"status": "DECLINED", "updated_at": now_iso()},
+        "$push": {"history": {"status": "DECLINED", "at": now_iso(), "by": pr_actor(user), "note": body.reason or "Patient declined offer"}}})
+    await audit("private_request_declined", "private_request", rid, user, new_status="DECLINED")
+    return {"ok": True}
+
+
+@api.post("/portal/private-requests/{rid}/cancel")
+async def private_patient_cancel(rid: str, body: PrivateReasonBody, user: dict = Depends(get_current_user)):
+    _, pr = await _get_owned_private(user, rid)
+    if pr.get("status") in {"COMPLETED", "CANCELLED"}:
+        raise HTTPException(status_code=400, detail="This request can no longer be cancelled.")
+    await _cancel_private(pr, pr_actor(user), body.reason)
+    await audit("private_request_cancelled", "private_request", rid, user, new_status="CANCELLED")
+    return {"ok": True}
+
+
+async def _cancel_private(pr, actor, reason):
+    appt_id = pr.get("confirmed_appointment_id")
+    if appt_id:
+        appt = await db.appointment_requests.find_one({"id": appt_id})
+        if appt and appt.get("status") in {"confirmed", "rescheduled"}:
+            await db.appointment_requests.update_one({"id": appt_id}, {"$set": {"status": "cancelled", "updated_at": now_iso()}})
+            await notify_svc.cancel_reminders(db, appt_id)
+            fresh = await db.appointment_requests.find_one({"id": appt_id}, {"_id": 0})
+            await notify_svc.appointment_cancelled(db, fresh, reason=reason)
+    await db.private_requests.update_one({"id": pr["id"]}, {"$set": {"status": "CANCELLED", "updated_at": now_iso()},
+        "$push": {"history": {"status": "CANCELLED", "at": now_iso(), "by": actor, "note": reason or "Cancelled"}}})
+
+
+@api.get("/internal/private-requests")
+async def internal_private_requests(status: Optional[str] = None, user: dict = Depends(require_roles(*CLINIC_ROLES))):
+    q = {"status": status} if status else {}
+    return await db.private_requests.find(q, {"_id": 0}).sort("created_at", -1).to_list(500)
+
+
+@api.get("/internal/private-requests/{rid}")
+async def internal_private_request(rid: str, user: dict = Depends(require_roles(*CLINIC_ROLES))):
+    pr = await db.private_requests.find_one({"id": rid}, {"_id": 0})
+    if not pr:
+        raise HTTPException(status_code=404, detail="Request not found.")
+    return pr
+
+
+@api.post("/internal/private-requests/{rid}/review")
+async def internal_private_review(rid: str, user: dict = Depends(require_roles(*CLINIC_ROLES))):
+    pr = await db.private_requests.find_one({"id": rid})
+    if not pr:
+        raise HTTPException(status_code=404, detail="Request not found.")
+    if pr.get("status") == "REQUESTED":
+        await db.private_requests.update_one({"id": rid}, {"$set": {"status": "IN_REVIEW", "updated_at": now_iso()},
+            "$push": {"history": {"status": "IN_REVIEW", "at": now_iso(), "by": user["name"]}}})
+        await audit("private_request_reviewed", "private_request", rid, user, new_status="IN_REVIEW")
+    return {"ok": True}
+
+
+@api.post("/internal/private-requests/{rid}/messages")
+async def internal_private_message(rid: str, body: PrivateMessageBody, user: dict = Depends(require_roles(*CLINIC_ROLES))):
+    pr = await db.private_requests.find_one({"id": rid})
+    if not pr:
+        raise HTTPException(status_code=404, detail="Request not found.")
+    msg = {"from": "clinic", "by": user["name"], "message": body.message.strip()[:1000], "at": now_iso()}
+    await db.private_requests.update_one({"id": rid}, {"$push": {"thread": msg}, "$set": {"updated_at": now_iso()}})
+    await _private_patient_note(pr, "Message from the clinic", f"The clinic sent a message about your private request {pr['ref_number']}.")
+    await audit("private_request_message", "private_request", rid, user)
+    return {"ok": True}
+
+
+@api.post("/internal/private-requests/{rid}/accept-requested")
+async def internal_private_accept_requested(rid: str, user: dict = Depends(require_roles(*CLINIC_ROLES))):
+    pr = await db.private_requests.find_one({"id": rid})
+    if not pr:
+        raise HTTPException(status_code=404, detail="Request not found.")
+    if pr.get("status") in {"CONFIRMED", "COMPLETED", "CANCELLED"}:
+        raise HTTPException(status_code=400, detail="This request is already resolved.")
+    if pr.get("preference_mode") != "SPECIFIC" or not (pr.get("preferred_date") and pr.get("preferred_time")):
+        raise HTTPException(status_code=400, detail="No specific requested time to accept. Offer a date/time instead.")
+    appt = await _create_private_appointment(pr, pr["preferred_date"], pr["preferred_time"], None, user["name"])
+    await db.private_requests.update_one({"id": rid}, {"$set": {
+        "status": "CONFIRMED", "confirmed_appointment_id": appt["id"], "updated_at": now_iso()},
+        "$push": {"history": {"status": "CONFIRMED", "at": now_iso(), "by": user["name"], "note": "Accepted requested time"}}})
+    await _private_patient_note(pr, "Your private appointment is confirmed", f"Your private request {pr['ref_number']} was confirmed for {appt['confirmed_display']}.")
+    await audit("private_appointment_confirmed", "private_request", rid, user, new_status="CONFIRMED")
+    return {"ok": True, "appointment_id": appt["id"]}
+
+
+@api.post("/internal/private-requests/{rid}/offer")
+async def internal_private_offer(rid: str, body: PrivateOfferBody, user: dict = Depends(require_roles(*CLINIC_ROLES))):
+    pr = await db.private_requests.find_one({"id": rid})
+    if not pr:
+        raise HTTPException(status_code=404, detail="Request not found.")
+    if pr.get("status") in {"CONFIRMED", "COMPLETED", "CANCELLED"}:
+        raise HTTPException(status_code=400, detail="This request is already resolved.")
+    avail = await get_availability_doc()
+    busy = await get_busy_slots()
+    err = avail_mod.private_conflict(avail, body.date, avail_mod._norm_time(body.time), busy)
+    if err:
+        raise HTTPException(status_code=409, detail=err)
+    now = now_iso()
+    if body.note:
+        await db.private_requests.update_one({"id": rid}, {"$push": {"thread": {"from": "clinic", "by": user["name"], "message": body.note.strip()[:1000], "at": now}}})
+    await db.private_requests.update_one({"id": rid}, {"$set": {
+        "status": "AWAITING_PATIENT", "offered_date": body.date, "offered_time": body.time,
+        "offered_label": body.label or body.time, "updated_at": now},
+        "$push": {"history": {"status": "AWAITING_PATIENT", "at": now, "by": user["name"],
+                              "note": f"Offered {fmt_date_display(body.date)} · {body.label or body.time}"}}})
+    await _private_patient_note(pr, "A new appointment time was offered", f"The clinic offered {fmt_date_display(body.date)} · {body.label or body.time} for your private request {pr['ref_number']}. Please accept or decline.")
+    await audit("private_appointment_offered", "private_request", rid, user, new_status="AWAITING_PATIENT")
+    return {"ok": True}
+
+
+@api.post("/internal/private-requests/{rid}/decline")
+async def internal_private_decline(rid: str, body: PrivateReasonBody, user: dict = Depends(require_roles(*CLINIC_ROLES))):
+    pr = await db.private_requests.find_one({"id": rid})
+    if not pr:
+        raise HTTPException(status_code=404, detail="Request not found.")
+    if pr.get("status") in {"COMPLETED", "CANCELLED"}:
+        raise HTTPException(status_code=400, detail="This request is already resolved.")
+    await db.private_requests.update_one({"id": rid}, {"$set": {"status": "DECLINED", "updated_at": now_iso()},
+        "$push": {"history": {"status": "DECLINED", "at": now_iso(), "by": user["name"], "note": body.reason or "Declined by clinic"}}})
+    await _private_patient_note(pr, "Private appointment request update", f"Your private request {pr['ref_number']} was declined. Please contact the clinic for details.")
+    await audit("private_request_declined", "private_request", rid, user, new_status="DECLINED")
+    return {"ok": True}
+
+
+@api.post("/internal/private-requests/{rid}/cancel")
+async def internal_private_cancel(rid: str, body: PrivateReasonBody, user: dict = Depends(require_roles(*CLINIC_ROLES))):
+    pr = await db.private_requests.find_one({"id": rid})
+    if not pr:
+        raise HTTPException(status_code=404, detail="Request not found.")
+    if pr.get("status") in {"COMPLETED", "CANCELLED"}:
+        raise HTTPException(status_code=400, detail="This request is already resolved.")
+    await _cancel_private(pr, user["name"], body.reason)
+    await _private_patient_note(pr, "Private appointment cancelled", f"Your private request {pr['ref_number']} was cancelled.")
+    await audit("private_request_cancelled", "private_request", rid, user, new_status="CANCELLED")
+    return {"ok": True}
 
 
 @api.post("/portal/prescriptions")

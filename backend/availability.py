@@ -158,6 +158,39 @@ def calendar_range(avail: dict, start: str, days: int, busy=None):
     return out
 
 
+def private_conflict(avail: dict, ds: str, time_str: str, busy=None) -> str:
+    """Validate a PRIVATE appointment slot. Private appointments bypass the normal
+    OHIP working-hours restriction but MUST still respect closures, vacations,
+    blocked periods, the recurring break, and double-booking. Returns an error
+    string if the slot is not bookable, else "" (empty = OK)."""
+    avail = avail or DEFAULT_AVAILABILITY
+    busy = busy or set()
+    if not ds:
+        return "A date is required."
+    try:
+        date.fromisoformat(ds)
+    except Exception:
+        return "Invalid date."
+    t24 = _norm_time(time_str)
+    if not t24:
+        return "A time is required."
+    if is_past_slot(avail, ds, t24):
+        return "That time is in the past. Please choose an upcoming time."
+    if ds in {c.get("date") for c in avail.get("closures", [])}:
+        return "The clinic is closed on that date."
+    if any(v.get("start", "") <= ds <= v.get("end", "") for v in avail.get("vacations", [])):
+        return "Dr. Aguayo is away on that date."
+    t = _to_min(t24)
+    blocks = [(_to_min(b["start"]), _to_min(b["end"])) for b in avail.get("blocked_periods", []) if b.get("date") == ds]
+    if avail.get("break_start") and avail.get("break_end"):
+        blocks.append((_to_min(avail["break_start"]), _to_min(avail["break_end"])))
+    if any(bs <= t < be for bs, be in blocks):
+        return "That time is blocked."
+    if f"{ds} {t24}" in busy:
+        return "This time is no longer available. Please choose another time."
+    return ""
+
+
 def is_within(avail: dict, ds: str, time_str: str) -> bool:
     avail = avail or DEFAULT_AVAILABILITY
     if not ds:

@@ -139,11 +139,12 @@ export default function Calendar() {
                                     </div>
                                 )}
                                 {d.appointments.map((a) => (
-                                    <div key={a.id} data-testid="cal-appt" className="rounded-sm bg-emerald-50 border border-emerald-200 px-2 py-1 text-xs">
+                                    <div key={a.id} data-testid="cal-appt" className={`rounded-sm border px-2 py-1 text-xs ${a.is_private ? "bg-amber-50 border-amber-300" : "bg-emerald-50 border-emerald-200"}`}>
                                         <div className="flex justify-between items-center gap-1">
                                             <span className="font-semibold text-slate-800 truncate">{a.label || a.time} · {formatCombinedName(a.patient_name)}</span>
                                             <StatusPill status={a.status} />
                                         </div>
+                                        {a.is_private && <div className="text-[10px] font-bold uppercase tracking-wide text-amber-700" data-testid="cal-private-badge">Private / Uninsured</div>}
                                         {a.reason && <div className="text-slate-500 truncate leading-tight">{a.reason}</div>}
                                         <div className="flex items-center justify-between gap-2 mt-0.5">
                                             <ApptTypeEditor appt={a} onSaved={refresh} />

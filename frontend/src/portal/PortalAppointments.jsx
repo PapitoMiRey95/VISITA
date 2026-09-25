@@ -13,6 +13,7 @@ import { Textarea } from "../components/ui/textarea";
 import { Label } from "../components/ui/label";
 import { Calendar } from "../components/ui/calendar";
 import { formatDate } from "../lib/date";
+import PortalPrivateAppointments from "./PortalPrivateAppointments";
 
 const isoOf = (d) =>
     `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
@@ -34,6 +35,7 @@ export default function PortalAppointments() {
     const { t } = useTranslation(["requests", "common"]);
     const nav = useNavigate();
     const p = overview.data?.patient;
+    const isPrivate = ["private", "tourist", "uninsured"].includes(p?.patient_type);
     const verified = p?.verification_status === "verified";
     const hasFee = !!p?.has_outstanding_fee;
     const list = overview.data?.appointments || [];
@@ -142,6 +144,8 @@ export default function PortalAppointments() {
             refetch();
         } catch (err) { toast.error(formatErr(err)); }
     };
+
+    if (isPrivate) return <PortalPrivateAppointments />;
 
     return (
         <div className="space-y-5 animate-fade-in">

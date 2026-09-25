@@ -2,7 +2,7 @@ import { Outlet, NavLink, useNavigate } from "react-router-dom";
 import { useState } from "react";
 import {
     LayoutGrid, Pill, Calendar, Scan, Droplet, MessageSquare, ClipboardCheck,
-    Send, UserCheck, UserPlus, CalendarDays, Settings as SettingsIcon, LogOut, UserSearch, Menu, Building2, Stethoscope,
+    Send, UserCheck, UserPlus, CalendarDays, Settings as SettingsIcon, LogOut, UserSearch, Menu, Building2, Stethoscope, HeartPulse,
 } from "lucide-react";
 import { useAuth } from "../context/AuthContext";
 import { useCounters } from "./hooks";
@@ -28,6 +28,7 @@ export default function InternalLayout() {
               { to: "/internal/messages", icon: MessageSquare, label: "Messages", key: "messages" },
               { to: "/internal/applications", icon: UserPlus, label: "Applications", key: "applications" },
               { to: "/internal/calendar", icon: CalendarDays, label: "Calendar", key: null },
+              { to: "/internal/private-requests", icon: HeartPulse, label: "Private Requests", key: null },
               { to: "/internal/tasks", icon: Send, label: "Intercom", key: "doctor_tasks" },
               { to: "/internal/referrals", icon: ClipboardCheck, label: "Referral Drop-Off", key: null },
               { to: "/internal/providers", icon: Stethoscope, label: "Providers", key: null },
@@ -41,6 +42,7 @@ export default function InternalLayout() {
               { to: "/internal/bloodwork", icon: Droplet, label: "Bloodwork", key: "bloodwork" },
               { to: "/internal/messages", icon: MessageSquare, label: "Messages", key: "messages" },
               { to: "/internal/appointments", icon: Calendar, label: "Appointments", key: "appointments" },
+              { to: "/internal/private-requests", icon: HeartPulse, label: "Private Requests", key: null },
               { to: "/internal/calendar", icon: CalendarDays, label: "Calendar", key: null },
               { to: "/internal/tasks", icon: Send, label: "Intercom", key: "doctor_tasks" },
               { to: "/internal/verifications", icon: UserCheck, label: "Verifications", key: "verifications" },

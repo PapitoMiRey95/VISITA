@@ -39,6 +39,7 @@ import Settings from "./internal/Settings";
 import Patients from "./internal/Patients";
 import Organizations from "./internal/Organizations";
 import Providers from "./internal/Providers";
+import PrivateRequests from "./internal/PrivateRequests";
 
 import PartnerLayout from "./partner/PartnerLayout";
 import PartnerProfile from "./partner/PartnerProfile";
@@ -95,6 +96,7 @@ function App() {
                         <Route path="rx" element={<RxQueue />} />
                         <Route path="pharmacy-intake" element={<PharmacyIntake />} />
                         <Route path="appointments" element={<AppointmentQueue />} />
+                        <Route path="private-requests" element={<PrivateRequests />} />
                         <Route path="calendar" element={<Calendar />} />
                         <Route path="imaging" element={<ImagingQueue />} />
                         <Route path="bloodwork" element={<BloodworkQueue />} />

@@ -13,6 +13,18 @@ import { formatDate } from "../lib/date";
 
 const NOTE_MAX = 300;
 
+// Private/uninsured evenings run 5:30–9:00 PM, any day (Mon–Sun), in fixed
+// 30-minute windows. Value stored = window start (HH:MM).
+const TIME_WINDOWS = [
+    { v: "17:30", label: "5:30 – 6:00 PM" },
+    { v: "18:00", label: "6:00 – 6:30 PM" },
+    { v: "18:30", label: "6:30 – 7:00 PM" },
+    { v: "19:00", label: "7:00 – 7:30 PM" },
+    { v: "19:30", label: "7:30 – 8:00 PM" },
+    { v: "20:00", label: "8:00 – 8:30 PM" },
+    { v: "20:30", label: "8:30 – 9:00 PM" },
+];
+
 // Cascading Reason-for-Visit selector driven by the backend taxonomy.
 function ReasonCascade({ taxonomy, value, onChange }) {
     // value = array of selected codes (root..leaf)
@@ -129,7 +141,7 @@ export default function PortalPrivateAppointments() {
                 <Info className="w-5 h-5 flex-shrink-0" />
                 <div>
                     <p className="font-bold">PRIVATE / UNINSURED</p>
-                    Dr. Aguayo generally sees private / uninsured patients: <span className="font-semibold">{config.private_hours || "Monday–Wednesday, 5:30 PM–9:00 PM"}</span>.
+                    Dr. Aguayo generally sees private / uninsured patients in the evening: <span className="font-semibold">{config.private_hours || "any day, 5:30 PM–9:00 PM"}</span>, in 30-minute windows.
                     You are requesting a time only — the clinic will review your request. If it can be accommodated it may be accepted; otherwise another date and time will be offered to you.
                 </div>
             </div>
@@ -140,8 +152,8 @@ export default function PortalPrivateAppointments() {
                         <Label className="font-semibold text-slate-700">When would you prefer?</Label>
                         <div className="grid sm:grid-cols-3 gap-2 mt-2">
                             {[
-                                { v: "SPECIFIC", title: "Mon–Wed evening", desc: "5:30–9:00 PM preferred" },
-                                { v: "OTHER", title: "Other day / time", desc: "Thu–Sun or another time" },
+                                { v: "SPECIFIC", title: "A specific evening", desc: "Pick a day & 30-min window" },
+                                { v: "OTHER", title: "I'm flexible", desc: "Suggest one, clinic may adjust" },
                                 { v: "NO_PREFERENCE", title: "No preference", desc: "Clinic may choose" },
                             ].map(({ v, title, desc }) => (
                                 <button type="button" key={v} data-testid={`pref-mode-${v}`} onClick={() => setMode(v)}
@@ -160,8 +172,14 @@ export default function PortalPrivateAppointments() {
                                 <Input type="date" data-testid="pref-date" value={date} onChange={(e) => setDate(e.target.value)} />
                             </div>
                             <div>
-                                <Label className="text-xs">Approximate time</Label>
-                                <Input type="time" data-testid="pref-time" value={time} onChange={(e) => setTime(e.target.value)} />
+                                <Label className="text-xs">Preferred time window</Label>
+                                <select data-testid="pref-time" value={time} onChange={(e) => setTime(e.target.value)}
+                                    className="w-full border border-slate-200 rounded-xl h-11 px-2 bg-white text-sm">
+                                    <option value="">Select a 30-min window…</option>
+                                    {TIME_WINDOWS.map(({ v, label }) => (
+                                        <option key={v} value={v}>{label}</option>
+                                    ))}
+                                </select>
                             </div>
                         </div>
                     )}

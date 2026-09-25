@@ -20,6 +20,7 @@ from starlette.middleware.cors import CORSMiddleware
 
 import auth as authlib
 import availability as avail_mod
+import attachments as attach_mod
 import directory as directory_mod
 import email_service
 import identity as identity_mod
@@ -2338,6 +2339,32 @@ async def mark_faxed(item_id: str, body: UpdateBody, user: dict = Depends(requir
     await audit("mark_faxed", "referral", item_id, user, old_status="ready_to_fax", new_status="faxed",
                 meta={"fax_number": doc.get("fax_number")})
     return await db.referrals.find_one({"id": item_id}, {"_id": 0})
+
+
+# ---------------------- Shared internal attachments (imaging / bloodwork / messages) ----------------------
+# PHI-safe: staff/physician/admin only. PDF/JPG/PNG, 15 MB max, served through
+# authenticated routes (no public URLs). Referral PDFs keep their own flow above.
+@api.post("/internal/{entity_type}/{entity_id}/attachments")
+async def upload_attachment(entity_type: str, entity_id: str,
+                            file: UploadFile = File(...),
+                            user: dict = Depends(require_roles(*CLINIC_ROLES))):
+    return await attach_mod.store_attachment(db, file, entity_type, entity_id, user)
+
+
+@api.get("/internal/{entity_type}/{entity_id}/attachments")
+async def get_attachments(entity_type: str, entity_id: str,
+                          user: dict = Depends(require_roles(*CLINIC_ROLES))):
+    return await attach_mod.list_attachments(db, entity_type, entity_id)
+
+
+@api.get("/internal/attachments/{att_id}/download")
+async def download_attachment(att_id: str, user: dict = Depends(require_roles(*CLINIC_ROLES))):
+    return await attach_mod.serve_attachment(db, att_id)
+
+
+@api.delete("/internal/attachments/{att_id}")
+async def delete_attachment(att_id: str, user: dict = Depends(require_roles(*CLINIC_ROLES))):
+    return await attach_mod.soft_delete_attachment(db, att_id, user)
 
 
 # ----------------------------- Patient verification -----------------------------

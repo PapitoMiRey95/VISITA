@@ -45,6 +45,16 @@ export function AuthProvider({ children }) {
         return data.user;
     }, [loadMe]);
 
+    // Emergent Google Sign-In (patients only): exchange the one-time session_id for
+    // our own JWT via the backend, which matches an existing patient by email.
+    const googleLogin = useCallback(async (sessionId) => {
+        const { data } = await api.post("/auth/google", { session_id: sessionId });
+        setToken(data.token);
+        setUser(data.user);
+        await loadMe();
+        return data.user;
+    }, [loadMe]);
+
     const logout = useCallback(() => {
         clearToken();
         setUser(false);
@@ -53,8 +63,8 @@ export function AuthProvider({ children }) {
     }, []);
 
     const value = useMemo(
-        () => ({ user, patient, login, register, logout, refreshMe: loadMe }),
-        [user, patient, login, register, logout, loadMe]
+        () => ({ user, patient, login, register, googleLogin, logout, refreshMe: loadMe }),
+        [user, patient, login, register, googleLogin, logout, loadMe]
     );
 
     return <AuthCtx.Provider value={value}>{children}</AuthCtx.Provider>;

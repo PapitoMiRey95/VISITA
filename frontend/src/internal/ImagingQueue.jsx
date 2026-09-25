@@ -40,6 +40,7 @@ export default function ImagingQueue() {
             statuses={physician ? [] : STATUSES}
             enableBooking
             sourceType="imaging"
+            attachmentEntity="imaging"
             columns={[
                 { header: "Ref", cell: (i) => <span className="text-slate-500">{i.ref_number}</span> },
                 { header: "Patient", cell: (i) => <span className="font-semibold">{formatCombinedName(i.patient_name)}</span> },

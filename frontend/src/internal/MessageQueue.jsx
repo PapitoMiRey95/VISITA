@@ -50,6 +50,7 @@ export default function MessageQueue() {
             replyEnabled
             enableBooking
             sourceType="message"
+            attachmentEntity="message"
             columns={[
                 { header: "Source", cell: (i) => <SourceBadge source={i.source} /> },
                 { header: "Ref", cell: (i) => <span className="text-slate-500">{i.ref_number}</span> },

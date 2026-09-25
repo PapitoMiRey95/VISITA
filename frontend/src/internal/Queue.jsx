@@ -14,6 +14,7 @@ import { Button } from "../components/ui/button";
 import { Input } from "../components/ui/input";
 import { Textarea } from "../components/ui/textarea";
 import BookAppointmentModal from "./BookAppointmentModal";
+import Attachments from "./Attachments";
 
 function reasonFor(item, sourceType) {
     if (sourceType === "prescription") return `Review prescription: ${item.medication_name || ""}`.trim();
@@ -23,7 +24,7 @@ function reasonFor(item, sourceType) {
     return item.reason || "";
 }
 
-export default function Queue({ title, subtitle, endpoint, patchBase, searchPlaceholder, statuses = [], columns, detail, actions, replyEnabled = false, enableBooking = false, enableVoid = false, sourceType, headerAction = null }) {
+export default function Queue({ title, subtitle, endpoint, patchBase, searchPlaceholder, statuses = [], columns, detail, actions, replyEnabled = false, enableBooking = false, enableVoid = false, sourceType, headerAction = null, attachmentEntity = null }) {
     const { user } = useAuth();
     const invalidate = useInvalidate();
     const [q, setQ] = useState("");
@@ -128,6 +129,10 @@ export default function Queue({ title, subtitle, endpoint, patchBase, searchPlac
                             </DialogHeader>
                             <div className="space-y-3 text-sm">
                                 {detail(selected)}
+
+                                {attachmentEntity && (
+                                    <Attachments entityType={attachmentEntity} entityId={selected.id} />
+                                )}
 
                                 {(selected.internal_notes || []).length > 0 && (
                                     <div className="bg-slate-50 border border-slate-200 rounded p-2">

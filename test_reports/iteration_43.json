@@ -1,0 +1,26 @@
+{
+  "summary": "Re-certification of A1+P3 server-side private/uninsured 30-min evening-window guard, plus A2-A9 regression. Wrote /app/backend/tests/test_private_window_guard.py with 12 targeted tests covering all 10 request cases (a-k). All 12 pass. Re-ran /app/backend/tests/test_regression_iter42.py: 22 passed, 2 skipped (pharmacy must_change_password + no unregistered directory-only record in preview — known non-regressions). Preview-only; IZAO/PIN 3040 untouched; no cleanup run. Code path verified: server.py internal_private_offer explicitly checks avail_mod.is_valid_private_time(body.time) → 400 BEFORE conflict check (→409); _create_private_appointment (used by /accept-requested and /portal /accept) also raises 400 for invalid window before running private_conflict (which itself now also returns PRIVATE_TIME_ERROR for defense-in-depth). OHIP /api/availability/slots returns normal 11:30-16:30 daytime slot list — unchanged.",
+  "backend_issues": {"critical": [], "minor": []},
+  "frontend_issues": {"ui_bugs": [], "integration_issues": [], "design_issues": []},
+  "test_report_links": [
+    "/app/backend/tests/test_private_window_guard.py",
+    "/app/backend/tests/test_regression_iter42.py",
+    "/app/test_reports/pytest/iter43_window.xml",
+    "/app/test_reports/pytest/iter43_regression.xml"
+  ],
+  "action_items": [],
+  "critical_code_review_comments": [
+    "availability.private_conflict now correctly enforces PRIVATE_TIME_ERROR window BEFORE past/closure/vacation/blocked/break/double-book checks — good ordering.",
+    "Double-layer defense in server.py (explicit is_valid_private_time() check before private_conflict()) is intentional but redundant now that private_conflict enforces the window. Consider dropping the duplicate is_valid_private_time gate in internal_private_offer / _create_private_appointment to keep single source of truth — cosmetic.",
+    "PRIVATE_TIME_ERROR from private_conflict is currently mapped to 409 in _create_private_appointment fall-through path (private_conflict returns the error string which is raised as 409). Because the explicit 400 gate runs first this never surfaces as 409 today; if the duplicate 400 gate is removed later, remember to differentiate 400 window vs 409 conflict inside the fall-through mapping.",
+    "server.py is 4,137 lines — refactor advice from iter42 still applies."
+  ],
+  "updated_files": ["/app/backend/tests/test_private_window_guard.py"],
+  "success_rate": {"backend": "100% (12/12 new window-guard + 22/22 regression, 2 skipped known preview state)", "frontend": "not tested (backend-only run)"},
+  "test_credentials": "Provided creds all valid; pharmacy 1670dufferin still must_change_password (documented, not a regression).",
+  "seed_data_creation": "Created several TEST private_requests for Linda + a small number of confirmed evening PRIVATE appointments (18:30, 19:30) on future weekday dates ~45-60 days out. No production/IZAO data touched.",
+  "retest_needed": false,
+  "main_agent_can_self_test": true,
+  "context_for_next_testing_agent": "Preview URL https://visita-admin.preview.emergentagent.com. Run both suites: pytest /app/backend/tests/test_private_window_guard.py -v and pytest /app/backend/tests/test_regression_iter42.py -v. Valid private start times = {17:30,18:00,18:30,19:00,19:30,20:00,20:30}. 400 = window violation, 409 = past/closure/vacation/blocked/break/double-book. Endpoints validated: POST /api/internal/private-requests/{rid}/offer and POST /api/internal/private-requests/{rid}/accept-requested. OHIP /api/availability/slots unchanged.",
+  "rca of the issue": "N/A — spec met."
+}

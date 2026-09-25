@@ -350,3 +350,8 @@ Bundle A9 added this session: PATCH /api/internal/patient-directory/{directory_i
 Non-blocking notes (deferred): (P3) add server-side 17:30–21:00 evening-window validation to availability.private_conflict()/offer (currently UI-picker-only); (refactor) split server.py (4,133 lines) into routers. Both out of scope for this deploy per user instruction.
 Protected: IZAO, Aracely PIN 3040 — KEEP/EXCLUDED. FORMER_CLOSED cleanup remains BLOCKED (dormant, CONFIRM_CLEANUP not set).
 Status: A1–A9 READY FOR CODE-ONLY PRODUCTION DEPLOYMENT — awaiting user's FINAL DEPLOY GO.
+
+## P3 server-side private time-window guard (2026-06-25, Preview only, NOT deployed)
+Added `availability.private_slots()` / `is_valid_private_time()` / `PRIVATE_TIME_ERROR` (single source: starts 17:30,18:00,18:30,19:00,19:30,20:00,20:30 = 5:30–9:00 PM 30-min windows). `private_conflict()` now returns PRIVATE_TIME_ERROR for out-of-window times (still enforces past/closure/vacation/blocked/break/double-book). Endpoints `internal_private_offer` and `_create_private_appointment` (used by accept-requested + portal accept) raise HTTP 400 for invalid window BEFORE the 409 conflict check. Mon–Sun still allowed. OHIP scheduling/availability untouched. Frontend unchanged (pickers already emit valid values).
+testing_agent iteration_43: backend 100% (12/12 window-guard covering all 10 cases a–k + 22/22 regression; 2 skipped = known preview states: pharmacy must_change_password, no directory-only record present at that moment). retest_needed=false, no critical/minor/action items.
+Status: A1–A9 + P3 server-side guard READY FOR CODE-ONLY PRODUCTION DEPLOYMENT — awaiting user FINAL DEPLOY GO. FORMER_CLOSED cleanup still BLOCKED/dormant; IZAO/PIN 3040 KEEP/EXCLUDED.

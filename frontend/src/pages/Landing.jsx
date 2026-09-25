@@ -35,12 +35,12 @@ export default function Landing() {
 
             <div className="relative z-10 min-h-screen flex flex-col lg:flex-row lg:items-center lg:justify-between px-6 py-12 lg:px-16 gap-10">
                 {/* Branding */}
-                <div className="max-w-xl text-center lg:text-left">
+                <div className="max-w-xl text-center">
                     <Logo variant="dark" iconClass="h-20 w-20 lg:h-28 lg:w-28 drop-shadow-[0_0_30px_rgba(23,179,196,0.35)]"
-                        textClass="text-4xl sm:text-5xl lg:text-6xl" className="justify-center lg:justify-start" />
+                        textClass="text-4xl sm:text-5xl lg:text-6xl" className="justify-center" />
                     <p className="mt-4 text-lg text-slate-200/90 font-semibold tracking-wide">{t("common:practice")}</p>
-                    <p className="mt-2 max-w-md mx-auto lg:mx-0 text-sm text-slate-400 leading-relaxed">{t("common:tagline")}</p>
-                    <div className="mt-6 h-px w-40 mx-auto lg:mx-0 bg-gradient-to-r from-cyan-400/50 to-transparent" />
+                    <p className="mt-2 max-w-md mx-auto text-sm text-slate-400 leading-relaxed">{t("common:tagline")}</p>
+                    <div className="mt-6 h-px w-40 mx-auto bg-gradient-to-r from-cyan-400/50 to-transparent" />
                 </div>
 
                 {/* Access groups */}

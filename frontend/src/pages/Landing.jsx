@@ -5,6 +5,7 @@ import { Button } from "../components/ui/button";
 import { Logo } from "../components/Logo";
 
 const BG = "https://customer-assets-4nw71qhi.emergentagent.net/job_visita-admin/artifacts/5zizgajz_ChatGPT%20Image%20Sep%2024%2C%202026%2C%2003_43_19%20PM.png";
+const BG_MOBILE = "https://customer-assets-4nw71qhi.emergentagent.net/job_visita-admin/artifacts/8ttghv0k_ChatGPT%20Image%20Sep%2025%2C%202026%2C%2006_17_18%20PM.png";
 
 export default function Landing() {
     const nav = useNavigate();
@@ -12,7 +13,8 @@ export default function Landing() {
 
     return (
         <div className="relative min-h-screen w-full overflow-hidden font-plex">
-            <div className="absolute inset-0 bg-cover bg-center" style={{ backgroundImage: `url("${BG}")` }} aria-hidden />
+            <div className="absolute inset-0 bg-cover bg-center lg:hidden" style={{ backgroundImage: `url("${BG_MOBILE}")` }} aria-hidden />
+            <div className="absolute inset-0 bg-cover bg-center hidden lg:block" style={{ backgroundImage: `url("${BG}")` }} aria-hidden />
             <div className="absolute inset-0 bg-gradient-to-r from-[#060b16]/96 via-[#0a1524]/86 to-[#0a1524]/60" aria-hidden />
             <div className="absolute inset-0 visita-scanlines" aria-hidden />
 

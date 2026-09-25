@@ -14,6 +14,18 @@ import { Input } from "../components/ui/input";
 import { Label } from "../components/ui/label";
 import { Select, SelectTrigger, SelectValue, SelectContent, SelectItem } from "../components/ui/select";
 
+// Private/uninsured evenings run 5:30–9:00 PM in fixed 30-minute windows.
+// Value stored = window start (HH:MM), matching the patient-facing picker.
+const TIME_WINDOWS = [
+    { v: "17:30", label: "5:30 – 6:00 PM" },
+    { v: "18:00", label: "6:00 – 6:30 PM" },
+    { v: "18:30", label: "6:30 – 7:00 PM" },
+    { v: "19:00", label: "7:00 – 7:30 PM" },
+    { v: "19:30", label: "7:30 – 8:00 PM" },
+    { v: "20:00", label: "8:00 – 8:30 PM" },
+    { v: "20:30", label: "8:30 – 9:00 PM" },
+];
+
 function BillingPanel({ pr, onSetMode, onInvAct, canVerify, onViewProof }) {
     const [mode, setMode] = useState(pr.payment_mode || "");
     const [amount, setAmount] = useState("");
@@ -174,7 +186,13 @@ export default function PrivateRequests() {
                                         <div className="text-xs font-semibold text-slate-600 mb-1.5 flex items-center gap-1"><CalendarClock className="w-3.5 h-3.5" /> Offer a different date / time</div>
                                         <div className="grid grid-cols-2 gap-2">
                                             <Input type="date" data-testid="pr-offer-date" value={offer.date} onChange={(e) => setOffer({ ...offer, date: e.target.value })} />
-                                            <Input type="time" data-testid="pr-offer-time" value={offer.time} onChange={(e) => setOffer({ ...offer, time: e.target.value })} />
+                                            <select data-testid="pr-offer-time" value={offer.time} onChange={(e) => setOffer({ ...offer, time: e.target.value })}
+                                                className="w-full border border-slate-200 rounded-md h-9 px-2 bg-white text-sm">
+                                                <option value="">Time window…</option>
+                                                {TIME_WINDOWS.map(({ v, label }) => (
+                                                    <option key={v} value={v}>{label}</option>
+                                                ))}
+                                            </select>
                                         </div>
                                         <Input className="mt-2" placeholder="Optional note to patient" data-testid="pr-offer-note" value={offer.note} onChange={(e) => setOffer({ ...offer, note: e.target.value })} />
                                         <Button size="sm" className="mt-2 bg-visita-green hover:bg-visita-greenDark text-white" data-testid="pr-offer-submit"

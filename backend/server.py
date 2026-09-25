@@ -142,6 +142,10 @@ class LoginBody(BaseModel):
     password: str
 
 
+class GoogleAuthBody(BaseModel):
+    session_id: str
+
+
 class PartnerRegisterBody(BaseModel):
     organization_name: str
     organization_type: str
@@ -540,7 +544,59 @@ async def login(body: LoginBody):
     return {"token": token, "user": serialize_user(user)}
 
 
-# ----------------------------- Partner (Organization) -----------------------------
+# Emergent-managed Google Sign-In — PATIENTS ONLY. Alternative auth method that
+# reuses the existing JWT session; it never bypasses registration, identity
+# matching, verification, or account-status rules. No account is ever created
+# here: an unmatched Google email is rejected.
+EMERGENT_SESSION_DATA_URL = "https://demobackend.emergentagent.com/auth/v1/env/oauth/session-data"
+NO_ACCOUNT_MSG = ("No VIsita EMR account was found for this email. "
+                  "Please register or use your existing sign-in.")
+
+
+@api.post("/auth/google")
+async def google_login(body: GoogleAuthBody):
+    import httpx
+    try:
+        async with httpx.AsyncClient(timeout=20) as client:
+            resp = await client.get(EMERGENT_SESSION_DATA_URL,
+                                    headers={"X-Session-ID": body.session_id})
+        resp.raise_for_status()
+        profile = resp.json()
+    except Exception:
+        raise HTTPException(status_code=401, detail="Google sign-in could not be verified. Please try again.")
+
+    google_sub = (profile.get("id") or "").strip()
+    email = (profile.get("email") or "").strip().lower()
+    if not email or not google_sub:
+        raise HTTPException(status_code=401, detail="Google sign-in did not return a valid account.")
+
+    # PATIENTS ONLY, exact normalized-email match. Never infer from name/DOB/profile.
+    user = await db.users.find_one({"email": email, "role": "patient"})
+    if not user:
+        await audit("google_login_no_account", "user", email,
+                    {"id": None, "name": profile.get("name"), "role": "patient"},
+                    meta={"email": email})
+        raise HTTPException(status_code=404, detail=NO_ACCOUNT_MSG)
+
+    # Existing account restrictions still apply (suspended/disabled), same as password login.
+    if not user.get("active", True):
+        raise HTTPException(status_code=403, detail="This account has been disabled. Contact the clinic.")
+
+    # Link the Google identity (sub) to this existing user on first login; on later
+    # logins the stored sub must match — email alone is not the permanent identity.
+    existing_sub = user.get("google_sub")
+    if not existing_sub:
+        await db.users.update_one({"_id": user["_id"]}, {"$set": {"google_sub": google_sub}})
+        await audit("google_account_linked", "user", str(user["_id"]),
+                    {"id": str(user["_id"]), "name": user.get("name"), "role": "patient"})
+    elif existing_sub != google_sub:
+        raise HTTPException(status_code=403,
+                            detail="This email is linked to a different Google account. Please use your usual sign-in.")
+
+    await audit("google_login_success", "user", str(user["_id"]),
+                {"id": str(user["_id"]), "name": user.get("name"), "role": "patient"})
+    token = authlib.create_access_token(str(user["_id"]), user.get("email") or user.get("username"), user["role"])
+    return {"token": token, "user": serialize_user(user)}
 @api.post("/partner/register")
 async def partner_register(body: PartnerRegisterBody):
     if body.password != body.confirm_password:

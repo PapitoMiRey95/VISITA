@@ -1,0 +1,28 @@
+{
+  "summary": "Independently verified Phase 2 Private/Uninsured Billing (invoices + Interac e-Transfer payment proof) end-to-end on the preview URL for both backend and frontend. Wrote 8 pytest cases (all passing) covering invoice lifecycle (DRAFT->ISSUED->PAYMENT_SUBMITTED->PAID), void preservation, prepayment auto-invoice, and full security matrix (cross-patient 404, pharmacy 403, unauthenticated 401/403, physician cannot verify/void, proof download requires auth). Executed Playwright UI coverage of /internal/billing (staff create draft, issue, verify, void), /portal/invoices (Linda sees ISSUED, e-transfer email dufferinpatients@gmail.com visible, JPG proof upload turns status into PAYMENT SUBMITTED), and PrivateRequests billing panel (setting mode = Prepayment Required with amount auto-creates an ISSUED invoice and request shows Prepayment Required + Payment Pending pill).",
+  "backend_issues": {"critical": [], "minor": []},
+  "frontend_issues": {"ui_bugs": [], "integration_issues": [], "design_issues": []},
+  "test_report_links": [
+    "/app/backend/tests/test_billing_phase2.py",
+    "/app/test_reports/pytest/billing_phase2.xml"
+  ],
+  "action_items": [],
+  "critical_code_review_comments": [
+    "billing.py serializers correctly strip storage_path and _id from proof metadata (invoice_internal/invoice_public) – no PII/PHI leak.",
+    "Payment proof download routes are both authenticated (internal uses BILLING_MANAGE_ROLES; portal uses _get_owned_invoice ownership guard) – no public URL.",
+    "server.py _create_invoice + set_private_payment_mode: PREPAYMENT_REQUIRED path auto-issues invoice and pushes _sync_request_billing → payment_status='PENDING'. Verified in UI (Payment Pending pill) and backend test.",
+    "BILLING_MANAGE_ROLES includes physician but BILLING_VERIFY_ROLES excludes physician – enforced correctly (physician gets 403 on /verify-payment and /void).",
+    "GET /portal/invoices filters status $ne DRAFT – DRAFT invoices confirmed hidden from patient list.",
+    "Billing.jsx CreateInvoice form only offers INVOICE_AFTER_SERVICE and PREPAYMENT_REQUIRED (as spec requires); NO_PAYMENT_REQUIRED intentionally omitted for direct invoice creation.",
+    "server.py is 3973 lines – exceeds the 700-line file-size guideline. Recommend splitting billing routes into a dedicated router module (billing was partially factored to billing.py, but the FastAPI routes still live in server.py).",
+    "Minor: /portal/invoices/{id}/proof/{att} returns 404 when a non-owning patient hits it (via _get_owned_invoice's 404) – matches spec's 'cross-patient 404', but for the proof endpoint the same 404 rather than 403 is fine and consistent."
+  ],
+  "updated_files": ["/app/backend/tests/test_billing_phase2.py"],
+  "success_rate": {"backend": "100% (8/8 pytest)", "frontend": "100% (all 4 flows: staff invoice lifecycle, patient portal + proof upload, staff verify, void preservation, prepayment auto-invoice on PrivateRequests)"},
+  "test_credentials": "Admin/Staff/Linda/Maria/Pharmacy as provided; physician PAGUAYO/Newman2013_! also worked for 403 checks.",
+  "seed_data_creation": "Created several TEST_ prefixed invoices during backend & UI runs (letters at $42.50 / $77.50 / $88.25, void-me $10 / $5, prepay consult $55 / $33 linked to Linda's PRV-000004). All remain in DB for audit as designed (void preservation).",
+  "retest_needed": false,
+  "main_agent_can_self_test": true,
+  "context_for_next_testing_agent": "Preview URL https://visita-admin.preview.emergentagent.com. Login testids on /signin: login-email, login-password, login-submit. Internal Billing at /internal/billing (staff/admin/physician). Patient portal at /portal/invoices. Payment modes offered in the Billing create form are INVOICE_AFTER_SERVICE and PREPAYMENT_REQUIRED only (NO_PAYMENT_REQUIRED is a request-level mode, not a directly-billable invoice mode). Physician role can create/issue invoices but not verify or void (BILLING_VERIFY_ROLES = staff, admin). Cross-patient invoice access returns 404. Pharmacy and Partner roles get 403 on billing endpoints. Proof download requires auth (401 without token; 404 for non-owner on portal route). e-Transfer email surfaced to patient: dufferinpatients@gmail.com. Backend suite: pytest /app/backend/tests/test_billing_phase2.py (needs REACT_APP_BACKEND_URL env). Linda's password (Patient2026!) worked without forced change; pharmacy 1670dufferin is stuck on /change-password (must_change_password flag) so pharmacy UI access to /internal/billing had to be validated indirectly via backend 403 rather than UI navigation – this is not a bug, just an environmental note.",
+  "rca of the issue": "N/A – no issues found. All Phase 2 billing acceptance criteria pass."
+}

@@ -20,7 +20,7 @@ export default function InternalLayout() {
 
     const items = isPhysician
         ? [
-              { to: "/internal", icon: ClipboardList, label: "Hub", end: true, key: null },
+              { to: "/internal", icon: ClipboardList, label: "Hub", end: true, key: null, iconClass: "text-pink-600" },
               { to: "/internal/patients", icon: UserSearch, label: "Patients", key: null },
               { to: "/internal/rx", icon: Pill, label: "Rx", key: "rx" },
               { to: "/internal/imaging", icon: Scan, label: "Imaging", key: "imaging" },
@@ -36,7 +36,7 @@ export default function InternalLayout() {
               { to: "/internal/providers", icon: Stethoscope, label: "Providers", key: null },
           ]
         : [
-              { to: "/internal", icon: ClipboardList, label: "Hub", end: true, key: null },
+              { to: "/internal", icon: ClipboardList, label: "Hub", end: true, key: null, iconClass: "text-pink-600" },
               { to: "/internal/patients", icon: UserSearch, label: "Patients", key: null },
               { to: "/internal/rx", icon: Pill, label: "Rx", key: "rx" },
               { to: "/internal/referrals", icon: ClipboardCheck, label: "Referrals", key: "referrals" },
@@ -69,7 +69,7 @@ export default function InternalLayout() {
             }
         >
             <span className="flex items-center gap-2">
-                <it.icon className="w-4 h-4" /> {it.label}
+                <it.icon className={`w-4 h-4 ${it.iconClass || ""}`} /> {it.label}
             </span>
             {it.key && c[it.key] > 0 && (
                 <span className="bg-red-600 text-white text-xs font-bold rounded-full min-w-[20px] h-5 px-1 flex items-center justify-center">

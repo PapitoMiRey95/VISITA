@@ -1,7 +1,7 @@
 import { useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { toast } from "sonner";
-import { Search, CalendarClock } from "lucide-react";
+import { Search, CalendarClock, UserX, CalendarClock as ReschedIcon } from "lucide-react";
 import { api, formatErr } from "../lib/api";
 import { formatLastFirst, formatCombinedName } from "../lib/name";
 import { useInvalidate } from "./hooks";
@@ -15,11 +15,12 @@ import { Label } from "../components/ui/label";
 import BookAppointmentModal from "./BookAppointmentModal";
 import { ApptTypeBadge } from "../components/ApptTypeBadge";
 import { ApptTypeEditor } from "../components/ApptTypeEditor";
-import { formatDate } from "../lib/date";
+import { formatDate, formatDateTime } from "../lib/date";
 
 export default function AppointmentQueue() {
     const invalidate = useInvalidate();
     const [q, setQ] = useState("");
+    const [view, setView] = useState("queue"); // queue | no_show | reschedule
     const [status, setStatus] = useState("requested");
     const [sel, setSel] = useState(null);
     const [cdate, setCdate] = useState("");
@@ -45,6 +46,12 @@ export default function AppointmentQueue() {
         enabled: offerMode,
     });
     const slots = slotsQ.data?.slots || [];
+
+    const followupsQ = useQuery({
+        queryKey: ["queue", "/internal/appointments/followups"],
+        queryFn: async () => (await api.get("/internal/appointments/followups")).data,
+        enabled: view !== "queue",
+    });
 
     const open = (i) => {
         setSel(i); setOfferMode(false); setChosen([]); setStaffNote("");
@@ -116,6 +123,21 @@ export default function AppointmentQueue() {
             <h1 className="text-2xl font-bold text-slate-900 tracking-tight">Appointment Requests</h1>
             <p className="text-sm text-slate-500 mb-3">Approve a requested time or offer available alternatives.</p>
 
+            <div className="flex gap-1 mb-3 border-b border-slate-200">
+                {[["queue", "Queue"], ["no_show", "No-Shows"], ["reschedule", "Reschedule Requested"]].map(([v, l]) => (
+                    <button key={v} data-testid={`appt-tab-${v}`} onClick={() => setView(v)}
+                        className={`px-3 py-2 text-sm font-semibold -mb-px border-b-2 ${view === v ? "border-visita-green text-visita-greenDark" : "border-transparent text-slate-500 hover:text-slate-700"}`}>
+                        {v === "no_show" && <UserX className="w-4 h-4 inline mr-1" />}
+                        {v === "reschedule" && <ReschedIcon className="w-4 h-4 inline mr-1" />}
+                        {l}
+                    </button>
+                ))}
+            </div>
+
+            {view === "no_show" && <FollowupTable testid="no-show-table" rows={followupsQ.data?.no_shows || []} emptyText="No patients flagged as no-show." />}
+            {view === "reschedule" && <FollowupTable testid="reschedule-table" rows={followupsQ.data?.reschedules || []} showType emptyText="No reschedule requests." />}
+
+            {view === "queue" && (<>
             <div className="flex flex-wrap items-center gap-2 mb-3">
                 <div className="relative">
                     <Search className="w-4 h-4 text-slate-400 absolute left-2 top-2.5" />
@@ -154,6 +176,7 @@ export default function AppointmentQueue() {
                     </tbody>
                 </table>
             </div>
+            </>)}
 
             <Dialog open={!!sel} onOpenChange={(o) => !o && close()}>
                 <DialogContent className="max-w-lg font-plex max-h-[90vh] overflow-y-auto">
@@ -306,6 +329,42 @@ export default function AppointmentQueue() {
                     source={sel}
                 />
             )}
+        </div>
+    );
+}
+
+function FollowupTable({ rows, testid, showType = false, emptyText }) {
+    return (
+        <div className="bg-white border border-slate-300 rounded-sm overflow-hidden" data-testid={testid}>
+            <table className="w-full text-sm">
+                <thead>
+                    <tr className="bg-slate-100 text-left text-xs uppercase tracking-wider text-slate-600">
+                        <th className="px-3 py-2 font-medium">Patient</th>
+                        <th className="px-3 py-2 font-medium">Appointment</th>
+                        <th className="px-3 py-2 font-medium">Reason</th>
+                        {showType && <th className="px-3 py-2 font-medium">Type</th>}
+                        <th className="px-3 py-2 font-medium">By</th>
+                        <th className="px-3 py-2 font-medium">When</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {rows.length === 0 && <tr><td colSpan={showType ? 6 : 5} className="px-3 py-8 text-center text-slate-400">{emptyText}</td></tr>}
+                    {rows.map((r) => (
+                        <tr key={r.id} data-testid="followup-row" className="border-b border-slate-200 even:bg-slate-50/60">
+                            <td className="px-3 py-2 font-semibold">{formatCombinedName(r.patient_name)}<div className="text-xs font-normal text-slate-400">{r.ref_number}</div></td>
+                            <td className="px-3 py-2">{r.appt_display}</td>
+                            <td className="px-3 py-2">{r.reason || "—"}</td>
+                            {showType && <td className="px-3 py-2">
+                                <span className={`inline-block px-2 py-0.5 rounded-sm text-xs font-semibold ${r.resched_type === "offered" ? "bg-amber-100 text-amber-700" : "bg-sky-100 text-sky-700"}`}>
+                                    {r.resched_type === "offered" ? "Awaiting patient" : "Staff rescheduled"}
+                                </span>
+                            </td>}
+                            <td className="px-3 py-2 text-slate-600">{r.actor || "—"}</td>
+                            <td className="px-3 py-2 text-slate-500">{r.actor_at ? formatDateTime(r.actor_at) : "—"}</td>
+                        </tr>
+                    ))}
+                </tbody>
+            </table>
         </div>
     );
 }

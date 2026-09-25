@@ -2577,6 +2577,55 @@ async def appt_queue(q: Optional[str] = None, status: Optional[str] = None, user
     return await db.appointment_requests.find(query, {"_id": 0}).sort("created_at", -1).to_list(500)
 
 
+def _appt_display(a: dict) -> str:
+    if a.get("confirmed_display"):
+        return a["confirmed_display"]
+    if a.get("confirmed_date"):
+        return f"{fmt_date_display(a['confirmed_date'])} · {a.get('confirmed_time') or a.get('confirmed_slot_time') or ''}".strip(" ·")
+    o = (a.get("preferred_options") or [{}])[0]
+    if o.get("date"):
+        return f"{fmt_date_display(o['date'])} · {o.get('label') or o.get('time') or ''}".strip(" ·")
+    return "—"
+
+
+def _last_history_at(a: dict, status: str):
+    for h in reversed(a.get("history") or []):
+        if h.get("status") == status:
+            return h.get("by"), h.get("at")
+    return None, None
+
+
+@api.get("/internal/appointments/followups")
+async def appt_followups(user: dict = Depends(require_roles("staff", "admin"))):
+    """Follow-up lists: patients flagged no-show, and patients the clinic asked
+    to reschedule (offered alternate times, or actively rescheduled by staff)."""
+    ns = await db.appointment_requests.find({"status": "no_show"}, {"_id": 0}).sort("completed_at", -1).to_list(500)
+    no_shows = [{
+        "id": a["id"], "ref_number": a.get("ref_number"), "patient_name": a.get("patient_name"),
+        "patient_id": a.get("patient_id"), "reason": a.get("reason"),
+        "appt_display": _appt_display(a), "actor": a.get("marked_by"), "actor_at": a.get("completed_at"),
+    } for a in ns]
+
+    rs = await db.appointment_requests.find({"$or": [
+        {"status": "alternatives_offered"},
+        {"rescheduled_by": {"$exists": True, "$nin": [None, "patient"]}},
+    ]}, {"_id": 0}).sort("updated_at", -1).to_list(500)
+    reschedules = []
+    for a in rs:
+        if a.get("status") == "alternatives_offered":
+            by, at = _last_history_at(a, "alternatives_offered")
+            rtype, actor, actor_at = "offered", by, (at or a.get("updated_at"))
+        else:
+            rtype, actor, actor_at = "staff", a.get("rescheduled_by"), a.get("rescheduled_at")
+        reschedules.append({
+            "id": a["id"], "ref_number": a.get("ref_number"), "patient_name": a.get("patient_name"),
+            "patient_id": a.get("patient_id"), "reason": a.get("reason"),
+            "appt_display": _appt_display(a), "status": a.get("status"),
+            "resched_type": rtype, "actor": actor, "actor_at": actor_at,
+        })
+    return {"no_shows": no_shows, "reschedules": reschedules}
+
+
 @api.patch("/internal/appointments/{item_id}")
 async def appt_update(item_id: str, body: UpdateBody, user: dict = Depends(require_roles(*CLINIC_ROLES))):
     doc = await db.appointment_requests.find_one({"id": item_id})

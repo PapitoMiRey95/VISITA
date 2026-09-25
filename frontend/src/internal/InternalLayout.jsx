@@ -32,6 +32,7 @@ export default function InternalLayout() {
               { to: "/internal/billing", icon: Receipt, label: "Billing", key: null },
               { to: "/internal/tasks", icon: Send, label: "Intercom", key: "doctor_tasks" },
               { to: "/internal/referrals", icon: ClipboardCheck, label: "Referral Drop-Off", key: null },
+              { to: "/internal/verifications", icon: UserCheck, label: "Verifications", key: "verifications" },
               { to: "/internal/providers", icon: Stethoscope, label: "Providers", key: null },
           ]
         : [

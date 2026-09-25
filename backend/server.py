@@ -3022,7 +3022,24 @@ async def verifications(user: dict = Depends(require_roles(*CLINIC_ROLES))):
     return out
 
 
-@api.get("/internal/directory")
+@api.get("/internal/verifications/history")
+async def verifications_history(user: dict = Depends(require_roles(*CLINIC_ROLES))):
+    """Recently verified/rejected patient registrations — read-only history."""
+    docs = await db.patients.find(
+        {"verification_status": {"$in": ["verified", "rejected"]}, "verified_at": {"$exists": True, "$ne": None}}
+    ).sort("verified_at", -1).limit(100).to_list(100)
+    return [{
+        "id": p["id"], "first_name": p["first_name"], "last_name": p["last_name"],
+        "patient_type": p["patient_type"],
+        "verification_status": p.get("verification_status"),
+        "visita_patient_id": p.get("visita_patient_id"),
+        "linked": bool(p.get("matched_directory_id")),
+        "verified_by": p.get("verified_by"),
+        "verified_at": p.get("verified_at"),
+    } for p in docs]
+
+
+
 async def search_directory(q: Optional[str] = None, status: Optional[str] = None,
                            user: dict = Depends(require_roles(*CLINIC_ROLES))):
     query = {}

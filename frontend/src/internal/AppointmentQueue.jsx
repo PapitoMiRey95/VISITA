@@ -52,6 +52,27 @@ export default function AppointmentQueue() {
         queryFn: async () => (await api.get("/internal/appointments/followups")).data,
         enabled: view !== "queue",
     });
+    const [feeBusy, setFeeBusy] = useState(null);
+
+    const issueNoShowFee = async (row) => {
+        if (!window.confirm(`Issue a $40 no-show fee invoice to ${formatCombinedName(row.patient_name)}?`)) return;
+        setFeeBusy(row.id);
+        try {
+            await api.post(`/internal/appointments/${row.id}/no-show-invoice`);
+            toast.success("$40 no-show invoice issued to the patient.");
+            invalidate(); followupsQ.refetch();
+        } catch (e) { toast.error(formatErr(e)); } finally { setFeeBusy(null); }
+    };
+    const removeNoShowFee = async (row) => {
+        if (!row.no_show_invoice) return;
+        const reason = window.prompt("Remove the no-show charge — reason (e.g. doctor waived):", "Doctor waived — do not charge") || undefined;
+        setFeeBusy(row.id);
+        try {
+            await api.post(`/internal/invoices/${row.no_show_invoice.id}/void`, { reason });
+            toast.success("No-show charge removed (invoice voided).");
+            invalidate(); followupsQ.refetch();
+        } catch (e) { toast.error(formatErr(e)); } finally { setFeeBusy(null); }
+    };
 
     const open = (i) => {
         setSel(i); setOfferMode(false); setChosen([]); setStaffNote("");
@@ -134,7 +155,8 @@ export default function AppointmentQueue() {
                 ))}
             </div>
 
-            {view === "no_show" && <FollowupTable testid="no-show-table" rows={followupsQ.data?.no_shows || []} emptyText="No patients flagged as no-show." />}
+            {view === "no_show" && <FollowupTable testid="no-show-table" rows={followupsQ.data?.no_shows || []} emptyText="No patients flagged as no-show."
+                onIssueFee={issueNoShowFee} onRemoveFee={removeNoShowFee} feeBusy={feeBusy} />}
             {view === "reschedule" && <FollowupTable testid="reschedule-table" rows={followupsQ.data?.reschedules || []} showType emptyText="No reschedule requests." />}
 
             {view === "queue" && (<>
@@ -333,7 +355,9 @@ export default function AppointmentQueue() {
     );
 }
 
-function FollowupTable({ rows, testid, showType = false, emptyText }) {
+function FollowupTable({ rows, testid, showType = false, emptyText, onIssueFee, onRemoveFee, feeBusy }) {
+    const showFee = !!onIssueFee;
+    const cols = 4 + (showType ? 1 : 0) + (showFee ? 1 : 0);
     return (
         <div className="bg-white border border-slate-300 rounded-sm overflow-hidden" data-testid={testid}>
             <table className="w-full text-sm">
@@ -345,10 +369,11 @@ function FollowupTable({ rows, testid, showType = false, emptyText }) {
                         {showType && <th className="px-3 py-2 font-medium">Type</th>}
                         <th className="px-3 py-2 font-medium">By</th>
                         <th className="px-3 py-2 font-medium">When</th>
+                        {showFee && <th className="px-3 py-2 font-medium">No-Show Fee ($40)</th>}
                     </tr>
                 </thead>
                 <tbody>
-                    {rows.length === 0 && <tr><td colSpan={showType ? 6 : 5} className="px-3 py-8 text-center text-slate-400">{emptyText}</td></tr>}
+                    {rows.length === 0 && <tr><td colSpan={cols} className="px-3 py-8 text-center text-slate-400">{emptyText}</td></tr>}
                     {rows.map((r) => (
                         <tr key={r.id} data-testid="followup-row" className="border-b border-slate-200 even:bg-slate-50/60">
                             <td className="px-3 py-2 font-semibold">{formatCombinedName(r.patient_name)}<div className="text-xs font-normal text-slate-400">{r.ref_number}</div></td>
@@ -361,6 +386,21 @@ function FollowupTable({ rows, testid, showType = false, emptyText }) {
                             </td>}
                             <td className="px-3 py-2 text-slate-600">{r.actor || "—"}</td>
                             <td className="px-3 py-2 text-slate-500">{r.actor_at ? formatDateTime(r.actor_at) : "—"}</td>
+                            {showFee && <td className="px-3 py-2">
+                                {r.no_show_invoice ? (
+                                    <div className="flex items-center gap-2 flex-wrap">
+                                        <span className="inline-block px-2 py-0.5 rounded-sm text-xs font-semibold bg-emerald-100 text-emerald-700">
+                                            {r.no_show_invoice.invoice_number} · {r.no_show_invoice.status}
+                                        </span>
+                                        <Button size="sm" variant="outline" data-testid={`no-show-remove-${r.id}`} disabled={feeBusy === r.id}
+                                            onClick={() => onRemoveFee(r)} className="h-7 text-red-600 border-red-200">Remove charge</Button>
+                                    </div>
+                                ) : (
+                                    <Button size="sm" data-testid={`no-show-fee-${r.id}`} disabled={feeBusy === r.id || !r.patient_id}
+                                        title={!r.patient_id ? "Link a portal patient first" : "Issue a $40 no-show invoice"}
+                                        onClick={() => onIssueFee(r)} className="h-7 bg-visita-green hover:bg-visita-greenDark text-white">Issue $40 fee</Button>
+                                )}
+                            </td>}
                         </tr>
                     ))}
                 </tbody>

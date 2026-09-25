@@ -82,6 +82,8 @@ def invoice_internal(doc: dict) -> dict:
         "patient_id": doc.get("patient_id"),
         "patient_name": doc.get("patient_name"),
         "private_request_id": doc.get("private_request_id"),
+        "appointment_id": doc.get("appointment_id"),
+        "is_no_show": doc.get("is_no_show", False),
         "service_code": doc.get("service_code"),
         "service_description": doc.get("service_description"),
         "amount": doc.get("amount"),

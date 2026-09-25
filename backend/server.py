@@ -1696,6 +1696,7 @@ async def _sync_request_billing(rid: Optional[str]):
 
 async def _create_invoice(patient: dict, *, service_description, amount, payment_mode,
                           service_code=None, internal_note=None, private_request_id=None,
+                          appointment_id=None, is_no_show=False,
                           user, status="DRAFT") -> dict:
     if payment_mode not in billing_mod.PAYMENT_MODES:
         raise HTTPException(status_code=400, detail="Invalid payment mode.")
@@ -1709,6 +1710,7 @@ async def _create_invoice(patient: dict, *, service_description, amount, payment
         "patient_id": patient["id"],
         "patient_name": f"{patient.get('last_name','')}, {patient.get('first_name','')}".strip(", "),
         "private_request_id": private_request_id,
+        "appointment_id": appointment_id, "is_no_show": is_no_show,
         "service_code": (service_code or "").strip() or None, "service_description": desc,
         "amount": amt, "currency": "CAD",
         "status": status, "payment_mode": payment_mode,
@@ -2600,11 +2602,17 @@ async def appt_followups(user: dict = Depends(require_roles("staff", "admin"))):
     """Follow-up lists: patients flagged no-show, and patients the clinic asked
     to reschedule (offered alternate times, or actively rescheduled by staff)."""
     ns = await db.appointment_requests.find({"status": "no_show"}, {"_id": 0}).sort("completed_at", -1).to_list(500)
-    no_shows = [{
-        "id": a["id"], "ref_number": a.get("ref_number"), "patient_name": a.get("patient_name"),
-        "patient_id": a.get("patient_id"), "reason": a.get("reason"),
-        "appt_display": _appt_display(a), "actor": a.get("marked_by"), "actor_at": a.get("completed_at"),
-    } for a in ns]
+    no_shows = []
+    for a in ns:
+        inv = await db.invoices.find_one(
+            {"appointment_id": a["id"], "is_no_show": True, "status": {"$ne": "VOID"}}, {"_id": 0})
+        no_shows.append({
+            "id": a["id"], "ref_number": a.get("ref_number"), "patient_name": a.get("patient_name"),
+            "patient_id": a.get("patient_id"), "reason": a.get("reason"),
+            "appt_display": _appt_display(a), "actor": a.get("marked_by"), "actor_at": a.get("completed_at"),
+            "no_show_invoice": ({"id": inv["id"], "invoice_number": inv["invoice_number"],
+                                 "status": inv["status"], "amount": inv["amount"]} if inv else None),
+        })
 
     rs = await db.appointment_requests.find({"$or": [
         {"status": "alternatives_offered"},
@@ -2624,6 +2632,30 @@ async def appt_followups(user: dict = Depends(require_roles("staff", "admin"))):
             "resched_type": rtype, "actor": actor, "actor_at": actor_at,
         })
     return {"no_shows": no_shows, "reschedules": reschedules}
+
+
+@api.post("/internal/appointments/{item_id}/no-show-invoice")
+async def issue_no_show_invoice(item_id: str, user: dict = Depends(require_roles("staff", "admin"))):
+    """Issue the $40 missed-appointment (no-show) fee to the patient as an invoice."""
+    a = await db.appointment_requests.find_one({"id": item_id})
+    if not a:
+        raise HTTPException(status_code=404, detail="Appointment not found.")
+    if a.get("status") != "no_show":
+        raise HTTPException(status_code=400, detail="This appointment is not marked as a no-show.")
+    if not a.get("patient_id"):
+        raise HTTPException(status_code=400, detail="Link a portal patient to this appointment before billing the no-show fee.")
+    existing = await db.invoices.find_one({"appointment_id": item_id, "is_no_show": True, "status": {"$ne": "VOID"}})
+    if existing:
+        raise HTTPException(status_code=400, detail="A no-show invoice already exists for this appointment.")
+    patient = await db.patients.find_one({"id": a["patient_id"]}, {"_id": 0})
+    if not patient:
+        raise HTTPException(status_code=400, detail="Linked patient account not found.")
+    inv = await _create_invoice(
+        patient, service_description="Missed appointment fee (no-show)", amount=LATE_FEE_AMOUNT,
+        payment_mode="INVOICE_AFTER_SERVICE", appointment_id=item_id, is_no_show=True,
+        internal_note=f"No-show fee for {a.get('ref_number')} — {_appt_display(a)}", user=user, status="ISSUED")
+    await db.appointment_requests.update_one({"id": item_id}, {"$set": {"no_show_invoice_id": inv["id"], "updated_at": now_iso()}})
+    return billing_mod.invoice_internal(inv)
 
 
 @api.patch("/internal/appointments/{item_id}")

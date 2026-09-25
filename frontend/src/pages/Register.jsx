@@ -129,6 +129,15 @@ export default function Register() {
     return (
         <div className="min-h-screen bg-portal-blue/5 font-nunito flex flex-col items-center px-4 py-8">
             <div className="w-full max-w-md">
+                <button
+                    type="button"
+                    data-testid="register-back-btn"
+                    onClick={() => nav(-1)}
+                    className="inline-flex items-center gap-1 text-sm text-slate-600 hover:text-portal-blueDark font-semibold mb-4 transition-colors"
+                >
+                    <ChevronLeft className="h-4 w-4" />
+                    {t("common:actions.back")}
+                </button>
                 <div className="flex items-center gap-2 mb-6">
                     <Logo variant="light" iconClass="h-9 w-9" textClass="text-xl" />
                 </div>

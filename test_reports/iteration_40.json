@@ -1,0 +1,23 @@
+{
+  "summary": "Verified (A) Emergent Google Sign-In on patient variant only, (B) shared internal Attachments panel across imaging/bloodwork/messages with upload PNG+PDF, disallowed .txt rejection, view button, and remove; plus backend isolation for patient (403) and admin happy-path CRUD on /api/internal/imaging/{id}/attachments. Existing regression logins (admin, physician PAGUAYO, patient maria.lopez) all succeed and route to correct dashboards.",
+  "backend_issues": {"critical": [], "minor": []},
+  "frontend_issues": {"ui_bugs": [], "integration_issues": [], "design_issues": []},
+  "test_report_links": [
+    "/app/backend/tests/test_attachments_isolation.py",
+    "/app/test_reports/pytest/attachments_isolation.xml"
+  ],
+  "action_items": [],
+  "critical_code_review_comments": [
+    "SignIn.jsx: Google button correctly gated with !internal && !partner (count verified 1/0/0 across /signin, ?internal=1, ?partner=1). session_id one-shot handling uses a useRef guard which is correct.",
+    "Attachments.jsx: 15MB client-side guard + accept attribute set to .pdf/.jpg/.jpeg/.png; input value reset after pick so re-selecting same file re-triggers upload. Good.",
+    "Queue.jsx renders <Attachments/> only when attachmentEntity prop is set — verified passed only from ImagingQueue/BloodworkQueue/MessageQueue (not RxQueue). Correct scope."
+  ],
+  "updated_files": ["/app/backend/tests/test_attachments_isolation.py"],
+  "success_rate": {"backend": "100% (4/4 new isolation tests)", "frontend": "100% (Google visibility + patient/physician login + attachments upload/list/view/remove/reject on 3 entities)"},
+  "test_credentials": "Admin kevinrodriguez9528@gmail.com/VisitaAdmin2026!, Physician PAGUAYO/Newman2013_!, Patient maria.lopez@demo.com/Patient2026!",
+  "seed_data_creation": "Uploaded 2 attachments (1 PNG + 1 PDF) per entity on the first row of imaging/bloodwork/messages queues during E2E; the first attachment on each was removed at end of test but the second PDF remained. Consider cleanup if needed for demo hygiene.",
+  "retest_needed": false,
+  "main_agent_can_self_test": true,
+  "context_for_next_testing_agent": "Preview URL: https://visita-admin.preview.emergentagent.com. Google button data-testid=google-signin-button only on /signin (patient). Redirect target verified: https://auth.emergentagent.com/oauth/?redirect=<origin>/signin (did NOT complete real Google login per instructions). Attachments panel is rendered inside the queue detail Dialog after clicking data-testid=queue-open on imaging/bloodwork/messages queues. Backend isolation confirmed: patient JWT -> 403 on both GET and POST /api/internal/imaging/{id}/attachments; disallowed .txt -> 400. New pytest file: /app/backend/tests/test_attachments_isolation.py.",
+  "rca of the issue": "N/A — no issues found."
+}

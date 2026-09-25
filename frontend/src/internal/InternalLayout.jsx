@@ -1,7 +1,7 @@
 import { Outlet, NavLink, useNavigate } from "react-router-dom";
 import { useState } from "react";
 import {
-    LayoutGrid, Pill, Calendar, Scan, Droplet, MessageSquare, ClipboardCheck,
+    LayoutPanelTop, Pill, Calendar, Scan, Droplet, MessageSquare, ClipboardCheck,
     Send, UserCheck, UserPlus, CalendarDays, Settings as SettingsIcon, LogOut, UserSearch, Menu, Building2, Stethoscope, Users, Receipt,
 } from "lucide-react";
 import { useAuth } from "../context/AuthContext";
@@ -20,7 +20,7 @@ export default function InternalLayout() {
 
     const items = isPhysician
         ? [
-              { to: "/internal", icon: LayoutGrid, label: "Hub", end: true, key: null },
+              { to: "/internal", icon: LayoutPanelTop, label: "Hub", end: true, key: null },
               { to: "/internal/patients", icon: UserSearch, label: "Patients", key: null },
               { to: "/internal/rx", icon: Pill, label: "Rx", key: "rx" },
               { to: "/internal/imaging", icon: Scan, label: "Imaging", key: "imaging" },
@@ -36,7 +36,7 @@ export default function InternalLayout() {
               { to: "/internal/providers", icon: Stethoscope, label: "Providers", key: null },
           ]
         : [
-              { to: "/internal", icon: LayoutGrid, label: "Hub", end: true, key: null },
+              { to: "/internal", icon: LayoutPanelTop, label: "Hub", end: true, key: null },
               { to: "/internal/patients", icon: UserSearch, label: "Patients", key: null },
               { to: "/internal/rx", icon: Pill, label: "Rx", key: "rx" },
               { to: "/internal/referrals", icon: ClipboardCheck, label: "Referrals", key: "referrals" },

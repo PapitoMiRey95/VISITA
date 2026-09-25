@@ -1,0 +1,37 @@
+{
+  "summary": "Final pre-deployment regression for A1-A9 on preview URL (code-only, preview-only, no cleanup, no touch of IZAO/PIN 3040). Wrote /app/backend/tests/test_regression_iter42.py with 24 pytest cases covering A1 (private request create + evening 30-min offer), A2/A3 (private vs OHIP-uninsured invoicing, coverage/billing_context flags, patient_type unchanged after OHIP-uninsured invoicing, physician cannot verify/void 403, pharmacy 403, patient sees only own invoices — cross-patient 404), A4 (no-show $40 invoice issue, duplicate 400, physician 403, void + re-issue), A5 (followups admin/staff OK, physician & pharmacy 403, unauth 401/403), A6 (verifications history CLINIC_ROLES 200 incl. physician, pharmacy 403), A9 (directory PATCH by admin/staff/physician, pharmacy 403, unauth 401/403, PIN uniqueness 409, portal patient uses /internal/patients endpoint). All 22 tests passed, 2 skipped (pharmacy account is stuck on must_change_password so /auth/login returns no token — a known preview state, not a bug). Frontend smoke: landing branding + Register Back button (A8), admin sign-in, /internal/appointments shows Queue/No-Shows/Reschedule Requested tabs with Issue $40 fee + Remove charge buttons visible (A4/A5), /internal/verifications shows Pending + Recently Verified tabs with name/type/who/when (A6), /internal/patients shows patient-lookup-search + button + edit-btn testids (A9). No JS pageerrors.",
+  "backend_issues": {
+    "critical": [],
+    "minor": [
+      {"endpoint": "POST /api/internal/private-requests/{rid}/offer", "issue": "availability.private_conflict() does NOT enforce the 5:30 PM–9:00 PM evening window; an afternoon time (e.g. 2:00 PM) is accepted at 200. Enforcement today is UI-picker-only. Server-side validation would harden A7 against non-UI clients (Swagger/curl)."}
+    ]
+  },
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [],
+    "design_issues": []
+  },
+  "test_report_links": [
+    "/app/backend/tests/test_regression_iter42.py",
+    "/app/test_reports/pytest/iter42.xml"
+  ],
+  "action_items": [
+    "(Optional / P3) Add server-side evening-window (17:30-21:00) validation to availability.private_conflict() so /internal/private-requests/{rid}/offer rejects out-of-window times, matching the UI picker."
+  ],
+  "critical_code_review_comments": [
+    "server.py is now 4,133 lines — still exceeds the 700-line guideline. Recommend factoring appointments, private-requests, verifications, and patient-directory into dedicated routers.",
+    "A9 directory edit correctly writes identity_history + audit_logs (action=patient_identity_edit, entity_type=patient_directory), never creates a db.patients doc, PIN uniqueness enforced across visita_pins/patients/patient_directory (409).",
+    "A3 OHIP-uninsured billing correctly labels invoice with patient_coverage='ohip', billing_context='OHIP PATIENT — UNINSURED SERVICE' (visible in Maria's portal); patient_type stays 'ohip' after invoicing (decoupled state machine).",
+    "A4 no-show flow properly enforces linked patient, duplicate block (400), physician 403 on both /no-show-invoice creation and /void, and allows re-issue after void.",
+    "A2 physician can create/issue invoices (BILLING_MANAGE_ROLES) but cannot verify-payment or void (BILLING_VERIFY_ROLES) — confirmed 403.",
+    "A5/A6 role gates enforced: appointments/followups is staff+admin only (physician & pharmacy 403); verifications/history is CLINIC_ROLES (physician allowed, pharmacy 403)."
+  ],
+  "updated_files": ["/app/backend/tests/test_regression_iter42.py"],
+  "success_rate": {"backend": "100% (22/22 pass, 2 skipped — pharmacy must_change_password)", "frontend": "100% (A5/A6/A8/A9 UI elements present, no JS errors)"},
+  "test_credentials": "Provided credentials all valid except pharmacy 1670dufferin which is stuck on must_change_password in preview (documented in prior iteration_41, not a regression).",
+  "seed_data_creation": "Created TEST_ prefixed invoices for Maria (OHIP-uninsured $25 sick note, $1 isolation), Linda (private $55 consult, $10 void-check). No-show fee $40 issued/voided/re-issued on APT-000002 (John Smith). One TEST_ private request created via Linda + evening offer at future+45d. All demo data only; IZAO / PIN 3040 not touched.",
+  "retest_needed": false,
+  "main_agent_can_self_test": true,
+  "context_for_next_testing_agent": "Preview URL https://visita-admin.preview.emergentagent.com. Regression suite: pytest /app/backend/tests/test_regression_iter42.py -v --junitxml=/app/test_reports/pytest/iter42.xml. Uses REACT_APP_BACKEND_URL env. /auth/me returns {user:{...},patient:{...}} — patient.id is the DB patient id (not user.id). InvoiceCreateBody does NOT accept 'status'; invoices start as DRAFT and require POST /internal/invoices/{id}/issue. Public invoice payload (portal) strips patient_id; use cross-patient 404 to prove ownership. Backend private_conflict does not enforce the 17:30-21:00 evening window (UI-only). Pharmacy account 1670dufferin cannot obtain a JWT via /auth/login (must_change_password) — assert 403 via backend or use a fresh pharmacy user. IZAO / PIN 3040 is protected — the directory test skips it.",
+  "rca of the issue": "N/A — no blocking issues. One P3 hardening note only (server-side private evening-window enforcement)."
+}

@@ -158,11 +158,29 @@ def calendar_range(avail: dict, start: str, days: int, busy=None):
     return out
 
 
+# Private / uninsured evenings: fixed 30-minute windows 5:30 PM–9:00 PM.
+# Valid appointment START times are 17:30, 18:00, … 20:30 (each a 30-min window
+# ending by 21:00). Frontend picker and backend guard share this single source.
+PRIVATE_WINDOW_START = "17:30"
+PRIVATE_WINDOW_END = "21:00"
+PRIVATE_SLOT_MIN = 30
+PRIVATE_TIME_ERROR = "Private appointments must be booked in 30-minute windows between 5:30 PM and 9:00 PM."
+
+
+def private_slots():
+    s, e = _to_min(PRIVATE_WINDOW_START), _to_min(PRIVATE_WINDOW_END)
+    return [f"{m // 60:02d}:{m % 60:02d}" for m in range(s, e, PRIVATE_SLOT_MIN)]
+
+
+def is_valid_private_time(time_str: str) -> bool:
+    return _norm_time(time_str) in set(private_slots())
+
+
 def private_conflict(avail: dict, ds: str, time_str: str, busy=None) -> str:
     """Validate a PRIVATE appointment slot. Private appointments bypass the normal
-    OHIP working-hours restriction but MUST still respect closures, vacations,
-    blocked periods, the recurring break, and double-booking. Returns an error
-    string if the slot is not bookable, else "" (empty = OK)."""
+    OHIP working-hours restriction but MUST still respect the 5:30–9:00 PM evening
+    windows, closures, vacations, blocked periods, the recurring break, and
+    double-booking. Returns an error string if not bookable, else "" (empty = OK)."""
     avail = avail or DEFAULT_AVAILABILITY
     busy = busy or set()
     if not ds:
@@ -174,6 +192,8 @@ def private_conflict(avail: dict, ds: str, time_str: str, busy=None) -> str:
     t24 = _norm_time(time_str)
     if not t24:
         return "A time is required."
+    if not is_valid_private_time(t24):
+        return PRIVATE_TIME_ERROR
     if is_past_slot(avail, ds, t24):
         return "That time is in the past. Please choose an upcoming time."
     if ds in {c.get("date") for c in avail.get("closures", [])}:

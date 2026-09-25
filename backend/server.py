@@ -1371,6 +1371,8 @@ async def _create_private_appointment(pr: dict, ds: str, time_str: str, label, a
     avail = await get_availability_doc()
     time24 = avail_mod._norm_time(time_str)
     busy = await get_busy_slots()
+    if not avail_mod.is_valid_private_time(time24):
+        raise HTTPException(status_code=400, detail=avail_mod.PRIVATE_TIME_ERROR)
     err = avail_mod.private_conflict(avail, ds, time24, busy)
     if err:
         raise HTTPException(status_code=409, detail=err)
@@ -1590,6 +1592,8 @@ async def internal_private_offer(rid: str, body: PrivateOfferBody, user: dict = 
         raise HTTPException(status_code=400, detail="This request is already resolved.")
     avail = await get_availability_doc()
     busy = await get_busy_slots()
+    if not avail_mod.is_valid_private_time(body.time):
+        raise HTTPException(status_code=400, detail=avail_mod.PRIVATE_TIME_ERROR)
     err = avail_mod.private_conflict(avail, body.date, avail_mod._norm_time(body.time), busy)
     if err:
         raise HTTPException(status_code=409, detail=err)

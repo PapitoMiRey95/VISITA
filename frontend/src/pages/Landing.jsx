@@ -4,7 +4,7 @@ import { LogIn, UserPlus, UserRound, ArrowRight, Stethoscope, Building2 } from "
 import { Button } from "../components/ui/button";
 import { Logo } from "../components/Logo";
 
-const BG = "https://customer-assets-4nw71qhi.emergentagent.net/job_visita-admin/artifacts/l6jn5pzk_ChatGPT%20Image%20Sep%2024%2C%202026%2C%2003_14_52%20PM.png";
+const BG = "https://customer-assets-4nw71qhi.emergentagent.net/job_visita-admin/artifacts/5zizgajz_ChatGPT%20Image%20Sep%2024%2C%202026%2C%2003_43_19%20PM.png";
 
 export default function Landing() {
     const nav = useNavigate();

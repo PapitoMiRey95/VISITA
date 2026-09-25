@@ -2,7 +2,7 @@ import { Outlet, useNavigate, NavLink, useLocation } from "react-router-dom";
 import { useMemo } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { useTranslation } from "react-i18next";
-import { Home, Calendar, Pill, MessageSquare, ClipboardList, Bell, LogOut, User } from "lucide-react";
+import { Home, Calendar, Pill, MessageSquare, ClipboardList, Bell, LogOut, User, Receipt } from "lucide-react";
 import { api } from "../lib/api";
 import { useAuth } from "../context/AuthContext";
 import { Logo } from "../components/Logo";
@@ -15,6 +15,8 @@ const NAV = [
     { to: "/portal/requests", icon: ClipboardList, tkey: "portal:nav.requests", testid: "nav-requests" },
     { to: "/portal/account", icon: User, tkey: "portal:nav.profile", testid: "nav-profile" },
 ];
+
+const PRIVATE_TYPES = ["private", "tourist", "uninsured"];
 
 export default function PortalLayout() {
     const { user, logout } = useAuth();
@@ -32,6 +34,20 @@ export default function PortalLayout() {
     });
 
     const unread = (overview.data?.notifications || []).filter((n) => !n.read).length;
+
+    const ptype = overview.data?.patient?.patient_type;
+    const billing = overview.data?.billing || { open: 0, total: 0 };
+    const showInvoices = PRIVATE_TYPES.includes(ptype) || (billing.total || 0) > 0;
+    const navItems = useMemo(() => {
+        const items = [...NAV];
+        if (showInvoices) {
+            items.splice(items.length - 1, 0, {
+                to: "/portal/invoices", icon: Receipt, tkey: "portal:nav.invoices", fallback: "Invoices",
+                testid: "nav-invoices", badge: billing.open || 0,
+            });
+        }
+        return items;
+    }, [showInvoices, billing.open]);
 
     const outletCtx = useMemo(
         () => ({ overview, cfg, refetch: overview.refetch }),
@@ -74,13 +90,16 @@ export default function PortalLayout() {
 
             <nav className="fixed bottom-0 inset-x-0 z-20 bg-white border-t border-slate-200 shadow-[0_-4px_6px_-1px_rgba(0,0,0,0.05)]">
                 <div className="max-w-lg mx-auto flex justify-around">
-                    {NAV.map((n) => {
+                    {navItems.map((n) => {
                         const active = n.end ? loc.pathname === n.to : loc.pathname.startsWith(n.to);
                         return (
                             <NavLink key={n.to} to={n.to} end={n.end} data-testid={n.testid}
-                                className="flex flex-col items-center justify-center gap-0.5 py-2 min-h-[56px] flex-1">
+                                className="relative flex flex-col items-center justify-center gap-0.5 py-2 min-h-[56px] flex-1">
                                 <n.icon className={`w-5 h-5 ${active ? "text-portal-blue" : "text-slate-400"}`} />
-                                <span className={`text-[11px] font-semibold ${active ? "text-portal-blue" : "text-slate-400"}`}>{t(n.tkey)}</span>
+                                {n.badge > 0 && (
+                                    <span className="absolute top-1 right-1/4 bg-red-500 text-white text-[9px] min-w-[15px] h-[15px] px-1 rounded-full flex items-center justify-center">{n.badge}</span>
+                                )}
+                                <span className={`text-[11px] font-semibold ${active ? "text-portal-blue" : "text-slate-400"}`}>{t(n.tkey, n.fallback)}</span>
                             </NavLink>
                         );
                     })}

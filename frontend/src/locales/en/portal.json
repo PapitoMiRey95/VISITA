@@ -5,7 +5,8 @@
     "rx": "Rx",
     "messages": "Messages",
     "requests": "Requests",
-    "profile": "Profile"
+    "profile": "Profile",
+    "invoices": "Invoices"
   },
   "home": {
     "greeting": "Hello,",

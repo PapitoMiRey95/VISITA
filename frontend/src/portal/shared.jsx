@@ -44,6 +44,6 @@ export function SectionTitle({ children }) {
     return <h1 className="text-2xl font-bold text-slate-900 mb-1">{children}</h1>;
 }
 
-export function Card({ children, className = "" }) {
-    return <div className={`bg-white rounded-2xl border border-slate-200 shadow-sm p-5 ${className}`}>{children}</div>;
+export function Card({ children, className = "", ...rest }) {
+    return <div className={`bg-white rounded-2xl border border-slate-200 shadow-sm p-5 ${className}`} {...rest}>{children}</div>;
 }

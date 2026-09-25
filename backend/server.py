@@ -21,6 +21,7 @@ from starlette.middleware.cors import CORSMiddleware
 import auth as authlib
 import availability as avail_mod
 import attachments as attach_mod
+import billing as billing_mod
 import private_reasons
 import directory as directory_mod
 import email_service
@@ -1428,7 +1429,7 @@ async def create_private_request(body: PrivateRequestBody, user: dict = Depends(
         "preferred_date": body.preferred_date, "preferred_time": body.preferred_time,
         "reason_codes": body.reason_codes, "reason_path": labels,
         "reason_label": labels[-1], "note": (body.note or "").strip()[:500] or None,
-        "payment_mode": None, "status": "REQUESTED",
+        "payment_mode": None, "payment_status": "NONE", "status": "REQUESTED",
         "offered_date": None, "offered_time": None, "offered_label": None,
         "confirmed_appointment_id": None,
         "thread": [], "history": [{"status": "REQUESTED", "at": now, "by": actor}],
@@ -1533,6 +1534,8 @@ async def internal_private_request(rid: str, user: dict = Depends(require_roles(
     pr = await db.private_requests.find_one({"id": rid}, {"_id": 0})
     if not pr:
         raise HTTPException(status_code=404, detail="Request not found.")
+    invs = await db.invoices.find({"private_request_id": rid}).sort("created_at", -1).to_list(100)
+    pr["invoices"] = [billing_mod.invoice_internal(i) for i in invs]
     return pr
 
 
@@ -1628,6 +1631,305 @@ async def internal_private_cancel(rid: str, body: PrivateReasonBody, user: dict 
     await _private_patient_note(pr, "Private appointment cancelled", f"Your private request {pr['ref_number']} was cancelled.")
     await audit("private_request_cancelled", "private_request", rid, user, new_status="CANCELLED")
     return {"ok": True}
+
+
+# ============================ PRIVATE / UNINSURED BILLING (Phase 2) ============================
+# Invoices + Interac e-Transfer payment-proof handling. Billing is a SEPARATE
+# state machine from appointment/request status. Access: owning patient + clinic
+# roles only; pharmacy/partner/unrelated patients are denied. No public URLs.
+BILLING_MANAGE_ROLES = ("staff", "physician", "admin")   # create / issue / read / set mode
+BILLING_VERIFY_ROLES = ("staff", "admin")                # verify receipt + void (financial)
+
+
+class PaymentModeBody(BaseModel):
+    payment_mode: str
+    amount: Optional[float] = None
+    service_description: Optional[str] = None
+    service_code: Optional[str] = None
+    internal_note: Optional[str] = None
+
+
+class InvoiceCreateBody(BaseModel):
+    patient_id: str
+    private_request_id: Optional[str] = None
+    service_description: str
+    service_code: Optional[str] = None
+    amount: float
+    payment_mode: Optional[str] = "INVOICE_AFTER_SERVICE"
+    internal_note: Optional[str] = None
+
+
+class InvoiceUpdateBody(BaseModel):
+    service_description: Optional[str] = None
+    service_code: Optional[str] = None
+    amount: Optional[float] = None
+    internal_note: Optional[str] = None
+
+
+async def _get_invoice_or_404(inv_id: str) -> dict:
+    inv = await db.invoices.find_one({"id": inv_id}, {"_id": 0})
+    if not inv:
+        raise HTTPException(status_code=404, detail="Invoice not found.")
+    return inv
+
+
+async def _sync_request_billing(rid: Optional[str]):
+    """Mirror the latest non-void linked invoice onto the private request's
+    payment_status (display only — never touches appointment status)."""
+    if not rid:
+        return
+    pr = await db.private_requests.find_one({"id": rid})
+    if not pr:
+        return
+    mode = pr.get("payment_mode")
+    invs = await db.invoices.find({"private_request_id": rid, "status": {"$ne": "VOID"}}).sort("created_at", -1).to_list(50)
+    status = "NONE"
+    if invs:
+        latest = invs[0]["status"]
+        status = {"DRAFT": "PENDING" if mode == "PREPAYMENT_REQUIRED" else "NONE",
+                  "ISSUED": "PENDING", "PAYMENT_SUBMITTED": "PAYMENT_SUBMITTED",
+                  "PAID": "PAID"}.get(latest, "NONE")
+    elif mode == "PREPAYMENT_REQUIRED":
+        status = "PENDING"
+    await db.private_requests.update_one({"id": rid}, {"$set": {"payment_status": status, "updated_at": now_iso()}})
+
+
+async def _create_invoice(patient: dict, *, service_description, amount, payment_mode,
+                          service_code=None, internal_note=None, private_request_id=None,
+                          user, status="DRAFT") -> dict:
+    if payment_mode not in billing_mod.PAYMENT_MODES:
+        raise HTTPException(status_code=400, detail="Invalid payment mode.")
+    amt = billing_mod.normalize_amount(amount)
+    desc = (service_description or "").strip()
+    if not desc:
+        raise HTTPException(status_code=400, detail="Please provide a service description.")
+    now = now_iso()
+    doc = {
+        "id": str(uuid.uuid4()), "invoice_number": await next_ref("INV"),
+        "patient_id": patient["id"],
+        "patient_name": f"{patient.get('last_name','')}, {patient.get('first_name','')}".strip(", "),
+        "private_request_id": private_request_id,
+        "service_code": (service_code or "").strip() or None, "service_description": desc,
+        "amount": amt, "currency": "CAD",
+        "status": status, "payment_mode": payment_mode,
+        "issue_date": now[:10] if status == "ISSUED" else None,
+        "created_by": user["name"], "created_by_id": user["id"], "created_at": now,
+        "issued_at": now if status == "ISSUED" else None,
+        "payment_submitted_at": None, "paid_at": None, "voided_at": None,
+        "internal_note": (internal_note or "").strip() or None,
+        "payment_proof": None, "updated_at": now,
+    }
+    await db.invoices.insert_one({**doc})
+    await audit("invoice_created", "invoice", doc["id"], user, new_status=status,
+                meta={"invoice_number": doc["invoice_number"], "patient_id": patient["id"],
+                      "private_request_id": private_request_id, "amount": amt, "payment_mode": payment_mode})
+    if status == "ISSUED":
+        await audit("invoice_issued", "invoice", doc["id"], user, new_status="ISSUED",
+                    meta={"invoice_number": doc["invoice_number"], "patient_id": patient["id"]})
+        await notify_svc._in_portal(db, patient["id"], "New invoice",
+                                    f"Invoice {doc['invoice_number']} for {doc['service_description']} is now available in your portal.")
+    doc.pop("_id", None)
+    return doc
+
+
+async def _notify_clinic_payment_submitted(inv: dict):
+    await db.internal_messages.insert_one({
+        "id": str(uuid.uuid4()), "ref_number": await next_ref("TSK"),
+        "sender_name": inv.get("patient_name"), "sender_user_id": None,
+        "recipient_role": "staff", "patient_id": inv.get("patient_id"), "patient_name": inv.get("patient_name"),
+        "message": f"Payment proof submitted for invoice {inv['invoice_number']} — pending verification.",
+        "status": "pending", "created_at": now_iso(), "updated_at": now_iso(),
+        "source": "invoice", "invoice_id": inv["id"],
+    })
+
+
+@api.post("/internal/private-requests/{rid}/payment-mode")
+async def set_private_payment_mode(rid: str, body: PaymentModeBody, user: dict = Depends(require_roles(*BILLING_MANAGE_ROLES))):
+    pr = await db.private_requests.find_one({"id": rid})
+    if not pr:
+        raise HTTPException(status_code=404, detail="Request not found.")
+    if body.payment_mode not in billing_mod.PAYMENT_MODES:
+        raise HTTPException(status_code=400, detail="Invalid payment mode.")
+    await db.private_requests.update_one({"id": rid}, {"$set": {"payment_mode": body.payment_mode, "updated_at": now_iso()},
+        "$push": {"history": {"status": pr.get("status"), "at": now_iso(), "by": user["name"], "note": f"Payment mode set to {body.payment_mode}"}}})
+    await audit("payment_mode_set", "private_request", rid, user, meta={"payment_mode": body.payment_mode, "patient_id": pr.get("patient_id")})
+    invoice = None
+    if body.payment_mode == "PREPAYMENT_REQUIRED":
+        if not pr.get("patient_id"):
+            raise HTTPException(status_code=400, detail="This request has no linked portal patient to bill.")
+        patient = await db.patients.find_one({"id": pr["patient_id"]}, {"_id": 0})
+        if not patient:
+            raise HTTPException(status_code=400, detail="Linked patient account not found.")
+        invoice = await _create_invoice(
+            patient, service_description=body.service_description or pr.get("reason_label") or "Private consultation",
+            amount=body.amount, payment_mode="PREPAYMENT_REQUIRED", service_code=body.service_code,
+            internal_note=body.internal_note, private_request_id=rid, user=user, status="ISSUED")
+        await _private_patient_note(pr, "Payment required",
+                                    f"Prepayment is required for your private request {pr['ref_number']}. Please open Invoices in your portal to pay by Interac e-Transfer and upload your proof of payment.")
+    await _sync_request_billing(rid)
+    return {"ok": True, "payment_mode": body.payment_mode,
+            "invoice": billing_mod.invoice_internal(invoice) if invoice else None}
+
+
+@api.post("/internal/invoices")
+async def create_invoice(body: InvoiceCreateBody, user: dict = Depends(require_roles(*BILLING_MANAGE_ROLES))):
+    patient = await db.patients.find_one({"id": body.patient_id}, {"_id": 0})
+    if not patient:
+        raise HTTPException(status_code=404, detail="Patient account not found. Invoices can only be issued to registered portal patients.")
+    mode = body.payment_mode or "INVOICE_AFTER_SERVICE"
+    if mode == "NO_PAYMENT_REQUIRED":
+        raise HTTPException(status_code=400, detail="An invoice must use a payable mode.")
+    if body.private_request_id and not await db.private_requests.find_one({"id": body.private_request_id}):
+        raise HTTPException(status_code=404, detail="Linked private request not found.")
+    inv = await _create_invoice(patient, service_description=body.service_description, amount=body.amount,
+                                payment_mode=mode, service_code=body.service_code, internal_note=body.internal_note,
+                                private_request_id=body.private_request_id, user=user, status="DRAFT")
+    if body.private_request_id:
+        await _sync_request_billing(body.private_request_id)
+    return billing_mod.invoice_internal(inv)
+
+
+@api.get("/internal/invoices")
+async def list_invoices(status: Optional[str] = None, patient_id: Optional[str] = None,
+                        private_request_id: Optional[str] = None,
+                        user: dict = Depends(require_roles(*BILLING_MANAGE_ROLES))):
+    q = {}
+    if status:
+        q["status"] = status
+    if patient_id:
+        q["patient_id"] = patient_id
+    if private_request_id:
+        q["private_request_id"] = private_request_id
+    docs = await db.invoices.find(q).sort("created_at", -1).to_list(1000)
+    return [billing_mod.invoice_internal(d) for d in docs]
+
+
+@api.get("/internal/invoices/{inv_id}")
+async def get_invoice(inv_id: str, user: dict = Depends(require_roles(*BILLING_MANAGE_ROLES))):
+    return billing_mod.invoice_internal(await _get_invoice_or_404(inv_id))
+
+
+@api.patch("/internal/invoices/{inv_id}")
+async def update_invoice(inv_id: str, body: InvoiceUpdateBody, user: dict = Depends(require_roles(*BILLING_MANAGE_ROLES))):
+    inv = await _get_invoice_or_404(inv_id)
+    if inv["status"] != "DRAFT":
+        raise HTTPException(status_code=400, detail="Only draft invoices can be edited. Void and re-issue if a correction is needed.")
+    updates = {"updated_at": now_iso()}
+    if body.service_description is not None:
+        updates["service_description"] = body.service_description.strip()
+    if body.service_code is not None:
+        updates["service_code"] = body.service_code.strip() or None
+    if body.amount is not None:
+        updates["amount"] = billing_mod.normalize_amount(body.amount)
+    if body.internal_note is not None:
+        updates["internal_note"] = body.internal_note.strip() or None
+    await db.invoices.update_one({"id": inv_id}, {"$set": updates})
+    await audit("invoice_updated", "invoice", inv_id, user, meta={"fields": [k for k in updates if k != "updated_at"]})
+    return billing_mod.invoice_internal(await db.invoices.find_one({"id": inv_id}))
+
+
+@api.post("/internal/invoices/{inv_id}/issue")
+async def issue_invoice(inv_id: str, user: dict = Depends(require_roles(*BILLING_MANAGE_ROLES))):
+    inv = await _get_invoice_or_404(inv_id)
+    if inv["status"] != "DRAFT":
+        raise HTTPException(status_code=400, detail="Only draft invoices can be issued.")
+    now = now_iso()
+    await db.invoices.update_one({"id": inv_id}, {"$set": {"status": "ISSUED", "issued_at": now, "issue_date": now[:10], "updated_at": now}})
+    await audit("invoice_issued", "invoice", inv_id, user, old_status="DRAFT", new_status="ISSUED",
+                meta={"invoice_number": inv["invoice_number"], "patient_id": inv["patient_id"]})
+    await notify_svc._in_portal(db, inv["patient_id"], "New invoice",
+                                f"Invoice {inv['invoice_number']} for {inv['service_description']} is now available in your portal.")
+    await _sync_request_billing(inv.get("private_request_id"))
+    return billing_mod.invoice_internal(await db.invoices.find_one({"id": inv_id}))
+
+
+@api.post("/internal/invoices/{inv_id}/verify-payment")
+async def verify_invoice_payment(inv_id: str, user: dict = Depends(require_roles(*BILLING_VERIFY_ROLES))):
+    inv = await _get_invoice_or_404(inv_id)
+    if inv["status"] not in {"ISSUED", "PAYMENT_SUBMITTED"}:
+        raise HTTPException(status_code=400, detail="Only issued or submitted invoices can be marked paid.")
+    now = now_iso()
+    await db.invoices.update_one({"id": inv_id}, {"$set": {"status": "PAID", "paid_at": now, "updated_at": now}})
+    await audit("payment_verified", "invoice", inv_id, user, old_status=inv["status"], new_status="PAID",
+                meta={"invoice_number": inv["invoice_number"], "patient_id": inv["patient_id"]})
+    await notify_svc._in_portal(db, inv["patient_id"], "Payment verified",
+                                f"Your payment for invoice {inv['invoice_number']} has been verified. Thank you.")
+    await _sync_request_billing(inv.get("private_request_id"))
+    return billing_mod.invoice_internal(await db.invoices.find_one({"id": inv_id}))
+
+
+@api.post("/internal/invoices/{inv_id}/void")
+async def void_invoice(inv_id: str, body: PrivateReasonBody, user: dict = Depends(require_roles(*BILLING_VERIFY_ROLES))):
+    inv = await _get_invoice_or_404(inv_id)
+    if inv["status"] == "VOID":
+        raise HTTPException(status_code=400, detail="This invoice is already void.")
+    now = now_iso()
+    await db.invoices.update_one({"id": inv_id}, {"$set": {"status": "VOID", "voided_at": now, "void_reason": (body.reason or None), "updated_at": now}})
+    await audit("invoice_voided", "invoice", inv_id, user, old_status=inv["status"], new_status="VOID",
+                meta={"invoice_number": inv["invoice_number"], "reason": body.reason, "patient_id": inv["patient_id"]})
+    await _sync_request_billing(inv.get("private_request_id"))
+    return billing_mod.invoice_internal(await db.invoices.find_one({"id": inv_id}))
+
+
+@api.get("/internal/invoices/{inv_id}/proof/{att_id}/download")
+async def internal_download_proof(inv_id: str, att_id: str, user: dict = Depends(require_roles(*BILLING_MANAGE_ROLES))):
+    await _get_invoice_or_404(inv_id)
+    return await billing_mod.serve_payment_proof(db, inv_id, att_id)
+
+
+# ---- Patient-facing billing (owning patient only) ----
+async def _get_owned_invoice(user: dict, inv_id: str, allow_draft: bool = False):
+    p = await get_patient_record(user)
+    inv = await db.invoices.find_one({"id": inv_id})
+    if not inv or inv.get("patient_id") != p["id"]:
+        raise HTTPException(status_code=404, detail="Invoice not found.")
+    if inv["status"] == "DRAFT" and not allow_draft:
+        raise HTTPException(status_code=404, detail="Invoice not found.")
+    return p, inv
+
+
+@api.get("/portal/invoices")
+async def my_invoices(user: dict = Depends(get_current_user)):
+    p = await get_patient_record(user)
+    cfg = await get_private_config()
+    docs = await db.invoices.find({"patient_id": p["id"], "status": {"$ne": "DRAFT"}}).sort("created_at", -1).to_list(500)
+    return [billing_mod.invoice_public(d, cfg["etransfer_email"]) for d in docs]
+
+
+@api.get("/portal/invoices/{inv_id}")
+async def my_invoice(inv_id: str, user: dict = Depends(get_current_user)):
+    _, inv = await _get_owned_invoice(user, inv_id)
+    cfg = await get_private_config()
+    return billing_mod.invoice_public(inv, cfg["etransfer_email"])
+
+
+@api.post("/portal/invoices/{inv_id}/proof")
+async def upload_invoice_proof(inv_id: str, file: UploadFile = File(...), user: dict = Depends(get_current_user)):
+    _, inv = await _get_owned_invoice(user, inv_id)
+    if inv["payment_mode"] == "NO_PAYMENT_REQUIRED":
+        raise HTTPException(status_code=400, detail="This invoice does not require payment.")
+    if inv["status"] not in {"ISSUED", "PAYMENT_SUBMITTED"}:
+        raise HTTPException(status_code=400, detail="Payment proof can no longer be uploaded for this invoice.")
+    replacing = inv.get("payment_proof") is not None
+    meta = await billing_mod.store_payment_proof(
+        db, file, inv, {"id": user.get("id"), "name": user.get("name"), "email": user.get("email")})
+    now = now_iso()
+    await db.invoices.update_one({"id": inv_id}, {"$set": {
+        "status": "PAYMENT_SUBMITTED", "payment_submitted_at": now, "payment_proof": meta, "updated_at": now}})
+    action = "payment_proof_replaced" if replacing else "payment_proof_uploaded"
+    await audit(action, "invoice", inv_id, {"id": user.get("id"), "name": user.get("name"), "role": "patient"},
+                new_status="PAYMENT_SUBMITTED",
+                meta={"invoice_number": inv["invoice_number"], "attachment_id": meta["attachment_id"], "patient_id": inv["patient_id"]})
+    await _notify_clinic_payment_submitted(inv)
+    await _sync_request_billing(inv.get("private_request_id"))
+    cfg = await get_private_config()
+    return billing_mod.invoice_public(await db.invoices.find_one({"id": inv_id}), cfg["etransfer_email"])
+
+
+@api.get("/portal/invoices/{inv_id}/proof/{att_id}/download")
+async def download_my_proof(inv_id: str, att_id: str, user: dict = Depends(get_current_user)):
+    _, inv = await _get_owned_invoice(user, inv_id)
+    return await billing_mod.serve_payment_proof(db, inv_id, att_id)
 
 
 @api.post("/portal/prescriptions")
@@ -1740,6 +2042,8 @@ async def portal_overview(user: dict = Depends(get_current_user)):
         }
     has_fee = any((a.get("late_fee") or {}).get("status") == "outstanding" for a in appts)
     pending_hc = p.get("pending_health_card")
+    inv_open = await db.invoices.count_documents({"patient_id": pid, "status": {"$in": ["ISSUED", "PAYMENT_SUBMITTED"]}})
+    inv_total = await db.invoices.count_documents({"patient_id": pid, "status": {"$ne": "DRAFT"}})
     return {
         "patient": {"first_name": p["first_name"], "last_name": p["last_name"],
                     "patient_type": p["patient_type"], "verification_status": p["verification_status"],
@@ -1771,6 +2075,7 @@ async def portal_overview(user: dict = Depends(get_current_user)):
                       "created_at": m["created_at"]} for m in msgs],
         "referrals": referrals,
         "notifications": notes,
+        "billing": {"open": inv_open, "total": inv_total},
     }
 
 

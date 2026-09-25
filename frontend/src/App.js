@@ -20,6 +20,7 @@ import PortalMessages from "./portal/PortalMessages";
 import PortalImaging from "./portal/PortalImaging";
 import PortalBloodwork from "./portal/PortalBloodwork";
 import PortalMyRequests from "./portal/PortalMyRequests";
+import PortalInvoices from "./portal/PortalInvoices";
 import PortalAccount from "./portal/PortalAccount";
 
 import InternalLayout from "./internal/InternalLayout";
@@ -40,6 +41,7 @@ import Patients from "./internal/Patients";
 import Organizations from "./internal/Organizations";
 import Providers from "./internal/Providers";
 import PrivateRequests from "./internal/PrivateRequests";
+import Billing from "./internal/Billing";
 
 import PartnerLayout from "./partner/PartnerLayout";
 import PartnerProfile from "./partner/PartnerProfile";
@@ -80,6 +82,7 @@ function App() {
                         <Route path="imaging" element={<PortalImaging />} />
                         <Route path="bloodwork" element={<PortalBloodwork />} />
                         <Route path="requests" element={<PortalMyRequests />} />
+                        <Route path="invoices" element={<PortalInvoices />} />
                         <Route path="account" element={<PortalAccount />} />
                     </Route>
 
@@ -97,6 +100,7 @@ function App() {
                         <Route path="pharmacy-intake" element={<PharmacyIntake />} />
                         <Route path="appointments" element={<AppointmentQueue />} />
                         <Route path="private-requests" element={<PrivateRequests />} />
+                        <Route path="billing" element={<Billing />} />
                         <Route path="calendar" element={<Calendar />} />
                         <Route path="imaging" element={<ImagingQueue />} />
                         <Route path="bloodwork" element={<BloodworkQueue />} />

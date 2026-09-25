@@ -3990,7 +3990,67 @@ async def internal_edit_patient(patient_id: str, body: InternalPatientEditBody,
     return {"ok": True, "changes": len(changes)}
 
 
-@api.post("/internal/patients/{patient_id}/health-card/{action}")
+@api.patch("/internal/patient-directory/{directory_id}")
+async def internal_edit_directory(directory_id: str, body: InternalPatientEditBody,
+                                  user: dict = Depends(require_roles("staff", "admin", "physician"))):
+    """Edit an UNREGISTERED patient's directory record (no portal account). Applies
+    immediately with a full audit trail (changed_by/at, field, previous, new)."""
+    d = await db.patient_directory.find_one({"id": directory_id})
+    if not d:
+        raise HTTPException(status_code=404, detail="Directory record not found.")
+    owner_id = d.get("linked_patient_id") or directory_id
+    updates, changes = {}, []
+
+    def track(field, new_val):
+        old_val = d.get(field)
+        if new_val is not None and new_val != old_val:
+            updates[field] = new_val
+            changes.append({"field": field, "previous": old_val, "new": new_val,
+                            "changed_by": user["name"], "changed_at": now_iso()})
+
+    if body.phone is not None:
+        track("cell_phone", identity_mod.normalize_phone(body.phone))
+    if body.health_card_number is not None or body.health_card_version is not None:
+        try:
+            num, ver = identity_mod.normalize_health_card(
+                body.health_card_number if body.health_card_number is not None else d.get("health_card_number"),
+                body.health_card_version if body.health_card_version is not None else d.get("health_card_version_code"))
+        except ValueError as e:
+            raise HTTPException(status_code=400, detail=str(e))
+        track("health_card_number", num)
+        track("health_card_version_code", ver)
+    for f in ("health_card_issue_date", "health_card_expiry_date"):
+        val = getattr(body, f)
+        if val is not None:
+            if not identity_mod.valid_date(val):
+                raise HTTPException(status_code=400, detail="Health Card dates must be valid dates.")
+            track(f, val or None)
+    if body.visita_patient_id is not None:
+        vid = body.visita_patient_id.strip()
+        if vid and vid != d.get("visita_patient_id"):
+            if not re.fullmatch(r"\d{4}", vid):
+                raise HTTPException(status_code=400, detail="VISITA PIN must be a 4-digit number.")
+            clash = await db.patients.find_one({"visita_patient_id": vid})
+            clash_dir = await db.patient_directory.find_one({"visita_patient_id": vid, "id": {"$ne": directory_id}})
+            claim = await db.visita_pins.find_one({"_id": vid})
+            if clash or clash_dir or (claim and claim.get("patient_id") != owner_id):
+                raise HTTPException(status_code=409, detail=f"VISITA PIN {vid} is already in use or retired.")
+            track("visita_patient_id", vid)
+
+    if not updates:
+        return {"ok": True, "changes": 0}
+    updates["updated_at"] = now_iso()
+    await db.patient_directory.update_one({"id": directory_id}, {"$set": updates})
+    await db.patient_directory.update_one({"id": directory_id}, {"$push": {"identity_history": {"$each": changes}}})
+    if "visita_patient_id" in updates:
+        await db.visita_pins.update_one({"_id": updates["visita_patient_id"]},
+                                        {"$set": {"patient_id": owner_id, "created_at": now_iso()}}, upsert=True)
+    for ch in changes:
+        await audit("patient_identity_edit", "patient_directory", directory_id, user, meta=ch)
+    return {"ok": True, "changes": len(changes)}
+
+
+
 async def internal_health_card_review(patient_id: str, action: str,
                                       user: dict = Depends(require_roles("staff", "admin", "physician"))):
     """Approve or reject a patient-submitted HEALTH CARD UPDATE PENDING proposal."""

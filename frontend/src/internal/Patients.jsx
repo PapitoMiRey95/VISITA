@@ -43,7 +43,7 @@ export default function Patients() {
     const [form, setForm] = useState({});
     const [busy, setBusy] = useState(false);
     const { user } = useAuth();
-    const canEdit = ["admin", "staff", "physician"].includes(user?.role) && selected?.source === "portal";
+    const canEdit = ["admin", "staff", "physician"].includes(user?.role);
     const searchRef = useRef(null);
 
     const reloadSelected = async () => {
@@ -71,7 +71,11 @@ export default function Patients() {
     const saveEdit = async () => {
         setBusy(true);
         try {
-            await api.patch(`/internal/patients/${selected.patient_id}`, form);
+            if (selected.patient_id) {
+                await api.patch(`/internal/patients/${selected.patient_id}`, form);
+            } else {
+                await api.patch(`/internal/patient-directory/${selected.directory_id || selected.id}`, form);
+            }
             toast.success("Patient information updated.");
             setEditing(false); await reloadSelected();
         } catch (e) { toast.error(formatErr(e)); } finally { setBusy(false); }
@@ -123,7 +127,7 @@ export default function Patients() {
                 <h1 className="text-2xl font-bold text-slate-900 tracking-tight">Patients</h1>
             </div>
             <p className="text-sm text-slate-500 mb-4 flex items-center gap-1">
-                <Lock className="w-3.5 h-3.5" /> Read-only lookup — search by name, VISITA PIN / ID, health card number, or phone.
+                <UserSearch className="w-3.5 h-3.5" /> Search by name, VISITA PIN / ID, health card number, or phone. Admin, staff & physicians can edit patient information — including unregistered directory records.
             </p>
 
             <div ref={searchRef} className="relative max-w-xl mb-4">
@@ -219,7 +223,7 @@ export default function Patients() {
                                 <Button disabled={busy} data-testid="edit-save" onClick={saveEdit} className="bg-visita-green hover:bg-visita-greenDark text-white">Save changes</Button>
                                 <Button variant="outline" onClick={() => setEditing(false)}><X className="w-4 h-4 mr-1" /> Cancel</Button>
                             </div>
-                            <p className="text-[11px] text-slate-400">Staff/Admin edits apply immediately and are recorded in the audit history.</p>
+                            <p className="text-[11px] text-slate-400">Admin, staff &amp; physician edits apply immediately and are recorded in the audit history.</p>
                         </div>
                     ) : (
                     <>

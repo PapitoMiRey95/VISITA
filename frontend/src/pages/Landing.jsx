@@ -108,7 +108,7 @@ export default function Landing() {
                         </div>
                     </div>
 
-                    <p className="text-[11px] leading-relaxed text-slate-300 pt-1">{t("common:emergencyNotice")}</p>
+                    <p className="text-[11px] leading-relaxed text-slate-300 rounded-2xl border border-white/10 bg-gradient-to-br from-[rgba(8,20,35,0.72)] to-[rgba(8,20,35,0.55)] backdrop-blur-md px-4 py-3 shadow-[0_20px_60px_-15px_rgba(0,0,0,0.7)]">{t("common:emergencyNotice")}</p>
                 </div>
             </div>
         </div>

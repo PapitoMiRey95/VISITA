@@ -99,7 +99,6 @@ export default function InternalLayout() {
                         </SheetContent>
                     </Sheet>
                     <Logo variant="dark" iconClass="h-8 w-8" textClass="text-base" />
-                    <span className="text-white/50 text-sm hidden sm:inline">— Dr. Aguayo Family Practice</span>
                 </div>
                 <div className="flex items-center gap-3 text-sm">
                     <span className="text-white/80 hidden sm:inline">{user?.name} · <span className="uppercase text-white/50">{role}</span></span>

@@ -17,6 +17,7 @@ import { Select, SelectTrigger, SelectValue, SelectContent, SelectItem } from ".
 // Only portal patients (with a patient_id) can be billed — they need a login to see the invoice.
 function PatientPicker({ selected, onSelect, onClear }) {
     const [q, setQ] = useState("");
+    const [pinQ, setPinQ] = useState("");
     const [results, setResults] = useState([]);
     const [open, setOpen] = useState(false);
     const [loading, setLoading] = useState(false);
@@ -31,6 +32,18 @@ function PatientPicker({ selected, onSelect, onClear }) {
             setOpen(true);
         } catch (e) { toast.error(formatErr(e)); } finally { setLoading(false); }
     }, []);
+
+    // Dedicated exact-PIN search: portal-billable patients only, PIN field only.
+    const searchPin = async () => {
+        const pin = pinQ.trim();
+        if (!/^\d+$/.test(pin)) { toast.error("VISITA PIN must be numeric."); return; }
+        setLoading(true);
+        setOpen(true);
+        try {
+            const { data } = await api.get("/internal/patients", { params: { q: pin } });
+            setResults((data || []).filter((r) => String(r.visita_patient_id) === pin));
+        } catch (e) { toast.error(formatErr(e)); } finally { setLoading(false); }
+    };
 
     useEffect(() => {
         if (selected) return;
@@ -56,19 +69,34 @@ function PatientPicker({ selected, onSelect, onClear }) {
         );
     }
     return (
-        <div ref={boxRef} className="relative">
-            <div className="relative">
-                <Search className="w-4 h-4 text-slate-400 absolute left-2 top-2.5" />
-                <Input data-testid="inv-patient-search" value={q} onChange={(e) => setQ(e.target.value)}
-                    onFocus={() => { if (results.length) setOpen(true); }}
-                    placeholder="Search registered patient by PIN / name…" className="pl-8" />
+        <div ref={boxRef} className="relative space-y-2">
+            <div className="flex flex-col sm:flex-row gap-2">
+                <div className="relative flex-1">
+                    <Label className="text-[11px] font-bold uppercase tracking-wide text-slate-400">General search</Label>
+                    <div className="relative">
+                        <Search className="w-4 h-4 text-slate-400 absolute left-2 top-2.5" />
+                        <Input data-testid="inv-patient-search" value={q} onChange={(e) => setQ(e.target.value)}
+                            onFocus={() => { if (results.length) setOpen(true); }}
+                            placeholder="Search registered patient by name…" className="pl-8" />
+                    </div>
+                </div>
+                <div className="sm:w-56 shrink-0">
+                    <Label className="text-[11px] font-bold uppercase tracking-wide text-slate-400">VISITA PIN only</Label>
+                    <div className="flex gap-1.5">
+                        <Input data-testid="inv-patient-pin" value={pinQ} inputMode="numeric"
+                            onChange={(e) => setPinQ(e.target.value.replace(/\D/g, ""))}
+                            onKeyDown={(e) => { if (e.key === "Enter") { e.preventDefault(); searchPin(); } }}
+                            placeholder="Exact PIN" />
+                        <Button type="button" size="sm" variant="outline" data-testid="inv-patient-pin-btn" onClick={searchPin}>PIN</Button>
+                    </div>
+                </div>
             </div>
-            {open && q.trim().length >= 2 && (
+            {open && (
                 <div data-testid="inv-patient-results" className="absolute z-30 mt-1 w-full bg-white border border-slate-300 rounded-sm shadow-lg divide-y max-h-72 overflow-y-auto">
                     {loading && <div className="px-3 py-3 text-xs text-slate-400">Searching…</div>}
                     {!loading && results.length === 0 && <div className="px-3 py-3 text-xs text-slate-400">No registered portal patients found. Invoices require a portal account.</div>}
                     {!loading && results.map((r) => (
-                        <button key={r.id} type="button" data-testid="inv-patient-result" onClick={() => { onSelect(r); setOpen(false); setQ(""); }} className="w-full text-left px-3 py-2 hover:bg-slate-50">
+                        <button key={r.id} type="button" data-testid="inv-patient-result" onClick={() => { onSelect(r); setOpen(false); setQ(""); setPinQ(""); }} className="w-full text-left px-3 py-2 hover:bg-slate-50">
                             <div className="font-semibold text-slate-800 text-sm">{formatPatientName(r)} <CoverageBadge type={r.patient_type} /></div>
                             <span className="text-xs text-slate-500">PIN: {r.visita_patient_id || "Not assigned"} · DOB: {formatDate(r.date_of_birth) || "—"}</span>
                         </button>

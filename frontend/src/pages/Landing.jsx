@@ -108,7 +108,7 @@ export default function Landing() {
                         </div>
                     </div>
 
-                    <p className="text-[11px] leading-relaxed text-slate-500/80 pt-1">{t("common:emergencyNotice")}</p>
+                    <p className="text-[11px] leading-relaxed text-slate-300 pt-1">{t("common:emergencyNotice")}</p>
                 </div>
             </div>
         </div>

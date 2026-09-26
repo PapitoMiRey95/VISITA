@@ -401,8 +401,31 @@ async def _has_outstanding_fee(patient_id: str) -> bool:
 
 
 # ----------------------------- Auth routes -----------------------------
+DOB_MIN_AGE = 17
+DOB_MAX_AGE = 99
+
+
+def validate_dob_age(dob_str: str):
+    """Enforce patient age 17–99 inclusive using the full DOB vs today (not just
+    year math). Raises HTTPException(400) on invalid/out-of-range DOB. Server-side
+    guard so a direct API submission cannot bypass the UI."""
+    from datetime import date as _date
+    try:
+        y, m, d = (int(x) for x in (dob_str or "").split("-"))
+        dob = _date(y, m, d)
+    except (ValueError, AttributeError):
+        raise HTTPException(status_code=400, detail="A valid date of birth is required.")
+    today = _date.today()
+    if dob > today:
+        raise HTTPException(status_code=400, detail="Date of birth cannot be in the future.")
+    age = today.year - dob.year - ((today.month, today.day) < (dob.month, dob.day))
+    if age < DOB_MIN_AGE or age > DOB_MAX_AGE:
+        raise HTTPException(status_code=400, detail=f"Patient age must be between {DOB_MIN_AGE} and {DOB_MAX_AGE} years.")
+
+
 @api.post("/auth/register")
 async def register(body: RegisterBody):
+    validate_dob_age(body.date_of_birth)
     email = body.email.lower()
     if await db.users.find_one({"email": email}):
         raise HTTPException(status_code=400, detail="An account with this email already exists.")
@@ -482,6 +505,7 @@ async def register(body: RegisterBody):
 
 @api.post("/applications/return-request")
 async def return_request(body: ReturnRequestBody):
+    validate_dob_age(body.date_of_birth)
     match = await directory_mod.match_registration(
         db, body.first_name, body.last_name, body.date_of_birth, body.health_card_number)
     ref = await next_ref("APP")
@@ -508,6 +532,7 @@ async def return_request(body: ReturnRequestBody):
 
 @api.post("/applications/new-patient")
 async def new_patient_request(body: NewPatientRequestBody):
+    validate_dob_age(body.date_of_birth)
     ref = await next_ref("APP")
     doc = {
         "id": str(uuid.uuid4()), "ref_number": ref, "application_type": "new_patient",

@@ -5,6 +5,7 @@ import { toast } from "sonner";
 import { ChevronLeft, Loader2, Clock } from "lucide-react";
 import { useAuth } from "../context/AuthContext";
 import { api, formatErr } from "../lib/api";
+import { DobPicker } from "../components/DobPicker";
 import { Button } from "../components/ui/button";
 import { Input } from "../components/ui/input";
 import { Label } from "../components/ui/label";
@@ -43,14 +44,11 @@ export default function Register() {
         address: "", city: "", postal_code: "", patient_message: "", join_reason: "",
     });
     const set = (k) => (e) => setForm({ ...form, [k]: e.target.value });
+    const setDob = (v) => setForm((f) => ({ ...f, date_of_birth: v }));
     // Surname fields auto-uppercase live while preserving accents/apostrophes/hyphens.
     const setSurname = (k) => (e) => setForm({ ...form, [k]: normalizeSurnameInput(e.target.value) });
     const joinName = (a, b) => [a, b].map((s) => (s || "").replace(/\s+/g, " ").trim()).filter(Boolean).join(" ");
     const optional = t("common:status.optional");
-    // DOB is locked to patients aged 17 to under 100 years old.
-    const _dobToday = new Date();
-    const dobMax = new Date(_dobToday.getFullYear() - 17, _dobToday.getMonth(), _dobToday.getDate()).toISOString().slice(0, 10);
-    const dobMin = new Date(_dobToday.getFullYear() - 100, _dobToday.getMonth(), _dobToday.getDate() + 1).toISOString().slice(0, 10);
 
     const choose = (tp) => {
         setType(tp);
@@ -181,7 +179,7 @@ export default function Register() {
                             <Field label={t("auth:register.firstLastName")} testid="reg-last"><Input required value={form.last_name} onChange={setSurname("last_name")} /></Field>
                             <Field label={t("auth:register.secondLastName")} testid="reg-second-last"><Input value={form.second_last_name} onChange={setSurname("second_last_name")} placeholder={optional} /></Field>
                         </div>
-                        <Field label={t("auth:register.dob")} testid="reg-dob"><Input type="date" required min={dobMin} max={dobMax} value={form.date_of_birth} onChange={set("date_of_birth")} /></Field>
+                        <Field label={t("auth:register.dob")} testid="reg-dob"><DobPicker value={form.date_of_birth} onChange={setDob} testid="reg-dob" /></Field>
 
                         {type === "ohip" && (
                             <>
@@ -257,7 +255,7 @@ export default function Register() {
                             <Field label={t("auth:register.firstLastName")} testid="re-last"><Input required value={form.last_name} onChange={setSurname("last_name")} /></Field>
                             <Field label={t("auth:register.secondLastName")} testid="re-second-last"><Input value={form.second_last_name} onChange={setSurname("second_last_name")} placeholder={optional} /></Field>
                         </div>
-                        <Field label={t("auth:register.dob")} testid="re-dob"><Input type="date" required min={dobMin} max={dobMax} value={form.date_of_birth} onChange={set("date_of_birth")} /></Field>
+                        <Field label={t("auth:register.dob")} testid="re-dob"><DobPicker value={form.date_of_birth} onChange={setDob} testid="re-dob" /></Field>
                         <Field label={t("auth:register.reestablish.hcNumber")} testid="re-hcn"><Input value={form.health_card_number} onChange={set("health_card_number")} placeholder="0000-000-000-XX" /></Field>
                         <Field label={t("auth:register.phone")} testid="re-phone"><Input required value={form.phone} onChange={set("phone")} /></Field>
                         <Field label={t("auth:register.email")} testid="re-email"><Input type="email" required value={form.email} onChange={set("email")} /></Field>
@@ -293,7 +291,7 @@ export default function Register() {
                             <Field label={t("auth:register.firstLastName")} testid="np-last"><Input required value={form.last_name} onChange={setSurname("last_name")} /></Field>
                             <Field label={t("auth:register.secondLastName")} testid="np-second-last"><Input value={form.second_last_name} onChange={setSurname("second_last_name")} placeholder={optional} /></Field>
                         </div>
-                        <Field label={t("auth:register.dob")} testid="np-dob"><Input type="date" required min={dobMin} max={dobMax} value={form.date_of_birth} onChange={set("date_of_birth")} /></Field>
+                        <Field label={t("auth:register.dob")} testid="np-dob"><DobPicker value={form.date_of_birth} onChange={setDob} testid="np-dob" /></Field>
                         <Field label={t("auth:register.phone")} testid="np-phone"><Input required value={form.phone} onChange={set("phone")} /></Field>
                         <Field label={t("auth:register.email")} testid="np-email"><Input type="email" required value={form.email} onChange={set("email")} /></Field>
                         <div className="grid grid-cols-2 gap-3">

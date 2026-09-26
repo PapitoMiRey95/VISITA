@@ -1,7 +1,7 @@
 import { useNavigate } from "react-router-dom";
 import { useCounters } from "./hooks";
 import { useAuth } from "../context/AuthContext";
-import { Pill, ClipboardCheck, Scan, Droplet, MessageSquare, Calendar, Send, UserCheck, UserPlus } from "lucide-react";
+import { Pill, ClipboardCheck, Scan, Droplet, MessageSquare, Calendar, Send, UserCheck, UserPlus, UserSearch, CalendarDays, Users, Receipt, Stethoscope } from "lucide-react";
 
 const STAFF = [
     { key: "rx", label: "Rx", to: "/internal/rx", icon: Pill },
@@ -15,18 +15,29 @@ const STAFF = [
     { key: "applications", label: "Applications", to: "/internal/applications", icon: UserPlus },
 ];
 
+// Physician Hub surfaces the full physician feature set (mirrors the sidebar)
+// so mobile physicians reach everything the desktop sidebar offers. Items with
+// a `key` show a live counter; the rest are plain navigation tiles.
 const PHYS = [
+    { label: "Patients", to: "/internal/patients", icon: UserSearch },
     { key: "rx", label: "Rx", to: "/internal/rx", icon: Pill },
     { key: "imaging", label: "Imaging", to: "/internal/imaging", icon: Scan },
     { key: "bloodwork", label: "Bloodwork", to: "/internal/bloodwork", icon: Droplet },
     { key: "messages", label: "Messages", to: "/internal/messages", icon: MessageSquare },
     { key: "applications", label: "Applications", to: "/internal/applications", icon: UserPlus },
+    { label: "Calendar", to: "/internal/calendar", icon: CalendarDays },
+    { label: "Private Requests", to: "/internal/private-requests", icon: Users },
+    { label: "Billing", to: "/internal/billing", icon: Receipt },
+    { key: "doctor_tasks", label: "Intercom", to: "/internal/tasks", icon: Send },
+    { label: "Referral Drop-Off", to: "/internal/referrals", icon: ClipboardCheck },
+    { key: "verifications", label: "Verifications", to: "/internal/verifications", icon: UserCheck },
+    { label: "Providers", to: "/internal/providers", icon: Stethoscope },
 ];
 
 function Counter({ item, value, onClick }) {
     return (
         <button
-            data-testid={`counter-${item.key}`}
+            data-testid={`counter-${item.key || item.label.toLowerCase().replace(/[^a-z]/g, "-")}`}
             onClick={onClick}
             className="group bg-white border border-slate-300 border-l-4 border-l-visita-green rounded-sm px-4 py-3 flex items-center justify-between text-left hover:bg-slate-50 hover:border-l-visita-greenDark transition-colors duration-75"
         >
@@ -34,7 +45,7 @@ function Counter({ item, value, onClick }) {
                 <item.icon className="w-5 h-5 text-visita-green" />
                 <span className="text-xs uppercase tracking-wider text-slate-600 font-medium">{item.label}</span>
             </div>
-            <span className="text-3xl font-bold text-slate-900 tabular-nums">{value ?? 0}</span>
+            {item.key && <span className="text-3xl font-bold text-slate-900 tabular-nums">{value ?? 0}</span>}
         </button>
     );
 }
@@ -59,7 +70,7 @@ export default function Hub() {
 
             <div className="grid grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-3">
                 {items.map((it) => (
-                    <Counter key={it.key} item={it} value={c[it.key]} onClick={() => nav(it.to)} />
+                    <Counter key={it.to} item={it} value={c[it.key]} onClick={() => nav(it.to)} />
                 ))}
             </div>
 

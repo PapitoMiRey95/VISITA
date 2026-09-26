@@ -308,7 +308,7 @@ export default function Billing() {
                     <Plus className="w-4 h-4 mr-1" /> New Invoice
                 </Button>
             </div>
-            <p className="text-sm text-slate-500 mb-4">Uninsured services invoices. Voided invoices are preserved for audit.</p>
+            <p className="text-sm text-slate-500 mb-4">Invoices for services not covered by OHIP. Voided invoices are preserved for audit.</p>
 
             {showCreate && <div className="mb-4"><CreateInvoice onCreated={() => { setShowCreate(false); refresh(); }} /></div>}
 
@@ -338,7 +338,7 @@ export default function Billing() {
                                 {inv.billing_method === "SET_SERVICE" && (
                                     <div className="text-[11px] text-slate-500 mt-0.5" data-testid={`inv-setservice-${inv.id}`}>Set service{inv.service_code ? ` · ${inv.service_code}` : ""}</div>
                                 )}
-                                {inv.patient_coverage === "ohip" && <span className="inline-block mt-1 px-1.5 py-0.5 rounded-sm text-[10px] font-bold bg-sky-100 text-sky-700" data-testid={`inv-context-${inv.id}`}>OHIP — UNINSURED SERVICE</span>}
+                                {inv.patient_coverage === "ohip" && <span className="inline-block mt-1 px-1.5 py-0.5 rounded-sm text-[10px] font-bold bg-sky-100 text-sky-700" data-testid={`inv-context-${inv.id}`}>NOT COVERED BY OHIP SERVICE</span>}
                             </div>
                             <div className="text-right shrink-0">
                                 <div className="font-extrabold text-slate-900">{formatMoney(inv.amount, inv.currency)}</div>

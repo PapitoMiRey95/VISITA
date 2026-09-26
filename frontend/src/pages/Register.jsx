@@ -6,6 +6,7 @@ import { ChevronLeft, Loader2, Clock } from "lucide-react";
 import { useAuth } from "../context/AuthContext";
 import { api, formatErr } from "../lib/api";
 import { DobPicker } from "../components/DobPicker";
+import { HealthCardNumberInput } from "../components/HealthCardNumberInput";
 import { IssueDatePicker } from "../components/IssueDatePicker";
 import { ExpiryPicker } from "../components/ExpiryPicker";
 import { deriveExpiryISO } from "../lib/hcDates";
@@ -201,7 +202,7 @@ export default function Register() {
                                 <div className="grid grid-cols-3 gap-3">
                                     <div className="col-span-2">
                                         <Field label={t("auth:register.hcNumberLabel")} testid="reg-hcn">
-                                            <Input required value={form.health_card_number} onChange={set("health_card_number")} placeholder="1234 567 890" />
+                                            <HealthCardNumberInput required value={form.health_card_number} onChange={(v) => setForm({ ...form, health_card_number: v })} placeholder="1234 567 890" />
                                         </Field>
                                     </div>
                                     <Field label={t("auth:register.versionCode")} testid="reg-hcv">
@@ -271,7 +272,7 @@ export default function Register() {
                             <Field label={t("auth:register.secondLastName")} testid="re-second-last"><Input value={form.second_last_name} onChange={setSurname("second_last_name")} placeholder={optional} /></Field>
                         </div>
                         <Field label={t("auth:register.dob")} testid="re-dob"><DobPicker value={form.date_of_birth} onChange={setDob} testid="re-dob" /></Field>
-                        <Field label={t("auth:register.reestablish.hcNumber")} testid="re-hcn"><Input value={form.health_card_number} onChange={set("health_card_number")} placeholder="0000-000-000-XX" /></Field>
+                        <Field label={t("auth:register.reestablish.hcNumber")} testid="re-hcn"><HealthCardNumberInput value={form.health_card_number} onChange={(v) => setForm({ ...form, health_card_number: v })} placeholder="1234 567 890" /></Field>
                         <Field label={t("auth:register.phone")} testid="re-phone"><Input required value={form.phone} onChange={set("phone")} /></Field>
                         <Field label={t("auth:register.email")} testid="re-email"><Input type="email" required value={form.email} onChange={set("email")} /></Field>
                         <Field label={t("auth:register.reestablish.addressOptional")} testid="re-address"><Input value={form.address} onChange={set("address")} /></Field>

@@ -3,6 +3,7 @@ import { toast } from "sonner";
 import { Search, Camera, Upload, X, FileText } from "lucide-react";
 import { api, formatErr } from "../lib/api";
 import { formatDate } from "../lib/date";
+import { formatHealthCardWithVersion } from "../lib/healthCard";
 import { Input } from "../components/ui/input";
 import { Button } from "../components/ui/button";
 
@@ -73,7 +74,7 @@ export function IdentityCard({ p }) {
             <IdRow label="Cell">{p.cell_phone}</IdRow>
             <IdRow label="Address">{p.address_full}</IdRow>
             <IdRow label="Health Card">
-                {p.health_card_number ? `${p.health_card_number}${p.health_card_version_code ? " " + p.health_card_version_code : ""}` : "—"}
+                {p.health_card_number ? formatHealthCardWithVersion(p.health_card_number, p.health_card_version_code) : "—"}
             </IdRow>
         </div>
     );

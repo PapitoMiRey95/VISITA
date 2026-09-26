@@ -154,7 +154,7 @@ export default function Referrals() {
                                             <div className="font-semibold text-slate-800 text-sm">{formatCombinedName(r.full_name)}</div>
                                             <div className="text-[11px] text-slate-500">
                                                 {r.visita_patient_id ? `PIN ${r.visita_patient_id}` : "No PIN"}
-                                                {r.health_card_number ? ` · HCN ${r.health_card_number}` : ""}
+                                                {r.health_card_display ? ` · HCN ${r.health_card_display}` : ""}
                                             </div>
                                         </button>
                                     ))}

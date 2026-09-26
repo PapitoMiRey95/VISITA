@@ -10,6 +10,7 @@ import { formatDate } from "../lib/date";
 import { Button } from "../components/ui/button";
 import { Input } from "../components/ui/input";
 import { Label } from "../components/ui/label";
+import { HealthCardNumberInput } from "../components/HealthCardNumberInput";
 import { Select, SelectTrigger, SelectValue, SelectContent, SelectItem } from "../components/ui/select";
 
 const SEX_OPTIONS = ["Male", "Female", "X"];
@@ -228,7 +229,7 @@ export default function PortalAccount() {
                             <div className="grid grid-cols-3 gap-2">
                                 <div className="col-span-2">
                                     <Label className="text-xs">{t("portal:account.hcNumber")}</Label>
-                                    <Input data-testid="acct-hc-number" value={hc.health_card_number} onChange={(e) => setHc({ ...hc, health_card_number: e.target.value })} placeholder="1234 567 890" />
+                                    <HealthCardNumberInput data-testid="acct-hc-number" value={hc.health_card_number} onChange={(v) => setHc({ ...hc, health_card_number: v })} placeholder="1234 567 890" />
                                 </div>
                                 <div>
                                     <Label className="text-xs">{t("portal:account.hcVersion")}</Label>

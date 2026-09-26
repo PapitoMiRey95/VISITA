@@ -58,7 +58,18 @@ export default function Patients() {
 
     const startEdit = () => {
         setForm({
+            first_name: selected.first_name || "",
+            last_name: selected.last_name || "",
+            date_of_birth: selected.date_of_birth || "",
+            email: selected.email || "",
+            home_phone: selected.home_phone || "",
             phone: selected.cell_phone || "",
+            address: selected.address || "",
+            unit: selected.unit || "",
+            city: selected.city || "",
+            province: selected.province || "",
+            postal_code: selected.postal_code || "",
+            country: selected.country || "",
             health_card_number: selected.health_card_number || "",
             health_card_version: selected.health_card_version_code || "",
             health_card_issue_date: selected.health_card_issue_date || "",
@@ -210,14 +221,44 @@ export default function Patients() {
                     )}
 
                     {editing ? (
-                        <div className="space-y-3" data-testid="patient-edit-form">
-                            <div className="grid grid-cols-3 gap-2">
-                                <div className="col-span-3"><Label className="text-xs">Cell Phone</Label><Input data-testid="edit-phone" value={form.phone} onChange={(e) => setForm({ ...form, phone: e.target.value })} /></div>
-                                <div className="col-span-2"><Label className="text-xs">Health Card Number (10 digits)</Label><Input data-testid="edit-hcn" value={form.health_card_number} onChange={(e) => setForm({ ...form, health_card_number: e.target.value })} /></div>
-                                <div><Label className="text-xs">Version</Label><Input data-testid="edit-hcv" value={form.health_card_version} maxLength={2} onChange={(e) => setForm({ ...form, health_card_version: e.target.value.toUpperCase() })} /></div>
-                                <div><Label className="text-xs">Issue Date</Label><Input type="date" data-testid="edit-hc-issue" value={form.health_card_issue_date || ""} onChange={(e) => setForm({ ...form, health_card_issue_date: e.target.value })} /></div>
-                                <div><Label className="text-xs">Expiry Date</Label><Input type="date" data-testid="edit-hc-expiry" value={form.health_card_expiry_date || ""} onChange={(e) => setForm({ ...form, health_card_expiry_date: e.target.value })} /></div>
-                                <div><Label className="text-xs">VISITA PIN</Label><Input data-testid="edit-pin" value={form.visita_patient_id} onChange={(e) => setForm({ ...form, visita_patient_id: e.target.value })} /></div>
+                        <div className="space-y-4" data-testid="patient-edit-form">
+                            <div>
+                                <div className="text-[11px] font-bold uppercase tracking-wide text-slate-400 mb-1.5">Personal</div>
+                                <div className="grid grid-cols-2 gap-2">
+                                    <div><Label className="text-xs">First Name(s)</Label><Input data-testid="edit-first-name" value={form.first_name} onChange={(e) => setForm({ ...form, first_name: e.target.value })} /></div>
+                                    <div><Label className="text-xs">Last Name(s)</Label><Input data-testid="edit-last-name" value={form.last_name} onChange={(e) => setForm({ ...form, last_name: e.target.value })} /></div>
+                                    <div><Label className="text-xs">Date of Birth</Label><Input type="date" data-testid="edit-dob" value={form.date_of_birth || ""} onChange={(e) => setForm({ ...form, date_of_birth: e.target.value })} /></div>
+                                    <div><Label className="text-xs">VISITA PIN</Label><Input data-testid="edit-pin" value={form.visita_patient_id} onChange={(e) => setForm({ ...form, visita_patient_id: e.target.value })} /></div>
+                                </div>
+                            </div>
+                            <div>
+                                <div className="text-[11px] font-bold uppercase tracking-wide text-slate-400 mb-1.5">Contact</div>
+                                <div className="grid grid-cols-2 gap-2">
+                                    <div className="col-span-2"><Label className="text-xs">Email</Label><Input type="email" data-testid="edit-email" value={form.email} onChange={(e) => setForm({ ...form, email: e.target.value })} /></div>
+                                    <div><Label className="text-xs">Home Phone</Label><Input data-testid="edit-home-phone" value={form.home_phone} onChange={(e) => setForm({ ...form, home_phone: e.target.value })} /></div>
+                                    <div><Label className="text-xs">Cell Phone</Label><Input data-testid="edit-phone" value={form.phone} onChange={(e) => setForm({ ...form, phone: e.target.value })} /></div>
+                                </div>
+                            </div>
+                            <div>
+                                <div className="text-[11px] font-bold uppercase tracking-wide text-slate-400 mb-1.5">Address</div>
+                                <div className="grid grid-cols-6 gap-2">
+                                    <div className="col-span-4"><Label className="text-xs">Street Address</Label><Input data-testid="edit-address" value={form.address} onChange={(e) => setForm({ ...form, address: e.target.value })} /></div>
+                                    <div className="col-span-2"><Label className="text-xs">Unit</Label><Input data-testid="edit-unit" value={form.unit} onChange={(e) => setForm({ ...form, unit: e.target.value })} /></div>
+                                    <div className="col-span-3"><Label className="text-xs">City</Label><Input data-testid="edit-city" value={form.city} onChange={(e) => setForm({ ...form, city: e.target.value })} /></div>
+                                    <div className="col-span-3"><Label className="text-xs">Province</Label><Input data-testid="edit-province" value={form.province} onChange={(e) => setForm({ ...form, province: e.target.value })} /></div>
+                                    <div className="col-span-3"><Label className="text-xs">Postal Code</Label><Input data-testid="edit-postal" value={form.postal_code} onChange={(e) => setForm({ ...form, postal_code: e.target.value })} /></div>
+                                    <div className="col-span-3"><Label className="text-xs">Country</Label><Input data-testid="edit-country" value={form.country} onChange={(e) => setForm({ ...form, country: e.target.value })} /></div>
+                                </div>
+                            </div>
+                            <div>
+                                <div className="text-[11px] font-bold uppercase tracking-wide text-slate-400 mb-1.5">Health Card</div>
+                                <div className="grid grid-cols-4 gap-2">
+                                    <div className="col-span-2"><Label className="text-xs">Number (10 digits)</Label><Input data-testid="edit-hcn" value={form.health_card_number} onChange={(e) => setForm({ ...form, health_card_number: e.target.value })} /></div>
+                                    <div><Label className="text-xs">Version</Label><Input data-testid="edit-hcv" value={form.health_card_version} maxLength={2} onChange={(e) => setForm({ ...form, health_card_version: e.target.value.toUpperCase() })} /></div>
+                                    <div></div>
+                                    <div className="col-span-2"><Label className="text-xs">Issue Date</Label><Input type="date" data-testid="edit-hc-issue" value={form.health_card_issue_date || ""} onChange={(e) => setForm({ ...form, health_card_issue_date: e.target.value })} /></div>
+                                    <div className="col-span-2"><Label className="text-xs">Expiry Date</Label><Input type="date" data-testid="edit-hc-expiry" value={form.health_card_expiry_date || ""} onChange={(e) => setForm({ ...form, health_card_expiry_date: e.target.value })} /></div>
+                                </div>
                             </div>
                             <div className="flex gap-2">
                                 <Button disabled={busy} data-testid="edit-save" onClick={saveEdit} className="bg-visita-green hover:bg-visita-greenDark text-white">Save changes</Button>
@@ -233,6 +274,7 @@ export default function Patients() {
                     <Row label="Age" testid="snap-age">{selected.age != null ? `${selected.age}` : "—"}</Row>
                     <Row label="Home Phone" testid="snap-home">{selected.home_phone ? <span className="inline-flex items-center gap-1"><Phone className="w-3.5 h-3.5 text-slate-400" />{selected.home_phone}</span> : null}</Row>
                     <Row label="Cell Phone" testid="snap-cell">{selected.cell_phone ? <span className="inline-flex items-center gap-1"><Phone className="w-3.5 h-3.5 text-slate-400" />{selected.cell_phone}</span> : null}</Row>
+                    <Row label="Email" testid="snap-email">{selected.email || null}</Row>
                     <Row label="Address" testid="snap-address">{selected.address_full ? <span className="inline-flex items-center gap-1 text-right"><MapPin className="w-3.5 h-3.5 text-slate-400 flex-shrink-0" />{selected.address_full}</span> : null}</Row>
                     <Row label="Health Card" testid="snap-hcn">
                         {selected.health_card_display ? (

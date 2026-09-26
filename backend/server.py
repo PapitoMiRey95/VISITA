@@ -3240,6 +3240,7 @@ def _directory_snapshot(d: dict) -> dict:
         "health_card_number": d.get("health_card_number"),
         "health_card_version_code": d.get("health_card_version_code"),
         "health_card_display": identity_mod.format_health_card(d.get("health_card_number"), d.get("health_card_version_code")),
+        "country": d.get("country"),
         "health_card_issue_date": d.get("health_card_issue_date"),
         "health_card_expiry_date": d.get("health_card_expiry_date"),
         "health_card_status": identity_mod.health_card_status(d.get("health_card_expiry_date")),
@@ -3259,10 +3260,14 @@ def _portal_patient_snapshot(p: dict) -> dict:
         "full_name": f"{p.get('last_name','')}, {p.get('first_name','')}".strip(", "),
         "visita_patient_id": p.get("visita_patient_id"),  # None -> UI shows "Not assigned"
         "date_of_birth": p.get("date_of_birth"), "age": _age_from_dob(p.get("date_of_birth")),
-        "home_phone": None, "cell_phone": p.get("phone"),
+        "home_phone": p.get("home_phone"), "cell_phone": p.get("phone"),
         "email": p.get("email"),
-        "address": None, "unit": None, "city": None, "province": p.get("province"), "postal_code": None,
-        "address_full": None,
+        "address": p.get("address"), "unit": p.get("unit"),
+        "city": p.get("city"), "province": p.get("province"), "postal_code": p.get("postal_code"),
+        "country": p.get("country"),
+        "address_full": ", ".join([x for x in [
+            " ".join([str(p.get("address") or ""), (f"#{p.get('unit')}" if p.get("unit") else "")]).strip(),
+            p.get("city"), p.get("province"), p.get("postal_code")] if x]),
         "health_card_number": p.get("health_card_number"),
         "health_card_version_code": p.get("health_card_version"),
         "health_card_display": identity_mod.format_health_card(p.get("health_card_number"), p.get("health_card_version")),
@@ -3991,12 +3996,43 @@ async def search_patients(q: Optional[str] = None, user: dict = Depends(require_
 
 
 class InternalPatientEditBody(BaseModel):
-    phone: Optional[str] = None
+    first_name: Optional[str] = None
+    last_name: Optional[str] = None
+    date_of_birth: Optional[str] = None
+    email: Optional[str] = None
+    home_phone: Optional[str] = None
+    phone: Optional[str] = None  # cell phone
+    address: Optional[str] = None
+    unit: Optional[str] = None
+    city: Optional[str] = None
+    province: Optional[str] = None
+    postal_code: Optional[str] = None
+    country: Optional[str] = None
     health_card_number: Optional[str] = None
     health_card_version: Optional[str] = None
     health_card_issue_date: Optional[str] = None
     health_card_expiry_date: Optional[str] = None
     visita_patient_id: Optional[str] = None
+
+
+_EMAIL_RE = re.compile(r"^[^@\s]+@[^@\s]+\.[^@\s]+$")
+
+
+def _validate_edit_common(body: "InternalPatientEditBody"):
+    """Shared field validation for internal patient edits: email format and a
+    DOB that is a real, non-future date."""
+    if body.email is not None and body.email.strip():
+        if not _EMAIL_RE.match(body.email.strip().lower()):
+            raise HTTPException(status_code=400, detail="Enter a valid email address.")
+    if body.date_of_birth is not None and body.date_of_birth.strip():
+        from datetime import date as _date
+        try:
+            y, m, d = (int(x) for x in body.date_of_birth.split("-"))
+            dob = _date(y, m, d)
+        except (ValueError, AttributeError):
+            raise HTTPException(status_code=400, detail="Enter a valid date of birth.")
+        if dob > _date.today():
+            raise HTTPException(status_code=400, detail="Date of birth cannot be in the future.")
 
 
 @api.patch("/internal/patients/{patient_id}")
@@ -4007,6 +4043,7 @@ async def internal_edit_patient(patient_id: str, body: InternalPatientEditBody,
     p = await db.patients.find_one({"id": patient_id})
     if not p:
         raise HTTPException(status_code=404, detail="Patient not found.")
+    _validate_edit_common(body)
     updates, changes = {}, []
 
     def track(field, new_val):
@@ -4016,6 +4053,23 @@ async def internal_edit_patient(patient_id: str, body: InternalPatientEditBody,
             changes.append({"field": field, "previous": old_val, "new": new_val,
                             "changed_by": user["name"], "changed_at": now_iso()})
 
+    for f in ("first_name", "last_name", "address", "unit", "city", "province", "postal_code", "country"):
+        val = getattr(body, f)
+        if val is not None:
+            track(f, val.strip() or None)
+    if body.date_of_birth is not None and body.date_of_birth.strip():
+        track("date_of_birth", body.date_of_birth.strip())
+    if body.home_phone is not None:
+        track("home_phone", identity_mod.normalize_phone(body.home_phone) if body.home_phone.strip() else None)
+    # Email is the portal login identity: enforce uniqueness and sync the users doc.
+    if body.email is not None and body.email.strip():
+        new_email = body.email.strip().lower()
+        if new_email != (p.get("email") or "").lower():
+            clash_p = await db.patients.find_one({"email": new_email, "id": {"$ne": patient_id}})
+            clash_u = await db.users.find_one({"email": new_email, "patient_id": {"$ne": patient_id}})
+            if clash_p or clash_u:
+                raise HTTPException(status_code=409, detail="Another account already uses that email address.")
+            track("email", new_email)
     if body.phone is not None:
         track("phone", identity_mod.normalize_phone(body.phone))
     # Health card: normalize together when either number or version is being set.
@@ -4051,6 +4105,10 @@ async def internal_edit_patient(patient_id: str, body: InternalPatientEditBody,
     updates["updated_at"] = now_iso()
     await db.patients.update_one({"id": patient_id}, {"$set": updates})
     await db.patients.update_one({"id": patient_id}, {"$push": {"identity_history": {"$each": changes}}})
+    # Keep the portal login (users doc) email in sync with the patient email.
+    if "email" in updates:
+        await db.users.update_one({"patient_id": patient_id, "role": "patient"},
+                                  {"$set": {"email": updates["email"]}})
     if "visita_patient_id" in updates:
         new_vid = updates["visita_patient_id"]
         old_vid = p.get("visita_patient_id")
@@ -4079,6 +4137,7 @@ async def internal_edit_directory(directory_id: str, body: InternalPatientEditBo
     d = await db.patient_directory.find_one({"id": directory_id})
     if not d:
         raise HTTPException(status_code=404, detail="Directory record not found.")
+    _validate_edit_common(body)
     owner_id = d.get("linked_patient_id") or directory_id
     updates, changes = {}, []
 
@@ -4089,6 +4148,16 @@ async def internal_edit_directory(directory_id: str, body: InternalPatientEditBo
             changes.append({"field": field, "previous": old_val, "new": new_val,
                             "changed_by": user["name"], "changed_at": now_iso()})
 
+    for f in ("first_name", "last_name", "address", "unit", "city", "province", "postal_code", "country"):
+        val = getattr(body, f)
+        if val is not None:
+            track(f, val.strip() or None)
+    if body.date_of_birth is not None and body.date_of_birth.strip():
+        track("date_of_birth", body.date_of_birth.strip())
+    if body.email is not None:
+        track("email", body.email.strip().lower() or None)
+    if body.home_phone is not None:
+        track("home_phone", identity_mod.normalize_phone(body.home_phone) if body.home_phone.strip() else None)
     if body.phone is not None:
         track("cell_phone", identity_mod.normalize_phone(body.phone))
     if body.health_card_number is not None or body.health_card_version is not None:

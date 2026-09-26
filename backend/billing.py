@@ -67,6 +67,13 @@ def normalize_amount(amount) -> float:
 BILLING_METHODS = {"SET_SERVICE", "TIME_BASED"}
 MAX_WHOLE_HOURS = 50
 
+# Internal-guidance classification for a catalogue service. Only NO_CHARGE
+# blocks invoicing; the others are advisory (still require a configured amount).
+BILLING_CLASSIFICATIONS = {
+    "PATIENT_THIRD_PARTY_BILLABLE", "THIRD_PARTY_EXTERNAL_FEE",
+    "NO_CHARGE", "REVIEW_REQUIRED",
+}
+
 # Human minutes -> hour multiplier. Values are fixed by the billing spec (note
 # 25 min = 0.416) so frontend and backend never disagree.
 PARTIAL_MULTIPLIERS = {
@@ -110,12 +117,21 @@ def compute_time_based(hourly_rate, whole_hours, partial_minutes) -> dict:
 
 def resolve_set_service(services: list, code: str) -> dict:
     """Look up a predefined service by code from the clinic config (server is
-    the source of truth for description + amount — client amount is ignored)."""
+    the source of truth for description + amount — client amount is ignored).
+    Rejects inactive services, No-Charge/Unremunerated services, and services
+    with no configured amount."""
     for s in services or []:
         if str(s.get("code")) == str(code):
+            if not s.get("active", True):
+                raise HTTPException(status_code=400, detail="That service is inactive and cannot be invoiced.")
+            if s.get("billing_classification") == "NO_CHARGE":
+                raise HTTPException(status_code=400, detail="This service is marked No Charge / Unremunerated and cannot generate an invoice.")
+            amt = s.get("amount")
+            if amt in (None, ""):
+                raise HTTPException(status_code=400, detail="This service has no configured amount yet. Set it in Clinic Settings.")
             return {"service_code": s.get("code"),
                     "service_description": (s.get("description") or "").strip(),
-                    "amount": normalize_amount(s.get("amount"))}
+                    "amount": normalize_amount(amt)}
     raise HTTPException(status_code=400, detail="Select a valid predefined service.")
 
 

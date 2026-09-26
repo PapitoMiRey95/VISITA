@@ -7,12 +7,12 @@ import { useInvalidate } from "./hooks";
 import { useAuth } from "../context/AuthContext";
 import { formatPatientName, formatCombinedName } from "../lib/name";
 import { formatDate, formatDateTime } from "../lib/date";
-import { formatMoney, InvoiceStatusPill, PAYMENT_MODE, HOURS_OPTIONS, PARTIAL_OPTIONS, computeTimeBasedTotal } from "../lib/billing";
+import { formatMoney, InvoiceStatusPill, PAYMENT_MODE, HOURS_OPTIONS, PARTIAL_OPTIONS, computeTimeBasedTotal, SERVICE_CATEGORIES, CATEGORY_LABEL, CLASSIFICATION_LABEL } from "../lib/billing";
 import { Button } from "../components/ui/button";
 import { Input } from "../components/ui/input";
 import { Label } from "../components/ui/label";
 import { Textarea } from "../components/ui/textarea";
-import { Select, SelectTrigger, SelectValue, SelectContent, SelectItem } from "../components/ui/select";
+import { Select, SelectTrigger, SelectValue, SelectContent, SelectItem, SelectGroup, SelectLabel } from "../components/ui/select";
 
 // Only portal patients (with a patient_id) can be billed — they need a login to see the invoice.
 function PatientPicker({ selected, onSelect, onClear }) {
@@ -124,7 +124,7 @@ function CreateInvoice({ onCreated }) {
     const [partial, setPartial] = useState(0); // minutes
 
     useEffect(() => {
-        api.get("/internal/direct-billing/config")
+        api.get("/internal/direct-billing/config", { params: { active_only: true } })
             .then(({ data }) => setCfg({ hourly_rate: data.hourly_rate, services: data.services || [] }))
             .catch(() => {});
     }, []);
@@ -211,23 +211,40 @@ function CreateInvoice({ onCreated }) {
                 <div data-testid="inv-set-service">
                     <Label className="text-xs">Predefined service</Label>
                     {cfg.services.length === 0 ? (
-                        <p className="text-xs text-amber-600">No predefined services configured. Add them in Clinic Settings → Direct 3rd Party Billing.</p>
+                        <p className="text-xs text-amber-600">No active services configured. Add them in Clinic Settings → Direct 3rd Party Billing.</p>
                     ) : (
                         <Select value={svcCode} onValueChange={setSvcCode}>
                             <SelectTrigger data-testid="inv-service-select"><SelectValue placeholder="Select a service" /></SelectTrigger>
-                            <SelectContent>
-                                {cfg.services.map((s) => (
-                                    <SelectItem key={s.code} value={s.code}>
-                                        <span className="inline-flex justify-between gap-6 w-full min-w-[16rem]"><span>{s.description}</span><span className="font-semibold tabular-nums">{formatMoney(s.amount)}</span></span>
-                                    </SelectItem>
-                                ))}
+                            <SelectContent className="max-h-80">
+                                {SERVICE_CATEGORIES.map(([cat, label]) => {
+                                    const rows = cfg.services.filter((s) => (s.category || "OTHER") === cat);
+                                    if (rows.length === 0) return null;
+                                    return (
+                                        <SelectGroup key={cat}>
+                                            <SelectLabel className="text-[10px] uppercase tracking-wide text-slate-400">{label}</SelectLabel>
+                                            {rows.map((s) => {
+                                                const noCharge = s.billing_classification === "NO_CHARGE";
+                                                const noAmount = s.amount == null || s.amount === "";
+                                                const disabled = noCharge || noAmount;
+                                                return (
+                                                    <SelectItem key={s.code} value={s.code} disabled={disabled}>
+                                                        <span className="inline-flex justify-between gap-6 w-full min-w-[18rem]">
+                                                            <span>{s.description}{noCharge ? " · No charge" : ""}</span>
+                                                            <span className="font-semibold tabular-nums">{noAmount ? (noCharge ? "—" : "Not set") : formatMoney(s.amount)}</span>
+                                                        </span>
+                                                    </SelectItem>
+                                                );
+                                            })}
+                                        </SelectGroup>
+                                    );
+                                })}
                             </SelectContent>
                         </Select>
                     )}
                     {selectedSvc && (
                         <div className="mt-2 flex items-center justify-between bg-slate-50 border border-slate-200 rounded-sm px-3 py-2 text-sm" data-testid="inv-service-summary">
-                            <span className="text-slate-700">{selectedSvc.description}</span>
-                            <span className="font-bold tabular-nums">{formatMoney(selectedSvc.amount)}</span>
+                            <span className="text-slate-700">{selectedSvc.description}<span className="ml-1.5 text-[10px] uppercase tracking-wide text-slate-400">{CLASSIFICATION_LABEL[selectedSvc.billing_classification] || ""}</span></span>
+                            <span className="font-bold tabular-nums">{selectedSvc.amount != null ? formatMoney(selectedSvc.amount) : "Not set"}</span>
                         </div>
                     )}
                 </div>

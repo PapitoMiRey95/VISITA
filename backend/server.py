@@ -1957,13 +1957,27 @@ async def create_invoice(body: InvoiceCreateBody, user: dict = Depends(require_r
 
 
 # ---- Direct 3rd Party Billing ------------------------------------------------
-async def _direct_billing_config() -> dict:
+async def _direct_billing_config(active_only: bool = False) -> dict:
     s = await db.settings.find_one({"id": "clinic"}, {"_id": 0}) or {}
     services = s.get("direct_billing_services") or []
-    clean = [{"code": str(x.get("code") or "").strip(),
-              "description": (x.get("description") or "").strip(),
-              "amount": x.get("amount")}
-             for x in services if str(x.get("code") or "").strip() and (x.get("description") or "").strip()]
+    clean = []
+    for x in services:
+        code = str(x.get("code") or "").strip()
+        desc = (x.get("description") or "").strip()
+        if not code or not desc:
+            continue
+        active = bool(x.get("active", True))
+        if active_only and not active:
+            continue
+        clean.append({
+            "code": code,
+            "category": (x.get("category") or "OTHER").strip() or "OTHER",
+            "description": desc,
+            "amount": x.get("amount") if x.get("amount") not in ("",) else None,
+            "billing_classification": x.get("billing_classification") or "PATIENT_THIRD_PARTY_BILLABLE",
+            "active": active,
+            "note": (x.get("note") or "").strip() or None,
+        })
     return {"hourly_rate": s.get("direct_billing_hourly_rate"), "services": clean}
 
 
@@ -1984,9 +1998,10 @@ class DirectBillingInvoiceBody(BaseModel):
 
 
 @api.get("/internal/direct-billing/config")
-async def get_direct_billing_config(user: dict = Depends(require_roles(*BILLING_MANAGE_ROLES))):
-    cfg = await _direct_billing_config()
-    return {**cfg, "partial_options": billing_mod.PARTIAL_MULTIPLIERS, "max_hours": billing_mod.MAX_WHOLE_HOURS}
+async def get_direct_billing_config(active_only: bool = False, user: dict = Depends(require_roles(*BILLING_MANAGE_ROLES))):
+    cfg = await _direct_billing_config(active_only=active_only)
+    return {**cfg, "partial_options": billing_mod.PARTIAL_MULTIPLIERS, "max_hours": billing_mod.MAX_WHOLE_HOURS,
+            "classifications": sorted(billing_mod.BILLING_CLASSIFICATIONS)}
 
 
 @api.put("/internal/direct-billing/config")
@@ -1997,11 +2012,25 @@ async def put_direct_billing_config(body: DirectBillingConfigBody, user: dict = 
     if body.services is not None:
         cleaned = []
         for x in body.services:
-            code = str((x or {}).get("code") or "").strip()
-            desc = ((x or {}).get("description") or "").strip()
+            x = x or {}
+            code = str(x.get("code") or "").strip()
+            desc = (x.get("description") or "").strip()
             if not code or not desc:
                 continue
-            cleaned.append({"code": code, "description": desc, "amount": billing_mod.normalize_amount(x.get("amount"))})
+            classification = x.get("billing_classification") or "PATIENT_THIRD_PARTY_BILLABLE"
+            if classification not in billing_mod.BILLING_CLASSIFICATIONS:
+                classification = "PATIENT_THIRD_PARTY_BILLABLE"
+            amt = x.get("amount")
+            amount = billing_mod.normalize_amount(amt) if amt not in (None, "") else None
+            cleaned.append({
+                "code": code,
+                "category": (x.get("category") or "OTHER").strip() or "OTHER",
+                "description": desc,
+                "amount": amount,
+                "billing_classification": classification,
+                "active": bool(x.get("active", True)),
+                "note": (x.get("note") or "").strip() or None,
+            })
         updates["direct_billing_services"] = cleaned
     if updates:
         await db.settings.update_one({"id": "clinic"}, {"$set": {**updates, "id": "clinic"}}, upsert=True)

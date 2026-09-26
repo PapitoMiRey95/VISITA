@@ -7,6 +7,7 @@ import { Button } from "../components/ui/button";
 import { Input } from "../components/ui/input";
 import { Textarea } from "../components/ui/textarea";
 import { Label } from "../components/ui/label";
+import { DEFAULT_SERVICE_CATALOG, SERVICE_CATEGORIES, CLASSIFICATIONS } from "../lib/billing";
 
 const SETTING_FIELDS = [
     ["clinic_name", "Clinic name"],
@@ -100,23 +101,42 @@ export default function Settings() {
                 <div>
                     <div className="flex items-center justify-between">
                         <Label className="text-xs">Predefined services (Set Service billing)</Label>
-                        <button type="button" data-testid="db-add-service"
-                            onClick={() => setSettings((s) => ({ ...s, direct_billing_services: [...(s.direct_billing_services || []), { code: "", description: "", amount: "" }] }))}
-                            className="text-xs text-visita-green flex items-center gap-1"><Plus className="w-3 h-3" /> Add</button>
+                        <div className="flex items-center gap-3">
+                            <button type="button" data-testid="db-load-catalog"
+                                onClick={() => setSettings((s) => {
+                                    const existing = new Set((s.direct_billing_services || []).map((r) => r.code));
+                                    const additions = DEFAULT_SERVICE_CATALOG.filter((r) => !existing.has(r.code)).map((r) => ({ ...r }));
+                                    return { ...s, direct_billing_services: [...(s.direct_billing_services || []), ...additions] };
+                                })}
+                                className="text-xs text-visita-greenDark font-semibold hover:underline">Load default catalogue</button>
+                            <button type="button" data-testid="db-add-service"
+                                onClick={() => setSettings((s) => ({ ...s, direct_billing_services: [...(s.direct_billing_services || []), { code: `CUSTOM_${Date.now()}`, category: "OTHER", description: "", amount: "", billing_classification: "PATIENT_THIRD_PARTY_BILLABLE", active: true, note: "" }] }))}
+                                className="text-xs text-visita-green flex items-center gap-1"><Plus className="w-3 h-3" /> Add</button>
+                        </div>
                     </div>
-                    <div className="space-y-1 mt-1">
-                        {(settings.direct_billing_services || []).length === 0 && <p className="text-xs text-slate-400">No services yet. Add e.g. Medical Note / $20.00.</p>}
-                        {(settings.direct_billing_services || []).map((row, i) => (
-                            <div key={i} className="flex items-center gap-1.5" data-testid={`db-service-${i}`}>
-                                <Input placeholder="Code" className="h-8 text-xs w-24" value={row.code || ""}
-                                    onChange={(e) => setSettings((s) => ({ ...s, direct_billing_services: s.direct_billing_services.map((r, j) => j === i ? { ...r, code: e.target.value } : r) }))} />
-                                <Input placeholder="Description" className="h-8 text-xs flex-1" value={row.description || ""}
-                                    onChange={(e) => setSettings((s) => ({ ...s, direct_billing_services: s.direct_billing_services.map((r, j) => j === i ? { ...r, description: e.target.value } : r) }))} />
-                                <Input placeholder="Amount" type="number" min="0" step="0.01" className="h-8 text-xs w-28" value={row.amount ?? ""}
-                                    onChange={(e) => setSettings((s) => ({ ...s, direct_billing_services: s.direct_billing_services.map((r, j) => j === i ? { ...r, amount: e.target.value } : r) }))} />
-                                <button type="button" onClick={() => setSettings((s) => ({ ...s, direct_billing_services: s.direct_billing_services.filter((_, j) => j !== i) }))} className="text-slate-400 hover:text-red-500"><X className="w-4 h-4" /></button>
-                            </div>
-                        ))}
+                    <p className="text-[11px] text-slate-400 mt-1">Amounts are not preset — set a fee per service. "No Charge" services stay visible for reference but cannot generate an invoice.</p>
+                    <div className="space-y-1.5 mt-2">
+                        {(settings.direct_billing_services || []).length === 0 && <p className="text-xs text-slate-400">No services yet. Use "Load default catalogue" to start.</p>}
+                        {(settings.direct_billing_services || []).map((row, i) => {
+                            const setRow = (patch) => setSettings((s) => ({ ...s, direct_billing_services: s.direct_billing_services.map((r, j) => j === i ? { ...r, ...patch } : r) }));
+                            return (
+                                <div key={row.code || i} className="flex flex-wrap items-center gap-1.5 border border-slate-100 rounded-sm p-1.5" data-testid={`db-service-${i}`}>
+                                    <label className="flex items-center gap-1 w-14 shrink-0" title="Active">
+                                        <input type="checkbox" checked={row.active !== false} onChange={(e) => setRow({ active: e.target.checked })} data-testid={`db-active-${i}`} />
+                                        <span className="text-[10px] text-slate-500">Active</span>
+                                    </label>
+                                    <Input placeholder="Description" className="h-8 text-xs flex-1 min-w-[12rem]" value={row.description || ""} onChange={(e) => setRow({ description: e.target.value })} />
+                                    <select className="h-8 text-xs border border-slate-200 rounded-sm px-1 w-40" value={row.category || "OTHER"} onChange={(e) => setRow({ category: e.target.value })}>
+                                        {SERVICE_CATEGORIES.map(([c, l]) => <option key={c} value={c}>{l}</option>)}
+                                    </select>
+                                    <select className="h-8 text-xs border border-slate-200 rounded-sm px-1 w-44" value={row.billing_classification || "PATIENT_THIRD_PARTY_BILLABLE"} onChange={(e) => setRow({ billing_classification: e.target.value })} data-testid={`db-class-${i}`}>
+                                        {CLASSIFICATIONS.map(([c, l]) => <option key={c} value={c}>{l}</option>)}
+                                    </select>
+                                    <Input placeholder="Amount" type="number" min="0" step="0.01" className="h-8 text-xs w-24" value={row.amount ?? ""} onChange={(e) => setRow({ amount: e.target.value })} data-testid={`db-amount-${i}`} />
+                                    <button type="button" onClick={() => setSettings((s) => ({ ...s, direct_billing_services: s.direct_billing_services.filter((_, j) => j !== i) }))} className="text-slate-400 hover:text-red-500"><X className="w-4 h-4" /></button>
+                                </div>
+                            );
+                        })}
                     </div>
                 </div>
             </div>

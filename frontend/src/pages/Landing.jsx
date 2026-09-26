@@ -32,7 +32,7 @@ export default function Landing() {
                         {l}
                     </span>
                 ))}
-                <span className="pl-1 pr-1.5 text-[9px] uppercase tracking-widest text-slate-500 hidden sm:inline">{t("common:language.comingSoon")}</span>
+                <span className="pl-1 pr-1.5 text-[9px] uppercase tracking-widest text-slate-500 inline">{t("common:language.comingSoon")}</span>
             </div>
 
             <div className="relative z-10 min-h-screen flex flex-col lg:flex-row lg:items-center lg:justify-between px-6 py-12 lg:px-16 gap-10">

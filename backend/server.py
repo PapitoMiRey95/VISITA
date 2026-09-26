@@ -484,6 +484,10 @@ async def register(body: RegisterBody):
             hc_num, hc_ver = identity_mod.normalize_health_card(body.health_card_number, body.health_card_version)
         except ValueError as e:
             raise HTTPException(status_code=400, detail=str(e))
+        if not body.health_card_issue_date:
+            raise HTTPException(status_code=400, detail="Health Card issue date is required.")
+        if not body.health_card_expiry_date:
+            raise HTTPException(status_code=400, detail="Health Card expiry date is required.")
     if not identity_mod.valid_date(body.health_card_issue_date) or not identity_mod.valid_date(body.health_card_expiry_date):
         raise HTTPException(status_code=400, detail="Health Card dates must be valid dates.")
     validate_hc_dates(body.health_card_issue_date, body.health_card_expiry_date, body.date_of_birth)

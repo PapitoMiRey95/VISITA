@@ -75,6 +75,8 @@ export default function Register() {
             const ver = (form.health_card_version || "").replace(/[^A-Za-z]/g, "");
             if (num.length !== 10) { toast.error(t("auth:register.errHcNumber")); return; }
             if (ver.length !== 2) { toast.error(t("auth:register.errVersionCode")); return; }
+            if (!form.health_card_issue_date) { toast.error(t("auth:register.errIssueDate")); return; }
+            if (!form.health_card_expiry_date) { toast.error(t("auth:register.errExpiryDate")); return; }
         }
         setBusy(true);
         try {

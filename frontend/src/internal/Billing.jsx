@@ -187,7 +187,7 @@ export default function Billing() {
                     <Plus className="w-4 h-4 mr-1" /> New Invoice
                 </Button>
             </div>
-            <p className="text-sm text-slate-500 mb-4">Private / uninsured service invoices. Voided invoices are preserved for audit.</p>
+            <p className="text-sm text-slate-500 mb-4">Uninsured services invoices. Voided invoices are preserved for audit.</p>
 
             {showCreate && <div className="mb-4"><CreateInvoice onCreated={() => { setShowCreate(false); refresh(); }} /></div>}
 

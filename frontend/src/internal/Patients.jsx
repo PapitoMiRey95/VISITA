@@ -34,6 +34,7 @@ function Row({ label, children, testid }) {
 
 export default function Patients() {
     const [query, setQuery] = useState("");
+    const [pinQuery, setPinQuery] = useState("");
     const [results, setResults] = useState([]);
     const [searching, setSearching] = useState(false);
     const [searched, setSearched] = useState(false);
@@ -117,7 +118,27 @@ export default function Patients() {
         if (q.length < 2) { toast.error("Enter at least 2 characters."); return; }
         setSearching(true);
         try {
-            const { data } = await api.get("/internal/patient-lookup", { params: { q } });
+            // General search excludes VISITA PIN (PIN has its own dedicated box).
+            const { data } = await api.get("/internal/patient-lookup", { params: { q, include_pin: false } });
+            setResults(data);
+            setSearched(true);
+            if (data.length === 1) {
+                setSelected(data[0]);
+                setShowResults(false);
+            } else {
+                setShowResults(true);
+            }
+        } catch (err) { toast.error(formatErr(err)); } finally { setSearching(false); }
+    };
+
+    const runPin = async (e) => {
+        e?.preventDefault();
+        const pin = pinQuery.trim();
+        if (!/^\d+$/.test(pin)) { toast.error("VISITA PIN must be numeric."); return; }
+        setSearching(true);
+        try {
+            // Dedicated exact-match PIN search (active patients only).
+            const { data } = await api.get("/internal/patient-lookup/pin", { params: { pin } });
             setResults(data);
             setSearched(true);
             if (data.length === 1) {
@@ -138,22 +159,36 @@ export default function Patients() {
                 <h1 className="text-2xl font-bold text-slate-900 tracking-tight">Patients</h1>
             </div>
             <p className="text-sm text-slate-500 mb-4 flex items-center gap-1">
-                <UserSearch className="w-3.5 h-3.5" /> Search by name, VISITA PIN / ID, health card number, or phone. Admin, staff & physicians can edit patient information — including unregistered directory records.
+                <UserSearch className="w-3.5 h-3.5" /> Search current patients by name, health card number, or phone — or look up an exact VISITA PIN. Admin, staff & physicians can edit patient information, including unregistered directory records.
             </p>
 
-            <div ref={searchRef} className="relative max-w-xl mb-4">
-                <form onSubmit={run} className="flex gap-2">
-                    <div className="relative flex-1">
-                        <Search className="w-4 h-4 text-slate-400 absolute left-2 top-2.5" />
-                        <Input data-testid="patient-lookup-search" value={query}
-                            onChange={(e) => setQuery(e.target.value)}
-                            onFocus={() => { if (results.length) setShowResults(true); }}
-                            placeholder="Name, VISITA PIN, health card #, or phone" className="pl-8" />
-                    </div>
-                    <Button type="submit" disabled={searching} data-testid="patient-lookup-search-btn">
-                        {searching ? "…" : "Search"}
-                    </Button>
-                </form>
+            <div ref={searchRef} className="relative max-w-2xl mb-4">
+                <div className="flex flex-col sm:flex-row gap-3">
+                    <form onSubmit={run} className="flex-1 min-w-0">
+                        <label className="block text-[11px] font-bold uppercase tracking-wide text-slate-400 mb-1">General Patient Search</label>
+                        <div className="flex gap-2">
+                            <div className="relative flex-1">
+                                <Search className="w-4 h-4 text-slate-400 absolute left-2 top-2.5" />
+                                <Input data-testid="patient-lookup-search" value={query}
+                                    onChange={(e) => setQuery(e.target.value)}
+                                    onFocus={() => { if (results.length) setShowResults(true); }}
+                                    placeholder="Name, health card #, or phone" className="pl-8" />
+                            </div>
+                            <Button type="submit" disabled={searching} data-testid="patient-lookup-search-btn">
+                                {searching ? "…" : "Search"}
+                            </Button>
+                        </div>
+                    </form>
+                    <form onSubmit={runPin} className="sm:w-64 shrink-0">
+                        <label className="block text-[11px] font-bold uppercase tracking-wide text-slate-400 mb-1">VISITA PIN Search</label>
+                        <div className="flex gap-2">
+                            <Input data-testid="patient-pin-search" value={pinQuery} inputMode="numeric"
+                                onChange={(e) => setPinQuery(e.target.value.replace(/\D/g, ""))}
+                                placeholder="VISITA PIN" className="flex-1" />
+                            <Button type="submit" variant="outline" disabled={searching} data-testid="patient-pin-search-btn">PIN</Button>
+                        </div>
+                    </form>
+                </div>
 
                 {showResults && searched && (
                     <div data-testid="patient-lookup-results"

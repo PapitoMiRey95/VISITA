@@ -3374,15 +3374,16 @@ def _name_tokens_clause(qn: str):
     ]}
 
 
-def _portal_search_ors(qn: str):
+def _portal_search_ors(qn: str, include_pin: bool = True):
     ors = [
         {"first_name": {"$regex": re.escape(qn), "$options": "i"}},
         {"last_name": {"$regex": re.escape(qn), "$options": "i"}},
         {"email": {"$regex": re.escape(qn), "$options": "i"}},
         {"health_card_number": {"$regex": re.escape(qn), "$options": "i"}},
-        {"visita_patient_id": {"$regex": re.escape(qn), "$options": "i"}},
         {"date_of_birth": {"$regex": re.escape(qn)}},
     ]
+    if include_pin:
+        ors.append({"visita_patient_id": {"$regex": re.escape(qn), "$options": "i"}})
     digits = re.sub(r"\D", "", qn)
     if len(digits) >= 3:
         ors.append({"phone": {"$regex": r"\D*".join(digits)}})
@@ -3392,7 +3393,14 @@ def _portal_search_ors(qn: str):
     return ors
 
 
-async def _search_patients_merged(qn: str, limit: int = 40):
+# Directory records marked closed/inactive must never surface in current-patient
+# lookups. Excluded case-insensitively at the query level (also keeps records
+# with no status set). Legacy markers: FORMER_CLOSED / CLOSE / CLOSED / CLOSEZ.
+_CLOSED_STATUS_RE = re.compile(r"^\s*(former[_\s-]?closed|closed?|closez)\s*$", re.I)
+_ACTIVE_DIR_FILTER = {"patient_status": {"$not": _CLOSED_STATUS_RE}}
+
+
+async def _search_patients_merged(qn: str, limit: int = 40, include_pin: bool = True):
     """Unified internal patient search: VERIFIED portal patient accounts PLUS
     existing patient_directory records. Verified portal patients are surfaced
     first (so they're never crowded out by many directory matches). Deduped so a
@@ -3401,7 +3409,7 @@ async def _search_patients_merged(qn: str, limit: int = 40):
 
     # 1) Verified portal patients first.
     portal = await db.patients.find({
-        "verification_status": "verified", "active_status": True, "$or": _portal_search_ors(qn),
+        "verification_status": "verified", "active_status": True, "$or": _portal_search_ors(qn, include_pin),
     }).limit(limit).to_list(limit)
     for p in portal:
         mdir = p.get("matched_directory_id")
@@ -3416,14 +3424,15 @@ async def _search_patients_merged(qn: str, limit: int = 40):
             continue
         results.append(_portal_patient_snapshot(p)); seen_pid.add(p["id"])
 
-    # 2) Directory records (skipping any already represented via a linked portal account).
+    # 2) Directory records (active only; skip any already shown via a portal link).
     dir_ors = [
         {"first_name": {"$regex": re.escape(qn), "$options": "i"}},
         {"last_name": {"$regex": re.escape(qn), "$options": "i"}},
         {"norm_hcn": {"$regex": directory_mod.norm_hcn(qn)}},
-        {"visita_patient_id": {"$regex": re.escape(qn), "$options": "i"}},
         {"date_of_birth": {"$regex": re.escape(qn)}},
     ]
+    if include_pin:
+        dir_ors.append({"visita_patient_id": {"$regex": re.escape(qn), "$options": "i"}})
     digits = re.sub(r"\D", "", qn)
     if len(digits) >= 3:
         ph = {"$regex": r"\D*".join(digits)}
@@ -3431,7 +3440,7 @@ async def _search_patients_merged(qn: str, limit: int = 40):
     nc = _name_tokens_clause(qn)
     if nc:
         dir_ors.append(nc)
-    dir_docs = await db.patient_directory.find({"$or": dir_ors}).limit(limit).to_list(limit)
+    dir_docs = await db.patient_directory.find({"$and": [_ACTIVE_DIR_FILTER, {"$or": dir_ors}]}).limit(limit).to_list(limit)
     for d in dir_docs:
         if d["id"] in seen_dir:
             continue
@@ -3441,15 +3450,46 @@ async def _search_patients_merged(qn: str, limit: int = 40):
 
 
 @api.get("/internal/patient-lookup")
-async def internal_patient_lookup(q: str, user: dict = Depends(require_roles(*CLINIC_ROLES))):
-    """Read-only internal patient search across BOTH the patient_directory and
-    VERIFIED portal patient accounts. Search by name / DOB / phone / email /
-    health card / VISITA PIN. Deduped; portal-only patients are flagged
-    source='portal'. Does not modify any record."""
+async def internal_patient_lookup(q: str, include_pin: bool = True, user: dict = Depends(require_roles(*CLINIC_ROLES))):
+    """Read-only GENERAL internal patient search across active portal accounts
+    and ACTIVE directory records. Search by name / DOB / phone / email / health
+    card (and VISITA PIN when include_pin=true). Closed/inactive directory
+    records (FORMER_CLOSED etc.) are excluded at the query level. For the
+    Patients page general box, callers pass include_pin=false so PIN is searched
+    only via the dedicated PIN endpoint."""
     qn = (q or "").strip()
     if len(qn) < 2:
         return []
-    return await _search_patients_merged(qn, limit=40)
+    return await _search_patients_merged(qn, limit=40, include_pin=include_pin)
+
+
+@api.get("/internal/patient-lookup/pin")
+async def internal_patient_lookup_pin(pin: str, user: dict = Depends(require_roles(*CLINIC_ROLES))):
+    """Dedicated VISITA PIN search — EXACT match on the PIN field only, ACTIVE
+    patients only. Numeric input only; never matches phone/DOB/health-card/other
+    numeric fields. Isolated from the generic multi-field search parser."""
+    term = (pin or "").strip()
+    if not term.isdigit():
+        return []
+    results, seen_dir, seen_pid = [], set(), set()
+    portal = await db.patients.find({
+        "verification_status": "verified", "active_status": True, "visita_patient_id": term,
+    }).limit(20).to_list(20)
+    for p in portal:
+        mdir = p.get("matched_directory_id")
+        if mdir and mdir not in seen_dir:
+            d = await db.patient_directory.find_one({"id": mdir})
+            if d:
+                results.append(_directory_snapshot(d)); seen_dir.add(d["id"])
+                continue
+        if p["id"] not in seen_pid:
+            results.append(_portal_patient_snapshot(p)); seen_pid.add(p["id"])
+    dir_docs = await db.patient_directory.find({"$and": [_ACTIVE_DIR_FILTER, {"visita_patient_id": term}]}).limit(20).to_list(20)
+    for d in dir_docs:
+        if d["id"] in seen_dir:
+            continue
+        results.append(_directory_snapshot(d)); seen_dir.add(d["id"])
+    return results
 
 
 @api.post("/internal/verifications/{patient_id}")

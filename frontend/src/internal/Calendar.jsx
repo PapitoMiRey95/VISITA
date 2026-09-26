@@ -44,6 +44,15 @@ export default function Calendar() {
     const [resched, setResched] = useState(null);
     const [booking, setBooking] = useState(null); // {date, time, label}
     const [blocking, setBlocking] = useState(null); // {date}
+    const [search, setSearch] = useState(""); // filter by patient name / last name / PIN
+
+    // Returns null when no query (neutral), true/false when a query is active.
+    const q = search.trim().toLowerCase();
+    const matchAppt = (a) => {
+        if (!q) return null;
+        const hay = `${a.patient_name || ""} ${a.visita_patient_id || ""}`.toLowerCase();
+        return hay.includes(q);
+    };
 
     const step = view === "day" ? 1 : 7;
     const fetchStart = view === "month" ? gridStartISO(start) : start;
@@ -85,6 +94,9 @@ export default function Calendar() {
     };
 
     const rows = cal.data?.days || [];
+    const matchCount = q
+        ? rows.reduce((n, d) => n + (d.appointments || []).filter((a) => matchAppt(a) === true).length, 0)
+        : 0;
 
     return (
         <div className="animate-fade-in">
@@ -109,8 +121,23 @@ export default function Calendar() {
                 </div>
             </div>
 
+            <div className="mb-3 flex items-center gap-2 flex-wrap">
+                <div className="relative w-full sm:max-w-xs">
+                    <Search className="w-4 h-4 text-slate-400 absolute left-2 top-2.5" />
+                    <Input data-testid="cal-search" className="pl-8" value={search}
+                        onChange={(e) => setSearch(e.target.value)}
+                        placeholder="Search appointments — name, last name, or PIN" />
+                </div>
+                {q && (
+                    <div className="flex items-center gap-2 text-sm" data-testid="cal-search-summary">
+                        <span className="text-slate-500">{matchCount} match{matchCount === 1 ? "" : "es"} in view</span>
+                        <button data-testid="cal-search-clear" onClick={() => setSearch("")} className="text-xs text-visita-greenDark hover:underline">Clear</button>
+                    </div>
+                )}
+            </div>
+
             {view === "month" ? (
-                <MonthGrid anchor={start} rows={rows} onPickDate={openDay} />
+                <MonthGrid anchor={start} rows={rows} onPickDate={openDay} matchAppt={matchAppt} active={!!q} />
             ) : (
             <div className={`grid gap-3 ${view === "week" ? "grid-cols-1 md:grid-cols-2 xl:grid-cols-4" : "grid-cols-1 max-w-2xl"}`}>
                 {rows.map((d) => (
@@ -138,10 +165,12 @@ export default function Calendar() {
                                         DAY BLOCKED — remaining slots unavailable
                                     </div>
                                 )}
-                                {d.appointments.map((a) => (
-                                    <div key={a.id} data-testid="cal-appt" className={`rounded-sm border px-2 py-1 text-xs ${a.is_private ? "bg-amber-50 border-amber-300" : "bg-emerald-50 border-emerald-200"}`}>
+                                {d.appointments.map((a) => {
+                                    const m = matchAppt(a);
+                                    return (
+                                    <div key={a.id} data-testid="cal-appt" className={`rounded-sm border px-2 py-1 text-xs transition-all ${a.is_private ? "bg-amber-50 border-amber-300" : "bg-emerald-50 border-emerald-200"} ${m === true ? "ring-2 ring-visita-green ring-offset-1" : ""} ${m === false ? "opacity-30" : ""}`}>
                                         <div className="flex justify-between items-center gap-1">
-                                            <span className="font-semibold text-slate-800 truncate">{a.label || a.time} · {formatCombinedName(a.patient_name)}</span>
+                                            <span className="font-semibold text-slate-800 truncate">{a.label || a.time} · {formatCombinedName(a.patient_name)}{a.visita_patient_id ? ` · PIN ${a.visita_patient_id}` : ""}</span>
                                             <StatusPill status={a.status} />
                                         </div>
                                         {a.is_private && <div className="text-[10px] font-bold uppercase tracking-wide text-amber-700" data-testid="cal-private-badge">Private / Uninsured</div>}
@@ -158,7 +187,8 @@ export default function Calendar() {
                                             )}
                                         </div>
                                     </div>
-                                ))}
+                                    );
+                                })}
                                 {d.open_slots.map((s) => (
                                     <button key={s.time} data-testid="cal-open-slot" onClick={() => setBooking({ date: d.date, time: s.time, label: s.label })}
                                         className="w-full flex items-center gap-1 text-left rounded-sm border border-dashed border-slate-200 px-2 py-0.5 text-xs text-slate-500 hover:border-visita-green hover:text-visita-greenDark">
@@ -184,7 +214,7 @@ export default function Calendar() {
     );
 }
 
-function MonthGrid({ anchor, rows, onPickDate }) {
+function MonthGrid({ anchor, rows, onPickDate, matchAppt, active }) {
     const gridStart = gridStartISO(anchor);
     const monthKey = anchor.slice(0, 7);
     const today = todayISO();
@@ -208,11 +238,14 @@ function MonthGrid({ anchor, rows, onPickDate }) {
                     const blocked = d?.day_blocked;
                     const appts = d?.appointments || [];
                     const dayNum = Number(iso.slice(8, 10));
+                    const dayHasMatch = active && appts.some((a) => matchAppt(a) === true);
                     return (
                         <button key={iso} type="button" data-testid="cal-month-cell" onClick={() => onPickDate(iso)}
                             className={`min-h-[104px] border-b border-r border-slate-200 p-1.5 text-left align-top transition-colors
                                 ${nonWorking ? "bg-slate-50" : "bg-white hover:bg-visita-bg"}
-                                ${!inMonth ? "opacity-40" : ""}`}>
+                                ${!inMonth ? "opacity-40" : ""}
+                                ${dayHasMatch ? "ring-2 ring-inset ring-visita-green" : ""}
+                                ${active && !dayHasMatch && inMonth ? "opacity-40" : ""}`}>
                             <div className="flex items-center justify-between">
                                 <span data-testid={isToday ? "cal-month-today" : undefined}
                                     className={`text-xs font-semibold w-5 h-5 flex items-center justify-center rounded-full
@@ -225,11 +258,14 @@ function MonthGrid({ anchor, rows, onPickDate }) {
                                 </div>
                             </div>
                             <div className="mt-1 space-y-0.5">
-                                {appts.slice(0, 3).map((a) => (
-                                    <div key={a.id} data-testid="cal-month-appt" className="text-[10px] leading-tight truncate rounded-sm bg-emerald-50 text-emerald-800 px-1 py-0.5">
-                                        <span className="font-semibold">{a.time}</span> {(a.patient_name || "").split(",")[0].toUpperCase()}
+                                {appts.slice(0, 3).map((a) => {
+                                    const m = matchAppt(a);
+                                    return (
+                                    <div key={a.id} data-testid="cal-month-appt" className={`text-[10px] leading-tight truncate rounded-sm px-1 py-0.5 ${m === true ? "bg-visita-green text-white font-bold" : "bg-emerald-50 text-emerald-800"}`}>
+                                        <span className="font-semibold">{a.time}</span> {(a.patient_name || "").split(",")[0].toUpperCase()}{m === true && a.visita_patient_id ? ` · ${a.visita_patient_id}` : ""}
                                     </div>
-                                ))}
+                                    );
+                                })}
                                 {appts.length > 3 && (
                                     <div data-testid="cal-month-more" className="text-[10px] text-slate-500 font-medium px-1">+ {appts.length - 3} more</div>
                                 )}

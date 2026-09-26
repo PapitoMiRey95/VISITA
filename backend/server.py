@@ -1858,6 +1858,7 @@ async def _sync_request_billing(rid: Optional[str]):
 async def _create_invoice(patient: dict, *, service_description, amount, payment_mode,
                           service_code=None, internal_note=None, private_request_id=None,
                           appointment_id=None, is_no_show=False,
+                          billing_method=None, billing_meta=None,
                           user, status="DRAFT") -> dict:
     if payment_mode not in billing_mod.PAYMENT_MODES:
         raise HTTPException(status_code=400, detail="Invalid payment mode.")
@@ -1873,6 +1874,7 @@ async def _create_invoice(patient: dict, *, service_description, amount, payment
         "private_request_id": private_request_id,
         "appointment_id": appointment_id, "is_no_show": is_no_show,
         "patient_coverage": patient.get("patient_type"),
+        "billing_method": billing_method,
         "service_code": (service_code or "").strip() or None, "service_description": desc,
         "amount": amt, "currency": "CAD",
         "status": status, "payment_mode": payment_mode,
@@ -1882,6 +1884,7 @@ async def _create_invoice(patient: dict, *, service_description, amount, payment
         "payment_submitted_at": None, "paid_at": None, "voided_at": None,
         "internal_note": (internal_note or "").strip() or None,
         "payment_proof": None, "updated_at": now,
+        **(billing_meta or {}),
     }
     await db.invoices.insert_one({**doc})
     await audit("invoice_created", "invoice", doc["id"], user, new_status=status,
@@ -1950,6 +1953,91 @@ async def create_invoice(body: InvoiceCreateBody, user: dict = Depends(require_r
                                 private_request_id=body.private_request_id, user=user, status="DRAFT")
     if body.private_request_id:
         await _sync_request_billing(body.private_request_id)
+    return billing_mod.invoice_internal(inv)
+
+
+# ---- Direct 3rd Party Billing ------------------------------------------------
+async def _direct_billing_config() -> dict:
+    s = await db.settings.find_one({"id": "clinic"}, {"_id": 0}) or {}
+    services = s.get("direct_billing_services") or []
+    clean = [{"code": str(x.get("code") or "").strip(),
+              "description": (x.get("description") or "").strip(),
+              "amount": x.get("amount")}
+             for x in services if str(x.get("code") or "").strip() and (x.get("description") or "").strip()]
+    return {"hourly_rate": s.get("direct_billing_hourly_rate"), "services": clean}
+
+
+class DirectBillingConfigBody(BaseModel):
+    hourly_rate: Optional[float] = None
+    services: Optional[list] = None
+
+
+class DirectBillingInvoiceBody(BaseModel):
+    patient_id: str
+    billing_method: str  # SET_SERVICE | TIME_BASED
+    payment_mode: Optional[str] = "INVOICE_AFTER_SERVICE"
+    internal_note: Optional[str] = None
+    service_code: Optional[str] = None          # SET_SERVICE
+    description: Optional[str] = None            # TIME_BASED
+    whole_hours: Optional[int] = None            # TIME_BASED
+    partial_minutes: Optional[int] = None        # TIME_BASED
+
+
+@api.get("/internal/direct-billing/config")
+async def get_direct_billing_config(user: dict = Depends(require_roles(*BILLING_MANAGE_ROLES))):
+    cfg = await _direct_billing_config()
+    return {**cfg, "partial_options": billing_mod.PARTIAL_MULTIPLIERS, "max_hours": billing_mod.MAX_WHOLE_HOURS}
+
+
+@api.put("/internal/direct-billing/config")
+async def put_direct_billing_config(body: DirectBillingConfigBody, user: dict = Depends(require_roles("admin", "physician"))):
+    updates = {}
+    if body.hourly_rate is not None:
+        updates["direct_billing_hourly_rate"] = billing_mod.normalize_rate(body.hourly_rate)
+    if body.services is not None:
+        cleaned = []
+        for x in body.services:
+            code = str((x or {}).get("code") or "").strip()
+            desc = ((x or {}).get("description") or "").strip()
+            if not code or not desc:
+                continue
+            cleaned.append({"code": code, "description": desc, "amount": billing_mod.normalize_amount(x.get("amount"))})
+        updates["direct_billing_services"] = cleaned
+    if updates:
+        await db.settings.update_one({"id": "clinic"}, {"$set": {**updates, "id": "clinic"}}, upsert=True)
+        await audit("update_direct_billing_config", "settings", "clinic", user)
+    return await _direct_billing_config()
+
+
+@api.post("/internal/direct-billing/invoices")
+async def create_direct_billing_invoice(body: DirectBillingInvoiceBody, user: dict = Depends(require_roles(*BILLING_MANAGE_ROLES))):
+    if body.billing_method not in billing_mod.BILLING_METHODS:
+        raise HTTPException(status_code=400, detail="Invalid billing method.")
+    patient = await db.patients.find_one({"id": body.patient_id}, {"_id": 0})
+    if not patient:
+        raise HTTPException(status_code=404, detail="Patient account not found. Invoices can only be issued to registered portal patients.")
+    mode = body.payment_mode or "INVOICE_AFTER_SERVICE"
+    if mode == "NO_PAYMENT_REQUIRED":
+        raise HTTPException(status_code=400, detail="An invoice must use a payable mode.")
+    cfg = await _direct_billing_config()
+
+    if body.billing_method == "SET_SERVICE":
+        svc = billing_mod.resolve_set_service(cfg["services"], body.service_code)
+        inv = await _create_invoice(
+            patient, service_description=svc["service_description"], amount=svc["amount"],
+            payment_mode=mode, service_code=svc["service_code"], internal_note=body.internal_note,
+            billing_method="SET_SERVICE", user=user, status="DRAFT")
+    else:  # TIME_BASED
+        desc = (body.description or "").strip()
+        if not desc:
+            raise HTTPException(status_code=400, detail="Please provide a service description.")
+        if cfg.get("hourly_rate") is None:
+            raise HTTPException(status_code=400, detail="No hourly rate is configured. Set it in Clinic Settings first.")
+        calc = billing_mod.compute_time_based(cfg["hourly_rate"], body.whole_hours, body.partial_minutes)
+        inv = await _create_invoice(
+            patient, service_description=desc, amount=calc["calculated_total"],
+            payment_mode=mode, internal_note=body.internal_note,
+            billing_method="TIME_BASED", billing_meta=calc, user=user, status="DRAFT")
     return billing_mod.invoice_internal(inv)
 
 

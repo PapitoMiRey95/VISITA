@@ -61,6 +61,64 @@ def normalize_amount(amount) -> float:
     return val
 
 
+# ---- Direct 3rd Party Billing --------------------------------------------
+# Two billing methods: SET_SERVICE (fixed predefined service) and TIME_BASED
+# (hourly rate × time). Backend is the source of truth for every calculation.
+BILLING_METHODS = {"SET_SERVICE", "TIME_BASED"}
+MAX_WHOLE_HOURS = 50
+
+# Human minutes -> hour multiplier. Values are fixed by the billing spec (note
+# 25 min = 0.416) so frontend and backend never disagree.
+PARTIAL_MULTIPLIERS = {
+    0: 0.0, 5: 0.08, 10: 0.17, 15: 0.25, 20: 0.33, 25: 0.416, 30: 0.50,
+    35: 0.58, 40: 0.67, 45: 0.75, 50: 0.83, 55: 0.92,
+}
+
+
+def normalize_rate(rate) -> float:
+    try:
+        val = round(float(rate), 2)
+    except (TypeError, ValueError):
+        raise HTTPException(status_code=400, detail="Please set a valid hourly rate.")
+    if val <= 0:
+        raise HTTPException(status_code=400, detail="Hourly rate must be greater than zero.")
+    if val > 100_000:
+        raise HTTPException(status_code=400, detail="Hourly rate is unreasonably large.")
+    return val
+
+
+def compute_time_based(hourly_rate, whole_hours, partial_minutes) -> dict:
+    """Authoritative time-based calculation:
+    total = hourly_rate × (whole_hours + partial_multiplier)."""
+    rate = normalize_rate(hourly_rate)
+    try:
+        wh = int(whole_hours)
+        pm = int(partial_minutes)
+    except (TypeError, ValueError):
+        raise HTTPException(status_code=400, detail="Invalid hours worked.")
+    if wh < 0 or wh > MAX_WHOLE_HOURS:
+        raise HTTPException(status_code=400, detail=f"Hours worked must be between 0 and {MAX_WHOLE_HOURS}.")
+    if pm not in PARTIAL_MULTIPLIERS:
+        raise HTTPException(status_code=400, detail="Invalid partial hours selection.")
+    mult = PARTIAL_MULTIPLIERS[pm]
+    total = round(rate * (wh + mult), 2)
+    if total <= 0:
+        raise HTTPException(status_code=400, detail="Total must be greater than zero — select some time.")
+    return {"hourly_rate_used": rate, "whole_hours": wh, "partial_minutes": pm,
+            "partial_multiplier": mult, "calculated_total": total}
+
+
+def resolve_set_service(services: list, code: str) -> dict:
+    """Look up a predefined service by code from the clinic config (server is
+    the source of truth for description + amount — client amount is ignored)."""
+    for s in services or []:
+        if str(s.get("code")) == str(code):
+            return {"service_code": s.get("code"),
+                    "service_description": (s.get("description") or "").strip(),
+                    "amount": normalize_amount(s.get("amount"))}
+    raise HTTPException(status_code=400, detail="Select a valid predefined service.")
+
+
 def _proof_meta(doc: dict) -> dict:
     """Proof metadata safe for clients (no storage_path leak)."""
     if not doc:
@@ -94,6 +152,11 @@ def invoice_internal(doc: dict) -> dict:
         "private_request_id": doc.get("private_request_id"),
         "appointment_id": doc.get("appointment_id"),
         "is_no_show": doc.get("is_no_show", False),
+        "billing_method": doc.get("billing_method"),
+        "hourly_rate_used": doc.get("hourly_rate_used"),
+        "whole_hours": doc.get("whole_hours"),
+        "partial_minutes": doc.get("partial_minutes"),
+        "partial_multiplier": doc.get("partial_multiplier"),
         "service_code": doc.get("service_code"),
         "service_description": doc.get("service_description"),
         "amount": doc.get("amount"),
@@ -122,6 +185,11 @@ def invoice_public(doc: dict, etransfer_email: str = None) -> dict:
         "private_request_id": doc.get("private_request_id"),
         "billing_context": _billing_context(coverage),
         "ohip_uninsured": coverage == "ohip",
+        "billing_method": doc.get("billing_method"),
+        "hourly_rate_used": doc.get("hourly_rate_used"),
+        "whole_hours": doc.get("whole_hours"),
+        "partial_minutes": doc.get("partial_minutes"),
+        "partial_multiplier": doc.get("partial_multiplier"),
         "service_code": doc.get("service_code"),
         "service_description": doc.get("service_description"),
         "amount": doc.get("amount"),

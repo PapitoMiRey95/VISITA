@@ -7,7 +7,7 @@ import { useInvalidate } from "./hooks";
 import { useAuth } from "../context/AuthContext";
 import { formatPatientName, formatCombinedName } from "../lib/name";
 import { formatDate, formatDateTime } from "../lib/date";
-import { formatMoney, InvoiceStatusPill, PAYMENT_MODE } from "../lib/billing";
+import { formatMoney, InvoiceStatusPill, PAYMENT_MODE, HOURS_OPTIONS, PARTIAL_OPTIONS, computeTimeBasedTotal } from "../lib/billing";
 import { Button } from "../components/ui/button";
 import { Input } from "../components/ui/input";
 import { Label } from "../components/ui/label";
@@ -81,29 +81,69 @@ function PatientPicker({ selected, onSelect, onClear }) {
 
 function CreateInvoice({ onCreated }) {
     const [patient, setPatient] = useState(null);
+    const [method, setMethod] = useState("MANUAL"); // MANUAL | SET_SERVICE | TIME_BASED
     const [desc, setDesc] = useState("");
     const [code, setCode] = useState("");
     const [amount, setAmount] = useState("");
     const [mode, setMode] = useState("INVOICE_AFTER_SERVICE");
     const [note, setNote] = useState("");
     const [busy, setBusy] = useState(false);
+    // Direct billing
+    const [cfg, setCfg] = useState({ hourly_rate: null, services: [] });
+    const [svcCode, setSvcCode] = useState("");
+    const [tbDesc, setTbDesc] = useState("");
+    const [hours, setHours] = useState(0);
+    const [partial, setPartial] = useState(0); // minutes
+
+    useEffect(() => {
+        api.get("/internal/direct-billing/config")
+            .then(({ data }) => setCfg({ hourly_rate: data.hourly_rate, services: data.services || [] }))
+            .catch(() => {});
+    }, []);
+
+    const partialOpt = PARTIAL_OPTIONS.find((p) => p.min === Number(partial)) || PARTIAL_OPTIONS[0];
+    const tbTotal = computeTimeBasedTotal(cfg.hourly_rate, hours, partialOpt.mult);
+    const selectedSvc = cfg.services.find((s) => s.code === svcCode);
+
+    const reset = () => {
+        setPatient(null); setMethod("MANUAL"); setDesc(""); setCode(""); setAmount(""); setNote("");
+        setMode("INVOICE_AFTER_SERVICE"); setSvcCode(""); setTbDesc(""); setHours(0); setPartial(0);
+    };
 
     const submit = async (issue) => {
         if (!patient?.id) return toast.error("Select a registered portal patient.");
-        if (!desc.trim()) return toast.error("Enter a service description.");
-        if (!amount || Number(amount) <= 0) return toast.error("Enter a valid amount.");
         setBusy(true);
         try {
-            const { data } = await api.post("/internal/invoices", {
-                patient_id: patient.id, service_description: desc.trim(),
-                service_code: code.trim() || undefined, amount: Number(amount),
-                payment_mode: mode, internal_note: note.trim() || undefined,
-            });
+            let data;
+            if (method === "MANUAL") {
+                if (!desc.trim()) throw new Error("Enter a service description.");
+                if (!amount || Number(amount) <= 0) throw new Error("Enter a valid amount.");
+                ({ data } = await api.post("/internal/invoices", {
+                    patient_id: patient.id, service_description: desc.trim(),
+                    service_code: code.trim() || undefined, amount: Number(amount),
+                    payment_mode: mode, internal_note: note.trim() || undefined,
+                }));
+            } else if (method === "SET_SERVICE") {
+                if (!svcCode) throw new Error("Select a predefined service.");
+                ({ data } = await api.post("/internal/direct-billing/invoices", {
+                    patient_id: patient.id, billing_method: "SET_SERVICE", service_code: svcCode,
+                    payment_mode: mode, internal_note: note.trim() || undefined,
+                }));
+            } else {
+                if (!tbDesc.trim()) throw new Error("Enter a service description.");
+                if (cfg.hourly_rate == null) throw new Error("No hourly rate configured. Set it in Clinic Settings.");
+                if (tbTotal <= 0) throw new Error("Select some time worked.");
+                ({ data } = await api.post("/internal/direct-billing/invoices", {
+                    patient_id: patient.id, billing_method: "TIME_BASED", description: tbDesc.trim(),
+                    whole_hours: Number(hours), partial_minutes: Number(partial),
+                    payment_mode: mode, internal_note: note.trim() || undefined,
+                }));
+            }
             if (issue) await api.post(`/internal/invoices/${data.id}/issue`);
             toast.success(issue ? "Invoice issued." : "Draft invoice created.");
-            setPatient(null); setDesc(""); setCode(""); setAmount(""); setNote(""); setMode("INVOICE_AFTER_SERVICE");
+            reset();
             onCreated();
-        } catch (e) { toast.error(formatErr(e)); } finally { setBusy(false); }
+        } catch (e) { toast.error(e?.response ? formatErr(e) : e.message); } finally { setBusy(false); }
     };
 
     return (
@@ -116,22 +156,103 @@ function CreateInvoice({ onCreated }) {
                     <span>This is an <span className="font-semibold">OHIP patient</span>. Some services are not covered by OHIP and may require payment. Creating this invoice does not change the patient's coverage.</span>
                 </div>
             )}
-            <div className="grid grid-cols-2 gap-2">
-                <div><Label className="text-xs">Service description</Label><Input data-testid="inv-desc" value={desc} onChange={(e) => setDesc(e.target.value)} placeholder="e.g. Medical letter" /></div>
-                <div><Label className="text-xs">Service code (optional)</Label><Input data-testid="inv-code" value={code} onChange={(e) => setCode(e.target.value)} /></div>
+
+            <div>
+                <Label className="text-xs">Billing method</Label>
+                <Select value={method} onValueChange={setMethod}>
+                    <SelectTrigger data-testid="inv-method"><SelectValue /></SelectTrigger>
+                    <SelectContent>
+                        <SelectItem value="MANUAL">Manual amount</SelectItem>
+                        <SelectItem value="SET_SERVICE">Direct 3rd Party — Set Service</SelectItem>
+                        <SelectItem value="TIME_BASED">Direct 3rd Party — Time-Based</SelectItem>
+                    </SelectContent>
+                </Select>
             </div>
-            <div className="grid grid-cols-2 gap-2">
-                <div><Label className="text-xs">Amount (CAD)</Label><Input type="number" min="0" step="0.01" data-testid="inv-amount" value={amount} onChange={(e) => setAmount(e.target.value)} /></div>
-                <div>
-                    <Label className="text-xs">Payment mode</Label>
-                    <Select value={mode} onValueChange={setMode}>
-                        <SelectTrigger data-testid="inv-mode"><SelectValue /></SelectTrigger>
-                        <SelectContent>
-                            <SelectItem value="INVOICE_AFTER_SERVICE">Invoice After Service</SelectItem>
-                            <SelectItem value="PREPAYMENT_REQUIRED">Prepayment Required</SelectItem>
-                        </SelectContent>
-                    </Select>
+
+            {method === "MANUAL" && (
+                <>
+                    <div className="grid grid-cols-2 gap-2">
+                        <div><Label className="text-xs">Service description</Label><Input data-testid="inv-desc" value={desc} onChange={(e) => setDesc(e.target.value)} placeholder="e.g. Medical letter" /></div>
+                        <div><Label className="text-xs">Service code (optional)</Label><Input data-testid="inv-code" value={code} onChange={(e) => setCode(e.target.value)} /></div>
+                    </div>
+                    <div><Label className="text-xs">Amount (CAD)</Label><Input type="number" min="0" step="0.01" data-testid="inv-amount" value={amount} onChange={(e) => setAmount(e.target.value)} /></div>
+                </>
+            )}
+
+            {method === "SET_SERVICE" && (
+                <div data-testid="inv-set-service">
+                    <Label className="text-xs">Predefined service</Label>
+                    {cfg.services.length === 0 ? (
+                        <p className="text-xs text-amber-600">No predefined services configured. Add them in Clinic Settings → Direct 3rd Party Billing.</p>
+                    ) : (
+                        <Select value={svcCode} onValueChange={setSvcCode}>
+                            <SelectTrigger data-testid="inv-service-select"><SelectValue placeholder="Select a service" /></SelectTrigger>
+                            <SelectContent>
+                                {cfg.services.map((s) => (
+                                    <SelectItem key={s.code} value={s.code}>
+                                        <span className="inline-flex justify-between gap-6 w-full min-w-[16rem]"><span>{s.description}</span><span className="font-semibold tabular-nums">{formatMoney(s.amount)}</span></span>
+                                    </SelectItem>
+                                ))}
+                            </SelectContent>
+                        </Select>
+                    )}
+                    {selectedSvc && (
+                        <div className="mt-2 flex items-center justify-between bg-slate-50 border border-slate-200 rounded-sm px-3 py-2 text-sm" data-testid="inv-service-summary">
+                            <span className="text-slate-700">{selectedSvc.description}</span>
+                            <span className="font-bold tabular-nums">{formatMoney(selectedSvc.amount)}</span>
+                        </div>
+                    )}
                 </div>
+            )}
+
+            {method === "TIME_BASED" && (
+                <div className="space-y-2" data-testid="inv-time-based">
+                    <div><Label className="text-xs">Description</Label><Input data-testid="tb-desc" value={tbDesc} onChange={(e) => setTbDesc(e.target.value)} placeholder="e.g. Legal report preparation" /></div>
+                    <div className="grid grid-cols-3 gap-2">
+                        <div>
+                            <Label className="text-xs">Hourly Rate</Label>
+                            <div className="h-9 flex items-center px-3 rounded-md border border-slate-200 bg-slate-50 font-semibold tabular-nums" data-testid="tb-rate">
+                                {cfg.hourly_rate != null ? formatMoney(cfg.hourly_rate) : "Not set"}
+                            </div>
+                        </div>
+                        <div>
+                            <Label className="text-xs">Hours Worked</Label>
+                            <Select value={String(hours)} onValueChange={(v) => setHours(Number(v))}>
+                                <SelectTrigger data-testid="tb-hours"><SelectValue /></SelectTrigger>
+                                <SelectContent className="max-h-64">
+                                    {HOURS_OPTIONS.map((h) => <SelectItem key={h} value={String(h)}>{h} hr{h === 1 ? "" : "s"}</SelectItem>)}
+                                </SelectContent>
+                            </Select>
+                        </div>
+                        <div>
+                            <Label className="text-xs">Partial Hours</Label>
+                            <Select value={String(partial)} onValueChange={(v) => setPartial(Number(v))}>
+                                <SelectTrigger data-testid="tb-partial"><SelectValue /></SelectTrigger>
+                                <SelectContent className="max-h-64">
+                                    {PARTIAL_OPTIONS.map((p) => <SelectItem key={p.min} value={String(p.min)}>{String(p.min).padStart(2, "0")} mins | {p.mult}</SelectItem>)}
+                                </SelectContent>
+                            </Select>
+                        </div>
+                    </div>
+                    <div className="flex items-center justify-between bg-visita-greenLight border border-visita-green/40 rounded-sm px-3 py-2">
+                        <span className="text-xs uppercase tracking-wide text-slate-500 font-semibold">Total Amount</span>
+                        <span className="text-2xl font-extrabold text-slate-900 tabular-nums" data-testid="tb-total">{formatMoney(tbTotal)}</span>
+                    </div>
+                    {cfg.hourly_rate != null && (
+                        <p className="text-[11px] text-slate-400">{formatMoney(cfg.hourly_rate)} × ({hours} + {partialOpt.mult}) — rate is set in Clinic Settings and snapshotted onto the invoice.</p>
+                    )}
+                </div>
+            )}
+
+            <div>
+                <Label className="text-xs">Payment mode</Label>
+                <Select value={mode} onValueChange={setMode}>
+                    <SelectTrigger data-testid="inv-mode"><SelectValue /></SelectTrigger>
+                    <SelectContent>
+                        <SelectItem value="INVOICE_AFTER_SERVICE">Invoice After Service</SelectItem>
+                        <SelectItem value="PREPAYMENT_REQUIRED">Prepayment Required</SelectItem>
+                    </SelectContent>
+                </Select>
             </div>
             <div><Label className="text-xs">Internal note (optional)</Label><Textarea data-testid="inv-note" value={note} onChange={(e) => setNote(e.target.value)} /></div>
             <div className="flex gap-2">
@@ -209,6 +330,14 @@ export default function Billing() {
                                 <div className="font-semibold text-slate-800">{formatCombinedName(inv.patient_name)}</div>
                                 <div className="text-xs text-slate-500">{inv.invoice_number} · {inv.service_description}</div>
                                 <div className="text-xs text-slate-400 mt-0.5">{PAYMENT_MODE[inv.payment_mode] || inv.payment_mode}{inv.issue_date ? ` · Issued ${formatDate(inv.issue_date)}` : ""}</div>
+                                {inv.billing_method === "TIME_BASED" && (
+                                    <div className="text-[11px] text-slate-500 mt-0.5" data-testid={`inv-timebased-${inv.id}`}>
+                                        Time-based · {formatMoney(inv.hourly_rate_used)}/hr × ({inv.whole_hours} + {inv.partial_multiplier}) · {inv.whole_hours} hr {String(inv.partial_minutes).padStart(2, "0")} min
+                                    </div>
+                                )}
+                                {inv.billing_method === "SET_SERVICE" && (
+                                    <div className="text-[11px] text-slate-500 mt-0.5" data-testid={`inv-setservice-${inv.id}`}>Set service{inv.service_code ? ` · ${inv.service_code}` : ""}</div>
+                                )}
                                 {inv.patient_coverage === "ohip" && <span className="inline-block mt-1 px-1.5 py-0.5 rounded-sm text-[10px] font-bold bg-sky-100 text-sky-700" data-testid={`inv-context-${inv.id}`}>OHIP — UNINSURED SERVICE</span>}
                             </div>
                             <div className="text-right shrink-0">

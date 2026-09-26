@@ -6,6 +6,9 @@ import { ChevronLeft, Loader2, Clock } from "lucide-react";
 import { useAuth } from "../context/AuthContext";
 import { api, formatErr } from "../lib/api";
 import { DobPicker } from "../components/DobPicker";
+import { IssueDatePicker } from "../components/IssueDatePicker";
+import { ExpiryPicker } from "../components/ExpiryPicker";
+import { deriveExpiryISO } from "../lib/hcDates";
 import { Button } from "../components/ui/button";
 import { Input } from "../components/ui/input";
 import { Label } from "../components/ui/label";
@@ -44,7 +47,17 @@ export default function Register() {
         address: "", city: "", postal_code: "", patient_message: "", join_reason: "",
     });
     const set = (k) => (e) => setForm({ ...form, [k]: e.target.value });
-    const setDob = (v) => setForm((f) => ({ ...f, date_of_birth: v }));
+    // Changing the DOB re-derives any already-chosen expiry (keeps its year,
+    // recomputes month/day from the new DOB) so the expiry is never stale.
+    const setDob = (v) => setForm((f) => {
+        let expiry = f.health_card_expiry_date;
+        if (expiry) {
+            const exYear = Number(String(expiry).split("-")[0]);
+            expiry = deriveExpiryISO(v, exYear);
+        }
+        return { ...f, date_of_birth: v, health_card_expiry_date: expiry };
+    });
+    const setHcDate = (k) => (v) => setForm((f) => ({ ...f, [k]: v }));
     // Surname fields auto-uppercase live while preserving accents/apostrophes/hyphens.
     const setSurname = (k) => (e) => setForm({ ...form, [k]: normalizeSurnameInput(e.target.value) });
     const joinName = (a, b) => [a, b].map((s) => (s || "").replace(/\s+/g, " ").trim()).filter(Boolean).join(" ");
@@ -194,8 +207,8 @@ export default function Register() {
                                     </Field>
                                 </div>
                                 <div className="grid grid-cols-2 gap-3">
-                                    <Field label={t("auth:register.issueDateOptional")} testid="reg-hc-issue"><Input type="date" value={form.health_card_issue_date} onChange={set("health_card_issue_date")} /></Field>
-                                    <Field label={t("auth:register.expiryDateOptional")} testid="reg-hc-expiry"><Input type="date" value={form.health_card_expiry_date} onChange={set("health_card_expiry_date")} /></Field>
+                                    <Field label={t("auth:register.issueDateOptional")} testid="reg-hc-issue"><IssueDatePicker value={form.health_card_issue_date} onChange={setHcDate("health_card_issue_date")} testid="reg-hc-issue" /></Field>
+                                    <Field label={t("auth:register.expiryDateOptional")} testid="reg-hc-expiry"><ExpiryPicker value={form.health_card_expiry_date} onChange={setHcDate("health_card_expiry_date")} dob={form.date_of_birth} testid="reg-hc-expiry" /></Field>
                                 </div>
                             </>
                         )}

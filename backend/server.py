@@ -423,6 +423,53 @@ def validate_dob_age(dob_str: str):
         raise HTTPException(status_code=400, detail=f"Patient age must be between {DOB_MIN_AGE} and {DOB_MAX_AGE} years.")
 
 
+def _parse_iso(s):
+    from datetime import date as _date
+    y, m, d = (int(x) for x in str(s)[:10].split("-"))
+    return _date(y, m, d)
+
+
+def _derive_expiry_iso(dob_str, year):
+    """Expiry month/day come from the DOB; only the year varies. Feb-29 DOB on a
+    non-leap expiry year clamps to Feb 28. Mirrors frontend lib/hcDates.js."""
+    import calendar
+    from datetime import date as _date
+    dob = _parse_iso(dob_str)
+    dim = calendar.monthrange(year, dob.month)[1]
+    day = min(dob.day, dim)
+    return _date(year, dob.month, day).isoformat()
+
+
+def validate_hc_dates(issue_str, expiry_str, dob_str):
+    """Server-side guard for OHIP Health Card dates. Both optional. Issue date
+    must fall within exactly 5 years ago through today. Expiry must be derived
+    from the DOB (month/day) with a year of current..current+5. Rejects a direct
+    API submission that bypasses the UI pickers."""
+    from datetime import date as _date
+    today = _date.today()
+    if issue_str:
+        try:
+            issue = _parse_iso(issue_str)
+        except (ValueError, AttributeError):
+            raise HTTPException(status_code=400, detail="Health Card issue date must be a valid date.")
+        earliest = _date(today.year - 5, today.month, today.day)
+        if issue > today:
+            raise HTTPException(status_code=400, detail="Health Card issue date cannot be in the future.")
+        if issue < earliest:
+            raise HTTPException(status_code=400, detail="Health Card issue date cannot be more than 5 years ago.")
+    if expiry_str:
+        try:
+            expiry = _parse_iso(expiry_str)
+        except (ValueError, AttributeError):
+            raise HTTPException(status_code=400, detail="Health Card expiry date must be a valid date.")
+        if not dob_str:
+            raise HTTPException(status_code=400, detail="Date of birth is required before setting a Health Card expiry date.")
+        if expiry.year < today.year or expiry.year > today.year + 5:
+            raise HTTPException(status_code=400, detail="Health Card expiry year must be between this year and 5 years from now.")
+        if expiry.isoformat() != _derive_expiry_iso(dob_str, expiry.year):
+            raise HTTPException(status_code=400, detail="Health Card expiry day and month must match the date of birth.")
+
+
 @api.post("/auth/register")
 async def register(body: RegisterBody):
     validate_dob_age(body.date_of_birth)
@@ -439,6 +486,7 @@ async def register(body: RegisterBody):
             raise HTTPException(status_code=400, detail=str(e))
     if not identity_mod.valid_date(body.health_card_issue_date) or not identity_mod.valid_date(body.health_card_expiry_date):
         raise HTTPException(status_code=400, detail="Health Card dates must be valid dates.")
+    validate_hc_dates(body.health_card_issue_date, body.health_card_expiry_date, body.date_of_birth)
 
     # Directory-assisted matching for current-patient registrations
     match = await directory_mod.match_registration(

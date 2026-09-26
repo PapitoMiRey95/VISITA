@@ -66,6 +66,14 @@ export default function Calendar() {
         queryFn: async () => (await api.get("/internal/calendar", { params: { start: fetchStart, days: fetchDays } })).data,
     });
 
+    // Global appointment search across ALL dates (not limited to the loaded view).
+    const searchQuery = useQuery({
+        queryKey: ["appt-search", q],
+        queryFn: async () => (await api.get("/internal/appointment-search", { params: { q } })).data,
+        enabled: q.length >= 2,
+    });
+    const searchResults = searchQuery.data?.results || [];
+
     const goPrev = () => setStart(view === "month" ? addMonths(start, -1) : addDays(start, -step));
     const goNext = () => setStart(view === "month" ? addMonths(start, 1) : addDays(start, step));
     const openDay = (date) => { setStart(date); setView("day"); };
@@ -98,30 +106,22 @@ export default function Calendar() {
     };
 
     const rows = cal.data?.days || [];
-    const matchCount = q
-        ? rows.reduce((n, d) => n + (d.appointments || []).filter((a) => matchAppt(a) === true).length, 0)
-        : 0;
 
-    // Flatten matching appointments (each tagged with its date) and group by patient.
+    // Group global search results by patient for the dropdown.
     const groups = (() => {
-        if (!q) return [];
-        const flat = [];
-        for (const d of rows) for (const a of d.appointments || []) {
-            if (matchAppt(a) === true) flat.push({ ...a, date: d.date });
-        }
+        if (q.length < 2) return [];
         const byPatient = new Map();
-        for (const a of flat) {
+        for (const a of searchResults) {
             const key = a.visita_patient_id ? `pin:${a.visita_patient_id}` : `name:${(a.patient_name || "").toLowerCase()}`;
             if (!byPatient.has(key)) byPatient.set(key, { name: a.patient_name, pin: a.visita_patient_id, appts: [] });
             byPatient.get(key).appts.push(a);
         }
-        for (const g of byPatient.values()) g.appts.sort((x, y) => (x.date + (x.time || "")).localeCompare(y.date + (y.time || "")));
         return Array.from(byPatient.values()).sort((a, b) => (a.name || "").localeCompare(b.name || ""));
     })();
 
     const selectResult = (appt) => {
+        // Jump to the appointment's date while preserving the current view mode.
         setStart(appt.date);
-        setView("day");
         setSelectedId(appt.id);
         setDetail(appt);
         setDropdownOpen(false);
@@ -157,10 +157,12 @@ export default function Calendar() {
                         onChange={(e) => { setSearch(e.target.value); setDropdownOpen(true); }}
                         onFocus={() => setDropdownOpen(true)}
                         placeholder="Search appointments — name, last name, or PIN" />
-                    {q && dropdownOpen && (
+                    {q.length >= 2 && dropdownOpen && (
                         <div data-testid="cal-search-dropdown" className="absolute z-30 mt-1 w-full bg-white border border-slate-300 rounded-md shadow-lg max-h-96 overflow-y-auto">
-                            {groups.length === 0 ? (
-                                <div className="px-3 py-3 text-sm text-slate-400" data-testid="cal-search-empty">No matching appointments in the loaded range.</div>
+                            {searchQuery.isLoading ? (
+                                <div className="px-3 py-3 text-sm text-slate-400">Searching…</div>
+                            ) : groups.length === 0 ? (
+                                <div className="px-3 py-3 text-sm text-slate-400" data-testid="cal-search-empty">No matching appointments found.</div>
                             ) : (
                                 groups.map((g, gi) => (
                                     <div key={gi} className="border-b border-slate-100 last:border-0">
@@ -191,7 +193,7 @@ export default function Calendar() {
                 </div>
                 {q && (
                     <div className="flex items-center gap-2 text-sm" data-testid="cal-search-summary">
-                        <span className="text-slate-500">{matchCount} match{matchCount === 1 ? "" : "es"} in view</span>
+                        <span className="text-slate-500">{searchResults.length}{searchResults.length === 50 ? "+" : ""} appointment{searchResults.length === 1 ? "" : "s"} found</span>
                         <button data-testid="cal-search-clear" onClick={() => { setSearch(""); setDropdownOpen(false); setSelectedId(null); }} className="text-xs text-visita-greenDark hover:underline">Clear</button>
                     </div>
                 )}

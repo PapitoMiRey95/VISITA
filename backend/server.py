@@ -1278,6 +1278,73 @@ async def internal_calendar(start: Optional[str] = None, days: int = 7,
                                  for b in avail.get("blocked_periods", []))
     return {"timezone": avail.get("timezone"), "duration": avail.get("appointment_duration"), "days": day_rows}
 
+@api.get("/internal/appointment-search")
+async def internal_appointment_search(q: str = "", limit: int = 30,
+                                      user: dict = Depends(require_roles(*CLINIC_ROLES))):
+    """Global appointment search across all dates (not limited to a calendar view).
+    Matches partial first/last name (case-insensitive) or VISITA PIN. Upcoming
+    appointments first (soonest first), then most recent past. Reuses batched PIN
+    resolution — no per-row lookups."""
+    from datetime import date as _date
+    term = (q or "").strip()
+    if len(term) < 2:
+        return {"results": []}
+    limit = min(max(limit, 1), 50)
+    status_filter = {"$in": ["confirmed", "rescheduled", "completed", "no_show"]}
+
+    # PIN match -> resolve to patient/directory ids so we can match appointments.
+    pin_owner_ids = set()
+    if term.isdigit():
+        async for p in db.patients.find({"visita_patient_id": term}, {"_id": 0, "id": 1}):
+            pin_owner_ids.add(p["id"])
+        async for d in db.patient_directory.find({"visita_patient_id": term}, {"_id": 0, "id": 1}):
+            pin_owner_ids.add(d["id"])
+
+    name_rx = {"$regex": re.escape(term), "$options": "i"}
+    or_clauses = [{"patient_name": name_rx}]
+    if pin_owner_ids:
+        or_clauses.append({"patient_id": {"$in": list(pin_owner_ids)}})
+        or_clauses.append({"directory_id": {"$in": list(pin_owner_ids)}})
+    query = {"status": status_filter, "$or": or_clauses}
+
+    appts = await db.appointment_requests.find(query, {"_id": 0}).to_list(400)
+    # Batch-resolve VISITA PINs for the matched set.
+    pids = {a.get("patient_id") for a in appts if a.get("patient_id")}
+    dids = {a.get("directory_id") for a in appts if a.get("directory_id")}
+    pin_map = {}
+    if pids:
+        async for p in db.patients.find({"id": {"$in": list(pids)}}, {"_id": 0, "id": 1, "visita_patient_id": 1}):
+            if p.get("visita_patient_id"):
+                pin_map[p["id"]] = p["visita_patient_id"]
+    if dids:
+        async for d in db.patient_directory.find({"id": {"$in": list(dids)}}, {"_id": 0, "id": 1, "visita_patient_id": 1}):
+            if d.get("visita_patient_id"):
+                pin_map[d["id"]] = d["visita_patient_id"]
+
+    today = _date.today().isoformat()
+    results = []
+    for a in appts:
+        date = a.get("confirmed_date")
+        if not date:
+            continue
+        results.append({
+            "id": a["id"], "ref_number": a.get("ref_number"),
+            "date": date,
+            "time": a.get("confirmed_slot_time") or avail_mod._norm_time(a.get("confirmed_time") or ""),
+            "label": a.get("confirmed_time"), "patient_name": a.get("patient_name"),
+            "visita_patient_id": pin_map.get(a.get("patient_id")) or pin_map.get(a.get("directory_id")),
+            "status": a.get("status"), "reason": a.get("reason"),
+            "appointment_type": a.get("appointment_type"),
+            "is_private": bool(a.get("is_private")),
+            "source": (a.get("booked_from") or {}).get("source_type") or "appointment",
+        })
+    # Upcoming first (soonest first), then past (most recent first).
+    upcoming = sorted([r for r in results if r["date"] >= today], key=lambda r: (r["date"], r["time"] or ""))
+    past = sorted([r for r in results if r["date"] < today], key=lambda r: (r["date"], r["time"] or ""), reverse=True)
+    return {"results": (upcoming + past)[:limit]}
+
+
+
 
 class DayBody(BaseModel):
     date: str

@@ -27,7 +27,6 @@ function AppPill({ status }) {
 
 const FILTERS = [
     { key: "", label: "All" },
-    { key: "former_return", label: "Former Returns", param: "type" },
     { key: "new_patient", label: "New Patients", param: "type" },
     { key: "WAITING_LIST", label: "Waiting List", param: "status" },
 ];

@@ -11,6 +11,7 @@ import { Button } from "../components/ui/button";
 import { Input } from "../components/ui/input";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "../components/ui/dialog";
 import { StatusPill } from "./statusPill";
+import { ApptTypeBadge } from "../components/ApptTypeBadge";
 import BookAppointmentModal from "./BookAppointmentModal";
 
 function addDays(iso, n) {
@@ -45,6 +46,9 @@ export default function Calendar() {
     const [booking, setBooking] = useState(null); // {date, time, label}
     const [blocking, setBlocking] = useState(null); // {date}
     const [search, setSearch] = useState(""); // filter by patient name / last name / PIN
+    const [dropdownOpen, setDropdownOpen] = useState(false);
+    const [selectedId, setSelectedId] = useState(null); // highlighted appt after selecting a result
+    const [detail, setDetail] = useState(null); // appointment object shown in the detail popup
 
     // Returns null when no query (neutral), true/false when a query is active.
     const q = search.trim().toLowerCase();
@@ -98,6 +102,31 @@ export default function Calendar() {
         ? rows.reduce((n, d) => n + (d.appointments || []).filter((a) => matchAppt(a) === true).length, 0)
         : 0;
 
+    // Flatten matching appointments (each tagged with its date) and group by patient.
+    const groups = (() => {
+        if (!q) return [];
+        const flat = [];
+        for (const d of rows) for (const a of d.appointments || []) {
+            if (matchAppt(a) === true) flat.push({ ...a, date: d.date });
+        }
+        const byPatient = new Map();
+        for (const a of flat) {
+            const key = a.visita_patient_id ? `pin:${a.visita_patient_id}` : `name:${(a.patient_name || "").toLowerCase()}`;
+            if (!byPatient.has(key)) byPatient.set(key, { name: a.patient_name, pin: a.visita_patient_id, appts: [] });
+            byPatient.get(key).appts.push(a);
+        }
+        for (const g of byPatient.values()) g.appts.sort((x, y) => (x.date + (x.time || "")).localeCompare(y.date + (y.time || "")));
+        return Array.from(byPatient.values()).sort((a, b) => (a.name || "").localeCompare(b.name || ""));
+    })();
+
+    const selectResult = (appt) => {
+        setStart(appt.date);
+        setView("day");
+        setSelectedId(appt.id);
+        setDetail(appt);
+        setDropdownOpen(false);
+    };
+
     return (
         <div className="animate-fade-in">
             <div className="flex items-center justify-between mb-3 flex-wrap gap-2">
@@ -122,16 +151,48 @@ export default function Calendar() {
             </div>
 
             <div className="mb-3 flex items-center gap-2 flex-wrap">
-                <div className="relative w-full sm:max-w-xs">
+                <div className="relative w-full sm:max-w-md">
                     <Search className="w-4 h-4 text-slate-400 absolute left-2 top-2.5" />
                     <Input data-testid="cal-search" className="pl-8" value={search}
-                        onChange={(e) => setSearch(e.target.value)}
+                        onChange={(e) => { setSearch(e.target.value); setDropdownOpen(true); }}
+                        onFocus={() => setDropdownOpen(true)}
                         placeholder="Search appointments — name, last name, or PIN" />
+                    {q && dropdownOpen && (
+                        <div data-testid="cal-search-dropdown" className="absolute z-30 mt-1 w-full bg-white border border-slate-300 rounded-md shadow-lg max-h-96 overflow-y-auto">
+                            {groups.length === 0 ? (
+                                <div className="px-3 py-3 text-sm text-slate-400" data-testid="cal-search-empty">No matching appointments in the loaded range.</div>
+                            ) : (
+                                groups.map((g, gi) => (
+                                    <div key={gi} className="border-b border-slate-100 last:border-0">
+                                        <div className="px-3 pt-2 pb-1">
+                                            <div className="text-sm font-bold text-slate-800">{formatCombinedName(g.name)}</div>
+                                            <div className="text-[11px] text-slate-400">{g.pin ? `PIN: ${g.pin}` : "PIN: Not assigned"}</div>
+                                        </div>
+                                        <div className="pb-1.5">
+                                            {g.appts.map((a) => (
+                                                <button key={a.id} data-testid="cal-search-result" onClick={() => selectResult(a)}
+                                                    className="w-full text-left px-3 py-1.5 hover:bg-visita-bg flex items-center justify-between gap-2">
+                                                    <span className="text-xs text-slate-600">
+                                                        {formatDate(a.date)} · {a.label || a.time}
+                                                        {a.is_private && <span className="ml-1.5 text-[9px] font-bold uppercase text-amber-700">Private</span>}
+                                                    </span>
+                                                    <span className="flex items-center gap-1.5 shrink-0">
+                                                        <ApptTypeBadge type={a.appointment_type} />
+                                                        <StatusPill status={a.status} />
+                                                    </span>
+                                                </button>
+                                            ))}
+                                        </div>
+                                    </div>
+                                ))
+                            )}
+                        </div>
+                    )}
                 </div>
                 {q && (
                     <div className="flex items-center gap-2 text-sm" data-testid="cal-search-summary">
                         <span className="text-slate-500">{matchCount} match{matchCount === 1 ? "" : "es"} in view</span>
-                        <button data-testid="cal-search-clear" onClick={() => setSearch("")} className="text-xs text-visita-greenDark hover:underline">Clear</button>
+                        <button data-testid="cal-search-clear" onClick={() => { setSearch(""); setDropdownOpen(false); setSelectedId(null); }} className="text-xs text-visita-greenDark hover:underline">Clear</button>
                     </div>
                 )}
             </div>
@@ -167,10 +228,11 @@ export default function Calendar() {
                                 )}
                                 {d.appointments.map((a) => {
                                     const m = matchAppt(a);
+                                    const sel = a.id === selectedId;
                                     return (
-                                    <div key={a.id} data-testid="cal-appt" className={`rounded-sm border px-2 py-1 text-xs transition-all ${a.is_private ? "bg-amber-50 border-amber-300" : "bg-emerald-50 border-emerald-200"} ${m === true ? "ring-2 ring-visita-green ring-offset-1" : ""} ${m === false ? "opacity-30" : ""}`}>
+                                    <div key={a.id} data-testid="cal-appt" className={`rounded-sm border px-2 py-1 text-xs transition-all ${a.is_private ? "bg-amber-50 border-amber-300" : "bg-emerald-50 border-emerald-200"} ${sel ? "ring-2 ring-visita-green ring-offset-2 shadow-md" : m === true ? "ring-2 ring-visita-green ring-offset-1" : ""} ${m === false && !sel ? "opacity-30" : ""}`}>
                                         <div className="flex justify-between items-center gap-1">
-                                            <span className="font-semibold text-slate-800 truncate">{a.label || a.time} · {formatCombinedName(a.patient_name)}{a.visita_patient_id ? ` · PIN ${a.visita_patient_id}` : ""}</span>
+                                            <button type="button" data-testid="cal-appt-open" onClick={() => { setSelectedId(a.id); setDetail({ ...a, date: d.date }); }} className="font-semibold text-slate-800 truncate text-left hover:text-visita-greenDark hover:underline">{a.label || a.time} · {formatCombinedName(a.patient_name)}{a.visita_patient_id ? ` · PIN ${a.visita_patient_id}` : ""}</button>
                                             <StatusPill status={a.status} />
                                         </div>
                                         {a.is_private && <div className="text-[10px] font-bold uppercase tracking-wide text-amber-700" data-testid="cal-private-badge">Private / Uninsured</div>}
@@ -210,7 +272,61 @@ export default function Calendar() {
             )}
             {booking && <BookSlotDialog slot={booking} onClose={() => setBooking(null)} onDone={refresh} />}
             {blocking && <BlockDialog day={blocking} onClose={() => setBlocking(null)} onDone={refresh} />}
+            {detail && (
+                <AppointmentDetail appt={detail} onClose={() => setDetail(null)}
+                    onReschedule={() => { setResched(detail); setDetail(null); }}
+                    onAction={async (body, msg) => { await act(detail.id, body, msg); setDetail(null); }} />
+            )}
         </div>
+    );
+}
+
+function DRow({ label, children }) {
+    if (children === null || children === undefined || children === "") return null;
+    return (
+        <div className="flex justify-between gap-4 py-1 border-b border-slate-100 last:border-0">
+            <span className="text-xs uppercase tracking-wide text-slate-400 shrink-0">{label}</span>
+            <span className="text-sm text-slate-800 text-right">{children}</span>
+        </div>
+    );
+}
+
+// Compact appointment detail popup. Reuses StatusPill / ApptTypeBadge and the
+// parent's existing appointment actions (no duplicated business logic).
+function AppointmentDetail({ appt, onClose, onReschedule, onAction }) {
+    const canAct = appt.status === "confirmed" || appt.status === "rescheduled";
+    return (
+        <Dialog open onOpenChange={(o) => !o && onClose()}>
+            <DialogContent className="max-w-md" data-testid="cal-appt-detail">
+                <DialogHeader><DialogTitle>Appointment Details</DialogTitle></DialogHeader>
+                <div className="space-y-3">
+                    <div>
+                        <div className="text-[11px] font-bold uppercase tracking-wide text-slate-400 mb-1">Patient</div>
+                        <div className="text-lg font-bold text-slate-900" data-testid="cal-detail-name">{formatCombinedName(appt.patient_name)}</div>
+                        <div className="text-xs text-slate-500">{appt.visita_patient_id ? `PIN: ${appt.visita_patient_id}` : "PIN: Not assigned"}</div>
+                    </div>
+                    <div>
+                        <div className="text-[11px] font-bold uppercase tracking-wide text-slate-400 mb-1">Appointment</div>
+                        <DRow label="Date">{formatDate(appt.date)}</DRow>
+                        <DRow label="Time">{appt.label || appt.time}</DRow>
+                        <DRow label="Type"><ApptTypeBadge type={appt.appointment_type} /></DRow>
+                        <DRow label="Status"><StatusPill status={appt.status} /></DRow>
+                        <DRow label="Reason">{appt.reason || <span className="text-slate-400">—</span>}</DRow>
+                        {appt.is_private && <DRow label="Billing"><span className="text-[10px] font-bold uppercase tracking-wide text-amber-700" data-testid="cal-detail-private">Private / Uninsured</span></DRow>}
+                        <DRow label="Reference">{appt.ref_number}</DRow>
+                        <DRow label="Source">{appt.source}</DRow>
+                    </div>
+                    {canAct && (
+                        <div className="flex flex-wrap gap-2 pt-1">
+                            <Button size="sm" variant="outline" data-testid="cal-detail-reschedule" onClick={onReschedule}>Reschedule</Button>
+                            <Button size="sm" variant="outline" data-testid="cal-detail-complete" onClick={() => onAction({ action: "complete" }, "Marked completed.")}>Mark Completed</Button>
+                            <Button size="sm" variant="outline" className="text-amber-700 border-amber-300 hover:bg-amber-50" data-testid="cal-detail-noshow" onClick={() => onAction({ action: "no_show" }, "Marked no-show.")}>No-show</Button>
+                            <Button size="sm" variant="outline" className="text-red-600 border-red-300 hover:bg-red-50" data-testid="cal-detail-cancel" onClick={() => onAction({ action: "cancel" }, "Cancelled.")}>Cancel</Button>
+                        </div>
+                    )}
+                </div>
+            </DialogContent>
+        </Dialog>
     );
 }
 

@@ -56,7 +56,7 @@ export default function Landing() {
                             </span>
                             <h2 className="text-xl font-bold text-slate-100 tracking-tight">{t("auth:landing.patients.title")}</h2>
                         </div>
-                        <p className="text-sm text-slate-400 leading-relaxed mb-4">{t("auth:landing.patients.desc")}</p>
+                        <p className="text-sm text-white leading-relaxed mb-4">{t("auth:landing.patients.desc")}</p>
                         <div className="grid grid-cols-2 gap-3">
                             <Button data-testid="patient-signin" onClick={() => nav("/signin")}
                                 className="bg-cyan-500 hover:bg-cyan-400 text-[#04121f] font-bold h-11">
@@ -81,7 +81,7 @@ export default function Landing() {
                                 <Stethoscope className="w-5 h-5 text-slate-200" />
                             </span>
                             <h3 className="text-sm font-bold text-slate-100 tracking-tight">{t("auth:landing.clinic.title")}</h3>
-                            <p className="text-[11px] uppercase tracking-widest text-slate-500 mt-0.5 mb-4">{t("auth:landing.clinic.roles")}</p>
+                            <p className="text-[11px] uppercase tracking-widest text-white mt-0.5 mb-4">{t("auth:landing.clinic.roles")}</p>
                             <Button data-testid="clinic-login" onClick={() => nav("/signin?internal=1")}
                                 variant="outline" className="mt-auto h-10 border-white/15 bg-transparent text-slate-100 hover:bg-white/10 font-semibold">
                                 {t("auth:landing.clinic.login")}
@@ -94,7 +94,7 @@ export default function Landing() {
                                 <Building2 className="w-5 h-5 text-slate-200" />
                             </span>
                             <h3 className="text-sm font-bold text-slate-100 tracking-tight">{t("auth:landing.partners.title")}</h3>
-                            <p className="text-[11px] uppercase tracking-widest text-slate-500 mt-0.5 mb-4">{t("auth:landing.partners.roles")}</p>
+                            <p className="text-[11px] uppercase tracking-widest text-white mt-0.5 mb-4">{t("auth:landing.partners.roles")}</p>
                             <div className="mt-auto grid grid-cols-1 gap-2">
                                 <Button data-testid="partner-login" onClick={() => nav("/signin?partner=1")}
                                     variant="outline" className="h-10 border-white/15 bg-transparent text-slate-100 hover:bg-white/10 font-semibold">

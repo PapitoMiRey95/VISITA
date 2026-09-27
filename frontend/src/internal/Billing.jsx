@@ -1,7 +1,7 @@
 import { useState, useRef, useEffect, useCallback } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { toast } from "sonner";
-import { Receipt, Plus, Search, X, UserRound, Send, CheckCircle2, Ban, FileText, Loader2, Info } from "lucide-react";
+import { Receipt, Plus, Search, X, UserRound, Send, CheckCircle2, Ban, FileText, Loader2, Info, Check, ChevronsUpDown } from "lucide-react";
 import { api, formatErr, openAttachment } from "../lib/api";
 import { useInvalidate } from "./hooks";
 import { useAuth } from "../context/AuthContext";
@@ -13,6 +13,57 @@ import { Input } from "../components/ui/input";
 import { Label } from "../components/ui/label";
 import { Textarea } from "../components/ui/textarea";
 import { Select, SelectTrigger, SelectValue, SelectContent, SelectItem, SelectGroup, SelectLabel } from "../components/ui/select";
+import { Popover, PopoverTrigger, PopoverContent } from "../components/ui/popover";
+import { Command, CommandInput, CommandList, CommandEmpty, CommandGroup, CommandItem } from "../components/ui/command";
+
+// Searchable Set-Service picker: physician can type a hint word (e.g. "sick",
+// "OCF", "camp") to instantly filter the ~71-item catalogue. Grouped by category;
+// No-Charge / no-amount services stay visible but non-selectable.
+function SetServiceCombobox({ services, value, onChange }) {
+    const [open, setOpen] = useState(false);
+    const selected = services.find((s) => s.code === value);
+    return (
+        <Popover open={open} onOpenChange={setOpen}>
+            <PopoverTrigger asChild>
+                <button type="button" role="combobox" aria-expanded={open} data-testid="inv-service-select"
+                    className="w-full flex items-center justify-between rounded-md border border-slate-200 bg-white px-3 h-9 text-sm text-left hover:border-slate-300">
+                    <span className={selected ? "text-slate-800 truncate" : "text-slate-400"}>{selected ? selected.description : "Select a service"}</span>
+                    <ChevronsUpDown className="w-4 h-4 opacity-50 shrink-0 ml-2" />
+                </button>
+            </PopoverTrigger>
+            <PopoverContent className="p-0 w-[--radix-popover-trigger-width] min-w-[22rem]" align="start">
+                <Command>
+                    <CommandInput placeholder="Type a hint word to filter…" data-testid="inv-service-search" />
+                    <CommandList>
+                        <CommandEmpty>No matching service.</CommandEmpty>
+                        {SERVICE_CATEGORIES.map(([cat, label]) => {
+                            const rows = services.filter((s) => (s.category || "OTHER") === cat && (s.billing_type || "SET_SERVICE") === "SET_SERVICE");
+                            if (rows.length === 0) return null;
+                            return (
+                                <CommandGroup key={cat} heading={label}>
+                                    {rows.map((s) => {
+                                        const noCharge = s.billing_classification === "NO_CHARGE";
+                                        const noAmount = s.amount == null || s.amount === "";
+                                        const disabled = noCharge || noAmount;
+                                        return (
+                                            <CommandItem key={s.code} value={s.code} keywords={[s.description, label, s.code]}
+                                                disabled={disabled} onSelect={() => { onChange(s.code); setOpen(false); }}
+                                                data-testid={`inv-service-opt-${s.code}`}>
+                                                <Check className={`w-4 h-4 ${value === s.code ? "opacity-100 text-visita-greenDark" : "opacity-0"}`} />
+                                                <span className="flex-1 min-w-0 truncate">{s.description}{noCharge ? " · No charge" : ""}</span>
+                                                <span className="font-semibold tabular-nums text-slate-500">{noAmount ? (noCharge ? "—" : "Not set") : formatMoney(s.amount)}</span>
+                                            </CommandItem>
+                                        );
+                                    })}
+                                </CommandGroup>
+                            );
+                        })}
+                    </CommandList>
+                </Command>
+            </PopoverContent>
+        </Popover>
+    );
+}
 
 // Billing patient search covers ALL current/active patients — verified portal
 // accounts AND active patient_directory records (via the shared /internal/patient-lookup
@@ -238,33 +289,7 @@ function CreateInvoice({ onCreated }) {
                     {cfg.services.length === 0 ? (
                         <p className="text-xs text-amber-600">No active services configured. Add them in Clinic Settings → Direct 3rd Party Billing.</p>
                     ) : (
-                        <Select value={svcCode} onValueChange={setSvcCode}>
-                            <SelectTrigger data-testid="inv-service-select"><SelectValue placeholder="Select a service" /></SelectTrigger>
-                            <SelectContent className="max-h-80">
-                                {SERVICE_CATEGORIES.map(([cat, label]) => {
-                                    const rows = cfg.services.filter((s) => (s.category || "OTHER") === cat && (s.billing_type || "SET_SERVICE") === "SET_SERVICE");
-                                    if (rows.length === 0) return null;
-                                    return (
-                                        <SelectGroup key={cat}>
-                                            <SelectLabel className="text-[10px] uppercase tracking-wide text-slate-400">{label}</SelectLabel>
-                                            {rows.map((s) => {
-                                                const noCharge = s.billing_classification === "NO_CHARGE";
-                                                const noAmount = s.amount == null || s.amount === "";
-                                                const disabled = noCharge || noAmount;
-                                                return (
-                                                    <SelectItem key={s.code} value={s.code} disabled={disabled}>
-                                                        <span className="inline-flex justify-between gap-6 w-full min-w-[18rem]">
-                                                            <span>{s.description}{noCharge ? " · No charge" : ""}</span>
-                                                            <span className="font-semibold tabular-nums">{noAmount ? (noCharge ? "—" : "Not set") : formatMoney(s.amount)}</span>
-                                                        </span>
-                                                    </SelectItem>
-                                                );
-                                            })}
-                                        </SelectGroup>
-                                    );
-                                })}
-                            </SelectContent>
-                        </Select>
+                        <SetServiceCombobox services={cfg.services} value={svcCode} onChange={setSvcCode} />
                     )}
                     {selectedSvc && (
                         <div className="mt-2 flex items-center justify-between bg-slate-50 border border-slate-200 rounded-sm px-3 py-2 text-sm" data-testid="inv-service-summary">

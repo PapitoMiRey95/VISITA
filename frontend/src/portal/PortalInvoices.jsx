@@ -130,7 +130,7 @@ export default function PortalInvoices() {
                 <Receipt className="w-6 h-6 text-portal-blue" />
                 <h1 className="text-2xl font-bold text-slate-900">Invoices</h1>
             </div>
-            <p className="text-sm text-slate-500">This invoice is for a service that is not covered under your OHIP coverage.</p>
+            <p className="text-sm text-slate-500">Your service invoices and payment details.</p>
 
             {list.length === 0 && (
                 <Card className="text-center text-slate-500 text-sm py-8" >You have no invoices yet.</Card>

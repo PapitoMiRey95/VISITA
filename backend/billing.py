@@ -94,10 +94,7 @@ def normalize_rate(rate) -> float:
     return val
 
 
-def compute_time_based(hourly_rate, whole_hours, partial_minutes) -> dict:
-    """Authoritative time-based calculation:
-    total = hourly_rate × (whole_hours + partial_multiplier)."""
-    rate = normalize_rate(hourly_rate)
+def _validate_time(whole_hours, partial_minutes):
     try:
         wh = int(whole_hours)
         pm = int(partial_minutes)
@@ -107,21 +104,34 @@ def compute_time_based(hourly_rate, whole_hours, partial_minutes) -> dict:
         raise HTTPException(status_code=400, detail=f"Hours worked must be between 0 and {MAX_WHOLE_HOURS}.")
     if pm not in PARTIAL_MULTIPLIERS:
         raise HTTPException(status_code=400, detail="Invalid partial hours selection.")
-    mult = PARTIAL_MULTIPLIERS[pm]
+    return wh, pm, PARTIAL_MULTIPLIERS[pm]
+
+
+def compute_time_based(hourly_rate, whole_hours, partial_minutes, minimum_fee=None) -> dict:
+    """Authoritative time-based calculation:
+    total = hourly_rate × (whole_hours + partial_multiplier), then a per-service
+    minimum fee is applied if the computed total is lower."""
+    rate = normalize_rate(hourly_rate)
+    wh, pm, mult = _validate_time(whole_hours, partial_minutes)
     total = round(rate * (wh + mult), 2)
+    min_fee = normalize_amount(minimum_fee) if minimum_fee not in (None, "") else None
+    min_applied = False
+    if min_fee is not None and total < min_fee:
+        total, min_applied = min_fee, True
     if total <= 0:
-        raise HTTPException(status_code=400, detail="Total must be greater than zero — select some time.")
+        raise HTTPException(status_code=400, detail="Total must be greater than zero — select time or configure a minimum fee.")
     return {"hourly_rate_used": rate, "whole_hours": wh, "partial_minutes": pm,
-            "partial_multiplier": mult, "calculated_total": total}
+            "partial_multiplier": mult, "calculated_total": total,
+            "minimum_fee": min_fee, "minimum_fee_applied": min_applied}
 
 
 def resolve_set_service(services: list, code: str) -> dict:
-    """Look up a predefined service by code from the clinic config (server is
-    the source of truth for description + amount — client amount is ignored).
-    Rejects inactive services, No-Charge/Unremunerated services, and services
-    with no configured amount."""
+    """Look up a SET_SERVICE by code. Rejects time-based services, inactive
+    services, No-Charge services, and services with no configured amount."""
     for s in services or []:
         if str(s.get("code")) == str(code):
+            if (s.get("billing_type") or "SET_SERVICE") == "TIME_BASED":
+                raise HTTPException(status_code=400, detail="This is a time-based service — use Time-Based billing.")
             if not s.get("active", True):
                 raise HTTPException(status_code=400, detail="That service is inactive and cannot be invoiced.")
             if s.get("billing_classification") == "NO_CHARGE":

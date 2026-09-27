@@ -7,7 +7,7 @@ import { Button } from "../components/ui/button";
 import { Input } from "../components/ui/input";
 import { Textarea } from "../components/ui/textarea";
 import { Label } from "../components/ui/label";
-import { DEFAULT_SERVICE_CATALOG, SERVICE_CATEGORIES, CLASSIFICATIONS } from "../lib/billing";
+import { DEFAULT_SERVICE_CATALOG, SERVICE_CATEGORIES, CLASSIFICATIONS, applyOmaCatalog } from "../lib/billing";
 
 const SETTING_FIELDS = [
     ["clinic_name", "Clinic name"],
@@ -109,6 +109,9 @@ export default function Settings() {
                                     return { ...s, direct_billing_services: [...(s.direct_billing_services || []), ...additions] };
                                 })}
                                 className="text-xs text-visita-greenDark font-semibold hover:underline">Load default catalogue</button>
+                            <button type="button" data-testid="db-apply-oma"
+                                onClick={() => setSettings((s) => ({ ...s, direct_billing_services: applyOmaCatalog(s.direct_billing_services || []) }))}
+                                className="text-xs text-sky-700 font-semibold hover:underline">Apply OMA 2026 fees</button>
                             <button type="button" data-testid="db-add-service"
                                 onClick={() => setSettings((s) => ({ ...s, direct_billing_services: [...(s.direct_billing_services || []), { code: `CUSTOM_${Date.now()}`, category: "OTHER", description: "", amount: "", billing_classification: "PATIENT_THIRD_PARTY_BILLABLE", active: true, note: "" }] }))}
                                 className="text-xs text-visita-green flex items-center gap-1"><Plus className="w-3 h-3" /> Add</button>
@@ -126,13 +129,24 @@ export default function Settings() {
                                         <span className="text-[10px] text-slate-500">Active</span>
                                     </label>
                                     <Input placeholder="Description" className="h-8 text-xs flex-1 min-w-[12rem]" value={row.description || ""} onChange={(e) => setRow({ description: e.target.value })} />
+                                    <select className="h-8 text-xs border border-slate-200 rounded-sm px-1 w-32" value={row.billing_type || "SET_SERVICE"} onChange={(e) => setRow({ billing_type: e.target.value })} data-testid={`db-type-${i}`}>
+                                        <option value="SET_SERVICE">Set Service</option>
+                                        <option value="TIME_BASED">Time-Based</option>
+                                    </select>
                                     <select className="h-8 text-xs border border-slate-200 rounded-sm px-1 w-40" value={row.category || "OTHER"} onChange={(e) => setRow({ category: e.target.value })}>
                                         {SERVICE_CATEGORIES.map(([c, l]) => <option key={c} value={c}>{l}</option>)}
                                     </select>
                                     <select className="h-8 text-xs border border-slate-200 rounded-sm px-1 w-44" value={row.billing_classification || "PATIENT_THIRD_PARTY_BILLABLE"} onChange={(e) => setRow({ billing_classification: e.target.value })} data-testid={`db-class-${i}`}>
                                         {CLASSIFICATIONS.map(([c, l]) => <option key={c} value={c}>{l}</option>)}
                                     </select>
-                                    <Input placeholder="Amount" type="number" min="0" step="0.01" className="h-8 text-xs w-24" value={row.amount ?? ""} onChange={(e) => setRow({ amount: e.target.value })} data-testid={`db-amount-${i}`} />
+                                    {row.billing_type === "TIME_BASED" ? (
+                                        <Input placeholder="Min fee" type="number" min="0" step="0.01" className="h-8 text-xs w-24" value={row.minimum_fee ?? ""} onChange={(e) => setRow({ minimum_fee: e.target.value })} data-testid={`db-min-${i}`} title="Minimum fee" />
+                                    ) : (
+                                        <Input placeholder="Clinic fee" type="number" min="0" step="0.01" className="h-8 text-xs w-24" value={row.amount ?? ""} onChange={(e) => setRow({ amount: e.target.value })} data-testid={`db-amount-${i}`} title="Clinic fee" />
+                                    )}
+                                    {(row.oma_suggested_amount || row.hourly_rate_override) ? (
+                                        <span className="text-[10px] text-sky-700 whitespace-nowrap" title="OMA 2026 suggested — not mandatory">OMA {row.hourly_rate_override ? `$${row.hourly_rate_override}/hr` : `$${row.oma_suggested_amount}`}</span>
+                                    ) : null}
                                     <button type="button" onClick={() => setSettings((s) => ({ ...s, direct_billing_services: s.direct_billing_services.filter((_, j) => j !== i) }))} className="text-slate-400 hover:text-red-500"><X className="w-4 h-4" /></button>
                                 </div>
                             );

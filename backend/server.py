@@ -1973,8 +1973,15 @@ async def _direct_billing_config(active_only: bool = False) -> dict:
             "code": code,
             "category": (x.get("category") or "OTHER").strip() or "OTHER",
             "description": desc,
+            "billing_type": (x.get("billing_type") or "SET_SERVICE"),
             "amount": x.get("amount") if x.get("amount") not in ("",) else None,
+            "hourly_rate_override": x.get("hourly_rate_override") if x.get("hourly_rate_override") not in ("",) else None,
+            "minimum_fee": x.get("minimum_fee") if x.get("minimum_fee") not in ("",) else None,
+            "oma_suggested_amount": x.get("oma_suggested_amount") if x.get("oma_suggested_amount") not in ("",) else None,
             "billing_classification": x.get("billing_classification") or "PATIENT_THIRD_PARTY_BILLABLE",
+            "external_payer_note": (x.get("external_payer_note") or "").strip() or None,
+            "oma_year": x.get("oma_year"),
+            "oma_reference": (x.get("oma_reference") or "").strip() or None,
             "active": active,
             "note": (x.get("note") or "").strip() or None,
         })
@@ -2026,8 +2033,15 @@ async def put_direct_billing_config(body: DirectBillingConfigBody, user: dict = 
                 "code": code,
                 "category": (x.get("category") or "OTHER").strip() or "OTHER",
                 "description": desc,
+                "billing_type": "TIME_BASED" if (x.get("billing_type") == "TIME_BASED") else "SET_SERVICE",
                 "amount": amount,
+                "hourly_rate_override": billing_mod.normalize_rate(x.get("hourly_rate_override")) if x.get("hourly_rate_override") not in (None, "") else None,
+                "minimum_fee": billing_mod.normalize_amount(x.get("minimum_fee")) if x.get("minimum_fee") not in (None, "") else None,
+                "oma_suggested_amount": billing_mod.normalize_amount(x.get("oma_suggested_amount")) if x.get("oma_suggested_amount") not in (None, "") else None,
                 "billing_classification": classification,
+                "external_payer_note": (x.get("external_payer_note") or "").strip() or None,
+                "oma_year": x.get("oma_year"),
+                "oma_reference": (x.get("oma_reference") or "").strip() or None,
                 "active": bool(x.get("active", True)),
                 "note": (x.get("note") or "").strip() or None,
             })
@@ -2058,14 +2072,33 @@ async def create_direct_billing_invoice(body: DirectBillingInvoiceBody, user: di
             billing_method="SET_SERVICE", user=user, status="DRAFT")
     else:  # TIME_BASED
         desc = (body.description or "").strip()
+        rate = cfg.get("hourly_rate")
+        minimum = None
+        svc_code = None
+        if body.service_code:
+            svc = next((x for x in cfg["services"] if str(x["code"]) == str(body.service_code)), None)
+            if not svc:
+                raise HTTPException(status_code=400, detail="Select a valid time-based service.")
+            if (svc.get("billing_type") or "SET_SERVICE") != "TIME_BASED":
+                raise HTTPException(status_code=400, detail="That service is not time-based.")
+            if not svc.get("active", True):
+                raise HTTPException(status_code=400, detail="That service is inactive.")
+            if svc.get("billing_classification") == "NO_CHARGE":
+                raise HTTPException(status_code=400, detail="This service is No Charge / Unremunerated and cannot generate an invoice.")
+            svc_code = svc["code"]
+            if svc.get("hourly_rate_override") not in (None, ""):
+                rate = svc["hourly_rate_override"]
+            minimum = svc.get("minimum_fee")
+            if not desc:
+                desc = (svc.get("description") or "").strip()
         if not desc:
             raise HTTPException(status_code=400, detail="Please provide a service description.")
-        if cfg.get("hourly_rate") is None:
+        if rate is None:
             raise HTTPException(status_code=400, detail="No hourly rate is configured. Set it in Clinic Settings first.")
-        calc = billing_mod.compute_time_based(cfg["hourly_rate"], body.whole_hours, body.partial_minutes)
+        calc = billing_mod.compute_time_based(rate, body.whole_hours, body.partial_minutes, minimum_fee=minimum)
         inv = await _create_invoice(
             patient, service_description=desc, amount=calc["calculated_total"],
-            payment_mode=mode, internal_note=body.internal_note,
+            payment_mode=mode, service_code=svc_code, internal_note=body.internal_note,
             billing_method="TIME_BASED", billing_meta=calc, user=user, status="DRAFT")
     return billing_mod.invoice_internal(inv)
 

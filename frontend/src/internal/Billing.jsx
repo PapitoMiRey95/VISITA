@@ -120,6 +120,7 @@ function CreateInvoice({ onCreated }) {
     const [cfg, setCfg] = useState({ hourly_rate: null, services: [] });
     const [svcCode, setSvcCode] = useState("");
     const [tbDesc, setTbDesc] = useState("");
+    const [tbSvc, setTbSvc] = useState("");
     const [hours, setHours] = useState(0);
     const [partial, setPartial] = useState(0); // minutes
 
@@ -130,12 +131,17 @@ function CreateInvoice({ onCreated }) {
     }, []);
 
     const partialOpt = PARTIAL_OPTIONS.find((p) => p.min === Number(partial)) || PARTIAL_OPTIONS[0];
-    const tbTotal = computeTimeBasedTotal(cfg.hourly_rate, hours, partialOpt.mult);
+    const tbSvcObj = cfg.services.find((s) => s.code === tbSvc) || null;
+    const tbRate = tbSvcObj?.hourly_rate_override != null ? tbSvcObj.hourly_rate_override : cfg.hourly_rate;
+    const tbMin = tbSvcObj?.minimum_fee != null ? tbSvcObj.minimum_fee : null;
+    const tbRaw = computeTimeBasedTotal(tbRate, hours, partialOpt.mult);
+    const tbMinApplied = tbMin != null && tbRaw < tbMin;
+    const tbTotal = tbMinApplied ? tbMin : tbRaw;
     const selectedSvc = cfg.services.find((s) => s.code === svcCode);
 
     const reset = () => {
         setPatient(null); setMethod("MANUAL"); setDesc(""); setCode(""); setAmount(""); setNote("");
-        setMode("INVOICE_AFTER_SERVICE"); setSvcCode(""); setTbDesc(""); setHours(0); setPartial(0);
+        setMode("INVOICE_AFTER_SERVICE"); setSvcCode(""); setTbDesc(""); setTbSvc(""); setHours(0); setPartial(0);
     };
 
     const submit = async (issue) => {
@@ -159,10 +165,11 @@ function CreateInvoice({ onCreated }) {
                 }));
             } else {
                 if (!tbDesc.trim()) throw new Error("Enter a service description.");
-                if (cfg.hourly_rate == null) throw new Error("No hourly rate configured. Set it in Clinic Settings.");
+                if (tbRate == null) throw new Error("No hourly rate configured. Set it in Clinic Settings.");
                 if (tbTotal <= 0) throw new Error("Select some time worked.");
                 ({ data } = await api.post("/internal/direct-billing/invoices", {
                     patient_id: patient.id, billing_method: "TIME_BASED", description: tbDesc.trim(),
+                    service_code: tbSvc || undefined,
                     whole_hours: Number(hours), partial_minutes: Number(partial),
                     payment_mode: mode, internal_note: note.trim() || undefined,
                 }));
@@ -217,7 +224,7 @@ function CreateInvoice({ onCreated }) {
                             <SelectTrigger data-testid="inv-service-select"><SelectValue placeholder="Select a service" /></SelectTrigger>
                             <SelectContent className="max-h-80">
                                 {SERVICE_CATEGORIES.map(([cat, label]) => {
-                                    const rows = cfg.services.filter((s) => (s.category || "OTHER") === cat);
+                                    const rows = cfg.services.filter((s) => (s.category || "OTHER") === cat && (s.billing_type || "SET_SERVICE") === "SET_SERVICE");
                                     if (rows.length === 0) return null;
                                     return (
                                         <SelectGroup key={cat}>
@@ -252,12 +259,26 @@ function CreateInvoice({ onCreated }) {
 
             {method === "TIME_BASED" && (
                 <div className="space-y-2" data-testid="inv-time-based">
+                    <div>
+                        <Label className="text-xs">Time-based service (optional — OMA)</Label>
+                        <Select value={tbSvc || "__none"} onValueChange={(v) => { const code = v === "__none" ? "" : v; setTbSvc(code); const s = cfg.services.find((x) => x.code === code); if (s) setTbDesc(s.description); }}>
+                            <SelectTrigger data-testid="tb-service"><SelectValue placeholder="Custom (use clinic rate)" /></SelectTrigger>
+                            <SelectContent className="max-h-72">
+                                <SelectItem value="__none">Custom (use clinic rate)</SelectItem>
+                                {cfg.services.filter((s) => (s.billing_type === "TIME_BASED") && s.billing_classification !== "NO_CHARGE").map((s) => (
+                                    <SelectItem key={s.code} value={s.code}>
+                                        <span className="inline-flex justify-between gap-6 w-full min-w-[18rem]"><span>{s.description}</span><span className="text-slate-400">{s.hourly_rate_override ? `${formatMoney(s.hourly_rate_override)}/hr` : s.minimum_fee ? `min ${formatMoney(s.minimum_fee)}` : ""}</span></span>
+                                    </SelectItem>
+                                ))}
+                            </SelectContent>
+                        </Select>
+                    </div>
                     <div><Label className="text-xs">Description</Label><Input data-testid="tb-desc" value={tbDesc} onChange={(e) => setTbDesc(e.target.value)} placeholder="e.g. Legal report preparation" /></div>
                     <div className="grid grid-cols-3 gap-2">
                         <div>
                             <Label className="text-xs">Hourly Rate</Label>
                             <div className="h-9 flex items-center px-3 rounded-md border border-slate-200 bg-slate-50 font-semibold tabular-nums" data-testid="tb-rate">
-                                {cfg.hourly_rate != null ? formatMoney(cfg.hourly_rate) : "Not set"}
+                                {tbRate != null ? formatMoney(tbRate) : "Not set"}{tbSvcObj?.hourly_rate_override ? " (OMA)" : ""}
                             </div>
                         </div>
                         <div>
@@ -280,12 +301,13 @@ function CreateInvoice({ onCreated }) {
                         </div>
                     </div>
                     <div className="flex items-center justify-between bg-visita-greenLight border border-visita-green/40 rounded-sm px-3 py-2">
-                        <span className="text-xs uppercase tracking-wide text-slate-500 font-semibold">Total Amount</span>
+                        <span className="text-xs uppercase tracking-wide text-slate-500 font-semibold">Total Amount{tbMinApplied ? " (minimum applied)" : ""}</span>
                         <span className="text-2xl font-extrabold text-slate-900 tabular-nums" data-testid="tb-total">{formatMoney(tbTotal)}</span>
                     </div>
-                    {cfg.hourly_rate != null && (
-                        <p className="text-[11px] text-slate-400">{formatMoney(cfg.hourly_rate)} × ({hours} + {partialOpt.mult}) — rate is set in Clinic Settings and snapshotted onto the invoice.</p>
+                    {tbRate != null && (
+                        <p className="text-[11px] text-slate-400">{formatMoney(tbRate)} × ({hours} + {partialOpt.mult}){tbMin ? `, minimum ${formatMoney(tbMin)}` : ""} — rate snapshotted onto the invoice.</p>
                     )}
+                    {tbSvcObj?.external_payer_note && <p className="text-[11px] text-amber-600" data-testid="tb-ext-note">{tbSvcObj.external_payer_note}</p>}
                 </div>
             )}
 

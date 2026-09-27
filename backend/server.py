@@ -3476,6 +3476,7 @@ def _directory_snapshot(d: dict) -> dict:
         "health_card_status": identity_mod.health_card_status(d.get("health_card_expiry_date")),
         "health_card_update_pending": False,
         "patient_status": d.get("patient_status"),
+        "patient_type": d.get("patient_type"),
         "current_pharmacy": d.get("current_pharmacy"),
     }
 
@@ -3507,6 +3508,7 @@ def _portal_patient_snapshot(p: dict) -> dict:
         "health_card_update_pending": bool(p.get("pending_health_card")),
         "pending_health_card": p.get("pending_health_card"),
         "patient_status": "PORTAL_PATIENT",
+        "patient_type": p.get("patient_type"),
         "current_pharmacy": None,
     }
 

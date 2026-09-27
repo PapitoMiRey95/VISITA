@@ -14,7 +14,10 @@ import { Label } from "../components/ui/label";
 import { Textarea } from "../components/ui/textarea";
 import { Select, SelectTrigger, SelectValue, SelectContent, SelectItem, SelectGroup, SelectLabel } from "../components/ui/select";
 
-// Only portal patients (with a patient_id) can be billed — they need a login to see the invoice.
+// Billing patient search covers ALL current/active patients — verified portal
+// accounts AND active patient_directory records (via the shared /internal/patient-lookup
+// endpoints, same rule as the Patients page). A portal account is NOT required to be
+// found; but issuing an invoice still needs a linked portal patient_id (see submit()).
 function PatientPicker({ selected, onSelect, onClear }) {
     const [q, setQ] = useState("");
     const [pinQ, setPinQ] = useState("");
@@ -23,25 +26,27 @@ function PatientPicker({ selected, onSelect, onClear }) {
     const [loading, setLoading] = useState(false);
     const boxRef = useRef(null);
 
+    // GENERAL search across active portal + directory patients (name / full name /
+    // health card / phone / DOB). PIN is intentionally excluded here.
     const search = useCallback(async (term) => {
         if (term.trim().length < 2) { setResults([]); return; }
         setLoading(true);
         try {
-            const { data } = await api.get("/internal/patients", { params: { q: term.trim() } });
+            const { data } = await api.get("/internal/patient-lookup", { params: { q: term.trim(), include_pin: false } });
             setResults(data || []);
             setOpen(true);
         } catch (e) { toast.error(formatErr(e)); } finally { setLoading(false); }
     }, []);
 
-    // Dedicated exact-PIN search: portal-billable patients only, PIN field only.
+    // Dedicated EXACT VISITA PIN search (active patients only, PIN field only).
     const searchPin = async () => {
         const pin = pinQ.trim();
         if (!/^\d+$/.test(pin)) { toast.error("VISITA PIN must be numeric."); return; }
         setLoading(true);
         setOpen(true);
         try {
-            const { data } = await api.get("/internal/patients", { params: { q: pin } });
-            setResults((data || []).filter((r) => String(r.visita_patient_id) === pin));
+            const { data } = await api.get("/internal/patient-lookup/pin", { params: { pin } });
+            setResults(data || []);
         } catch (e) { toast.error(formatErr(e)); } finally { setLoading(false); }
     };
 
@@ -58,13 +63,22 @@ function PatientPicker({ selected, onSelect, onClear }) {
     }, []);
 
     if (selected) {
+        const billable = !!selected.patient_id;
         return (
-            <div data-testid="inv-patient-selected" className="flex items-start justify-between gap-2 rounded-sm border border-visita-green/40 bg-visita-greenLight px-2.5 py-2">
-                <div className="min-w-0">
-                    <div className="font-semibold text-slate-800 text-sm flex items-center gap-1.5"><UserRound className="w-3.5 h-3.5 text-visita-greenDark" /> {formatPatientName(selected)} <CoverageBadge type={selected.patient_type} /></div>
-                    <span className="text-xs text-slate-500">PIN: {selected.visita_patient_id || "Not assigned"} · DOB: {formatDate(selected.date_of_birth) || "—"}</span>
+            <div className="space-y-1.5">
+                <div data-testid="inv-patient-selected" className="flex items-start justify-between gap-2 rounded-sm border border-visita-green/40 bg-visita-greenLight px-2.5 py-2">
+                    <div className="min-w-0">
+                        <div className="font-semibold text-slate-800 text-sm flex items-center gap-1.5"><UserRound className="w-3.5 h-3.5 text-visita-greenDark" /> {formatPatientName(selected)} <CoverageBadge type={selected.patient_type} /></div>
+                        <span className="text-xs text-slate-500">PIN: {selected.visita_patient_id || "Not assigned"} · DOB: {formatDate(selected.date_of_birth) || "—"}</span>
+                    </div>
+                    <button type="button" data-testid="inv-patient-clear" onClick={onClear} className="text-slate-400 hover:text-red-600 shrink-0"><X className="w-4 h-4" /></button>
                 </div>
-                <button type="button" data-testid="inv-patient-clear" onClick={onClear} className="text-slate-400 hover:text-red-600 shrink-0"><X className="w-4 h-4" /></button>
+                {!billable && (
+                    <div data-testid="inv-patient-no-portal" className="flex items-start gap-2 bg-amber-50 border border-amber-200 rounded-sm px-2.5 py-2 text-xs text-amber-800">
+                        <Info className="w-3.5 h-3.5 flex-shrink-0 mt-0.5" />
+                        <span>This is a current patient in the directory but has <span className="font-semibold">no Patient Portal account yet</span>. Invoices are sent and paid through the portal, so this patient can't be invoiced until they register. No account is created automatically.</span>
+                    </div>
+                )}
             </div>
         );
     }
@@ -77,7 +91,7 @@ function PatientPicker({ selected, onSelect, onClear }) {
                         <Search className="w-4 h-4 text-slate-400 absolute left-2 top-2.5" />
                         <Input data-testid="inv-patient-search" value={q} onChange={(e) => setQ(e.target.value)}
                             onFocus={() => { if (results.length) setOpen(true); }}
-                            placeholder="Search registered patient by name…" className="pl-8" />
+                            placeholder="Search current patient by name…" className="pl-8" />
                     </div>
                 </div>
                 <div className="sm:w-56 shrink-0">
@@ -94,10 +108,13 @@ function PatientPicker({ selected, onSelect, onClear }) {
             {open && (
                 <div data-testid="inv-patient-results" className="absolute z-30 mt-1 w-full bg-white border border-slate-300 rounded-sm shadow-lg divide-y max-h-72 overflow-y-auto">
                     {loading && <div className="px-3 py-3 text-xs text-slate-400">Searching…</div>}
-                    {!loading && results.length === 0 && <div className="px-3 py-3 text-xs text-slate-400">No registered portal patients found. Invoices require a portal account.</div>}
+                    {!loading && results.length === 0 && <div className="px-3 py-3 text-xs text-slate-400">No current patients found.</div>}
                     {!loading && results.map((r) => (
                         <button key={r.id} type="button" data-testid="inv-patient-result" onClick={() => { onSelect(r); setOpen(false); setQ(""); setPinQ(""); }} className="w-full text-left px-3 py-2 hover:bg-slate-50">
-                            <div className="font-semibold text-slate-800 text-sm">{formatPatientName(r)} <CoverageBadge type={r.patient_type} /></div>
+                            <div className="font-semibold text-slate-800 text-sm flex items-center gap-1.5">
+                                {formatPatientName(r)} <CoverageBadge type={r.patient_type} />
+                                {!r.patient_id && <span className="text-[10px] font-semibold uppercase tracking-wide text-amber-700 bg-amber-100 rounded px-1 py-0.5">No portal</span>}
+                            </div>
                             <span className="text-xs text-slate-500">PIN: {r.visita_patient_id || "Not assigned"} · DOB: {formatDate(r.date_of_birth) || "—"}</span>
                         </button>
                     ))}
@@ -145,7 +162,8 @@ function CreateInvoice({ onCreated }) {
     };
 
     const submit = async (issue) => {
-        if (!patient?.id) return toast.error("Select a registered portal patient.");
+        const billTo = patient?.patient_id;
+        if (!billTo) return toast.error("This patient has no Patient Portal account yet, so an invoice can't be issued. A portal account is required to send and pay invoices.");
         setBusy(true);
         try {
             let data;
@@ -153,14 +171,14 @@ function CreateInvoice({ onCreated }) {
                 if (!desc.trim()) throw new Error("Enter a service description.");
                 if (!amount || Number(amount) <= 0) throw new Error("Enter a valid amount.");
                 ({ data } = await api.post("/internal/invoices", {
-                    patient_id: patient.id, service_description: desc.trim(),
+                    patient_id: billTo, service_description: desc.trim(),
                     service_code: code.trim() || undefined, amount: Number(amount),
                     payment_mode: mode, internal_note: note.trim() || undefined,
                 }));
             } else if (method === "SET_SERVICE") {
                 if (!svcCode) throw new Error("Select a predefined service.");
                 ({ data } = await api.post("/internal/direct-billing/invoices", {
-                    patient_id: patient.id, billing_method: "SET_SERVICE", service_code: svcCode,
+                    patient_id: billTo, billing_method: "SET_SERVICE", service_code: svcCode,
                     payment_mode: mode, internal_note: note.trim() || undefined,
                 }));
             } else {
@@ -168,7 +186,7 @@ function CreateInvoice({ onCreated }) {
                 if (tbRate == null) throw new Error("No hourly rate configured. Set it in Clinic Settings.");
                 if (tbTotal <= 0) throw new Error("Select some time worked.");
                 ({ data } = await api.post("/internal/direct-billing/invoices", {
-                    patient_id: patient.id, billing_method: "TIME_BASED", description: tbDesc.trim(),
+                    patient_id: billTo, billing_method: "TIME_BASED", description: tbDesc.trim(),
                     service_code: tbSvc || undefined,
                     whole_hours: Number(hours), partial_minutes: Number(partial),
                     payment_mode: mode, internal_note: note.trim() || undefined,
@@ -323,8 +341,8 @@ function CreateInvoice({ onCreated }) {
             </div>
             <div><Label className="text-xs">Internal note (optional)</Label><Textarea data-testid="inv-note" value={note} onChange={(e) => setNote(e.target.value)} /></div>
             <div className="flex gap-2">
-                <Button size="sm" variant="outline" disabled={busy} data-testid="inv-save-draft" onClick={() => submit(false)}>Save as draft</Button>
-                <Button size="sm" disabled={busy} data-testid="inv-issue-now" onClick={() => submit(true)} className="bg-visita-green hover:bg-visita-greenDark text-white">
+                <Button size="sm" variant="outline" disabled={busy || (patient && !patient.patient_id)} data-testid="inv-save-draft" onClick={() => submit(false)}>Save as draft</Button>
+                <Button size="sm" disabled={busy || (patient && !patient.patient_id)} data-testid="inv-issue-now" onClick={() => submit(true)} className="bg-visita-green hover:bg-visita-greenDark text-white">
                     {busy ? <Loader2 className="w-4 h-4 mr-1 animate-spin" /> : <Send className="w-4 h-4 mr-1" />} Create & issue
                 </Button>
             </div>

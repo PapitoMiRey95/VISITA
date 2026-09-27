@@ -1,13 +1,15 @@
 import { Outlet, NavLink, useNavigate } from "react-router-dom";
-import { useState } from "react";
+import { useState, useRef, useCallback } from "react";
 import {
     ClipboardList, Pill, Calendar, Scan, Droplet, MessageSquare, ClipboardCheck,
-    Send, UserCheck, UserPlus, CalendarDays, Settings as SettingsIcon, LogOut, UserSearch, Menu, Building2, Stethoscope, Users, Receipt,
+    Send, UserCheck, UserPlus, CalendarDays, Settings as SettingsIcon, LogOut, UserSearch, Menu, Building2, Stethoscope, Users, Receipt, AlertTriangle,
 } from "lucide-react";
 import { useAuth } from "../context/AuthContext";
 import { useCounters } from "./hooks";
 import { Logo } from "../components/Logo";
+import { Button } from "../components/ui/button";
 import { Sheet, SheetContent, SheetTrigger, SheetTitle } from "../components/ui/sheet";
+import { UnsavedGuardContext } from "./unsavedGuard";
 
 export default function InternalLayout() {
     const { user, logout } = useAuth();
@@ -17,6 +19,31 @@ export default function InternalLayout() {
     const role = user?.role;
     const isPhysician = role === "physician";
     const [mobileOpen, setMobileOpen] = useState(false);
+
+    const guardRef = useRef({ dirty: false, save: null });
+    const setGuard = useCallback((g) => { guardRef.current = g || { dirty: false, save: null }; }, []);
+    const [pending, setPending] = useState(null); // { proceed: () => void }
+    const [saving, setSaving] = useState(false);
+
+    // Intercept a navigation/logout action if the current page has unsaved edits.
+    const guarded = (proceed) => (e) => {
+        if (guardRef.current?.dirty) {
+            e?.preventDefault?.();
+            setPending({ proceed });
+            return;
+        }
+        proceed();
+    };
+    const doSaveThenProceed = async () => {
+        const save = guardRef.current?.save;
+        if (!save) { setPending(null); return; }
+        setSaving(true);
+        try {
+            const ok = await save();
+            if (ok) { const p = pending; setPending(null); p?.proceed?.(); }
+        } finally { setSaving(false); }
+    };
+    const doDiscard = () => { guardRef.current = { dirty: false, save: null }; const p = pending; setPending(null); p?.proceed?.(); };
 
     const items = isPhysician
         ? [
@@ -60,7 +87,7 @@ export default function InternalLayout() {
             key={it.to}
             to={it.to}
             end={it.end}
-            onClick={onNavigate}
+            onClick={guarded(() => { nav(it.to); onNavigate?.(); })}
             data-testid={`${prefix}-${it.label.toLowerCase().replace(/[^a-z]/g, "-")}`}
             className={({ isActive }) =>
                 `flex items-center justify-between px-3 py-2 mx-2 my-0.5 rounded-sm text-sm font-medium transition-colors duration-75 ${
@@ -102,7 +129,7 @@ export default function InternalLayout() {
                 </div>
                 <div className="flex items-center gap-3 text-sm">
                     <span className="text-white/80 hidden sm:inline">{user?.name} · <span className="uppercase text-white/50">{role}</span></span>
-                    <button data-testid="internal-logout" onClick={() => { logout(); nav("/login"); }}
+                    <button data-testid="internal-logout" onClick={guarded(() => { logout(); nav("/login"); })}
                         className="flex items-center gap-1 hover:text-white text-white/70">
                         <LogOut className="w-4 h-4" /> Logout
                     </button>
@@ -115,9 +142,32 @@ export default function InternalLayout() {
                 </aside>
 
                 <main className="flex-1 min-w-0 overflow-y-auto p-4">
-                    <Outlet context={{ counters }} />
+                    <UnsavedGuardContext.Provider value={{ setGuard }}>
+                        <Outlet context={{ counters }} />
+                    </UnsavedGuardContext.Provider>
                 </main>
             </div>
+
+            {pending && (
+                <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/40 p-4" data-testid="unsaved-guard-overlay">
+                    <div className="bg-white rounded-sm border border-slate-300 shadow-lg w-full max-w-sm p-5" role="dialog" aria-modal="true">
+                        <div className="flex items-start gap-3">
+                            <AlertTriangle className="w-5 h-5 text-amber-500 flex-shrink-0 mt-0.5" />
+                            <div>
+                                <h3 className="font-semibold text-slate-900">Unsaved changes</h3>
+                                <p className="text-sm text-slate-500 mt-1">You have unsaved changes on this page. What would you like to do before leaving?</p>
+                            </div>
+                        </div>
+                        <div className="flex items-center justify-end gap-2 mt-5">
+                            <Button variant="ghost" data-testid="unsaved-cancel" onClick={() => setPending(null)} disabled={saving}>Cancel</Button>
+                            <Button variant="outline" data-testid="unsaved-discard" onClick={doDiscard} disabled={saving} className="border-red-200 text-red-600 hover:bg-red-50">Discard</Button>
+                            <Button data-testid="unsaved-save" onClick={doSaveThenProceed} disabled={saving} className="bg-visita-green hover:bg-visita-greenDark text-white">
+                                {saving ? "Saving…" : "Save & leave"}
+                            </Button>
+                        </div>
+                    </div>
+                </div>
+            )}
         </div>
     );
 }

@@ -1,6 +1,6 @@
-import { useEffect, useState, useCallback } from "react";
+import { useEffect, useState, useCallback, useRef } from "react";
 import { toast } from "sonner";
-import { Plus, X, Ban } from "lucide-react";
+import { Plus, X, Ban, ChevronDown, ChevronRight } from "lucide-react";
 import { api, formatErr } from "../lib/api";
 import { formatDate } from "../lib/date";
 import { Button } from "../components/ui/button";
@@ -8,6 +8,7 @@ import { Input } from "../components/ui/input";
 import { Textarea } from "../components/ui/textarea";
 import { Label } from "../components/ui/label";
 import { DEFAULT_SERVICE_CATALOG, SERVICE_CATEGORIES, CLASSIFICATIONS, applyOmaCatalog } from "../lib/billing";
+import { useUnsavedGuard } from "./unsavedGuard";
 
 const SETTING_FIELDS = [
     ["clinic_name", "Clinic name"],
@@ -41,25 +42,41 @@ export default function Settings() {
     const [templates, setTemplates] = useState({});
     const [avail, setAvail] = useState(null);
     const [busy, setBusy] = useState(false);
+    const [billingOpen, setBillingOpen] = useState(false);
+    const baselineRef = useRef("");
+    const { setGuard } = useUnsavedGuard();
 
     const load = useCallback(async () => {
         const [s, a] = await Promise.all([api.get("/admin/settings"), api.get("/admin/availability")]);
-        setSettings(s.data.settings || {});
-        setTemplates(s.data.templates || {});
-        setAvail(a.data || {});
+        const nextSettings = s.data.settings || {};
+        const nextTemplates = s.data.templates || {};
+        const nextAvail = a.data || {};
+        setSettings(nextSettings);
+        setTemplates(nextTemplates);
+        setAvail(nextAvail);
+        baselineRef.current = JSON.stringify({ settings: nextSettings, templates: nextTemplates, avail: nextAvail });
         // deps empty: api is a stable import; s/a are local; setters are stable.
     }, []);
 
     useEffect(() => { load(); }, [load]);
 
-    const save = async () => {
+    const save = useCallback(async () => {
         setBusy(true);
         try {
             await api.put("/admin/settings", { settings, templates });
             await api.put("/admin/availability", avail);
+            baselineRef.current = JSON.stringify({ settings, templates, avail });
             toast.success("Settings saved.");
-        } catch (e) { toast.error(formatErr(e)); } finally { setBusy(false); }
-    };
+            return true;
+        } catch (e) { toast.error(formatErr(e)); return false; } finally { setBusy(false); }
+    }, [settings, templates, avail]);
+
+    const dirty = avail !== null && JSON.stringify({ settings, templates, avail }) !== baselineRef.current;
+
+    useEffect(() => {
+        setGuard({ dirty, save });
+        return () => setGuard({ dirty: false, save: null });
+    }, [dirty, save, setGuard]);
 
     const setDay = (key, field, value) =>
         setAvail((a) => ({ ...a, days: { ...a.days, [key]: { ...a.days[key], [field]: value } } }));
@@ -90,7 +107,12 @@ export default function Settings() {
             </div>
 
             <div className="bg-white border border-slate-300 rounded-sm p-4 mb-4 space-y-3" data-testid="direct-billing-card">
-                <h2 className="font-semibold text-slate-700">Direct 3rd Party Billing</h2>
+                <button type="button" data-testid="db-toggle" onClick={() => setBillingOpen((o) => !o)}
+                    className="w-full flex items-center justify-between text-left">
+                    <h2 className="font-semibold text-slate-700">Direct 3rd Party Billing</h2>
+                    {billingOpen ? <ChevronDown className="w-4 h-4 text-slate-400" /> : <ChevronRight className="w-4 h-4 text-slate-400" />}
+                </button>
+                {billingOpen && (<>
                 <div className="max-w-xs">
                     <Label className="text-xs">Time-based hourly rate (CAD)</Label>
                     <Input type="number" min="0" step="0.01" data-testid="db-hourly-rate"
@@ -153,6 +175,7 @@ export default function Settings() {
                         })}
                     </div>
                 </div>
+                </>)}
             </div>
 
             {avail && (() => {

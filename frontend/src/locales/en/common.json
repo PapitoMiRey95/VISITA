@@ -10,6 +10,7 @@
     "english": "English"
   },
   "emergencyNotice": "Not for emergencies. If you are experiencing a medical emergency, call 911 or go to the nearest Emergency Department.",
+  "emergencyNoticePortal": "This portal is not monitored continuously and should not be used for emergencies. If you are experiencing a medical emergency, call 911 or go to the nearest Emergency Department.",
   "actions": {
     "signIn": "Sign In",
     "register": "Register",

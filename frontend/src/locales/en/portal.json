@@ -82,6 +82,88 @@
       "Male": "Male",
       "Female": "Female",
       "X": "X"
+    },
+    "emergencyNotice": "This portal is not monitored continuously and should not be used for emergencies. If you are experiencing a medical emergency, call 911 or go to the nearest Emergency Department."
+  },
+  "language": {
+    "label": "Language",
+    "en": "English",
+    "es": "Español",
+    "fr": "Français",
+    "comingSoon": "Coming soon",
+    "changed": "Language updated."
+  },
+  "changePassword": {
+    "title": "Change Password",
+    "subtitle": "Set a new password to continue.",
+    "current": "Current password",
+    "new": "New password",
+    "confirm": "Confirm new password",
+    "submit": "Update password",
+    "placeholderMin": "At least 8 characters",
+    "errMin": "New password must be at least 8 characters.",
+    "errMismatch": "Passwords do not match.",
+    "success": "Password updated."
+  },
+  "invoices": {
+    "title": "Invoices",
+    "subtitle": "Your service invoices and payment details.",
+    "none": "You have no invoices.",
+    "amount": "Amount",
+    "status": "Status",
+    "invoice": "Invoice",
+    "service": "Service",
+    "paymentDetails": "Payment Details",
+    "payTo": "Send Interac e-Transfer to",
+    "copy": "Copy",
+    "copied": "Copied.",
+    "uploadProof": "Upload Payment Proof",
+    "uploading": "Uploading…",
+    "proofUploaded": "Payment proof uploaded. The clinic will verify it.",
+    "proofOnFile": "Payment proof on file",
+    "viewProof": "View",
+    "payment": "Payment",
+    "issuedOn": "Issued {{date}}",
+    "voided": "This invoice has been voided by the clinic.",
+    "paymentVerified": "Payment verified",
+    "paymentVerifiedOn": "Payment verified on {{date}}",
+    "etransferOf": "Please send an Interac e-Transfer of {{amount}} to:",
+    "afterSending": "After sending, upload your proof of payment below. Uploading is not payment confirmation — the clinic will verify receipt.",
+    "replaceProof": "Replace proof of payment",
+    "copyEmailTitle": "Copy email",
+    "toastCopied": "E-transfer email copied.",
+    "toastProof": "Payment proof submitted. The clinic will verify it.",
+    "toastFileTooLarge": "File too large. Maximum size is 15 MB.",
+    "paymentModes": {
+      "NO_PAYMENT_REQUIRED": "No Payment Required",
+      "PREPAYMENT_REQUIRED": "Prepayment Required",
+      "INVOICE_AFTER_SERVICE": "Invoice After Service"
+    },
+    "paymentRequired": "Payment required",
+    "paidOn": "Paid on",
+    "submittedOn": "Payment submitted",
+    "etransferInstructions": "Please send an Interac e-Transfer for the amount above, then upload your confirmation below.",
+    "statuses": {
+      "DRAFT": "Draft",
+      "ISSUED": "Issued",
+      "PAYMENT_SUBMITTED": "Payment Submitted",
+      "PAID": "Paid",
+      "VOID": "Void"
     }
+  },
+  "invoiceReason": {
+    "title": "Why is there a fee?",
+    "MISSED_APPT": "This is a fee for a missed or late-cancelled appointment. The time was reserved for you and could not be offered to another patient. It is not an insured medical service and is billed directly to you.",
+    "MEDICAL_NOTES": "Doctor's notes and medical certificates are administrative documents and are not covered by OHIP. This fee covers preparing and issuing your requested note.",
+    "MEDICAL_RECORDS_ADMIN": "Copying, transferring, or summarising your medical records is an administrative service that is not covered by OHIP. This fee covers the time to prepare your records.",
+    "SCHOOL_EMPLOYMENT_FITNESS": "Forms and assessments requested for school, employment, or activities are not covered by OHIP. This fee covers completing and signing your requested form.",
+    "DRIVING": "Driver's medical examinations and transportation forms are not covered by OHIP. This fee covers completing your requested assessment or form.",
+    "DISABILITY_BENEFITS": "Disability and benefit forms are not covered by OHIP. This fee covers reviewing your file and completing the requested form.",
+    "INSURANCE_THIRD_PARTY": "This is a fee for a form or report requested by or for a third party (such as an insurer or employer), which is not insured by OHIP.",
+    "PRESCRIPTION_REQUEST": "This is a fee for a prescription-related administrative request that is not covered by OHIP.",
+    "THIRD_PARTY_EXTERNAL": "This charge follows a third-party or program fee schedule (for example an insurer, employer, or government program) rather than being billed through OHIP.",
+    "PRIVATE_PAY": "You are registered as a private-pay patient, so this service is billed directly to you rather than through OHIP.",
+    "GENERIC_OHIP": "This invoice is for a service that is not covered under your OHIP coverage.",
+    "GENERIC_NONOHIP": "This invoice is for a service that is not covered by public health insurance and is billed directly to you."
   }
 }

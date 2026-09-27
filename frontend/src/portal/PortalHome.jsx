@@ -17,10 +17,12 @@ const TILES = [
 
 export default function PortalHome() {
     const nav = useNavigate();
-    const { t } = useTranslation(["portal"]);
+    const { t, i18n } = useTranslation(["portal"]);
     const { overview, cfg } = usePortal();
     const p = overview.data?.patient;
-    const notice = cfg.data?.templates?.emergency_notice;
+    // Standard safety notice: use the clinic-configured template only for English
+    // sessions; Spanish sessions get the localized notice (EmergencyNotice default).
+    const notice = (i18n.language || "en").startsWith("es") ? undefined : cfg.data?.templates?.emergency_notice;
 
     return (
         <div className="space-y-5 animate-fade-in">

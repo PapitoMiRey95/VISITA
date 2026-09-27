@@ -6,6 +6,7 @@ import { Home, Calendar, Pill, MessageSquare, ClipboardList, Bell, LogOut, User,
 import { api } from "../lib/api";
 import { useAuth } from "../context/AuthContext";
 import { Logo } from "../components/Logo";
+import { setAppLanguage } from "../i18n";
 
 const NAV = [
     { to: "/portal", icon: Home, tkey: "portal:nav.home", end: true, testid: "nav-home" },
@@ -20,7 +21,7 @@ const PRIVATE_TYPES = ["private", "tourist", "uninsured"];
 
 export default function PortalLayout() {
     const { user, logout } = useAuth();
-    const { t } = useTranslation(["portal"]);
+    const { t, i18n } = useTranslation(["portal"]);
     const nav = useNavigate();
     const loc = useLocation();
 
@@ -61,6 +62,14 @@ export default function PortalLayout() {
                     <Logo variant="light" iconClass="h-8 w-8" textClass="text-lg" />
                 </div>
                 <div className="flex items-center gap-1">
+                    <div data-testid="portal-lang-toggle" className="flex items-center rounded-full border border-slate-200 overflow-hidden mr-1">
+                        {["en", "es"].map((lng) => (
+                            <button key={lng} data-testid={`portal-lang-${lng}`} onClick={() => setAppLanguage(lng)}
+                                className={`px-2 py-1 text-[11px] font-bold uppercase transition-colors ${(i18n.language || "en").startsWith(lng) ? "bg-portal-blue text-white" : "text-slate-500 hover:bg-slate-100"}`}>
+                                {lng}
+                            </button>
+                        ))}
+                    </div>
                     <button
                         data-testid="portal-notifications"
                         onClick={() => nav("/portal/account")}

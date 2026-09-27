@@ -10,6 +10,7 @@
     "english": "English"
   },
   "emergencyNotice": "No es para emergencias. Si tiene una emergencia médica, llame al 911 o acuda al Departamento de Emergencias más cercano.",
+  "emergencyNoticePortal": "Este portal no se supervisa continuamente y no debe utilizarse para emergencias. Si está experimentando una emergencia médica, llame al 911 o acuda al Departamento de Emergencias más cercano.",
   "actions": {
     "signIn": "Iniciar sesión",
     "register": "Registrarse",

@@ -192,28 +192,29 @@ _PRIVATE_COVERAGE = {"private", "uninsured", "tourist"}
 
 
 def resolve_invoice_reason(doc: dict, category=None, classification=None) -> dict:
-    """Return {reason_title, reason_message} from existing invoice/service fields.
-    Priority: missed appointment → category → third-party fee rule → coverage →
-    generic fallback. Never raises; always returns a usable message."""
+    """Return {reason_title, reason_message, reason_code} from existing invoice/
+    service fields. reason_code is a STABLE key the frontend maps to localized
+    text; reason_message stays as an English fallback. Priority: missed
+    appointment → category → third-party fee rule → coverage → generic."""
     coverage = doc.get("patient_coverage")
     # 1) Missed / late-cancelled appointment — ONLY when the invoice is explicitly
     # flagged is_no_show. A normal APPOINTMENT-category invoice (is_no_show=false)
     # must fall through to the normal category/coverage/fallback logic below.
     if doc.get("is_no_show"):
-        return {"reason_title": _REASON_TITLE, "reason_message": _REASON_MISSED_APPT}
+        return {"reason_title": _REASON_TITLE, "reason_message": _REASON_MISSED_APPT, "reason_code": "MISSED_APPT"}
     # 2) Category-specific explanation from the existing catalogue.
     if category in _CATEGORY_REASONS:
-        return {"reason_title": _REASON_TITLE, "reason_message": _CATEGORY_REASONS[category]}
+        return {"reason_title": _REASON_TITLE, "reason_message": _CATEGORY_REASONS[category], "reason_code": category}
     # 3) Third-party / external program fee rule.
     if classification == "THIRD_PARTY_EXTERNAL_FEE":
-        return {"reason_title": _REASON_TITLE, "reason_message": _REASON_THIRD_PARTY_EXTERNAL}
+        return {"reason_title": _REASON_TITLE, "reason_message": _REASON_THIRD_PARTY_EXTERNAL, "reason_code": "THIRD_PARTY_EXTERNAL"}
     # 4) Coverage-based fallback (private/uninsured/tourist vs OHIP).
     if coverage in _PRIVATE_COVERAGE:
-        return {"reason_title": _REASON_TITLE, "reason_message": _REASON_PRIVATE_PAY}
+        return {"reason_title": _REASON_TITLE, "reason_message": _REASON_PRIVATE_PAY, "reason_code": "PRIVATE_PAY"}
     if coverage == "ohip":
-        return {"reason_title": _REASON_TITLE, "reason_message": _REASON_GENERIC_OHIP}
+        return {"reason_title": _REASON_TITLE, "reason_message": _REASON_GENERIC_OHIP, "reason_code": "GENERIC_OHIP"}
     # 5) Generic safe fallback (unknown coverage / MANUAL / unresolved).
-    return {"reason_title": _REASON_TITLE, "reason_message": _REASON_GENERIC_NONOHIP}
+    return {"reason_title": _REASON_TITLE, "reason_message": _REASON_GENERIC_NONOHIP, "reason_code": "GENERIC_NONOHIP"}
 
 
 def invoice_internal(doc: dict) -> dict:
@@ -265,6 +266,7 @@ def invoice_public(doc: dict, etransfer_email: str = None, service_category=None
         "ohip_uninsured": coverage == "ohip",
         "reason_title": reason["reason_title"],
         "reason_message": reason["reason_message"],
+        "reason_code": reason["reason_code"],
         "billing_method": doc.get("billing_method"),
         "hourly_rate_used": doc.get("hourly_rate_used"),
         "whole_hours": doc.get("whole_hours"),

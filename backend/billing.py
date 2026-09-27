@@ -196,8 +196,10 @@ def resolve_invoice_reason(doc: dict, category=None, classification=None) -> dic
     Priority: missed appointment → category → third-party fee rule → coverage →
     generic fallback. Never raises; always returns a usable message."""
     coverage = doc.get("patient_coverage")
-    # 1) Missed / late-cancelled appointment — never described as OHIP-uninsured medical service.
-    if doc.get("is_no_show") or category == "APPOINTMENT":
+    # 1) Missed / late-cancelled appointment — ONLY when the invoice is explicitly
+    # flagged is_no_show. A normal APPOINTMENT-category invoice (is_no_show=false)
+    # must fall through to the normal category/coverage/fallback logic below.
+    if doc.get("is_no_show"):
         return {"reason_title": _REASON_TITLE, "reason_message": _REASON_MISSED_APPT}
     # 2) Category-specific explanation from the existing catalogue.
     if category in _CATEGORY_REASONS:

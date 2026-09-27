@@ -61,6 +61,7 @@ export default function InternalLayout() {
               { to: "/internal/referrals", icon: ClipboardCheck, label: "Referral Drop-Off", key: null },
               { to: "/internal/verifications", icon: UserCheck, label: "Verifications", key: "verifications" },
               { to: "/internal/providers", icon: Stethoscope, label: "Providers", key: null },
+              { to: "/internal/settings", icon: SettingsIcon, label: "Settings", key: null },
           ]
         : [
               { to: "/internal", icon: ClipboardList, label: "Hub", end: true, key: null, iconClass: "text-pink-600" },

@@ -1027,14 +1027,14 @@ async def public_settings():
 
 
 @api.get("/admin/settings")
-async def get_settings(user: dict = Depends(require_roles("admin"))):
+async def get_settings(user: dict = Depends(require_roles("admin", "physician"))):
     s = await db.settings.find_one({"id": "clinic"}, {"_id": 0})
     t = await db.templates.find_one({"id": "templates"}, {"_id": 0})
     return {"settings": s or {}, "templates": (t or {}).get("items", {})}
 
 
 @api.put("/admin/settings")
-async def update_settings(payload: dict, user: dict = Depends(require_roles("admin"))):
+async def update_settings(payload: dict, user: dict = Depends(require_roles("admin", "physician"))):
     if "settings" in payload:
         await db.settings.update_one({"id": "clinic"}, {"$set": {**payload["settings"], "id": "clinic"}}, upsert=True)
     if "templates" in payload:
@@ -1212,12 +1212,12 @@ async def availability_slots(days: int = 28, user: dict = Depends(get_current_us
 
 
 @api.get("/admin/availability")
-async def get_availability(user: dict = Depends(require_roles("admin"))):
+async def get_availability(user: dict = Depends(require_roles("admin", "physician"))):
     return await get_availability_doc()
 
 
 @api.put("/admin/availability")
-async def put_availability(payload: dict, user: dict = Depends(require_roles("admin"))):
+async def put_availability(payload: dict, user: dict = Depends(require_roles("admin", "physician"))):
     payload["id"] = "availability"
     await db.settings.update_one({"id": "availability"}, {"$set": payload}, upsert=True)
     await audit("update_availability", "settings", "availability", user)

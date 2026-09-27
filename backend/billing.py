@@ -165,6 +165,55 @@ def _billing_context(coverage) -> str:
     return "PRIVATE / UNINSURED SERVICE"
 
 
+# ---- Patient-facing "why is there a fee?" resolver (read-only, additive) -----
+# Derives a contextual explanation purely from fields already stored on the
+# invoice (is_no_show, patient_coverage, service_code→category/classification).
+# No DB writes, no schema/catalogue/billing-logic changes. Always returns a
+# safe value; falls back to a coverage-aware generic message when unknown.
+_REASON_TITLE = "Why is there a fee?"
+
+_CATEGORY_REASONS = {
+    "MEDICAL_NOTES": "Doctor's notes and medical certificates are administrative documents and are not covered by OHIP. This fee covers preparing and issuing your requested note.",
+    "MEDICAL_RECORDS_ADMIN": "Copying, transferring, or summarising your medical records is an administrative service that is not covered by OHIP. This fee covers the time to prepare your records.",
+    "SCHOOL_EMPLOYMENT_FITNESS": "Forms and assessments requested for school, employment, or activities are not covered by OHIP. This fee covers completing and signing your requested form.",
+    "DRIVING": "Driver's medical examinations and transportation forms are not covered by OHIP. This fee covers completing your requested assessment or form.",
+    "DISABILITY_BENEFITS": "Disability and benefit forms are not covered by OHIP. This fee covers reviewing your file and completing the requested form.",
+    "INSURANCE_THIRD_PARTY": "This is a fee for a form or report requested by or for a third party (such as an insurer or employer), which is not insured by OHIP.",
+    "PRESCRIPTION_REQUEST": "This is a fee for a prescription-related administrative request that is not covered by OHIP.",
+}
+
+_REASON_MISSED_APPT = "This is a fee for a missed or late-cancelled appointment. The time was reserved for you and could not be offered to another patient. It is not an insured medical service and is billed directly to you."
+_REASON_THIRD_PARTY_EXTERNAL = "This charge follows a third-party or program fee schedule (for example an insurer, employer, or government program) rather than being billed through OHIP."
+_REASON_PRIVATE_PAY = "You are registered as a private-pay patient, so this service is billed directly to you rather than through OHIP."
+_REASON_GENERIC_OHIP = "This invoice is for a service that is not covered under your OHIP coverage."
+_REASON_GENERIC_NONOHIP = "This invoice is for a service that is not covered by public health insurance and is billed directly to you."
+
+_PRIVATE_COVERAGE = {"private", "uninsured", "tourist"}
+
+
+def resolve_invoice_reason(doc: dict, category=None, classification=None) -> dict:
+    """Return {reason_title, reason_message} from existing invoice/service fields.
+    Priority: missed appointment → category → third-party fee rule → coverage →
+    generic fallback. Never raises; always returns a usable message."""
+    coverage = doc.get("patient_coverage")
+    # 1) Missed / late-cancelled appointment — never described as OHIP-uninsured medical service.
+    if doc.get("is_no_show") or category == "APPOINTMENT":
+        return {"reason_title": _REASON_TITLE, "reason_message": _REASON_MISSED_APPT}
+    # 2) Category-specific explanation from the existing catalogue.
+    if category in _CATEGORY_REASONS:
+        return {"reason_title": _REASON_TITLE, "reason_message": _CATEGORY_REASONS[category]}
+    # 3) Third-party / external program fee rule.
+    if classification == "THIRD_PARTY_EXTERNAL_FEE":
+        return {"reason_title": _REASON_TITLE, "reason_message": _REASON_THIRD_PARTY_EXTERNAL}
+    # 4) Coverage-based fallback (private/uninsured/tourist vs OHIP).
+    if coverage in _PRIVATE_COVERAGE:
+        return {"reason_title": _REASON_TITLE, "reason_message": _REASON_PRIVATE_PAY}
+    if coverage == "ohip":
+        return {"reason_title": _REASON_TITLE, "reason_message": _REASON_GENERIC_OHIP}
+    # 5) Generic safe fallback (unknown coverage / MANUAL / unresolved).
+    return {"reason_title": _REASON_TITLE, "reason_message": _REASON_GENERIC_NONOHIP}
+
+
 def invoice_internal(doc: dict) -> dict:
     """Full billing view for staff/physician/admin (no storage paths)."""
     coverage = doc.get("patient_coverage")
@@ -202,15 +251,18 @@ def invoice_internal(doc: dict) -> dict:
     }
 
 
-def invoice_public(doc: dict, etransfer_email: str = None) -> dict:
+def invoice_public(doc: dict, etransfer_email: str = None, service_category=None, service_classification=None) -> dict:
     """Patient-facing view — no internal notes, includes payment instructions."""
     coverage = doc.get("patient_coverage")
+    reason = resolve_invoice_reason(doc, service_category, service_classification)
     return {
         "id": doc["id"],
         "invoice_number": doc.get("invoice_number"),
         "private_request_id": doc.get("private_request_id"),
         "billing_context": _billing_context(coverage),
         "ohip_uninsured": coverage == "ohip",
+        "reason_title": reason["reason_title"],
+        "reason_message": reason["reason_message"],
         "billing_method": doc.get("billing_method"),
         "hourly_rate_used": doc.get("hourly_rate_used"),
         "whole_hours": doc.get("whole_hours"),

@@ -1988,6 +1988,15 @@ async def _direct_billing_config(active_only: bool = False) -> dict:
     return {"hourly_rate": s.get("direct_billing_hourly_rate"), "services": clean}
 
 
+async def _service_reason_lookup() -> dict:
+    """Read-only map: service_code -> {category, classification} from the current
+    catalogue, used only to enrich patient-facing invoice reason messages."""
+    cfg = await _direct_billing_config()
+    return {s["code"]: {"category": s.get("category"), "classification": s.get("billing_classification")}
+            for s in cfg["services"] if s.get("code")}
+
+
+
 class DirectBillingConfigBody(BaseModel):
     hourly_rate: Optional[float] = None
     services: Optional[list] = None
@@ -2207,14 +2216,22 @@ async def my_invoices(user: dict = Depends(get_current_user)):
     p = await get_patient_record(user)
     cfg = await get_private_config()
     docs = await db.invoices.find({"patient_id": p["id"], "status": {"$ne": "DRAFT"}}).sort("created_at", -1).to_list(500)
-    return [billing_mod.invoice_public(d, cfg["etransfer_email"]) for d in docs]
+    catmap = await _service_reason_lookup()
+    return [billing_mod.invoice_public(
+        d, cfg["etransfer_email"],
+        service_category=(catmap.get(d.get("service_code")) or {}).get("category"),
+        service_classification=(catmap.get(d.get("service_code")) or {}).get("classification"),
+    ) for d in docs]
 
 
 @api.get("/portal/invoices/{inv_id}")
 async def my_invoice(inv_id: str, user: dict = Depends(get_current_user)):
     _, inv = await _get_owned_invoice(user, inv_id)
     cfg = await get_private_config()
-    return billing_mod.invoice_public(inv, cfg["etransfer_email"])
+    meta = (await _service_reason_lookup()).get(inv.get("service_code")) or {}
+    return billing_mod.invoice_public(inv, cfg["etransfer_email"],
+                                      service_category=meta.get("category"),
+                                      service_classification=meta.get("classification"))
 
 
 @api.post("/portal/invoices/{inv_id}/proof")
@@ -2237,7 +2254,11 @@ async def upload_invoice_proof(inv_id: str, file: UploadFile = File(...), user: 
     await _notify_clinic_payment_submitted(inv)
     await _sync_request_billing(inv.get("private_request_id"))
     cfg = await get_private_config()
-    return billing_mod.invoice_public(await db.invoices.find_one({"id": inv_id}), cfg["etransfer_email"])
+    fresh = await db.invoices.find_one({"id": inv_id})
+    meta = (await _service_reason_lookup()).get(fresh.get("service_code")) or {}
+    return billing_mod.invoice_public(fresh, cfg["etransfer_email"],
+                                      service_category=meta.get("category"),
+                                      service_classification=meta.get("classification"))
 
 
 @api.get("/portal/invoices/{inv_id}/proof/{att_id}/download")

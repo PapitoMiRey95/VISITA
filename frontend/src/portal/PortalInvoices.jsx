@@ -64,10 +64,13 @@ function InvoiceCard({ inv, onRefresh }) {
 
             <div className="text-xs text-slate-500 mt-1">Payment: {PAYMENT_MODE[inv.payment_mode] || inv.payment_mode}</div>
 
-            {inv.ohip_uninsured && (
-                <div className="mt-2 flex items-start gap-2 bg-slate-50 border border-slate-200 rounded-lg p-2.5 text-xs text-slate-600" data-testid={`ohip-notice-${inv.id}`}>
+            {inv.reason_message && (
+                <div className="mt-2 flex items-start gap-2 bg-slate-50 border border-slate-200 rounded-lg p-2.5 text-xs text-slate-600" data-testid={`reason-notice-${inv.id}`}>
                     <Info className="w-3.5 h-3.5 flex-shrink-0 mt-0.5 text-slate-400" />
-                    This invoice is for a service that is not covered under your OHIP coverage.
+                    <div>
+                        {inv.reason_title && <p className="font-semibold text-slate-700">{inv.reason_title}</p>}
+                        {inv.reason_message}
+                    </div>
                 </div>
             )}
 

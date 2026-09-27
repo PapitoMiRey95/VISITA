@@ -1,1 +1,51 @@
-{}
+{
+  "brand": { "vien": "VIsita", "emr": " EMR" },
+  "practice": "Red de Atención Médica Conectada",
+  "tagline": "Acceso seguro para pacientes, clínicas, médicos, farmacias y otros proveedores de salud.",
+  "language": {
+    "comingSoon": "Próximamente",
+    "choose": "Choose your language",
+    "chooseEs": "Elige tu idioma",
+    "spanish": "Español",
+    "english": "English"
+  },
+  "emergencyNotice": "No es para emergencias. Si tiene una emergencia médica, llame al 911 o acuda al Departamento de Emergencias más cercano.",
+  "actions": {
+    "signIn": "Iniciar sesión",
+    "register": "Registrarse",
+    "save": "Guardar",
+    "cancel": "Cancelar",
+    "edit": "Editar",
+    "add": "Agregar",
+    "back": "Atrás",
+    "logout": "Cerrar sesión",
+    "setNow": "Establecer ahora",
+    "continue": "Continuar",
+    "confirm": "Confirmar",
+    "submit": "Enviar",
+    "change": "Cambiar"
+  },
+  "status": { "loading": "Cargando…", "notSet": "Sin establecer", "optional": "Opcional" },
+  "pickers": {
+    "dobTitle": "Fecha de nacimiento",
+    "issueTitle": "Fecha de emisión",
+    "expiryTitle": "Fecha de vencimiento",
+    "year": "Año",
+    "month": "Mes",
+    "day": "Día",
+    "confirm": "Confirmar",
+    "change": "Cambiar",
+    "selectDob": "Seleccione su fecha de nacimiento",
+    "selectDate": "Seleccione una fecha",
+    "expiryHint": "Las tarjetas vencen en la fecha de cumpleaños. Elija el año de vencimiento — el día y el mes provienen de la fecha de nacimiento.",
+    "monthsFull": ["Enero", "Febrero", "Marzo", "Abril", "Mayo", "Junio", "Julio", "Agosto", "Septiembre", "Octubre", "Noviembre", "Diciembre"],
+    "monthsAbbr": ["Ene", "Feb", "Mar", "Abr", "May", "Jun", "Jul", "Ago", "Sep", "Oct", "Nov", "Dic"]
+  },
+  "validation": {
+    "required": "Campo obligatorio",
+    "invalidEmail": "Correo electrónico inválido",
+    "passwordRequired": "Se requiere una contraseña",
+    "hcTenDigits": "El número de tarjeta de salud debe contener 10 dígitos",
+    "selectDob": "Seleccione su fecha de nacimiento"
+  }
+}

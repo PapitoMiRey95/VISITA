@@ -1,4 +1,5 @@
 import { useState, useMemo, useEffect } from "react";
+import { useTranslation } from "react-i18next";
 import { Calendar, ChevronLeft, Check, X } from "lucide-react";
 
 // Controlled, mobile-first Date of Birth picker. Enforces Year -> Month -> Day
@@ -23,6 +24,15 @@ function displayDob(iso) {
 }
 
 export function DobPicker({ value, onChange, testid = "dob" }) {
+    const { t } = useTranslation("common");
+    const MONTHS = t("pickers.monthsFull", { returnObjects: true });
+    const MON_ABBR = t("pickers.monthsAbbr", { returnObjects: true });
+    const dispDob = (iso) => {
+        if (!iso) return "";
+        const [y, m, d] = iso.split("-").map(Number);
+        if (!y || !m || !d) return "";
+        return `${y} ${MON_ABBR[m - 1]} - ${String(d).padStart(2, "0")}`;
+    };
     const today = useMemo(() => new Date(), []);
     // Valid DOB range for ages MIN_AGE..MAX_AGE inclusive.
     const maxYear = today.getFullYear() - MIN_AGE;      // youngest allowed birth year
@@ -81,7 +91,7 @@ export function DobPicker({ value, onChange, testid = "dob" }) {
             <button type="button" data-testid={`${testid}-trigger`} onClick={() => setOpen(true)}
                 className="w-full flex items-center justify-between rounded-lg border border-slate-300 bg-white px-3 h-11 text-left text-sm hover:border-portal-blue transition-colors">
                 <span className={value ? "text-slate-900 font-semibold" : "text-slate-400"}>
-                    {value ? displayDob(value) : "Select date of birth"}
+                    {value ? dispDob(value) : t("pickers.selectDob")}
                 </span>
                 <Calendar className="w-4 h-4 text-slate-400" />
             </button>
@@ -96,7 +106,7 @@ export function DobPicker({ value, onChange, testid = "dob" }) {
                                         <ChevronLeft className="w-5 h-5" />
                                     </button>
                                 )}
-                                <h3 className="font-bold text-slate-900">Date of Birth</h3>
+                                <h3 className="font-bold text-slate-900">{t("pickers.dobTitle")}</h3>
                             </div>
                             <button type="button" data-testid={`${testid}-close`} onClick={() => setOpen(false)} className="text-slate-400 hover:text-slate-700 p-1">
                                 <X className="w-5 h-5" />
@@ -104,9 +114,9 @@ export function DobPicker({ value, onChange, testid = "dob" }) {
                         </div>
 
                         <div className="flex items-center gap-2 px-4 py-2.5 border-b border-slate-100 overflow-x-auto">
-                            <StepDot i={0} label="Year" /><span className="text-slate-300">›</span>
-                            <StepDot i={1} label="Month" /><span className="text-slate-300">›</span>
-                            <StepDot i={2} label="Day" />
+                            <StepDot i={0} label={t("pickers.year")} /><span className="text-slate-300">›</span>
+                            <StepDot i={1} label={t("pickers.month")} /><span className="text-slate-300">›</span>
+                            <StepDot i={2} label={t("pickers.day")} />
                         </div>
 
                         <div className="overflow-y-auto p-4 flex-1">
@@ -148,18 +158,18 @@ export function DobPicker({ value, onChange, testid = "dob" }) {
                             )}
                             {stepIdx === 3 && (
                                 <div className="text-center py-6" data-testid={`${testid}-confirm`}>
-                                    <p className="text-sm text-slate-500 mb-1">Date of Birth</p>
+                                    <p className="text-sm text-slate-500 mb-1">{t("pickers.dobTitle")}</p>
                                     <p className="text-3xl font-extrabold text-slate-900 mb-6" data-testid={`${testid}-confirm-value`}>
                                         {year} {MON_ABBR[month]} - {String(day).padStart(2, "0")}
                                     </p>
                                     <div className="flex gap-3 justify-center">
                                         <button type="button" data-testid={`${testid}-change`} onClick={reset}
                                             className="px-5 h-11 rounded-lg border border-slate-300 font-semibold text-slate-700 hover:bg-slate-50">
-                                            Change
+                                            {t("pickers.change")}
                                         </button>
                                         <button type="button" data-testid={`${testid}-confirm-btn`} onClick={finish}
                                             className="px-5 h-11 rounded-lg bg-portal-blue hover:bg-portal-blueDark text-white font-semibold inline-flex items-center gap-2">
-                                            <Check className="w-4 h-4" /> Confirm
+                                            <Check className="w-4 h-4" /> {t("pickers.confirm")}
                                         </button>
                                     </div>
                                 </div>

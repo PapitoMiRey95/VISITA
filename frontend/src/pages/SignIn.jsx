@@ -148,13 +148,13 @@ export default function SignIn() {
                             <>
                                 <div className="flex items-center gap-3 my-5" aria-hidden>
                                     <div className="h-px flex-1 bg-white/10" />
-                                    <span className="text-[11px] uppercase tracking-widest text-slate-500">or</span>
+                                    <span className="text-[11px] uppercase tracking-widest text-slate-500">{t("auth:signin.orDivider")}</span>
                                     <div className="h-px flex-1 bg-white/10" />
                                 </div>
                                 <Button type="button" data-testid="google-signin-button" onClick={startGoogle} disabled={googleBusy}
                                     className="w-full bg-white hover:bg-slate-100 text-slate-800 font-semibold border border-white/10 flex items-center justify-center gap-2">
                                     {googleBusy ? <Loader2 className="w-4 h-4 animate-spin" /> : <GoogleIcon />}
-                                    {googleBusy ? "Signing in…" : "Continue with Google"}
+                                    {googleBusy ? t("auth:signin.signingIn") : t("auth:signin.continueGoogle")}
                                 </Button>
                             </>
                         )}

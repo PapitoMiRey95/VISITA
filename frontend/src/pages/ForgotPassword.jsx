@@ -1,6 +1,7 @@
 import { useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { toast } from "sonner";
+import { useTranslation } from "react-i18next";
 import { Loader2, KeyRound, ChevronLeft } from "lucide-react";
 import { api, formatErr } from "../lib/api";
 import { Button } from "../components/ui/button";
@@ -9,6 +10,7 @@ import { Label } from "../components/ui/label";
 
 export default function ForgotPassword() {
     const nav = useNavigate();
+    const { t } = useTranslation(["auth", "common"]);
     const [step, setStep] = useState(1);
     const [identifier, setIdentifier] = useState("");
     const [code, setCode] = useState("");
@@ -21,19 +23,19 @@ export default function ForgotPassword() {
         setBusy(true);
         try {
             const { data } = await api.post("/auth/forgot-password", { identifier: identifier.trim() });
-            toast.success(data.message || "If an account matches, a code has been sent.");
+            toast.success(data.message || t("auth:forgot.successRequest"));
             setStep(2);
         } catch (err) { toast.error(formatErr(err)); } finally { setBusy(false); }
     };
 
     const reset = async (e) => {
         e.preventDefault();
-        if (pw.length < 8) return toast.error("New password must be at least 8 characters.");
-        if (pw !== confirm) return toast.error("Passwords do not match.");
+        if (pw.length < 8) return toast.error(t("auth:forgot.errMin"));
+        if (pw !== confirm) return toast.error(t("auth:forgot.errMismatch"));
         setBusy(true);
         try {
             await api.post("/auth/reset-password", { identifier: identifier.trim(), code: code.trim(), new_password: pw });
-            toast.success("Password reset. Please sign in.");
+            toast.success(t("auth:forgot.successReset"));
             nav("/signin", { replace: true });
         } catch (err) { toast.error(formatErr(err)); } finally { setBusy(false); }
     };
@@ -43,7 +45,7 @@ export default function ForgotPassword() {
             <div className="w-full max-w-sm">
                 <button onClick={() => (step === 2 ? setStep(1) : nav("/signin"))} data-testid="fp-back"
                     className="flex items-center gap-1 text-slate-400 hover:text-slate-200 text-sm mb-3">
-                    <ChevronLeft className="w-4 h-4" /> Back
+                    <ChevronLeft className="w-4 h-4" /> {t("auth:forgot.back")}
                 </button>
 
                 <form onSubmit={step === 1 ? request : reset}
@@ -53,37 +55,37 @@ export default function ForgotPassword() {
                             <KeyRound className="w-4 h-4 text-cyan-300" />
                         </div>
                         <div>
-                            <h2 className="text-lg font-bold text-slate-100 leading-tight">Reset password</h2>
-                            <p className="text-xs text-slate-400">{step === 1 ? "We'll email you a verification code" : "Enter the code from your email"}</p>
+                            <h2 className="text-lg font-bold text-slate-100 leading-tight">{t("auth:forgot.title")}</h2>
+                            <p className="text-xs text-slate-400">{step === 1 ? t("auth:forgot.step1sub") : t("auth:forgot.step2sub")}</p>
                         </div>
                     </div>
 
                     {step === 1 && (
                         <>
-                            <Label className="text-[11px] uppercase tracking-widest text-slate-400">Email or Username</Label>
+                            <Label className="text-[11px] uppercase tracking-widest text-slate-400">{t("auth:forgot.identifierLabel")}</Label>
                             <Input data-testid="fp-identifier" required value={identifier} onChange={(e) => setIdentifier(e.target.value)}
-                                className="mt-1 mb-5 bg-[#0f1e30] border-white/10 text-slate-100 focus-visible:ring-cyan-400/60" placeholder="you@example.com or USERNAME" />
+                                className="mt-1 mb-5 bg-[#0f1e30] border-white/10 text-slate-100 focus-visible:ring-cyan-400/60" placeholder={t("auth:forgot.identifierPlaceholder")} />
                             <Button data-testid="fp-request" type="submit" disabled={busy} className="w-full bg-cyan-500 hover:bg-cyan-400 text-[#04121f] font-bold">
-                                {busy ? <Loader2 className="w-4 h-4 animate-spin" /> : "Send code"}
+                                {busy ? <Loader2 className="w-4 h-4 animate-spin" /> : t("auth:forgot.sendCode")}
                             </Button>
                         </>
                     )}
 
                     {step === 2 && (
                         <>
-                            <Label className="text-[11px] uppercase tracking-widest text-slate-400">Verification code</Label>
+                            <Label className="text-[11px] uppercase tracking-widest text-slate-400">{t("auth:forgot.codeLabel")}</Label>
                             <Input data-testid="fp-code" required value={code} onChange={(e) => setCode(e.target.value)} inputMode="numeric"
-                                className="mt-1 mb-4 bg-[#0f1e30] border-white/10 text-slate-100 tracking-widest focus-visible:ring-cyan-400/60" placeholder="6-digit code" />
-                            <Label className="text-[11px] uppercase tracking-widest text-slate-400">New password</Label>
+                                className="mt-1 mb-4 bg-[#0f1e30] border-white/10 text-slate-100 tracking-widest focus-visible:ring-cyan-400/60" placeholder={t("auth:forgot.codePlaceholder")} />
+                            <Label className="text-[11px] uppercase tracking-widest text-slate-400">{t("auth:forgot.newPassword")}</Label>
                             <Input data-testid="fp-new" type="password" required minLength={8} value={pw} onChange={(e) => setPw(e.target.value)}
-                                className="mt-1 mb-4 bg-[#0f1e30] border-white/10 text-slate-100 focus-visible:ring-cyan-400/60" placeholder="At least 8 characters" />
-                            <Label className="text-[11px] uppercase tracking-widest text-slate-400">Confirm new password</Label>
+                                className="mt-1 mb-4 bg-[#0f1e30] border-white/10 text-slate-100 focus-visible:ring-cyan-400/60" placeholder={t("auth:activate.newPasswordPlaceholder")} />
+                            <Label className="text-[11px] uppercase tracking-widest text-slate-400">{t("auth:forgot.confirmNew")}</Label>
                             <Input data-testid="fp-confirm" type="password" required value={confirm} onChange={(e) => setConfirm(e.target.value)}
                                 className="mt-1 mb-5 bg-[#0f1e30] border-white/10 text-slate-100 focus-visible:ring-cyan-400/60" />
                             <Button data-testid="fp-submit" type="submit" disabled={busy} className="w-full bg-cyan-500 hover:bg-cyan-400 text-[#04121f] font-bold">
-                                {busy ? <Loader2 className="w-4 h-4 animate-spin" /> : "Reset password"}
+                                {busy ? <Loader2 className="w-4 h-4 animate-spin" /> : t("auth:forgot.reset")}
                             </Button>
-                            <button type="button" onClick={request} disabled={busy} className="w-full mt-3 text-xs text-slate-400 hover:text-slate-200">Resend code</button>
+                            <button type="button" onClick={request} disabled={busy} className="w-full mt-3 text-xs text-slate-400 hover:text-slate-200">{t("auth:forgot.resend")}</button>
                         </>
                     )}
                 </form>

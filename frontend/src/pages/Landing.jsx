@@ -3,35 +3,42 @@ import { useTranslation } from "react-i18next";
 import { LogIn, UserPlus, UserRound, ArrowRight, Stethoscope, Building2 } from "lucide-react";
 import { Button } from "../components/ui/button";
 import { Logo } from "../components/Logo";
+import { LanguageChooser } from "../components/LanguageChooser";
+import { setAppLanguage } from "../i18n";
 
 const BG = "https://customer-assets-4nw71qhi.emergentagent.net/job_visita-admin/artifacts/5zizgajz_ChatGPT%20Image%20Sep%2024%2C%202026%2C%2003_43_19%20PM.png";
 const BG_MOBILE = "https://customer-assets-4nw71qhi.emergentagent.net/job_visita-admin/artifacts/8ttghv0k_ChatGPT%20Image%20Sep%2025%2C%202026%2C%2006_17_18%20PM.png";
 
 export default function Landing() {
     const nav = useNavigate();
-    const { t } = useTranslation(["common", "auth"]);
+    const { t, i18n } = useTranslation(["common", "auth"]);
+    const cur = i18n.language?.startsWith("es") ? "es" : "en";
 
     return (
         <div className="relative min-h-screen w-full overflow-hidden font-plex">
+            <LanguageChooser />
             <div className="absolute inset-0 bg-cover bg-center lg:hidden" style={{ backgroundImage: `url("${BG_MOBILE}")` }} aria-hidden />
             <div className="absolute inset-0 bg-cover bg-center hidden lg:block" style={{ backgroundImage: `url("${BG}")` }} aria-hidden />
             <div className="absolute inset-0 bg-gradient-to-r from-[#060b16]/96 via-[#0a1524]/86 to-[#0a1524]/60" aria-hidden />
             <div className="absolute inset-0 visita-scanlines" aria-hidden />
 
-            {/* Language selector — EN active; ES/FR reserved (translations not yet available) */}
+            {/* Language selector — EN/ES active and switchable; FR reserved (Coming soon) */}
             <div data-testid="lang-selector"
                 className="absolute top-4 right-4 z-20 flex items-center gap-0.5 rounded-full border border-white/10 bg-[#0b1524]/70 backdrop-blur px-1 py-0.5">
-                <span data-testid="lang-en" aria-current="true"
-                    className="px-2 py-0.5 text-[11px] font-semibold rounded-full tracking-wide bg-cyan-500/20 text-cyan-200">
+                <button type="button" data-testid="lang-en" onClick={() => setAppLanguage("en")}
+                    aria-current={cur === "en"}
+                    className={`px-2 py-0.5 text-[11px] font-semibold rounded-full tracking-wide transition-colors ${cur === "en" ? "bg-cyan-500/20 text-cyan-200" : "text-slate-300 hover:text-cyan-200"}`}>
                     EN
+                </button>
+                <button type="button" data-testid="lang-es" onClick={() => setAppLanguage("es")}
+                    aria-current={cur === "es"}
+                    className={`px-2 py-0.5 text-[11px] font-semibold rounded-full tracking-wide transition-colors ${cur === "es" ? "bg-cyan-500/20 text-cyan-200" : "text-slate-300 hover:text-cyan-200"}`}>
+                    ES
+                </button>
+                <span data-testid="lang-fr" aria-disabled="true" title={t("common:language.comingSoon")}
+                    className="px-2 py-0.5 text-[11px] font-semibold rounded-full tracking-wide text-slate-600 cursor-not-allowed select-none">
+                    FR
                 </span>
-                {["ES", "FR"].map((l) => (
-                    <span key={l} data-testid={`lang-${l.toLowerCase()}`}
-                        aria-disabled="true" title={t("common:language.comingSoon")}
-                        className="px-2 py-0.5 text-[11px] font-semibold rounded-full tracking-wide text-slate-600 cursor-not-allowed select-none">
-                        {l}
-                    </span>
-                ))}
                 <span className="pl-1 pr-1.5 text-[9px] uppercase tracking-widest text-slate-500 inline">{t("common:language.comingSoon")}</span>
             </div>
 

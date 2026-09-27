@@ -15,9 +15,21 @@ import frPortal from "./locales/fr/portal.json";
 import frRequests from "./locales/fr/requests.json";
 
 export const SUPPORTED_LANGUAGES = ["en", "es", "fr"];
-// Only English is enabled for now. Spanish/French files exist but are empty and
-// therefore fall back to English until translations are added (Phase 2).
-export const ENABLED_LANGUAGES = ["en"];
+// Phase 1 patient experience: English + Spanish are enabled; French is still
+// "Coming soon" (files exist but are empty and fall back to English).
+export const ENABLED_LANGUAGES = ["en", "es"];
+
+const LANG_KEY = "visita_lang"; // device-only preference; no PHI stored.
+
+export function getSavedLanguage() {
+    try { return localStorage.getItem(LANG_KEY); } catch { return null; }
+}
+
+export function setAppLanguage(lng) {
+    if (!ENABLED_LANGUAGES.includes(lng)) return;
+    i18n.changeLanguage(lng);
+    try { localStorage.setItem(LANG_KEY, lng); } catch { /* ignore */ }
+}
 
 const resources = {
     en: { common: enCommon, auth: enAuth, portal: enPortal, requests: enRequests },
@@ -29,10 +41,9 @@ i18n
     .use(initReactI18next)
     .init({
         resources,
-        // Phase 1: English is the only enabled language. The i18n architecture
-        // (namespaces, fallback, changeLanguage) is ready so per-user language
-        // switching can be enabled later without re-architecting.
-        lng: "en",
+        // Use the saved device preference if present; otherwise default to English.
+        // We never auto-pick a language from the browser/device — the patient chooses.
+        lng: getSavedLanguage() || "en",
         fallbackLng: "en",
         supportedLngs: SUPPORTED_LANGUAGES,
         ns: ["common", "auth", "portal", "requests"],

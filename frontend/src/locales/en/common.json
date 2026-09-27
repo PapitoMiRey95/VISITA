@@ -2,7 +2,13 @@
   "brand": { "vien": "VIsita", "emr": " EMR" },
   "practice": "Connected Healthcare Network",
   "tagline": "Secure access for patients, clinics, physicians, pharmacies, and healthcare partners.",
-  "language": { "comingSoon": "Coming soon" },
+  "language": {
+    "comingSoon": "Coming soon",
+    "choose": "Choose your language",
+    "chooseEs": "Elige tu idioma",
+    "spanish": "Español",
+    "english": "English"
+  },
   "emergencyNotice": "Not for emergencies. If you are experiencing a medical emergency, call 911 or go to the nearest Emergency Department.",
   "actions": {
     "signIn": "Sign In",
@@ -13,7 +19,33 @@
     "add": "Add",
     "back": "Back",
     "logout": "Logout",
-    "setNow": "Set now"
+    "setNow": "Set now",
+    "continue": "Continue",
+    "confirm": "Confirm",
+    "submit": "Submit",
+    "change": "Change"
   },
-  "status": { "loading": "Loading…", "notSet": "Not set", "optional": "Optional" }
+  "status": { "loading": "Loading…", "notSet": "Not set", "optional": "Optional" },
+  "pickers": {
+    "dobTitle": "Date of Birth",
+    "issueTitle": "Issue Date",
+    "expiryTitle": "Expiry Date",
+    "year": "Year",
+    "month": "Month",
+    "day": "Day",
+    "confirm": "Confirm",
+    "change": "Change",
+    "selectDob": "Select date of birth",
+    "selectDate": "Select date",
+    "expiryHint": "Cards expire on the birthday. Choose the expiry year — the day and month come from the date of birth.",
+    "monthsFull": ["January", "February", "March", "April", "May", "June", "July", "August", "September", "October", "November", "December"],
+    "monthsAbbr": ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"]
+  },
+  "validation": {
+    "required": "Required field",
+    "invalidEmail": "Invalid email",
+    "passwordRequired": "Password required",
+    "hcTenDigits": "Health Card Number must contain 10 digits",
+    "selectDob": "Please select your date of birth"
+  }
 }

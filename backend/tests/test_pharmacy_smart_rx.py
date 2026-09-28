@@ -171,13 +171,21 @@ def test_send_multi_med_persists_structured_and_snapshot(pharmacies, patient_wit
 
 
 def test_suggest_after_send_and_isolation(pharmacies, patient_with_ohip):
-    # pharmacy A should now suggest Amlodipine from its own memory
+    # Send a PHARMACY-UNIQUE drug so it is guaranteed to surface as source=pharmacy
+    # (common drugs may be deduped behind the patient's own higher-ranked meds — by design).
+    uniq = f"Zzpharmuniq {pharmacies['A_id'][-6:]}"
+    fd = {"directory_id": (None, patient_with_ohip["id"]),
+          "medications": (None, json.dumps([{"drug": uniq, "strength": "1 mg", "form": "tablet", "sig": "1 tablet OD"}]))}
+    rc = requests.post(f"{BASE}/api/pharmacy/rx", files=fd, headers=_H(pharmacies["A"]), timeout=30)
+    assert rc.status_code == 200, rc.text
+    _created_req_ids.append(rc.json()["id"])
+    # pharmacy A should now suggest Amlodipine + the unique drug from its own memory
     r = requests.get(f"{BASE}/api/pharmacy/rx/suggest", params={"patient_ref": patient_with_ohip["id"]}, headers=_H(pharmacies["A"]), timeout=30)
     assert r.status_code == 200
     drugs_a = [d["value"].lower() for d in r.json().get("drugs", [])]
     src_a = {d["value"].lower(): d["source"] for d in r.json().get("drugs", [])}
     assert any("amlodipine" in v for v in drugs_a)
-    assert any(src == "pharmacy" for src in src_a.values())
+    assert src_a.get(uniq.lower()) == "pharmacy"
     # field suggestions for the drug from pharmacy memory
     rf = requests.get(f"{BASE}/api/pharmacy/rx/suggest", params={"drug": "Amlodipine besylate"}, headers=_H(pharmacies["A"]), timeout=30)
     assert rf.status_code == 200
@@ -210,7 +218,9 @@ def test_clinic_sees_structured_request(pharmacies, clinic_token, patient_with_o
     assert r.status_code == 200
     mine = [x for x in r.json() if x.get("id") in _created_req_ids]
     assert mine, "clinic queue did not include the pharmacy request"
-    item = mine[0]
+    # pick the multi-medication request (other created requests may be 1-med/doc-only)
+    item = next((x for x in mine if len(x.get("medications_structured") or []) == 2), None)
+    assert item is not None, "multi-med pharmacy request not visible to clinic"
     assert len(item.get("medications_structured") or []) == 2
     assert (item.get("patient_snapshot") or {}).get("date_of_birth")
 

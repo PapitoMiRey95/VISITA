@@ -4226,13 +4226,15 @@ async def _pharmacy_account(pharmacy_id: str):
     return await db.users.find_one({"role": "pharmacy", "pharmacy_id": pharmacy_id})
 
 
-def _rx_tx_public(t: dict) -> dict:
+def _rx_tx_public(t: dict, include_patient: bool = False) -> dict:
     t = {k: v for k, v in t.items() if k != "_id"}
     att = t.get("attachment")
     t["has_attachment"] = bool(att)
     if att:
         t["attachment_filename"] = att.get("original_filename")
     t.pop("attachment", None)  # never expose storage_path
+    if not include_patient:
+        t.pop("patient_snapshot", None)  # full demographics only on authorized detail views
     meds = t.get("medications") or []
     t["medication_summary"] = (f"{len(meds)} medication(s)" if meds else
                                ("PDF Prescription" if t["has_attachment"] else "—"))
@@ -4261,6 +4263,45 @@ async def _resolve_rx_patient(ref: str):
                 "date_of_birth": p.get("date_of_birth"), "visita_patient_id": p.get("visita_patient_id"),
                 "phone": p.get("phone")}
     return None
+
+
+async def _build_patient_snapshot(patient_ref: str) -> Optional[dict]:
+    """Immutable prescription-time patient identity, from the authoritative VIen record
+    (directory + linked patient). Only present values are stored; never fabricated.
+    Frozen onto the transmission so historical Rx keep the identity as-sent even if the
+    patient's demographics change later."""
+    d = await db.patient_directory.find_one({"id": patient_ref})
+    p = None
+    if d and d.get("linked_patient_id"):
+        p = await db.patients.find_one({"id": d["linked_patient_id"]})
+    elif not d:
+        p = await db.patients.find_one({"id": patient_ref})
+    base = d or p
+    if not base:
+        return None
+
+    def g(*keys):
+        for src in (base, p or {}, d or {}):
+            for k in keys:
+                v = src.get(k)
+                if v not in (None, ""):
+                    return v
+        return None
+
+    snap = {
+        "first_name": g("first_name"), "last_name": g("last_name"),
+        "date_of_birth": g("date_of_birth"), "visita_patient_id": g("visita_patient_id"),
+        "address": g("address"), "unit": g("unit"), "city": g("city"),
+        "province": g("province"), "postal_code": g("postal_code"),
+        "cell_phone": g("cell_phone", "phone"), "home_phone": g("home_phone"),
+        "health_card_number": g("health_card_number"),
+        "health_card_version": g("health_card_version"),
+        "health_card_expiry_date": g("health_card_expiry_date"),
+        "patient_type": g("patient_type"),
+        "snapshot_at": now_iso(),
+    }
+    return {k: v for k, v in snap.items() if v not in (None, "")}
+
 
 
 async def _remember_patient_medications(tx: dict):
@@ -4589,6 +4630,7 @@ async def internal_send_rx(
                             detail="Add at least one medication or attach an Rx PDF before sending.")
 
     clinic = await db.settings.find_one({"id": "clinic"}, {"_id": 0}) or {}
+    patient_snapshot = await _build_patient_snapshot(patient_ref)
     now = now_iso()
     tx = {
         "id": str(uuid.uuid4()), "ref_number": await next_ref("RXTX"),
@@ -4596,6 +4638,7 @@ async def internal_send_rx(
         "patient_id": snap["patient_id"], "patient_directory_id": snap.get("directory_id"),
         "patient_name": f"{snap.get('last_name','')}, {snap.get('first_name','')}".strip(", "),
         "patient_dob": snap.get("date_of_birth"), "visita_patient_id": snap.get("visita_patient_id"),
+        "patient_snapshot": patient_snapshot,
         "physician_id": user["id"], "physician_name": user.get("name"),
         "clinic_name": clinic.get("clinic_name") or clinic.get("practice_name") or "Dr. Aguayo Family Practice",
         "pharmacy_id": pharmacy_id, "pharmacy_name": acct.get("pharmacy_name"),
@@ -4637,7 +4680,7 @@ async def internal_send_rx(
         except Exception as e:
             logger.warning(f"[rx-tx pharmacy email] failed: {e}")
 
-    return _rx_tx_public(tx)
+    return _rx_tx_public(tx, include_patient=True)
 
 
 @api.get("/internal/send-rx")
@@ -4651,7 +4694,7 @@ async def internal_sent_rx_detail(tx_id: str, user: dict = Depends(require_roles
     t = await db.rx_transmissions.find_one({"id": tx_id})
     if not t:
         raise HTTPException(status_code=404, detail="Prescription not found.")
-    return _rx_tx_public(t)
+    return _rx_tx_public(t, include_patient=True)
 
 
 @api.get("/internal/send-rx/{tx_id}/attachment")
@@ -4688,7 +4731,7 @@ async def pharmacy_incoming_detail(tx_id: str, user: dict = Depends(require_role
                     {"id": user["id"], "name": user.get("pharmacy_name"), "role": "pharmacy"}, new_status="VIEWED",
                     meta={"pharmacy_id": pid})
         t = await db.rx_transmissions.find_one({"id": tx_id, "pharmacy_id": pid})
-    return _rx_tx_public(t)
+    return _rx_tx_public(t, include_patient=True)
 
 
 @api.get("/pharmacy/incoming/{tx_id}/attachment")
@@ -4717,7 +4760,7 @@ async def pharmacy_incoming_acknowledge(tx_id: str, user: dict = Depends(require
     await audit("rx_status_changed", "rx_transmission", tx_id,
                 {"id": user["id"], "name": user.get("pharmacy_name"), "role": "pharmacy"}, new_status="ACKNOWLEDGED",
                 meta={"pharmacy_id": pid})
-    return _rx_tx_public(await db.rx_transmissions.find_one({"id": tx_id, "pharmacy_id": pid}))
+    return _rx_tx_public(await db.rx_transmissions.find_one({"id": tx_id, "pharmacy_id": pid}), include_patient=True)
 
 
 

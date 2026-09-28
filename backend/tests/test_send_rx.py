@@ -406,3 +406,83 @@ def test_17_extended_fields_and_suggestions(physician_token, pharmacies):
     db.medication_catalog.delete_many({"drug": drug})
     db.physician_rx_memory.delete_many({"drug_key": drug.lower()})
 
+
+def _make_dir_patient(**over):
+    doc = {
+        "id": str(uuid.uuid4()), "first_name": over.get("first_name", "Testina"),
+        "last_name": over.get("last_name", "SNAPQA"), "date_of_birth": "1952-04-29",
+        "visita_patient_id": over.get("visita_patient_id", f"99{uuid.uuid4().hex[:4]}"),
+        "address": "3174 Bathurst Street", "unit": "5B", "city": "Toronto",
+        "province": "ON", "postal_code": "M6A 2B1",
+        "cell_phone": "(647) 555-0100", "home_phone": "(416) 555-0111",
+        "health_card_number": "1572035465", "health_card_version": "VH",
+        "health_card_expiry_date": "2027-04-29", "patient_type": "ohip",
+        "patient_status": "ACTIVE", "linked_patient_id": None,
+    }
+    doc.update(over)
+    db.patient_directory.insert_one(doc)
+    return doc
+
+
+# 18. Pharmacy patient-information panel: snapshot present for the receiving pharmacy,
+#     list stays compact, other pharmacy blocked, and the snapshot is immutable history.
+def test_18_pharmacy_patient_snapshot(physician_token, pharmacies):
+    pat = _make_dir_patient()
+    try:
+        meds = '[{"drug":"ZZSnapDrug","strength":"10 mg","form":"tablet","sig":"1 tablet OD"}]'
+        r = requests.post(f"{BASE}/api/internal/send-rx", headers=_h(physician_token),
+                          data={"patient_ref": pat["id"], "pharmacy_id": pharmacies["A_id"], "medications": meds}, timeout=30)
+        assert r.status_code == 200, r.text
+        tx_id = r.json()["id"]
+        _created_tx_ids.append(tx_id)
+
+        # Receiving pharmacy sees the full patient information snapshot.
+        d = requests.get(f"{BASE}/api/pharmacy/incoming/{tx_id}", headers=_h(pharmacies["A_token"]), timeout=30)
+        assert d.status_code == 200, d.text
+        ps = d.json().get("patient_snapshot")
+        assert ps, "patient_snapshot missing on authorized detail"
+        assert ps["last_name"] == "SNAPQA" and ps["date_of_birth"] == "1952-04-29"
+        assert ps["visita_patient_id"] == pat["visita_patient_id"]
+        assert ps["address"] == "3174 Bathurst Street" and ps["city"] == "Toronto" and ps["postal_code"] == "M6A 2B1"
+        assert ps["cell_phone"] == "(647) 555-0100" and ps["home_phone"] == "(416) 555-0111"
+        assert ps["health_card_number"] == "1572035465" and ps["health_card_version"] == "VH"
+
+        # Incoming list stays compact — no full PHI snapshot in list rows.
+        lst = requests.get(f"{BASE}/api/pharmacy/incoming", headers=_h(pharmacies["A_token"]), timeout=30).json()
+        row = [i for i in lst["items"] if i["id"] == tx_id][0]
+        assert "patient_snapshot" not in row
+        assert row.get("patient_name") and row.get("patient_dob")  # enough to identify
+
+        # A different pharmacy cannot retrieve the prescription or its patient details.
+        other = requests.get(f"{BASE}/api/pharmacy/incoming/{tx_id}", headers=_h(pharmacies["B_token"]), timeout=30)
+        assert other.status_code == 404
+
+        # Immutable history: change the live patient address; the sent Rx snapshot is unchanged.
+        db.patient_directory.update_one({"id": pat["id"]}, {"$set": {"address": "999 New Address Ave"}})
+        d2 = requests.get(f"{BASE}/api/pharmacy/incoming/{tx_id}", headers=_h(pharmacies["A_token"]), timeout=30).json()
+        assert d2["patient_snapshot"]["address"] == "3174 Bathurst Street"
+    finally:
+        db.patient_directory.delete_one({"id": pat["id"]})
+        db.patient_medications.delete_many({"drug": "ZZSnapDrug"})
+        db.medication_catalog.delete_many({"drug": "ZZSnapDrug"})
+
+
+# 19. Private/uninsured patient: no OHIP is fabricated in the snapshot.
+def test_19_private_patient_no_fabricated_ohip(physician_token, pharmacies):
+    pat = _make_dir_patient(first_name="Priv", last_name="NOOHIPQA", patient_type="private",
+                            health_card_number=None, health_card_version=None, health_card_expiry_date=None)
+    try:
+        meds = '[{"drug":"ZZPrivDrug","strength":"5 mg","form":"tablet","sig":"1 tablet HS"}]'
+        r = requests.post(f"{BASE}/api/internal/send-rx", headers=_h(physician_token),
+                          data={"patient_ref": pat["id"], "pharmacy_id": pharmacies["A_id"], "medications": meds}, timeout=30)
+        assert r.status_code == 200, r.text
+        tx_id = r.json()["id"]
+        _created_tx_ids.append(tx_id)
+        ps = requests.get(f"{BASE}/api/pharmacy/incoming/{tx_id}", headers=_h(pharmacies["A_token"]), timeout=30).json()["patient_snapshot"]
+        assert "health_card_number" not in ps  # omitted, never fabricated
+        assert ps["last_name"] == "NOOHIPQA"
+    finally:
+        db.patient_directory.delete_one({"id": pat["id"]})
+        db.patient_medications.delete_many({"drug": "ZZPrivDrug"})
+        db.medication_catalog.delete_many({"drug": "ZZPrivDrug"})
+

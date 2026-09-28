@@ -49,12 +49,43 @@ export default function PharmacyIncoming() {
 
                 <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
                     <div className="bg-white border border-slate-300 rounded-sm p-4">
-                        <div className="flex items-center gap-2 text-slate-700 font-semibold mb-2"><User className="w-4 h-4" /> Patient</div>
-                        <div className="text-sm space-y-1">
-                            <div className="font-bold">{detail.patient_name}</div>
-                            <div className="text-slate-500">DOB {formatDate(detail.patient_dob)}{detail.visita_patient_id ? ` · PIN ${detail.visita_patient_id}` : ""}</div>
-                        </div>
-                        <div className="flex items-center gap-2 text-slate-700 font-semibold mt-4 mb-2"><Stethoscope className="w-4 h-4" /> Prescriber</div>
+                        <div className="flex items-center gap-2 text-slate-700 font-semibold mb-2"><User className="w-4 h-4" /> Patient Information</div>
+                        {(() => {
+                            const ps = detail.patient_snapshot || {};
+                            const name = (ps.last_name || ps.first_name) ? `${ps.last_name || ""}, ${ps.first_name || ""}`.replace(/^, |, $/g, "") : detail.patient_name;
+                            const dob = ps.date_of_birth || detail.patient_dob;
+                            const pin = ps.visita_patient_id || detail.visita_patient_id;
+                            const line2 = [ps.city, ps.province, ps.postal_code].filter(Boolean).join(", ");
+                            const addr1 = [ps.address, ps.unit ? `Unit ${ps.unit}` : ""].filter(Boolean).join(", ");
+                            const ohip = ps.health_card_number ? `${ps.health_card_number}${ps.health_card_version ? `  ${ps.health_card_version}` : ""}` : null;
+                            const Row = ({ label, children, testId }) => (
+                                <div className="grid grid-cols-[70px,1fr] gap-2 py-0.5" data-testid={testId}>
+                                    <span className="text-[10px] uppercase tracking-wide text-slate-400 pt-0.5">{label}</span>
+                                    <span className="text-slate-700">{children}</span>
+                                </div>
+                            );
+                            return (
+                                <div className="text-sm" data-testid="incoming-patient-info">
+                                    <div className="font-bold text-slate-900 mb-1" data-testid="incoming-patient-name">{name}</div>
+                                    <Row label="DOB" testId="incoming-patient-dob">{dob ? formatDate(dob) : <span className="text-slate-400">Not available</span>}</Row>
+                                    {pin && <Row label="VIen PIN" testId="incoming-patient-pin">{pin}</Row>}
+                                    <Row label="OHIP" testId="incoming-patient-ohip">{ohip || <span className="text-slate-400">Not available</span>}{ps.health_card_expiry_date ? <span className="text-slate-400 text-xs"> · exp {formatDate(ps.health_card_expiry_date)}</span> : null}</Row>
+                                    {(addr1 || line2) && (
+                                        <Row label="Address" testId="incoming-patient-address">
+                                            {addr1 && <div>{addr1}</div>}
+                                            {line2 && <div>{line2}</div>}
+                                        </Row>
+                                    )}
+                                    {(ps.cell_phone || ps.home_phone) && (
+                                        <Row label="Phone" testId="incoming-patient-phone">
+                                            {ps.cell_phone && <div>Cell: {ps.cell_phone}</div>}
+                                            {ps.home_phone && <div>Home: {ps.home_phone}</div>}
+                                        </Row>
+                                    )}
+                                </div>
+                            );
+                        })()}
+                        <div className="flex items-center gap-2 text-slate-700 font-semibold mt-4 mb-2 border-t border-slate-100 pt-3"><Stethoscope className="w-4 h-4" /> Prescriber</div>
                         <div className="text-sm space-y-1">
                             <div className="font-semibold">{detail.physician_name}</div>
                             <div className="text-slate-500">{detail.clinic_name}</div>

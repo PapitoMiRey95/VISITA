@@ -4039,7 +4039,10 @@ def _pharmacy_patient_identity(d: dict) -> dict:
         "city": d.get("city"), "province": d.get("province"), "postal_code": d.get("postal_code"),
         "address_full": address_full,
         "health_card_number": d.get("health_card_number"),
-        "health_card_version_code": d.get("health_card_version_code"),
+        "health_card_version_code": d.get("health_card_version_code") or d.get("health_card_version"),
+        "health_card_version": d.get("health_card_version") or d.get("health_card_version_code"),
+        "health_card_expiry_date": d.get("health_card_expiry_date"),
+        "patient_type": d.get("patient_type"),
         "patient_status": d.get("patient_status"),
     }
 
@@ -4113,7 +4116,8 @@ async def pharmacy_patient(directory_id: str, user: dict = Depends(require_roles
 @api.post("/pharmacy/rx")
 async def pharmacy_create_rx(
     directory_id: str = Form(...),
-    medication_name: str = Form(...),
+    medications: str = Form(""),
+    medication_name: str = Form(""),
     strength: str = Form(""),
     duration_qty: str = Form(""),
     pharmacy_note: str = Form(""),
@@ -4125,21 +4129,53 @@ async def pharmacy_create_rx(
     d = await db.patient_directory.find_one({"id": directory_id})
     if not d:
         raise HTTPException(status_code=404, detail="Patient not found in directory.")
-    med = medication_name.strip()
-    if not med:
-        raise HTTPException(status_code=400, detail="Enter the medication name.")
-    full_med = f"{med}{(' ' + strength.strip()) if strength.strip() else ''}"
+
+    # Structured multi-medication payload from the smart builder. Falls back to
+    # the legacy single-medication form fields for backward compatibility.
+    meds_struct = []
+    if medications.strip():
+        try:
+            raw = json.loads(medications)
+        except (json.JSONDecodeError, TypeError):
+            raise HTTPException(status_code=400, detail="Invalid medications payload.")
+        if isinstance(raw, list):
+            for m in raw:
+                if isinstance(m, dict) and (m.get("drug") or "").strip():
+                    meds_struct.append(m)
+
     attachment = await _store_pharmacy_upload(file, "rx") if file is not None else None
+
+    display_list = []
+    if meds_struct:
+        for m in meds_struct:
+            display_list.append(" ".join(
+                [str(m.get(k) or "").strip() for k in ("drug", "strength", "form") if str(m.get(k) or "").strip()]))
+        primary = meds_struct[0]
+        med = (primary.get("drug") or "").strip()
+        strength_val = (primary.get("strength") or "").strip()
+    else:
+        med = medication_name.strip()
+        strength_val = strength.strip()
+        if med:
+            display_list = [f"{med}{(' ' + strength_val) if strength_val else ''}"]
+
+    if not meds_struct and not med and not attachment:
+        raise HTTPException(status_code=400, detail="Add at least one medication or attach a document.")
+
+    # Immutable prescription-time patient identity (mirrors PHYSICIAN->PHARMACY snapshot).
+    snapshot = await _build_patient_snapshot(directory_id)
     ref = await next_ref("RX")
     patient_name = f"{d.get('last_name','')}, {d.get('first_name','')}".strip(", ")
     doc = {
         "id": str(uuid.uuid4()), "ref_number": ref,
         "source": "pharmacy",
+        "provenance": "PHARMACY_REQUEST",
         "patient_id": d.get("linked_patient_id") or d["id"],
         "directory_id": d["id"], "visita_patient_id": d.get("visita_patient_id"),
         "patient_name": patient_name,
-        "medication_name": med, "strength": strength.strip() or None,
-        "medications": [full_med], "selected_active_meds": [],
+        "patient_snapshot": snapshot,
+        "medication_name": med or None, "strength": strength_val or None,
+        "medications": display_list, "medications_structured": meds_struct, "selected_active_meds": [],
         "pharmacy": pname, "pharmacy_id": pid, "duration_qty": duration_qty.strip() or None,
         "pharmacy_note": pharmacy_note.strip() or None, "received_via": "pharmacy_portal",
         "message_to_physician": message_to_physician.strip() or None,
@@ -4153,9 +4189,14 @@ async def pharmacy_create_rx(
         "created_at": now_iso(), "updated_at": now_iso(), "completed_at": None,
     }
     await db.prescription_requests.insert_one({**doc})
+    # 'Enter once -> VIen remembers', pharmacy-scoped, source=PHARMACY_REQUEST.
+    # Learns ONLY from a request actually sent; never touches physician_rx_memory
+    # and never becomes a physician-confirmed patient regimen.
+    await _remember_pharmacy_rx(pid, meds_struct)
     await audit("pharmacy_portal_rx", "prescription", doc["id"],
                 {"id": user["id"], "name": pname, "role": "pharmacy"}, new_status="waiting_physician",
-                meta={"pharmacy_id": pid, "directory_id": d["id"], "attachment": bool(attachment)})
+                meta={"pharmacy_id": pid, "directory_id": d["id"], "attachment": bool(attachment),
+                      "medications": len(meds_struct)})
     doc.pop("_id", None)
     return doc
 
@@ -4183,6 +4224,144 @@ async def pharmacy_rx_attachment(item_id: str, user: dict = Depends(require_role
     if not doc or not doc.get("attachment"):
         raise HTTPException(status_code=404, detail="Attachment not found.")
     return _serve_attachment(doc["attachment"])
+
+
+async def _remember_pharmacy_rx(pharmacy_id: str, meds: list):
+    """Pharmacy-scoped workflow memory (source=PHARMACY_REQUEST). Learns ONLY from
+    requests actually SENT by THIS pharmacy. Kept strictly separate from
+    physician_rx_memory: it never promotes pharmacy-entered data to a
+    physician-confirmed patient regimen and never crosses pharmacies."""
+    now = now_iso()
+    for m in (meds or []):
+        drug = (m.get("drug") or "").strip()
+        if not drug:
+            continue
+        dk = drug.lower()
+        add = {}
+        for field, memk in [("strength", "strengths"), ("form", "forms"), ("sig", "sigs"),
+                            ("quantity_unit", "quantity_units"), ("manufacturer", "manufacturers"),
+                            ("days_supply", "days_supplies")]:
+            v = str(m.get(field) or "").strip()
+            if v:
+                add[memk] = v
+        attrs = [str(a).strip() for a in (m.get("attributes") or []) if str(a).strip()]
+        update = {"$set": {"pharmacy_id": pharmacy_id, "drug_key": dk, "drug": drug,
+                           "source": "PHARMACY_REQUEST", "updated_at": now},
+                  "$setOnInsert": {"id": str(uuid.uuid4()), "created_at": now}}
+        addto = dict(add)
+        if attrs:
+            addto["attributes"] = {"$each": attrs}
+        if addto:
+            update["$addToSet"] = addto
+        await db.pharmacy_rx_memory.update_one(
+            {"pharmacy_id": pharmacy_id, "drug_key": dk}, update, upsert=True)
+
+
+class PharmacyRxParseBody(BaseModel):
+    text: str
+
+
+@api.post("/pharmacy/rx/parse")
+async def pharmacy_rx_parse(body: PharmacyRxParseBody, user: dict = Depends(require_roles("pharmacy"))):
+    """Reuse the shared Access-EMR parser (ONE med = ONE card). Pharmacy-scoped;
+    no separate/duplicate parser. Conservative: uncertain data is left blank and the
+    original text preserved. Never fabricates."""
+    _pharmacy_of(user)
+    return rx_parser.parse_access_rx(body.text)
+
+
+@api.get("/pharmacy/rx/suggest")
+async def pharmacy_rx_suggest(patient_ref: Optional[str] = None, drug: Optional[str] = None,
+                              user: dict = Depends(require_roles("pharmacy"))):
+    """Ranked DATA-ENTRY suggestions for the pharmacy builder (NOT clinical decision
+    support). Sources: this patient's previous confirmed meds -> THIS pharmacy's
+    remembered values -> neutral catalog. Pharmacy memory is scoped to the
+    authenticated pharmacy and never leaks across pharmacies."""
+    pid, _ = _pharmacy_of(user)
+    patient_id = None
+    if patient_ref:
+        snap = await _resolve_rx_patient(patient_ref)
+        if snap:
+            patient_id = snap["patient_id"]
+
+    seen, drugs = set(), []
+    def _add(v, src):
+        v = (v or "").strip()
+        if v and v.lower() not in seen:
+            seen.add(v.lower())
+            drugs.append({"value": v, "source": src})
+
+    if patient_id:
+        for d in await db.patient_medications.find(
+                {"patient_id": patient_id, "active": True}, {"_id": 0, "drug": 1, "last_prescribed_at": 1}
+        ).sort("last_prescribed_at", -1).to_list(100):
+            _add(d.get("drug"), "patient")
+    for d in await db.pharmacy_rx_memory.find(
+            {"pharmacy_id": pid}, {"_id": 0, "drug": 1, "updated_at": 1}
+    ).sort("updated_at", -1).to_list(300):
+        _add(d.get("drug"), "pharmacy")
+    for d in await db.medication_catalog.find({}, {"_id": 0, "drug": 1}).sort("updated_at", -1).to_list(400):
+        _add(d.get("drug"), "catalog")
+
+    result = {"drugs": drugs[:120]}
+
+    if drug:
+        dl = drug.lower().strip()
+        fields = {"strengths": [], "forms": [], "attributes": [], "sigs": [], "quantity_units": [], "manufacturers": []}
+        fseen = {k: set() for k in fields}
+
+        def _addf(fk, v, src):
+            v = str(v or "").strip()
+            if v and v.lower() not in fseen[fk]:
+                fseen[fk].add(v.lower())
+                fields[fk].append({"value": v, "source": src})
+
+        if patient_id:
+            for doc in await db.patient_medications.find(
+                    {"patient_id": patient_id, "active": True}, {"_id": 0}).to_list(100):
+                if (doc.get("drug") or "").lower().strip() == dl:
+                    for f, fk in [("strength", "strengths"), ("form", "forms"), ("sig", "sigs"),
+                                  ("quantity_unit", "quantity_units"), ("manufacturer", "manufacturers")]:
+                        _addf(fk, doc.get(f), "patient")
+                    for a in (doc.get("attributes") or []):
+                        _addf("attributes", a, "patient")
+        pm = await db.pharmacy_rx_memory.find_one({"pharmacy_id": pid, "drug_key": dl}, {"_id": 0})
+        if pm:
+            for fk, memk in [("strengths", "strengths"), ("forms", "forms"), ("sigs", "sigs"),
+                            ("quantity_units", "quantity_units"), ("manufacturers", "manufacturers"),
+                            ("attributes", "attributes")]:
+                for v in (pm.get(memk) or []):
+                    _addf(fk, v, "pharmacy")
+        for doc in await db.medication_catalog.find({}, {"_id": 0}).to_list(500):
+            if (doc.get("drug") or "").lower().strip() == dl:
+                for f, fk in [("strength", "strengths"), ("form", "forms")]:
+                    _addf(fk, doc.get(f), "catalog")
+                for a in (doc.get("attributes") or []):
+                    _addf("attributes", a, "catalog")
+        result["fields"] = fields
+
+    return result
+
+
+@api.get("/pharmacy/patients/{directory_id}/prior-requests")
+async def pharmacy_prior_requests(directory_id: str, user: dict = Depends(require_roles("pharmacy"))):
+    """THIS pharmacy's previous portal requests for THIS patient (for 'repeat').
+    Scoped by pharmacy_id; never exposes another pharmacy's requests."""
+    pid, _ = _pharmacy_of(user)
+    docs = await db.prescription_requests.find(
+        {"pharmacy_id": pid, "received_via": "pharmacy_portal", "directory_id": directory_id},
+        {"_id": 0}).sort("created_at", -1).to_list(50)
+    out = []
+    for x in docs:
+        out.append({
+            "id": x.get("id"), "ref_number": x.get("ref_number"), "created_at": x.get("created_at"),
+            "medications_structured": x.get("medications_structured") or [],
+            "medications": x.get("medications") or [],
+            "status_label": ("Waiting for Physician to review" if x.get("internal_status") == "waiting_physician"
+                             else RX_PATIENT_STATUS.get(x.get("internal_status"), "Received")),
+        })
+    return out
+
 
 
 @api.get("/internal/prescriptions/{item_id}/attachment")

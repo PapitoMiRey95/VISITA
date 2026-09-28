@@ -4,7 +4,7 @@ import { toast } from "sonner";
 import Queue, { KV } from "./Queue";
 import { useAuth } from "../context/AuthContext";
 import { StatusPill } from "./statusPill";
-import { formatDateTime } from "../lib/date";
+import { formatDate, formatDateTime } from "../lib/date";
 import { formatCombinedName } from "../lib/name";
 import { openAttachment, formatErr } from "../lib/api";
 import { Button } from "../components/ui/button";
@@ -83,8 +83,33 @@ export default function RxQueue() {
                     {i.source === "pharmacy" ? (
                         <>
                             <KV label="Pharmacy">{i.pharmacy}</KV>
-                            <KV label="Requested medication(s)">{(i.medications || []).join("; ")}</KV>
-                            <KV label="Active meds referenced">{(i.selected_active_meds || []).join("; ")}</KV>
+                            {(i.patient_snapshot && (i.patient_snapshot.date_of_birth || i.patient_snapshot.health_card_number || i.patient_snapshot.address)) && (
+                                <div className="mt-1 mb-2 border border-slate-200 rounded p-2 bg-slate-50/60 space-y-1" data-testid="rx-patient-snapshot">
+                                    <div className="text-[11px] uppercase text-slate-400 font-medium">Patient information (as sent)</div>
+                                    <KV label="DOB">{formatDate(i.patient_snapshot.date_of_birth)}</KV>
+                                    {i.patient_snapshot.visita_patient_id && <KV label="VIen PIN">{i.patient_snapshot.visita_patient_id}</KV>}
+                                    <KV label="Address">{[[i.patient_snapshot.address, i.patient_snapshot.unit && `#${i.patient_snapshot.unit}`].filter(Boolean).join(" "), i.patient_snapshot.city, i.patient_snapshot.province, i.patient_snapshot.postal_code].filter(Boolean).join(", ")}</KV>
+                                    <KV label="Cell">{i.patient_snapshot.cell_phone}</KV>
+                                    <KV label="Home">{i.patient_snapshot.home_phone}</KV>
+                                    <KV label="OHIP">{i.patient_snapshot.health_card_number ? `${i.patient_snapshot.health_card_number}${i.patient_snapshot.health_card_version ? ` ${i.patient_snapshot.health_card_version}` : ""}${i.patient_snapshot.health_card_expiry_date ? ` · exp ${formatDate(i.patient_snapshot.health_card_expiry_date)}` : ""}` : ""}</KV>
+                                </div>
+                            )}
+                            {(i.medications_structured || []).length > 0 ? (
+                                <div className="space-y-1.5" data-testid="rx-structured-meds">
+                                    <div className="text-[11px] uppercase text-slate-400 font-medium">Requested medications</div>
+                                    {(i.medications_structured || []).map((m, idx) => (
+                                        <div key={idx} data-testid="rx-structured-med" className="border border-slate-200 rounded px-2 py-1.5 text-sm">
+                                            <div className="font-semibold text-slate-800">{idx + 1}. {[m.drug, m.strength].filter(Boolean).join(" ")}{m.form ? <span className="font-normal text-slate-500"> — {m.form}</span> : null}</div>
+                                            {m.sig && <div className="text-slate-600 text-xs">{m.sig}</div>}
+                                            {(m.quantity || m.days_supply || m.requested_duration) && <div className="text-slate-500 text-xs">{[m.quantity && `Qty ${m.quantity}${m.quantity_unit ? ` ${m.quantity_unit}` : ""}`, m.days_supply && `${m.days_supply} days`, m.requested_duration && `Renew: ${m.requested_duration}`].filter(Boolean).join(" · ")}</div>}
+                                            {(m.existing_rx_number || m.last_filled_date || m.manufacturer || m.current_refills) && <div className="text-slate-400 text-[11px]">{[m.existing_rx_number && `Rx# ${m.existing_rx_number}`, m.last_filled_date && `Last filled ${m.last_filled_date}`, m.current_refills && `Refills left ${m.current_refills}`, m.manufacturer && `Mfr ${m.manufacturer}`].filter(Boolean).join(" · ")}</div>}
+                                            {m.pharmacy_note && <div className="text-slate-500 text-[11px]">Note: {m.pharmacy_note}</div>}
+                                        </div>
+                                    ))}
+                                </div>
+                            ) : (
+                                <KV label="Requested medication(s)">{(i.medications || []).join("; ")}</KV>
+                            )}
                             <KV label="Duration / quantity">{i.duration_qty}</KV>
                             <KV label="Received via">{i.received_via}</KV>
                             <KV label="Pharmacy note">{i.pharmacy_note}</KV>

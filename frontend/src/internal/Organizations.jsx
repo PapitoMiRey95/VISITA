@@ -6,6 +6,8 @@ import { Input } from "../components/ui/input";
 import { Button } from "../components/ui/button";
 import { Select, SelectTrigger, SelectValue, SelectContent, SelectItem } from "../components/ui/select";
 import { formatDate } from "../lib/date";
+import { useAuth } from "../context/AuthContext";
+import PharmacyAccountsAdmin from "./PharmacyAccountsAdmin";
 
 const STATUSES = ["UNVERIFIED", "VERIFIED", "FLAGGED", "SUSPENDED"];
 const STATUS_BADGE = {
@@ -16,6 +18,7 @@ const STATUS_BADGE = {
 };
 
 export default function Organizations() {
+    const { user } = useAuth();
     const [rows, setRows] = useState([]);
     const [types, setTypes] = useState([]);
     const [q, setQ] = useState("");
@@ -53,6 +56,8 @@ export default function Organizations() {
                 <h1 className="text-xl font-bold text-slate-900">Organizations</h1>
                 <span className="text-sm text-slate-400" data-testid="org-count">({rows.length})</span>
             </div>
+
+            {user?.role === "admin" && <PharmacyAccountsAdmin />}
 
             <div className="flex flex-wrap gap-2 items-center">
                 <div className="relative flex-1 min-w-[220px]">

@@ -5074,31 +5074,60 @@ async def internal_msg_attachment(item_id: str, idx: int, user: dict = Depends(r
 
 class ResetPharmacyPwBody(BaseModel):
     identifier: str
-    new_password: str
+    new_password: Optional[str] = None
+
+
+def _gen_temp_password(length: int = 16) -> str:
+    """Strong random temp password, unambiguous chars, guaranteed mixed classes."""
+    alphabet = "ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnpqrstuvwxyz23456789"
+    specials = "!@#$%^&*-_"
+    rng = secrets.SystemRandom()
+    while True:
+        chars = [secrets.choice(alphabet) for _ in range(length - 3)] + [secrets.choice(specials) for _ in range(3)]
+        rng.shuffle(chars)
+        pw = "".join(chars)
+        if (any(c.isupper() for c in pw) and any(c.islower() for c in pw)
+                and any(c.isdigit() for c in pw) and any(c in specials for c in pw)):
+            return pw
+
+
+@api.get("/admin/pharmacy-accounts")
+async def admin_list_pharmacy_accounts(user: dict = Depends(require_roles("admin"))):
+    """Admin-only list of pharmacy LOGIN accounts (role=pharmacy). No password material."""
+    return await db.users.find({"role": "pharmacy"}, {
+        "_id": 0, "username": 1, "pharmacy_name": 1, "pharmacy_id": 1,
+        "active": 1, "must_change_password": 1, "created_at": 1, "password_rotated_at": 1,
+    }).sort("pharmacy_name", 1).to_list(200)
 
 
 @api.post("/admin/pharmacy/reset-temp-password")
 async def admin_reset_pharmacy_temp_password(body: ResetPharmacyPwBody, user: dict = Depends(require_roles("admin"))):
     """Admin-only rotation of a PHARMACY account's temporary password. Scoped to
     role='pharmacy' targets ONLY — it can never affect admin/physician/staff/patient
-    accounts. Sets must_change_password=True so the pharmacy must set their own
-    password on next login. Does not touch any other user or record."""
-    if len((body.new_password or "").strip()) < 8:
-        raise HTTPException(status_code=400, detail="Password must be at least 8 characters.")
+    accounts. Server-generates a strong temp password (returned ONCE for one-time
+    display) unless an explicit new_password is supplied (back-compat). Stores only the
+    bcrypt hash, sets must_change_password=True, preserves every other field, and
+    audits the event WITHOUT recording the password."""
     target = await db.users.find_one({
         "username": {"$regex": f"^{re.escape((body.identifier or '').strip())}$", "$options": "i"},
         "role": "pharmacy",
     })
     if not target:
         raise HTTPException(status_code=404, detail="Pharmacy user not found.")
+    supplied = (body.new_password or "").strip()
+    if supplied and len(supplied) < 8:
+        raise HTTPException(status_code=400, detail="Password must be at least 8 characters.")
+    temp = supplied or _gen_temp_password()
     await db.users.update_one({"_id": target["_id"]}, {"$set": {
-        "password_hash": authlib.hash_password(body.new_password),
+        "password_hash": authlib.hash_password(temp),
         "must_change_password": True,
         "password_rotated_at": now_iso(),
     }})
     await audit("reset_pharmacy_temp_password", "user", str(target["_id"]), user,
                 meta={"username": target.get("username")})
-    return {"ok": True, "username": target.get("username"), "must_change_password": True}
+    return {"ok": True, "username": target.get("username"),
+            "pharmacy_name": target.get("pharmacy_name"),
+            "must_change_password": True, "temp_password": temp}
 
 
 

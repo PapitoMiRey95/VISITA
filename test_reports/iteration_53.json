@@ -1,0 +1,29 @@
+{
+  "summary": "Frontend-only E2E validation of Pharmacy Smart Rx Request Builder (pharmacy 1670dufferin). Verified: login -> Pharmacy Hub -> Rx Requests -> New Rx Request, ROMERO search + PatientInfoPanel (name/DOB/address/cell/home/OHIP with 'Not available' fallback), 5-med paste => 5 separate pharm-med-card, edit panel + '+ More Rx Details' pharmacy fields (rx-number/days-supply/current-refills/med-note), review shows 5 separate rx-review-med rows, Send returns to list and new row appears, prior-requests section (rx-prior) with Repeat button copying 5 meds into new draft, pharmacy-unsaved-guard on nav click, rx-change-guard on 'Choose a different patient'. Physician side (staff@visita.demo since PAGUAYO login failed): /internal/rx queue shows the new PHARMACY row RX-000064 for ROMERO/Amlodipine/1670 Dufferin Drug Mart; detail modal renders 'Patient information (as sent)' (rx-patient-snapshot) with DOB/address/cell/OHIP and all 5 meds as separate structured rows. /internal/send-rx smoke check loads with no errors. All critical acceptance criteria for this feature pass.",
+  "backend_issues": {"critical": [], "minor": []},
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [],
+    "design_issues": [
+      {"screen": "PatientInfoPanel", "issues": ["OHIP row shows raw digits '0000 000 111' (partially formatted). Health card version/expiry absent for this seed patient — expected fallback, but could be clearer with a 'no version' hint."]}
+    ]
+  },
+  "test_report_links": [],
+  "action_items": [
+    "PAGUAYO physician credential (Newman2013_!) did NOT authenticate to /internal (fell back to staff@visita.demo which worked). If PAGUAYO is expected to log in, verify the seeded password / account status. Not blocking this feature.",
+    "Consider verifying single-med paste (single-card) and document-only PDF-only send flows in a follow-up run — this iteration exercised 5-med + prior/repeat but not the two smaller variants explicitly (backend already covers per iteration 46-52 handoff)."
+  ],
+  "critical_code_review_comments": [
+    "PharmacyRx.jsx is ~400 lines and manages many concerns (list, new builder, guard, drafts, prior requests). Consider extracting the new-request builder into its own component for maintainability (>300 lines in a single component).",
+    "PharmacyMedCard: `set('_moreOpen', !more)` stores UI-only state inside the med object; safer to keep _editing/_moreOpen in a parallel local map to avoid ever leaking into the submitted payload. Current code strips them in submit (line 175 of PharmacyRx.jsx) so it's OK today, but easy to regress.",
+    "Draft key uses sessionStorage without a size cap — if a pharmacy attaches many meds + long notes it should stay tiny, but no error surfaced if quota exceeded (silently caught)."
+  ],
+  "updated_files": [],
+  "success_rate": {"backend": "not tested (per request)", "frontend": "100% of listed acceptance criteria verified"},
+  "test_credentials": "Pharmacy: 1670dufferin / PharmPreview2026! (works). Physician PAGUAYO / Newman2013_! (FAILED). Fallback staff@visita.demo / Staff2026! (works).",
+  "seed_data_creation": "Created 1 new pharmacy Rx request (RX-000064) for ROMERO CUAHUEY, Alejandro from pharmacy 1670-dufferin, 5 medications, with pharmacy_note and existing_rx_number=RX-TEST-001 on the first med. Cannot delete via UI in preview; harmless test data.",
+  "retest_needed": false,
+  "should_main_agent_self_test": false,
+  "context_for_next_testing_agent": "Pharmacy smart Rx builder end-to-end works in preview. Key testids exercised: new-rx-btn, rx-search/rx-search-btn/rx-result, pharm-patient-info + pharm-patient-* fields, rx-paste + rx-organize (5 -> 5 cards), pharm-edit-med -> pharm-med-edit -> pharm-more-toggle -> pharm-rx-number/days-supply/current-refills/med-note, rx-review-meds/rx-review-med (5 rows), rx-send (success), rx-prior + rx-repeat-prior (copies 5), pharmacy-unsaved-guard on nav, rx-change-guard on rx-change-patient. Clinic side: rx-patient-snapshot + rx-structured-med (5) both render. PAGUAYO login is broken — flag to main agent.",
+  "rca of the issue": "None — feature works as designed."
+}

@@ -30,6 +30,28 @@ const ACTION_STYLE = {
     CONTINUE: "bg-sky-100 text-sky-700",
 };
 
+// Map a structured PHARMACY-request medication into a physician draft card.
+// Pharmacy-only fields (Rx#, last filled, days supply, requested renewal, current
+// refills) are surfaced as additional instructions for physician context; nothing
+// is auto-confirmed and refills/duration are left for the physician to decide.
+function mapConvertMed(m) {
+    const ctx = [
+        m.existing_rx_number && `Existing Rx# ${m.existing_rx_number}`,
+        m.last_filled_date && `Last filled ${m.last_filled_date}`,
+        m.days_supply && `${m.days_supply} days supply`,
+        m.requested_duration && `Requested renewal: ${m.requested_duration}`,
+        (m.current_refills || m.current_refills === 0) && m.current_refills !== "" && `Current refills: ${m.current_refills}`,
+    ].filter(Boolean).join(" · ");
+    return {
+        ...EMPTY_MED,
+        drug: m.drug || "", strength: m.strength || "", form: m.form || "", sig: m.sig || "",
+        attributes: m.attributes || [], quantity: m.quantity || "", quantity_unit: m.quantity_unit || "",
+        manufacturer: m.manufacturer || "", note: m.pharmacy_note || "",
+        additional_instructions: ctx || "", original_text: m.original_text || "",
+        needs_review: [], _editing: false,
+    };
+}
+
 function StatusPill({ status }) {
     const map = {
         SENT: { icon: Clock, cls: "bg-amber-100 text-amber-800" },
@@ -51,6 +73,8 @@ export default function SendPrescription() {
     const patientRefRef = useRef(null);
     const [storedDraft, setStoredDraft] = useState(null);
     const [changePending, setChangePending] = useState(false);
+    const [convertMeta, setConvertMeta] = useState(null);
+    const convertConsumed = useRef(false);
     const { setGuard } = useUnsavedGuard();
 
     const draftKey = (ref) => `visita_rx_draft_${ref}`;
@@ -84,8 +108,8 @@ export default function SendPrescription() {
     const writeDraft = useCallback(() => {
         const ref = patientRefRef.current;
         if (!ref) return;
-        try { sessionStorage.setItem(draftKey(ref), JSON.stringify({ meds, rx, paste, sourceText, pharmacyId, savedAt: new Date().toISOString() })); } catch { /* ignore */ }
-    }, [meds, rx, paste, sourceText, pharmacyId]);
+        try { sessionStorage.setItem(draftKey(ref), JSON.stringify({ meds, rx, paste, sourceText, pharmacyId, convertMeta, savedAt: new Date().toISOString() })); } catch { /* ignore */ }
+    }, [meds, rx, paste, sourceText, pharmacyId, convertMeta]);
     // "Save & leave" (shared guard) keeps the draft in sessionStorage for later recovery.
     const saveDraftForLater = useCallback(async () => { writeDraft(); return true; }, [writeDraft]);
     // Register with the shared layout guard so sidebar navigation + logout are intercepted.
@@ -111,6 +135,34 @@ export default function SendPrescription() {
         api.get("/internal/pharmacies").then(({ data }) => setPharmacies(data)).catch(() => {});
         loadHistory();
     }, [loadHistory]);
+
+    // Convert-to-Prescription handoff from the Rx queue: seed a DRAFT only.
+    useEffect(() => {
+        if (convertConsumed.current) return;
+        let raw = null;
+        try { raw = sessionStorage.getItem("visita_rx_convert"); } catch { raw = null; }
+        if (!raw) return;
+        convertConsumed.current = true;
+        try { sessionStorage.removeItem("visita_rx_convert"); } catch { /* ignore */ }
+        let payload;
+        try { payload = JSON.parse(raw); } catch { return; }
+        (async () => {
+            try {
+                const { data } = await api.get(`/internal/patient-snapshot/${payload.patient_ref}`);
+                setPatient(data);
+                const pref = data.directory_id || data.patient_id || payload.patient_ref;
+                patientRefRef.current = pref;
+                setPharmacyId(payload.pharmacy_id || "");
+                setConvertMeta({ source_request_id: payload.source_request_id, pharmacy_name: payload.pharmacy_name, ref_number: payload.ref_number });
+                setStoredDraft(null);
+                setMeds((payload.medications_structured || []).map(mapConvertMed));
+                api.get(`/internal/patients/${pref}/medications`).then(({ data: pm }) => setPrevMeds(pm)).catch(() => {});
+                api.get(`/internal/patients/${pref}/prescriptions`).then(({ data: rxs }) => setPrescriptions(rxs)).catch(() => {});
+                api.get("/internal/rx/suggest", { params: { patient_ref: pref } }).then(({ data: sg }) => setDrugOptions(sg.drugs || [])).catch(() => {});
+                toast.success(`Draft prepared from ${payload.pharmacy_name || "pharmacy"} request. Review, edit, then Send.`);
+            } catch (err) { toast.error(formatErr(err)); }
+        })();
+    }, []);
 
     const runSearch = async (e, byPin = false) => {
         e?.preventDefault();
@@ -145,7 +197,7 @@ export default function SendPrescription() {
         } catch (err) { toast.error(formatErr(err)); }
     };
 
-    const resetRxDraft = () => { setMeds([]); setRx({ months: "", refills: "", note: "", _editing: false }); setSourceText(""); setPaste(""); setWarnings([]); setAckMismatch(false); setFile(null); };
+    const resetRxDraft = () => { setMeds([]); setRx({ months: "", refills: "", note: "", _editing: false }); setSourceText(""); setPaste(""); setWarnings([]); setAckMismatch(false); setFile(null); setConvertMeta(null); };
     const resetAll = () => { setPatient(null); setPharmacyId(""); setPrevMeds([]); setPrescriptions([]); setDrugOptions([]); setFieldSuggest({}); patientRefRef.current = null; setStoredDraft(null); resetRxDraft(); };
 
     const restoreDraft = () => {
@@ -153,6 +205,7 @@ export default function SendPrescription() {
         setMeds(d.meds || []); setRx(d.rx || { months: "", refills: "", note: "", _editing: false });
         setPaste(d.paste || ""); setSourceText(d.sourceText || "");
         if (d.pharmacyId) setPharmacyId(d.pharmacyId);
+        if (d.convertMeta) setConvertMeta(d.convertMeta);
         setStoredDraft(null); toast.success("Unsent prescription restored.");
     };
     const discardStoredDraft = () => { clearStoredDraft(); setStoredDraft(null); };
@@ -235,6 +288,7 @@ export default function SendPrescription() {
             if (rx.months !== "" && rx.months != null) fd.append("months", String(rx.months));
             if (rx.refills !== "" && rx.refills != null) fd.append("refills", String(rx.refills));
             if (sourceText) fd.append("source_text", sourceText);
+            if (convertMeta?.source_request_id) fd.append("source_request_id", convertMeta.source_request_id);
             if (file) fd.append("file", file);
             await api.post("/internal/send-rx", fd, { headers: { "Content-Type": "multipart/form-data" } });
             toast.success("Prescription sent to the pharmacy.");
@@ -304,6 +358,15 @@ export default function SendPrescription() {
 
             {patient && (
                 <>
+                    {convertMeta && (
+                        <div className="bg-indigo-50 border border-indigo-300 rounded-sm p-3 mb-4 flex items-start gap-2" data-testid="sendrx-convert-banner">
+                            <Building2 className="w-4 h-4 text-indigo-600 mt-0.5 shrink-0" />
+                            <div className="text-sm text-indigo-900">
+                                Prepared from <b>{convertMeta.pharmacy_name || "pharmacy"}</b> renewal request{convertMeta.ref_number ? ` (${convertMeta.ref_number})` : ""}.
+                                <div className="text-xs text-indigo-700 mt-0.5">These values are pharmacy-supplied and are <b>not</b> physician-confirmed until you review and press Send Prescription.</div>
+                            </div>
+                        </div>
+                    )}
                     {storedDraft && meds.length === 0 && (
                         <div className="bg-amber-50 border border-amber-300 rounded-sm p-3 mb-4 flex items-center justify-between gap-3" data-testid="sendrx-restore">
                             <div className="text-sm text-amber-800">You have an unsent prescription in progress for this patient.</div>

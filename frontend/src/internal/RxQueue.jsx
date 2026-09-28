@@ -1,5 +1,5 @@
-import { Link } from "react-router-dom";
-import { Plus, Paperclip } from "lucide-react";
+import { Link, useNavigate } from "react-router-dom";
+import { Plus, Paperclip, FilePlus2 } from "lucide-react";
 import { toast } from "sonner";
 import Queue, { KV } from "./Queue";
 import { useAuth } from "../context/AuthContext";
@@ -14,6 +14,7 @@ const STATUSES = [
     { label: "Under Review", value: "under_review" },
     { label: "Waiting Physician", value: "waiting_physician" },
     { label: "Approved (VISITA)", value: "approved_process_visita" },
+    { label: "Prescription Sent", value: "prescription_sent" },
     { label: "Completed", value: "completed" },
     { label: "Voided / Archived", value: "voided" },
 ];
@@ -39,6 +40,21 @@ const COLUMNS = [
 export default function RxQueue() {
     const { user } = useAuth();
     const physician = user?.role === "physician";
+    const navigate = useNavigate();
+
+    const convertToPrescription = (i) => {
+        // Creates a DRAFT only — nothing is confirmed until the physician SENDS.
+        const payload = {
+            source_request_id: i.id,
+            patient_ref: i.directory_id || i.patient_id,
+            pharmacy_id: i.pharmacy_id,
+            pharmacy_name: i.pharmacy,
+            ref_number: i.ref_number,
+            medications_structured: i.medications_structured || [],
+        };
+        try { sessionStorage.setItem("visita_rx_convert", JSON.stringify(payload)); } catch { /* ignore */ }
+        navigate("/internal/send-rx");
+    };
 
     const actions = (item) => {
         if (physician) {
@@ -128,6 +144,22 @@ export default function RxQueue() {
                                 </KV>
                             )}
                             <KV label="Intake by">{i.intake_by}</KV>
+                            {i.linked_transmission_ref ? (
+                                <div className="mt-2 border border-emerald-200 bg-emerald-50/60 rounded p-2" data-testid="rx-converted-banner">
+                                    <div className="text-xs text-emerald-700 font-medium">Prescription sent from this request</div>
+                                    <KV label="Prescription">{i.linked_transmission_ref}</KV>
+                                    <KV label="Sent at">{formatDateTime(i.prescription_sent_at)}</KV>
+                                </div>
+                            ) : (physician && (i.medications_structured || []).length > 0 && (
+                                <div className="mt-2 pt-2 border-t border-slate-200">
+                                    <Button size="sm" variant="outline" data-testid="rx-convert-to-prescription"
+                                        onClick={() => convertToPrescription(i)}
+                                        className="border-visita-green text-visita-greenDark hover:bg-visita-greenLight">
+                                        <FilePlus2 className="w-3.5 h-3.5 mr-1" /> Convert to Prescription
+                                    </Button>
+                                    <div className="text-[11px] text-slate-400 mt-1">Creates an editable draft. Nothing is confirmed until you review and Send.</div>
+                                </div>
+                            ))}
                         </>
                     ) : (
                         <>

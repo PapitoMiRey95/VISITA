@@ -59,6 +59,7 @@ RX_PATIENT_STATUS = {
     "completed": "Completed",
     "appointment_required": "Appointment Required",
     "appointment_booked": "Appointment Booked",
+    "prescription_sent": "Prescription Sent",
 }
 
 APPT_PATIENT_STATUS = {

@@ -4741,6 +4741,7 @@ async def internal_send_rx(
     months: str = Form(""),
     refills: str = Form(""),
     source_text: str = Form(""),
+    source_request_id: str = Form(""),
     confirm: str = Form("true"),
     file: Optional[UploadFile] = File(None),
     user: dict = Depends(require_roles(*CLINIC_ROLES)),
@@ -4825,6 +4826,8 @@ async def internal_send_rx(
         "months": (int(months) if str(months).strip().isdigit() else None),
         "refills": (int(refills) if str(refills).strip().isdigit() else None),
         "source_text": source_text.strip() or None,
+        "source": "PHYSICIAN_PRESCRIPTION",
+        "source_request_id": source_request_id.strip() or None,
         "attachment": attachment,
         "status": "SENT",
         "created_at": now, "sent_at": now, "viewed_at": None, "acknowledged_at": None,
@@ -4839,6 +4842,23 @@ async def internal_send_rx(
         await audit("rx_pdf_uploaded", "rx_transmission", tx["id"], user, meta={"pharmacy_id": pharmacy_id})
     await audit("rx_prescription_sent", "rx_transmission", tx["id"], user, new_status="SENT",
                 meta={"pharmacy_id": pharmacy_id})
+
+    # If this prescription was CONVERTED from a pharmacy request, link the two
+    # records and advance the originating request to PRESCRIPTION SENT. The
+    # pharmacy request itself is preserved unchanged as historical evidence
+    # (we only add the link + a status/history entry; never overwrite it).
+    if source_request_id.strip():
+        src = await db.prescription_requests.find_one({"id": source_request_id.strip(), "source": "pharmacy"})
+        if src:
+            await db.prescription_requests.update_one(
+                {"id": src["id"]},
+                {"$set": {"internal_status": "prescription_sent",
+                          "linked_transmission_id": tx["id"], "linked_transmission_ref": tx["ref_number"],
+                          "prescription_sent_at": now, "updated_at": now},
+                 "$push": {"history": {"status": "prescription_sent", "at": now, "by": user.get("name"),
+                                       "note": f"Prescription {tx['ref_number']} sent from pharmacy request"}}})
+            await audit("rx_request_converted", "prescription", src["id"], user, new_status="prescription_sent",
+                        meta={"transmission_id": tx["id"], "pharmacy_id": pharmacy_id})
 
     # Generic, PHI-free notification to the pharmacy account (no meds, no PDF).
     if acct.get("email"):

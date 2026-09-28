@@ -232,8 +232,15 @@ def test_12_no_directory_mutation():
     # directory count should be stable across this run (we never touch it)
     count = db.patient_directory.count_documents({})
     assert count > 0
-    # our temp pharmacies are the only pharmacy users we added; real one untouched
-    assert db.users.count_documents({"role": "pharmacy", "pharmacy_id": "1670-dufferin"}) == 1
+    # The seeded pharmacy portal account must still exist and be untouched.
+    # NOTE: >= 1 (not == 1) intentionally: a prior Preview session manually re-scoped
+    # a real human account (dufferindm@hotmail.com / "Emad henei") to
+    # role=pharmacy, pharmacy_id=1670-dufferin. That is Preview test-data
+    # contamination, not created by any code path (only seed.py creates the single
+    # '1670dufferin' account). This test only guarantees our temp pharmacies did not
+    # collide with, or delete, the real seeded account.
+    assert db.users.count_documents({"username": "1670dufferin", "role": "pharmacy", "pharmacy_id": "1670-dufferin"}) == 1
+    assert not db.users.count_documents({"role": "pharmacy", "pharmacy_id": {"$regex": "^pharmrx-"}})
 
 
 

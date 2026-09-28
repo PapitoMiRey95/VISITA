@@ -188,10 +188,10 @@ export default function PortalPrivateAppointments() {
                     </div>
 
                     {mode !== "NO_PREFERENCE" && (
-                        <div className="grid grid-cols-2 gap-3" data-testid="pref-datetime">
+                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3" data-testid="pref-datetime">
                             <div>
                                 <Label className="text-xs">{t("privateAppointments.preferredDate")}</Label>
-                                <Input type="date" data-testid="pref-date" value={date} onChange={(e) => setDate(e.target.value)} />
+                                <Input type="date" data-testid="pref-date" value={date} onChange={(e) => setDate(e.target.value)} className="w-full h-11" />
                             </div>
                             <div>
                                 <Label className="text-xs">{t("privateAppointments.preferredWindow")}</Label>

@@ -1,0 +1,55 @@
+{
+  "summary": "Frontend-only verification of the SMARTER medication Edit/Add interface at /internal/send-rx. Logged in as PAGUAYO, selected patient by PIN 3040, added a manual med, and exercised every ComboInput field, SIG quick-build, formulation attributes, adaptive form-driven fields (tablet/eye drops/prefilled pen), More Rx Details toggle, free-text overrides, Send + physician-memory recall, and regression multi-med Access paste. All 21 acceptance checks pass.",
+  "backend_issues": { "critical": [], "minor": [] },
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [],
+    "design_issues": []
+  },
+  "verified_acceptance_criteria": {
+    "patient_select_by_pin": true,
+    "add_manual_opens_med_edit_panel": true,
+    "sendrx-drug_dropdown_on_focus": true,
+    "custom_drug_freetext_preserved": true,
+    "sig_dose_unit_shows_tablet(s)_when_form=tablet": true,
+    "sig_dose_unit_shows_drop(s)_when_form=eye_drops": true,
+    "sig_quick_build_inserts_'1 tablet(s) HS'_and_stays_editable": true,
+    "formulation_attributes_chips_add_and_remove": true,
+    "more_rx_details_toggle_expands_and_stays_open": true,
+    "route_placeholder_'Suggested: Oral / PO'_for_tablet": true,
+    "eye_field_appears_for_eye_drops": true,
+    "route_placeholder_'Suggested: Subcutaneous / SC'_for_prefilled_pen": true,
+    "device_field_'Concentration / device'_for_injectable": true,
+    "strength_accepts_freetext_'16 mg / 12.5 mg'": true,
+    "duration_unit_accepts_arbitrary_text": true,
+    "qty_unit_accepts_arbitrary_text": true,
+    "send_completes_and_toast_'Prescription sent to the pharmacy.'": true,
+    "physician_memory_strength_1_mg/mL_ranked_source=patient": true,
+    "physician_memory_form_prefilled_pen_ranked_source=patient_at_top": true,
+    "physician_memory_route_Subcutaneous_/_SC_ranked_source=patient_at_top": true,
+    "selection_never_auto_applies_(source_badge_shown_but_requires_user_pick)": true,
+    "regression_organize_yields_4_separate_med_cards": true,
+    "regression_previous_prescriptions_and_repeat_entire_visible": true
+  },
+  "screenshots_captured": [
+    ".screenshots/04_tablet_edit_panel.png (tablet med with SIG quick-build + attribute chips)",
+    ".screenshots/05_injectable_pen_more.png (prefilled pen + More Rx Details with Route hint + Concentration/device field)",
+    ".screenshots/remember_check.png (physician-memory suggestions with 'patient' source badges at top for strength/form/route)"
+  ],
+  "test_report_links": [],
+  "action_items": [],
+  "critical_code_review_comments": [
+    "MedEditPanel.jsx is well-scoped (~150 lines). ComboInput correctly preserves free text (value === typed) and never forces selection — passes safety principle.",
+    "GET /api/internal/rx/suggest returns ranked drug + per-drug fields (strengths/forms/routes/sigs) with correct source labels (patient/physician/catalog) — verified live in network capture.",
+    "SendPrescription.ensureDrugSuggest correctly memoises per drug key to avoid refetch storms.",
+    "Minor UX polish suggestion (non-blocking): ComboInput dropdown could group by source (patient/physician/catalog) with subtle headers for even faster visual scan; today the source tag is a right-side chip which works well."
+  ],
+  "updated_files": [],
+  "success_rate": { "backend": "n/a (skipped per request)", "frontend": "100% (21/21)" },
+  "test_credentials": "Physician PAGUAYO / Newman2013_! (identifier login).",
+  "seed_data_creation": "Sent 1 ZZ* test Rx (ZZSmartQA5129, 1 mg/mL, prefilled pen, SC, 1 mg once weekly) to patient GARZA PAC Michelle Esmeralda (PIN 3040) via pharmacy 1670 Dufferin Drug Mart. Prior QA runs left ZZTestAlpha/ZZTestBeta/ZZRep* meds on this patient — leave-as-is.",
+  "retest_needed": false,
+  "should_main_agent_self_test": false,
+  "context_for_next_testing_agent": "All ComboInput adaptivity works. The suggest endpoint returns physician-remembered fields tagged with source ('patient' for patient-specific, 'physician' for physician-scope, 'catalog' for controlled vocab). The Directions/SIG field is a plain Input (no dropdown) by design — quick-build sub-row provides the suggestions. If retesting 'remember', avoid stale element handles after Send: re-query with `page.query_selector_all` inside the new med-edit-panel container.",
+  "rca of the issue": "N/A — no bugs found."
+}

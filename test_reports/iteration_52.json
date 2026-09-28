@@ -1,0 +1,22 @@
+{
+  "summary": "Frontend-only verification of Pharmacy Portal reconnection for role=pharmacy scoped to 1670-dufferin using throwaway QA account dufftestedea9e. Login lands on Pharmacy HUB (not Organization Profile), Verified badge shown, all 4 hub cards and 5 nav tabs present. Incoming list loads 4 rows; opening a row shows Patient Information (name+DOB+PIN+OHIP), Prescription med card, Prescriber section; SENT Rx transitions to VIEWED on open; Acknowledge button present and clickable. Rx Requests, Messages, Account routes load with correct headings. Refresh on /pharmacy/incoming persists (no redirect to /partner or /signin). Navigation between all sections works without traps.",
+  "backend_issues": {"critical": [], "minor": []},
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [],
+    "design_issues": []
+  },
+  "test_report_links": [".screenshots/02_after_login.png", ".screenshots/03_incoming_list.png", ".screenshots/04_incoming_detail.png"],
+  "action_items": [],
+  "critical_code_review_comments": [
+    "Nav data-testid values contain spaces (pharmacy-nav-incoming rx, pharmacy-nav-rx requests). Works but non-idiomatic — recommend hyphenating (e.g., pharmacy-nav-incoming-rx) to reduce selector fragility in future automation."
+  ],
+  "updated_files": [],
+  "success_rate": {"backend": "N/A", "frontend": "100%"},
+  "test_credentials": "dufftestedea9e / DuffTest123! at /signin?partner=1 (role=pharmacy, pharmacy_id=1670-dufferin)",
+  "seed_data_creation": "None. 4 pre-existing Dufferin Rx used as-is.",
+  "retest_needed": false,
+  "should_main_agent_self_test": false,
+  "context_for_next_testing_agent": "Pharmacy portal reconnection verified end-to-end. Rx RXTX-000045 was acknowledged during testing (SENT->VIEWED->ACKNOWLEDGED). Remaining 3 Rx untouched. Throwaway account is to be deleted by main agent post-verification.",
+  "rca of the issue": "N/A — reconnection fix works as expected."
+}

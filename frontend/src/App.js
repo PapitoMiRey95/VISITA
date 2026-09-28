@@ -27,6 +27,7 @@ import InternalLayout from "./internal/InternalLayout";
 import Hub from "./internal/Hub";
 import RxQueue from "./internal/RxQueue";
 import PharmacyIntake from "./internal/PharmacyIntake";
+import SendPrescription from "./internal/SendPrescription";
 import AppointmentQueue from "./internal/AppointmentQueue";
 import Calendar from "./internal/Calendar";
 import ImagingQueue from "./internal/ImagingQueue";
@@ -49,6 +50,7 @@ import PartnerProfile from "./partner/PartnerProfile";
 import PharmacyLayout from "./pharmacy/PharmacyLayout";
 import PharmacyRx from "./pharmacy/PharmacyRx";
 import PharmacyMessages from "./pharmacy/PharmacyMessages";
+import PharmacyIncoming from "./pharmacy/PharmacyIncoming";
 import PharmacyAccount from "./pharmacy/PharmacyAccount";
 
 function App() {
@@ -98,6 +100,7 @@ function App() {
                         <Route path="patients" element={<Patients />} />
                         <Route path="rx" element={<RxQueue />} />
                         <Route path="pharmacy-intake" element={<PharmacyIntake />} />
+                        <Route path="send-rx" element={<SendPrescription />} />
                         <Route path="appointments" element={<AppointmentQueue />} />
                         <Route path="private-requests" element={<PrivateRequests />} />
                         <Route path="billing" element={<Billing />} />
@@ -134,6 +137,7 @@ function App() {
                         }
                     >
                         <Route index element={<PharmacyRx />} />
+                        <Route path="incoming" element={<PharmacyIncoming />} />
                         <Route path="messages" element={<PharmacyMessages />} />
                         <Route path="account" element={<PharmacyAccount />} />
                     </Route>

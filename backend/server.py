@@ -6,6 +6,7 @@ load_dotenv(ROOT_DIR / ".env")
 
 import logging
 import os
+import json
 import re
 import secrets
 import uuid
@@ -4189,6 +4190,263 @@ async def internal_rx_attachment(item_id: str, user: dict = Depends(require_role
     if not doc or not doc.get("attachment"):
         raise HTTPException(status_code=404, detail="Attachment not found.")
     return _serve_attachment(doc["attachment"])
+
+
+# ============================================================================
+# PHYSICIAN -> PHARMACY : Send Prescription workflow (direction=PHYSICIAN_TO_PHARMACY)
+# Separate from the inbound pharmacy->physician refill flow (prescription_requests).
+# Canonical record lives in `rx_transmissions`.
+# ============================================================================
+RX_TX_STATUSES = ("SENT", "VIEWED", "ACKNOWLEDGED")
+
+
+async def _store_rx_pdf(file) -> dict:
+    """Validate + store a physician Rx PDF. PDF only, server-side enforced."""
+    ctype = (file.content_type or "").lower()
+    fname = (file.filename or "").lower()
+    is_pdf = ctype == "application/pdf" or fname.endswith(".pdf")
+    if not is_pdf:
+        raise HTTPException(status_code=400, detail="Only PDF files are accepted for the Rx attachment.")
+    data = await file.read()
+    if len(data) == 0:
+        raise HTTPException(status_code=400, detail="The selected file is empty.")
+    if len(data) > MAX_PHARMACY_UPLOAD_BYTES:
+        raise HTTPException(status_code=400, detail="File too large. Maximum size is 15 MB.")
+    if data[:5] != b"%PDF-":
+        raise HTTPException(status_code=400, detail="The uploaded file is not a valid PDF.")
+    path = f"{storage.APP_NAME}/rx_tx/{uuid.uuid4()}.pdf"
+    storage.put_object(path, data, "application/pdf")
+    return {"storage_path": path, "original_filename": file.filename,
+            "content_type": "application/pdf", "size": len(data), "uploaded_at": now_iso()}
+
+
+async def _pharmacy_account(pharmacy_id: str):
+    """A pharmacy that can receive in the portal == an existing user account with role=pharmacy."""
+    return await db.users.find_one({"role": "pharmacy", "pharmacy_id": pharmacy_id})
+
+
+def _rx_tx_public(t: dict) -> dict:
+    t = {k: v for k, v in t.items() if k != "_id"}
+    att = t.get("attachment")
+    t["has_attachment"] = bool(att)
+    if att:
+        t["attachment_filename"] = att.get("original_filename")
+    t.pop("attachment", None)  # never expose storage_path
+    meds = t.get("medications") or []
+    t["medication_summary"] = (f"{len(meds)} medication(s)" if meds else
+                               ("PDF Prescription" if t["has_attachment"] else "—"))
+    return t
+
+
+@api.get("/internal/pharmacies")
+async def internal_list_pharmacies(user: dict = Depends(require_roles(*CLINIC_ROLES))):
+    """Pharmacies that can receive a prescription in the Pharmacy Portal = pharmacy accounts."""
+    accounts = await db.users.find({"role": "pharmacy"}, {"_id": 0}).to_list(200)
+    seen, out = set(), []
+    for a in accounts:
+        pid = a.get("pharmacy_id")
+        if not pid or pid in seen:
+            continue
+        seen.add(pid)
+        out.append({
+            "pharmacy_id": pid, "pharmacy_name": a.get("pharmacy_name"),
+            "address": a.get("address") or a.get("pharmacy_address"),
+            "phone": a.get("phone") or a.get("pharmacy_phone"),
+            "fax": a.get("fax") or a.get("fax_number"),
+            "portal": True,
+        })
+    return sorted(out, key=lambda x: (x.get("pharmacy_name") or "").lower())
+
+
+@api.post("/internal/send-rx")
+async def internal_send_rx(
+    patient_ref: str = Form(...),
+    pharmacy_id: str = Form(...),
+    medications: str = Form("[]"),
+    physician_note: str = Form(""),
+    confirm: str = Form("false"),
+    file: Optional[UploadFile] = File(None),
+    user: dict = Depends(require_roles(*CLINIC_ROLES)),
+):
+    if str(confirm).lower() not in ("true", "1", "yes", "on"):
+        raise HTTPException(status_code=400, detail="Please confirm the prescription before sending.")
+
+    # --- Patient (server-side resolve; never trust a client-sent name) ---
+    snap = None
+    d = await db.patient_directory.find_one({"id": patient_ref})
+    if d:
+        snap = {"patient_id": d.get("linked_patient_id") or d["id"], "directory_id": d["id"],
+                "first_name": d.get("first_name"), "last_name": d.get("last_name"),
+                "date_of_birth": d.get("date_of_birth"), "visita_patient_id": d.get("visita_patient_id"),
+                "phone": d.get("cell_phone") or d.get("home_phone")}
+    else:
+        p = await db.patients.find_one({"id": patient_ref})
+        if p:
+            snap = {"patient_id": p["id"], "directory_id": p.get("matched_directory_id"),
+                    "first_name": p.get("first_name"), "last_name": p.get("last_name"),
+                    "date_of_birth": p.get("date_of_birth"), "visita_patient_id": p.get("visita_patient_id"),
+                    "phone": p.get("phone")}
+    if not snap:
+        raise HTTPException(status_code=404, detail="Patient not found.")
+
+    # --- Pharmacy (must be a real portal account) ---
+    acct = await _pharmacy_account(pharmacy_id)
+    if not acct:
+        raise HTTPException(status_code=400,
+                            detail="The selected pharmacy has no Pharmacy Portal account, so it cannot receive prescriptions.")
+
+    # --- Medications (structured, no auto-changes) ---
+    try:
+        raw_meds = json.loads(medications or "[]")
+    except Exception:
+        raise HTTPException(status_code=400, detail="Invalid medications payload.")
+    meds = []
+    for m in (raw_meds if isinstance(raw_meds, list) else []):
+        drug = str((m or {}).get("drug") or "").strip()
+        if not drug:
+            continue
+        meds.append({
+            "drug": drug,
+            "strength": str(m.get("strength") or "").strip() or None,
+            "form": str(m.get("form") or "").strip() or None,
+            "sig": str(m.get("sig") or "").strip() or None,
+            "quantity": str(m.get("quantity") or "").strip() or None,
+            "refills": str(m.get("refills") or "").strip() or None,
+            "note": str(m.get("note") or "").strip() or None,
+        })
+
+    attachment = await _store_rx_pdf(file) if file is not None else None
+
+    if not meds and not attachment:
+        raise HTTPException(status_code=400,
+                            detail="Add at least one medication or attach an Rx PDF before sending.")
+
+    clinic = await db.settings.find_one({"id": "clinic"}, {"_id": 0}) or {}
+    now = now_iso()
+    tx = {
+        "id": str(uuid.uuid4()), "ref_number": await next_ref("RXTX"),
+        "direction": "PHYSICIAN_TO_PHARMACY",
+        "patient_id": snap["patient_id"], "patient_directory_id": snap.get("directory_id"),
+        "patient_name": f"{snap.get('last_name','')}, {snap.get('first_name','')}".strip(", "),
+        "patient_dob": snap.get("date_of_birth"), "visita_patient_id": snap.get("visita_patient_id"),
+        "physician_id": user["id"], "physician_name": user.get("name"),
+        "clinic_name": clinic.get("clinic_name") or clinic.get("practice_name") or "Dr. Aguayo Family Practice",
+        "pharmacy_id": pharmacy_id, "pharmacy_name": acct.get("pharmacy_name"),
+        "medications": meds, "physician_note": physician_note.strip() or None,
+        "attachment": attachment,
+        "status": "SENT",
+        "created_at": now, "sent_at": now, "viewed_at": None, "acknowledged_at": None,
+        "history": [{"status": "SENT", "at": now, "by": user.get("name")}],
+    }
+    await db.rx_transmissions.insert_one({**tx})
+    await audit("rx_prescription_created", "rx_transmission", tx["id"], user,
+                meta={"pharmacy_id": pharmacy_id, "patient_id": snap["patient_id"], "med_count": len(meds)})
+    if attachment:
+        await audit("rx_pdf_uploaded", "rx_transmission", tx["id"], user, meta={"pharmacy_id": pharmacy_id})
+    await audit("rx_prescription_sent", "rx_transmission", tx["id"], user, new_status="SENT",
+                meta={"pharmacy_id": pharmacy_id})
+
+    # Generic, PHI-free notification to the pharmacy account (no meds, no PDF).
+    if acct.get("email"):
+        pharmacy_alert_html = (
+            "<table role='presentation' width='100%'><tr><td style='padding:24px;font-family:Arial,sans-serif;color:#0f172a'>"
+            "<h2 style='margin:0 0 12px'>New prescription received</h2>"
+            "<p>A new prescription is available in your VIen Pharmacy Portal. "
+            "Please sign in to review it under Incoming Prescriptions.</p>"
+            "<p style='font-size:12px;color:#888;margin-top:20px'>This message contains no medical information.</p>"
+            "</td></tr></table>"
+        )
+        try:
+            await email_service.send_email(
+                to=acct["email"],
+                subject="New prescription in your VIen Pharmacy Portal",
+                html=pharmacy_alert_html,
+            )
+        except Exception as e:
+            logger.warning(f"[rx-tx pharmacy email] failed: {e}")
+
+    return _rx_tx_public(tx)
+
+
+@api.get("/internal/send-rx")
+async def internal_sent_rx_list(user: dict = Depends(require_roles(*CLINIC_ROLES))):
+    docs = await db.rx_transmissions.find({}, {}).sort("created_at", -1).to_list(100)
+    return [_rx_tx_public(t) for t in docs]
+
+
+@api.get("/internal/send-rx/{tx_id}")
+async def internal_sent_rx_detail(tx_id: str, user: dict = Depends(require_roles(*CLINIC_ROLES))):
+    t = await db.rx_transmissions.find_one({"id": tx_id})
+    if not t:
+        raise HTTPException(status_code=404, detail="Prescription not found.")
+    return _rx_tx_public(t)
+
+
+@api.get("/internal/send-rx/{tx_id}/attachment")
+async def internal_sent_rx_attachment(tx_id: str, user: dict = Depends(require_roles(*CLINIC_ROLES))):
+    t = await db.rx_transmissions.find_one({"id": tx_id})
+    if not t or not t.get("attachment"):
+        raise HTTPException(status_code=404, detail="Attachment not found.")
+    await audit("rx_pdf_viewed", "rx_transmission", tx_id, user, meta={"by_role": user.get("role")})
+    return _serve_attachment(t["attachment"])
+
+
+# ----- Pharmacy Portal: Incoming Prescriptions (physician -> this pharmacy only) -----
+@api.get("/pharmacy/incoming")
+async def pharmacy_incoming_list(user: dict = Depends(require_roles("pharmacy"))):
+    pid, _ = _pharmacy_of(user)
+    docs = await db.rx_transmissions.find(
+        {"pharmacy_id": pid, "direction": "PHYSICIAN_TO_PHARMACY"}, {}).sort("created_at", -1).to_list(200)
+    items = [_rx_tx_public(t) for t in docs]
+    return {"items": items, "unviewed": sum(1 for i in items if i.get("status") == "SENT")}
+
+
+@api.get("/pharmacy/incoming/{tx_id}")
+async def pharmacy_incoming_detail(tx_id: str, user: dict = Depends(require_roles("pharmacy"))):
+    pid, _ = _pharmacy_of(user)
+    t = await db.rx_transmissions.find_one({"id": tx_id, "pharmacy_id": pid})
+    if not t:
+        raise HTTPException(status_code=404, detail="Prescription not found.")
+    if t.get("status") == "SENT":
+        now = now_iso()
+        await db.rx_transmissions.update_one({"id": tx_id, "pharmacy_id": pid}, {
+            "$set": {"status": "VIEWED", "viewed_at": now, "updated_at": now},
+            "$push": {"history": {"status": "VIEWED", "at": now, "by": user.get("pharmacy_name")}}})
+        await audit("rx_pharmacy_viewed", "rx_transmission", tx_id,
+                    {"id": user["id"], "name": user.get("pharmacy_name"), "role": "pharmacy"}, new_status="VIEWED",
+                    meta={"pharmacy_id": pid})
+        t = await db.rx_transmissions.find_one({"id": tx_id, "pharmacy_id": pid})
+    return _rx_tx_public(t)
+
+
+@api.get("/pharmacy/incoming/{tx_id}/attachment")
+async def pharmacy_incoming_attachment(tx_id: str, user: dict = Depends(require_roles("pharmacy"))):
+    pid, _ = _pharmacy_of(user)
+    t = await db.rx_transmissions.find_one({"id": tx_id, "pharmacy_id": pid})
+    if not t or not t.get("attachment"):
+        raise HTTPException(status_code=404, detail="Attachment not found.")
+    await audit("rx_pdf_viewed", "rx_transmission", tx_id,
+                {"id": user["id"], "name": user.get("pharmacy_name"), "role": "pharmacy"},
+                meta={"pharmacy_id": pid})
+    return _serve_attachment(t["attachment"])
+
+
+@api.post("/pharmacy/incoming/{tx_id}/acknowledge")
+async def pharmacy_incoming_acknowledge(tx_id: str, user: dict = Depends(require_roles("pharmacy"))):
+    pid, _ = _pharmacy_of(user)
+    t = await db.rx_transmissions.find_one({"id": tx_id, "pharmacy_id": pid})
+    if not t:
+        raise HTTPException(status_code=404, detail="Prescription not found.")
+    now = now_iso()
+    await db.rx_transmissions.update_one({"id": tx_id, "pharmacy_id": pid}, {
+        "$set": {"status": "ACKNOWLEDGED", "acknowledged_at": now, "updated_at": now,
+                 "viewed_at": t.get("viewed_at") or now},
+        "$push": {"history": {"status": "ACKNOWLEDGED", "at": now, "by": user.get("pharmacy_name")}}})
+    await audit("rx_status_changed", "rx_transmission", tx_id,
+                {"id": user["id"], "name": user.get("pharmacy_name"), "role": "pharmacy"}, new_status="ACKNOWLEDGED",
+                meta={"pharmacy_id": pid})
+    return _rx_tx_public(await db.rx_transmissions.find_one({"id": tx_id, "pharmacy_id": pid}))
+
 
 
 @api.get("/pharmacy/messages")

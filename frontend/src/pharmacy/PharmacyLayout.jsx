@@ -1,10 +1,13 @@
 import { Outlet, NavLink, useNavigate } from "react-router-dom";
-import { Pill, MessageSquare, User, LogOut } from "lucide-react";
+import { useEffect, useState } from "react";
+import { Pill, Inbox, MessageSquare, User, LogOut } from "lucide-react";
 import { useAuth } from "../context/AuthContext";
+import { api } from "../lib/api";
 import { Logo } from "../components/Logo";
 
 const NAV = [
     { to: "/pharmacy", icon: Pill, label: "Rx", end: true },
+    { to: "/pharmacy/incoming", icon: Inbox, label: "Incoming Rx", badge: "incoming" },
     { to: "/pharmacy/messages", icon: MessageSquare, label: "Messages" },
     { to: "/pharmacy/account", icon: User, label: "Account" },
 ];
@@ -12,6 +15,15 @@ const NAV = [
 export default function PharmacyLayout() {
     const { user, logout } = useAuth();
     const nav = useNavigate();
+    const [unviewed, setUnviewed] = useState(0);
+
+    useEffect(() => {
+        let alive = true;
+        const poll = () => api.get("/pharmacy/incoming").then(({ data }) => { if (alive) setUnviewed(data.unviewed || 0); }).catch(() => {});
+        poll();
+        const t = setInterval(poll, 60000);
+        return () => { alive = false; clearInterval(t); };
+    }, []);
 
     return (
         <div className="min-h-screen bg-visita-bg font-plex flex flex-col">
@@ -39,6 +51,9 @@ export default function PharmacyLayout() {
                             }`
                         }>
                         <it.icon className="w-4 h-4" /> {it.label}
+                        {it.badge === "incoming" && unviewed > 0 && (
+                            <span className="bg-red-600 text-white text-[10px] font-bold rounded-full min-w-[18px] h-[18px] px-1 flex items-center justify-center" data-testid="pharmacy-incoming-badge">{unviewed}</span>
+                        )}
                     </NavLink>
                 ))}
             </nav>

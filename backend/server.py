@@ -4099,6 +4099,7 @@ async def pharmacy_search(q: str, user: dict = Depends(require_roles("pharmacy")
         {"last_name": {"$regex": re.escape(qn), "$options": "i"}},
         {"norm_hcn": {"$regex": directory_mod.norm_hcn(qn)}},
         {"visita_patient_id": {"$regex": re.escape(qn), "$options": "i"}},
+        {"date_of_birth": {"$regex": re.escape(qn), "$options": "i"}},
     ]}
     docs = await db.patient_directory.find(query).limit(25).to_list(25)
     seen = {d["id"] for d in docs}

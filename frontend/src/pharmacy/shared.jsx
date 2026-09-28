@@ -9,13 +9,14 @@ import { Button } from "../components/ui/button";
 
 export function PatientSearch({ onSelect, testidPrefix = "rx" }) {
     const [query, setQuery] = useState("");
+    const [pinDob, setPinDob] = useState("");
     const [results, setResults] = useState([]);
     const [searching, setSearching] = useState(false);
     const [searched, setSearched] = useState(false);
 
-    const run = async (e) => {
+    const run = async (e, rawTerm) => {
         e?.preventDefault();
-        const q = query.trim();
+        const q = (rawTerm ?? query).trim();
         if (q.length < 2) { toast.error("Enter at least 2 characters."); return; }
         setSearching(true);
         try {
@@ -37,8 +38,24 @@ export function PatientSearch({ onSelect, testidPrefix = "rx" }) {
                     {searching ? "…" : "Search"}
                 </Button>
             </form>
+
+            <div className="my-2 flex items-center gap-2 text-[11px] uppercase tracking-wide text-slate-400">
+                <span className="flex-1 border-t border-slate-200" />or find by PIN or DOB<span className="flex-1 border-t border-slate-200" />
+            </div>
+
+            <form onSubmit={(e) => run(e, pinDob)} className="flex gap-2">
+                <div className="relative flex-1">
+                    <Search className="w-4 h-4 text-slate-400 absolute left-2 top-2.5" />
+                    <Input data-testid={`${testidPrefix}-pindob`} value={pinDob} onChange={(e) => setPinDob(e.target.value)}
+                        placeholder="VISITA PIN or DOB (YYYY-MM-DD)" className="pl-8" />
+                </div>
+                <Button type="submit" variant="outline" disabled={searching} data-testid={`${testidPrefix}-pindob-btn`}>
+                    {searching ? "…" : "Find"}
+                </Button>
+            </form>
+
             <div className="mt-3 divide-y border border-slate-200 rounded-sm max-h-80 overflow-y-auto">
-                {!searched && <div className="px-3 py-4 text-slate-400 text-sm">Search by patient name or VISITA PIN / ID.</div>}
+                {!searched && <div className="px-3 py-4 text-slate-400 text-sm">Search by patient name, VISITA PIN / ID, or date of birth.</div>}
                 {searched && results.length === 0 && <div className="px-3 py-4 text-slate-400 text-sm">No matching patients found.</div>}
                 {results.map((r) => (
                     <button key={r.id} data-testid={`${testidPrefix}-result`} onClick={() => onSelect(r)}

@@ -108,7 +108,11 @@ export default function PharmacyIntake() {
                         <div className="relative flex-1">
                             <Search className="w-4 h-4 text-slate-400 absolute left-2 top-2.5" />
                             <Input data-testid="intake-pin-search" value={pin} inputMode="numeric"
-                                onChange={(e) => setPin(e.target.value.replace(/[^\d]/g, ""))}
+                                onChange={(e) => {
+                                    const v = e.target.value.replace(/[^\d]/g, "");
+                                    setPin(v);
+                                    if (!v) setResults([]);
+                                }}
                                 placeholder="VISITA PIN (numbers only)" className="pl-8" />
                         </div>
                         <Button type="submit" variant="outline" disabled={pinSearching} data-testid="intake-pin-search-btn">{pinSearching ? "…" : "Find by PIN"}</Button>

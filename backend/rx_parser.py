@@ -60,6 +60,24 @@ def _clean_num(s):
     return s.replace(",", ".") if s else s
 
 
+def _extract_attributes(text):
+    """Match formulation attributes as whole words; drop any that are a substring
+    of a longer matched phrase (so 'unscored' doesn't also yield 'scored', and
+    'modified release' doesn't also yield 'modified'/'release')."""
+    low = (text or "").lower()
+    found = []
+    for a in _ATTRS:
+        if re.search(r"(?<![a-z])" + re.escape(a) + r"(?![a-z])", low):
+            found.append(a)
+    kept = [a for a in found if not any(a != b and a in b for b in found)]
+    seen, out = set(), []
+    for a in kept:
+        if a not in seen:
+            seen.add(a)
+            out.append(a)
+    return out
+
+
 def _core(tok):
     return tok.strip(_PUNCT)
 
@@ -281,13 +299,10 @@ def _parse_segment(seg_text, action, uncertain):
 
     if ":" in rest:
         descriptor, right = rest.split(":", 1)
-        low = descriptor.lower()
         fm = _FORM_RE.search(descriptor)
         if fm:
             form = fm.group(1).lower()
-        for a in _ATTRS:
-            if a in low and a not in ("release", "coated"):
-                attributes.append(a)
+        attributes = _extract_attributes(descriptor)
         sig = right.strip(_PUNCT) or None
         if not sig:
             needs.append("sig")
@@ -306,8 +321,7 @@ def _parse_segment(seg_text, action, uncertain):
             for w in lead:
                 if w in _FORMSET and not form:
                     form = w.rstrip("s")
-                elif w in _ATTRSET:
-                    attributes.append(w)
+            attributes = _extract_attributes(" ".join(lead))
         directions = " ".join(toks[i:])
         sig, quantity, refills, additional, dneeds = _split_directions(directions)
         needs.extend(dneeds)

@@ -1,0 +1,42 @@
+{
+  "summary": "Frontend-only verification of Physician Send Rx multi-med parsing fix. Logged in as PAGUAYO, opened /internal/send-rx, selected patient via PIN 3040 (note: returned 'GARZA PAC, Michelle Esmeralda' — no Aracely IZAO patient found for PIN 3040 in this env), pasted the 10-med Access paragraph, clicked Organize Prescription. Verified 'VIen understood' rendered EXACTLY 10 separate sendrx-med-card entries with correct per-med data, and Step 4 Review & Send rendered EXACTLY 10 separate sendrx-review-med blocks. Did NOT click sendrx-send — no production data written.",
+  "verifications": {
+    "med_card_count": 10,
+    "review_med_count": 10,
+    "acetaminophen": "SIG 'OD-BID PRN', Qty 90, 'No refills', Additional instructions 'dispense #90 at once' — OK",
+    "amlodipine_hold_badge": "HOLD badge present on card #2 — OK",
+    "felodipine_start_badge": "START badge present on card #10 — OK",
+    "ezetimibe": "SIG 'OD', Additional instructions 'LU 380' — OK",
+    "candesartan_strength": "'16 mg/12.5 mg' — OK",
+    "janumet_sig": "'1 tablet AC breakfast, 1 tablet AC dinner' — OK",
+    "rxlevel_not_duplicated": "sendrx-rxlevel shows single '3 month(s) · 0 refill(s)' block, not duplicated on each med — OK",
+    "review_note_line": "Note: 'Early vacation supply dispense' present in Step 4 — OK",
+    "no_cross_contamination": "Bisoprolol/Candesartan/etc are NOT inside Acetaminophen SIG — OK",
+    "send_button_clicked": false
+  },
+  "backend_issues": {"critical": [], "minor": []},
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [],
+    "design_issues": [
+      {"screen": "VIen understood cards", "issues": ["Minor cosmetic: form-type tokens sometimes duplicated (Clopidogrel shows 'tablet · film-coated · scored · unscored', Gliclazide shows 'scored · modified release · modified', Felodipine shows 'extended release · extended'). Not a blocker for parsing correctness but a low-priority form-type deduplication improvement in parser/UI."]}
+    ]
+  },
+  "test_report_links": [".screenshots/vien_cards.png", ".screenshots/step4_review.png"],
+  "action_items": [
+    "Optional: dedupe form-type descriptors (e.g., 'extended release · extended', 'modified release · modified', 'film-coated · scored · unscored') in parser or UI rendering — cosmetic only.",
+    "PIN 3040 currently maps to 'GARZA PAC, Michelle Esmeralda' in this preview env, not 'Aracely IZAO' as mentioned in the request. Confirm intended protected patient mapping."
+  ],
+  "critical_code_review_comments": [
+    "SendPrescription.jsx renders one med per sendrx-med-card and one block per sendrx-review-med — fix verified end-to-end.",
+    "sendrx-rxlevel correctly rendered once at the prescription level, not per medication.",
+    "action_badge only appears when action is set (HOLD/START) — correct behavior; no badge for neutral meds."
+  ],
+  "updated_files": [],
+  "success_rate": {"backend": "N/A (skipped per request)", "frontend": "100%"},
+  "test_credentials": "PAGUAYO / Newman2013_! (physician) — worked",
+  "seed_data_creation": "None. Send button intentionally not clicked; no rx_transmission persisted.",
+  "retest_needed": false,
+  "main_agent_can_self_test": true,
+  "context_for_next_testing_agent": "Multi-med paste parse -> card render fix is verified visually. Sample paste text and PIN 3040 (maps to GARZA PAC Michelle Esmeralda in this env) can be reused. Selectors used: sendrx-pin, sendrx-pin-btn, sendrx-result, sendrx-paste, sendrx-organize, sendrx-med-card, sendrx-action-badge, sendrx-rxlevel, sendrx-review-meds, sendrx-review-med. Never click sendrx-send in prod-safe runs."
+}

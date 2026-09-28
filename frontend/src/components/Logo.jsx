@@ -5,7 +5,7 @@ export function Logo({ variant = "light", iconClass = "h-8 w-8", textClass = "te
     const emr = variant === "dark" ? "text-teal-300" : "text-[#17b3c4]";
     return (
         <div className={`flex items-center gap-2 ${className}`} data-testid="brand-logo">
-            <img src="/vien-logo.png" alt="VIen EMR" className={`${iconClass} object-contain select-none`} draggable="false" />
+            <img src="/vien-logo.png" alt="VIsita EMR" className={`${iconClass} object-contain select-none`} draggable="false" />
             {showText && (
                 <span className={`font-bold tracking-tight leading-tight ${textClass}`}>
                     <span className={vien}>VIsita</span>

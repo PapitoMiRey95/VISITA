@@ -188,11 +188,11 @@ async def account_verified(db, patient):
     first = (patient or {}).get("first_name") or "there"
     pid = (patient or {}).get("id")
     await _in_portal(db, pid, "Account verified",
-                     "Your VIen EMR patient portal account has been verified and is now active. "
+                     "Your VIsita EMR patient portal account has been verified and is now active. "
                      "You can sign in to submit requests.")
     email = (patient or {}).get("email")
     html = email_service.account_verified_html(first, PORTAL_URL)
-    await _send_email(db, pid, email, "Your VIen EMR account has been verified", html)
+    await _send_email(db, pid, email, "Your VIsita EMR account has been verified", html)
 
 
 async def alternatives_offered(db, appt):

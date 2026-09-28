@@ -243,7 +243,7 @@ class TestAcceptNewPatient:
         data = r.json()
         notifs = data.get("notifications") or []
         titles = [n.get("title", "") for n in notifs]
-        assert any("Welcome to VIen EMR" in t for t in titles), f"Welcome notif missing. titles={titles}"
+        assert any("Welcome to VIsita EMR" in t for t in titles), f"Welcome notif missing. titles={titles}"
 
 
 # ---------- 3. Former return regression ----------

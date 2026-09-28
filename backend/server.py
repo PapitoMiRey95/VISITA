@@ -3878,13 +3878,13 @@ async def _accept_new_patient(doc, actor):
         try:
             await email_service.send_email(
                 to=email,
-                subject="You've been accepted — activate your VIen EMR portal",
+                subject="You've been accepted — activate your VIsita EMR portal",
                 html=email_service.account_activation_html(first or "there", activate_url),
             )
         except Exception as e:
             logger.warning(f"[activation email] failed: {e}")
 
-    await notify_svc._in_portal(db, patient_id, "Welcome to VIen EMR",
+    await notify_svc._in_portal(db, patient_id, "Welcome to VIsita EMR",
                                 "Dr. Aguayo's office has accepted you as a patient. Check your email to set "
                                 "your password and activate your patient portal.")
     await audit("new_patient_account_created", "patient", patient_id, actor,

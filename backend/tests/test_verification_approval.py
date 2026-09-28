@@ -37,7 +37,7 @@ PHYSICIAN_PASSWORD = os.environ["TEST_PHYSICIAN_PASSWORD"]
 ROBERT_ID = "492fde1d-b7ae-4016-bc67-bcb79d69e73c"  # robert.chen@demo.com — used for backend test
 SOFIA_ID = "21244c47-d3de-4579-89fe-7a7aaf6fc3c5"   # sofia.martinez@demo.com — reserved for UI test
 
-VERIFY_EMAIL_SUBJECT = "Your VIen EMR account has been verified"
+VERIFY_EMAIL_SUBJECT = "Your VIsita EMR account has been verified"
 VERIFY_NOTE_TITLE = "Account verified"
 
 

@@ -9,7 +9,7 @@ client = MongoClient(os.environ["MONGO_URL"])
 db = client[os.environ["DB_NAME"]]
 
 SOFIA_ID = "21244c47-d3de-4579-89fe-7a7aaf6fc3c5"
-SUBJ = "Your VIen EMR account has been verified"
+SUBJ = "Your VIsita EMR account has been verified"
 TITLE = "Account verified"
 
 p = db.patients.find_one({"id": SOFIA_ID}, {"_id": 0})

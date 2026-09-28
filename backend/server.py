@@ -20,6 +20,7 @@ from pydantic import BaseModel, EmailStr, Field
 from starlette.middleware.cors import CORSMiddleware
 
 import auth as authlib
+import rx_parser
 import availability as avail_mod
 import attachments as attach_mod
 import billing as billing_mod
@@ -4238,6 +4239,105 @@ def _rx_tx_public(t: dict) -> dict:
     return t
 
 
+def _regimen_key(patient_id: str, m: dict) -> str:
+    parts = [patient_id, (m.get("drug") or "").lower().strip(),
+             (m.get("strength") or "").lower().strip(),
+             (m.get("form") or "").lower().strip(),
+             (m.get("sig") or "").lower().strip()]
+    return "|".join(parts)
+
+
+async def _resolve_rx_patient(ref: str):
+    d = await db.patient_directory.find_one({"id": ref})
+    if d:
+        return {"patient_id": d.get("linked_patient_id") or d["id"], "directory_id": d["id"],
+                "first_name": d.get("first_name"), "last_name": d.get("last_name"),
+                "date_of_birth": d.get("date_of_birth"), "visita_patient_id": d.get("visita_patient_id"),
+                "phone": d.get("cell_phone") or d.get("home_phone")}
+    p = await db.patients.find_one({"id": ref})
+    if p:
+        return {"patient_id": p["id"], "directory_id": p.get("matched_directory_id"),
+                "first_name": p.get("first_name"), "last_name": p.get("last_name"),
+                "date_of_birth": p.get("date_of_birth"), "visita_patient_id": p.get("visita_patient_id"),
+                "phone": p.get("phone")}
+    return None
+
+
+async def _remember_patient_medications(tx: dict):
+    """'Enter once -> VIen remembers.' Upsert per-patient current regimen + normalized catalog.
+    History stays immutable in rx_transmissions; existing docs are never destroyed."""
+    pid = tx.get("patient_id")
+    now = now_iso()
+    for m in (tx.get("medications") or []):
+        if not m.get("drug"):
+            continue
+        key = _regimen_key(pid, m)
+        existing = await db.patient_medications.find_one({"regimen_key": key})
+        if existing:
+            await db.patient_medications.update_one({"regimen_key": key}, {"$set": {
+                "last_prescribed_at": tx["sent_at"], "last_tx_id": tx["id"],
+                "months": tx.get("months"), "refills": tx.get("refills"),
+                "active": True, "updated_at": now}})
+        else:
+            await db.patient_medications.insert_one({
+                "id": str(uuid.uuid4()), "regimen_key": key, "patient_id": pid,
+                "drug": m.get("drug"), "strength": m.get("strength"), "unit": m.get("unit"),
+                "form": m.get("form"), "attributes": m.get("attributes") or [],
+                "sig": m.get("sig"), "original_text": m.get("original_text"),
+                "months": tx.get("months"), "refills": tx.get("refills"), "note": m.get("note"),
+                "last_prescribed_at": tx["sent_at"], "last_tx_id": tx["id"], "active": True,
+                "created_at": now, "updated_at": now})
+        # normalized medication catalog (no duplicates; keeps original strings seen)
+        ckey = "|".join([(m.get("drug") or "").lower().strip(), (m.get("strength") or "").lower().strip(),
+                         (m.get("form") or "").lower().strip()])
+        await db.medication_catalog.update_one({"catalog_key": ckey}, {
+            "$setOnInsert": {"id": str(uuid.uuid4()), "catalog_key": ckey, "drug": m.get("drug"),
+                             "strength": m.get("strength"), "unit": m.get("unit"),
+                             "form": m.get("form"), "attributes": m.get("attributes") or [],
+                             "created_at": now},
+            "$addToSet": {"original_texts": m.get("original_text") or ""},
+            "$set": {"updated_at": now}}, upsert=True)
+
+
+class RxParseBody(BaseModel):
+    text: str
+    patient_ref: Optional[str] = None
+
+
+@api.post("/internal/rx/parse")
+async def internal_rx_parse(body: RxParseBody, user: dict = Depends(require_roles(*CLINIC_ROLES))):
+    parsed = rx_parser.parse_access_rx(body.text)
+    # Patient-safety: compare any identity in the pasted text vs the selected patient.
+    warnings = []
+    ident = parsed.get("identity") or {}
+    if body.patient_ref and ident:
+        snap = await _resolve_rx_patient(body.patient_ref)
+        if snap:
+            if ident.get("pin") and snap.get("visita_patient_id") and \
+               str(ident["pin"]).strip() != str(snap["visita_patient_id"]).strip():
+                warnings.append("PIN in the pasted prescription does not match the selected patient.")
+            if ident.get("dob") and snap.get("date_of_birth") and \
+               ident["dob"].strip()[:10] not in str(snap["date_of_birth"]):
+                warnings.append("Date of birth in the pasted prescription may not match the selected patient.")
+            if ident.get("name") and snap.get("last_name"):
+                if snap["last_name"].lower() not in ident["name"].lower():
+                    warnings.append("Patient name in the pasted prescription may not match the selected patient.")
+    parsed["mismatch"] = bool(warnings)
+    parsed["warnings"] = warnings
+    return parsed
+
+
+@api.get("/internal/patients/{patient_ref}/medications")
+async def internal_patient_medications(patient_ref: str, user: dict = Depends(require_roles(*CLINIC_ROLES))):
+    snap = await _resolve_rx_patient(patient_ref)
+    if not snap:
+        raise HTTPException(status_code=404, detail="Patient not found.")
+    docs = await db.patient_medications.find(
+        {"patient_id": snap["patient_id"], "active": True}, {"_id": 0}
+    ).sort("last_prescribed_at", -1).to_list(100)
+    return docs
+
+
 @api.get("/internal/pharmacies")
 async def internal_list_pharmacies(user: dict = Depends(require_roles(*CLINIC_ROLES))):
     """Pharmacies that can receive a prescription in the Pharmacy Portal = pharmacy accounts."""
@@ -4264,12 +4364,14 @@ async def internal_send_rx(
     pharmacy_id: str = Form(...),
     medications: str = Form("[]"),
     physician_note: str = Form(""),
-    confirm: str = Form("false"),
+    months: str = Form(""),
+    refills: str = Form(""),
+    source_text: str = Form(""),
+    confirm: str = Form("true"),
     file: Optional[UploadFile] = File(None),
     user: dict = Depends(require_roles(*CLINIC_ROLES)),
 ):
-    if str(confirm).lower() not in ("true", "1", "yes", "on"):
-        raise HTTPException(status_code=400, detail="Please confirm the prescription before sending.")
+    # Step 4 (Review & Send) IS the confirmation; no separate checkbox required.
 
     # --- Patient (server-side resolve; never trust a client-sent name) ---
     snap = None
@@ -4308,11 +4410,14 @@ async def internal_send_rx(
         meds.append({
             "drug": drug,
             "strength": str(m.get("strength") or "").strip() or None,
+            "unit": str(m.get("unit") or "").strip() or None,
             "form": str(m.get("form") or "").strip() or None,
+            "attributes": [str(a) for a in (m.get("attributes") or []) if str(a).strip()],
             "sig": str(m.get("sig") or "").strip() or None,
             "quantity": str(m.get("quantity") or "").strip() or None,
             "refills": str(m.get("refills") or "").strip() or None,
             "note": str(m.get("note") or "").strip() or None,
+            "original_text": str(m.get("original_text") or "").strip() or None,
         })
 
     attachment = await _store_rx_pdf(file) if file is not None else None
@@ -4333,12 +4438,16 @@ async def internal_send_rx(
         "clinic_name": clinic.get("clinic_name") or clinic.get("practice_name") or "Dr. Aguayo Family Practice",
         "pharmacy_id": pharmacy_id, "pharmacy_name": acct.get("pharmacy_name"),
         "medications": meds, "physician_note": physician_note.strip() or None,
+        "months": (int(months) if str(months).strip().isdigit() else None),
+        "refills": (int(refills) if str(refills).strip().isdigit() else None),
+        "source_text": source_text.strip() or None,
         "attachment": attachment,
         "status": "SENT",
         "created_at": now, "sent_at": now, "viewed_at": None, "acknowledged_at": None,
         "history": [{"status": "SENT", "at": now, "by": user.get("name")}],
     }
     await db.rx_transmissions.insert_one({**tx})
+    await _remember_patient_medications(tx)
     await audit("rx_prescription_created", "rx_transmission", tx["id"], user,
                 meta={"pharmacy_id": pharmacy_id, "patient_id": snap["patient_id"], "med_count": len(meds)})
     if attachment:

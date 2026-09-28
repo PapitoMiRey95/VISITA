@@ -6,6 +6,7 @@ production patient data). Created rx_transmissions are cleaned up at the end.
 """
 import os
 import sys
+import json
 import uuid
 import pytest
 import requests
@@ -185,13 +186,14 @@ def test_09_reject_non_pdf(physician_token, pharmacies):
     assert r.status_code == 400
 
 
-# 9b. Confirmation required.
-def test_09b_requires_confirm(physician_token, pharmacies):
+# 9b. Confirmation checkbox removed — send works without confirm.
+def test_09b_no_confirm_needed(physician_token, pharmacies):
     pid = _find_patient(physician_token)
     r = requests.post(f"{BASE}/api/internal/send-rx", headers=_h(physician_token),
                       data={"patient_ref": pid, "pharmacy_id": pharmacies["A_id"],
-                            "medications": '[{"drug":"Test"}]', "confirm": "false"}, timeout=30)
-    assert r.status_code == 400
+                            "medications": '[{"drug":"Aspirin","strength":"81 mg","form":"tablet","sig":"1 tab OD"}]'}, timeout=30)
+    assert r.status_code == 200, r.text
+    _created_tx_ids.append(r.json()["id"])
 
 
 # 9c. Non-portal pharmacy id rejected gracefully.
@@ -232,3 +234,62 @@ def test_12_no_directory_mutation():
     assert count > 0
     # our temp pharmacies are the only pharmacy users we added; real one untouched
     assert db.users.count_documents({"role": "pharmacy", "pharmacy_id": "1670-dufferin"}) == 1
+
+
+
+# 13. Access parsing: single + multiple meds; prescription-level months/refills; no fabrication.
+def test_13_parse_single_and_multi(physician_token):
+    single = "Candesartan cilexetil 16 mg tablet film-coated scored: 1 tablet HS"
+    d = requests.post(f"{BASE}/api/internal/rx/parse", headers=_h(physician_token), json={"text": single}, timeout=30).json()
+    assert len(d["medications"]) == 1
+    m = d["medications"][0]
+    assert m["drug"] == "Candesartan cilexetil" and m["strength"] == "16 mg" and m["form"] == "tablet"
+    assert "film-coated" in m["attributes"] and "scored" in m["attributes"] and m["sig"] == "1 tablet HS"
+    assert m["original_text"] == single
+    multi = ("Vacation Supply for 6 months.\nAmlodipine besylate 05 mg tablet: 1 tablet HS\n"
+             "Bisoprolol fumarate 05 mg tablet: 1 tablet HS\nNumber of months: 6\nNumber of refills: 0")
+    d2 = requests.post(f"{BASE}/api/internal/rx/parse", headers=_h(physician_token), json={"text": multi}, timeout=30).json()
+    assert len(d2["medications"]) == 2
+    assert d2["months"] == 6 and d2["refills"] == 0
+    assert all(x["refills"] is None for x in d2["medications"])
+
+
+def test_13b_no_fabrication(physician_token):
+    d = requests.post(f"{BASE}/api/internal/rx/parse", headers=_h(physician_token),
+                      json={"text": "Some Compound Cream: apply as directed"}, timeout=30).json()
+    m = d["medications"][0]
+    assert m["strength"] is None and "strength" in m["needs_review"]
+
+
+# 14. Confirmed med is remembered; Repeat Rx creates NEW history (old untouched).
+def test_14_memory_and_repeat(physician_token, pharmacies):
+    pid = _find_patient(physician_token)
+    snap = requests.get(f"{BASE}/api/internal/patient-snapshot/{pid}", headers=_h(physician_token), timeout=30).json()
+    real_pid = snap.get("patient_id") or snap.get("directory_id") or pid
+    drug = f"ZZTestDrug{uuid.uuid4().hex[:6]}"
+    meds = json.dumps([{"drug": drug, "strength": "10 mg", "form": "tablet", "sig": "1 tab OD",
+                        "original_text": f"{drug} 10 mg tablet: 1 tab OD"}])
+    r = requests.post(f"{BASE}/api/internal/send-rx", headers=_h(physician_token),
+                      data={"patient_ref": pid, "pharmacy_id": pharmacies["A_id"], "medications": meds,
+                            "months": "3", "refills": "1"}, timeout=30)
+    assert r.status_code == 200, r.text
+    _created_tx_ids.append(r.json()["id"])
+    pm = requests.get(f"{BASE}/api/internal/patients/{pid}/medications", headers=_h(physician_token), timeout=30).json()
+    match = [x for x in pm if x["drug"] == drug]
+    assert match and match[0]["months"] == 3 and match[0]["refills"] == 1
+    before = db.rx_transmissions.count_documents({"patient_id": real_pid})
+    r2 = requests.post(f"{BASE}/api/internal/send-rx", headers=_h(physician_token),
+                       data={"patient_ref": pid, "pharmacy_id": pharmacies["A_id"], "medications": meds}, timeout=30)
+    assert r2.status_code == 200
+    _created_tx_ids.append(r2.json()["id"])
+    assert db.rx_transmissions.count_documents({"patient_id": real_pid}) == before + 1
+    db.patient_medications.delete_many({"drug": drug})
+    db.medication_catalog.delete_many({"drug": drug})
+
+
+# 15. Patient mismatch in pasted text warns and never auto-switches the patient.
+def test_15_patient_mismatch_warning(physician_token):
+    pid = _find_patient(physician_token)
+    d = requests.post(f"{BASE}/api/internal/rx/parse", headers=_h(physician_token),
+                      json={"text": "Patient: Nonexistent Zzztestperson\nAmlodipine besylate 5 mg tablet: 1 tablet HS", "patient_ref": pid}, timeout=30).json()
+    assert d["mismatch"] is True and len(d["warnings"]) >= 1

@@ -141,6 +141,7 @@ class RegisterBody(BaseModel):
     city: Optional[str] = None
     postal_code: Optional[str] = None
     extra_info: Optional[str] = None
+    preferred_language: str = "en"
 
 
 class LoginBody(BaseModel):
@@ -540,7 +541,7 @@ async def register(body: RegisterBody):
         "portal_status": "PENDING_VERIFICATION",
         "review_queue": review_queue, "directory_match": match,
         "matched_directory_id": match.get("matched_id"),
-        "preferred_language": "en",
+        "preferred_language": email_service.norm_lang(body.preferred_language),
         "active_status": True, "is_demo": False, "created_at": now_iso(), "updated_at": now_iso(),
     }
     await db.patients.insert_one({**patient})
@@ -904,6 +905,10 @@ async def forgot_password(body: ForgotBody):
     if not user or not user.get("email"):
         return generic
     code = f"{secrets.randbelow(1000000):06d}"
+    lang = "en"
+    if user.get("patient_id"):
+        pat = await db.patients.find_one({"id": user["patient_id"]}, {"preferred_language": 1})
+        lang = email_service.norm_lang((pat or {}).get("preferred_language"))
     await db.password_resets.update_one({"user_id": str(user["_id"])}, {"$set": {
         "user_id": str(user["_id"]),
         "code_hash": authlib.hash_password(code),
@@ -914,8 +919,8 @@ async def forgot_password(body: ForgotBody):
     try:
         await email_service.send_email(
             to=user["email"],
-            subject="Your VISITA password reset code",
-            html=email_service.reset_code_html(user.get("name"), code),
+            subject=email_service.subject("reset_code", lang),
+            html=email_service.reset_code_html(user.get("name"), code, lang=lang),
         )
     except Exception:
         logger.error("Failed to send reset email")
@@ -2170,6 +2175,21 @@ async def issue_invoice(inv_id: str, user: dict = Depends(require_roles(*BILLING
                 meta={"invoice_number": inv["invoice_number"], "patient_id": inv["patient_id"]})
     await notify_svc._in_portal(db, inv["patient_id"], "New invoice",
                                 f"Invoice {inv['invoice_number']} for {inv['service_description']} is now available in your portal.")
+    inv_patient = await db.patients.find_one({"id": inv["patient_id"]}, {"_id": 0})
+    if inv_patient and inv_patient.get("email"):
+        inv_lang = email_service.norm_lang(inv_patient.get("preferred_language"))
+        amt = inv.get("amount")
+        amt_disp = f"${amt:,.2f}" if isinstance(amt, (int, float)) else ""
+        inv_base = (os.environ.get("APP_BASE_URL") or notify_svc.PORTAL_URL or "").strip().rstrip("/")
+        try:
+            await email_service.send_email(
+                to=inv_patient["email"],
+                subject=email_service.subject("invoice_issued", inv_lang),
+                html=email_service.invoice_issued_html(
+                    inv_patient.get("first_name") or "there", amt_disp, inv_base, lang=inv_lang),
+            )
+        except Exception as e:
+            logger.warning(f"[invoice email] failed: {e}")
     await _sync_request_billing(inv.get("private_request_id"))
     return billing_mod.invoice_internal(await db.invoices.find_one({"id": inv_id}))
 
@@ -2445,6 +2465,20 @@ async def portal_update_phone(body: PhoneUpdateBody, user: dict = Depends(get_cu
                 {"id": p["id"], "name": p["first_name"], "role": "patient"},
                 meta={"field": "phone", "previous": old_phone, "new": new_phone})
     return {"ok": True, "phone": new_phone}
+
+
+class LanguageBody(BaseModel):
+    language: str
+
+
+@api.post("/portal/language")
+async def portal_set_language(body: LanguageBody, user: dict = Depends(get_current_user)):
+    """Persist the patient's portal language as the source of truth for emails."""
+    p = await get_patient_record(user)
+    lang = email_service.norm_lang(body.language)
+    await db.patients.update_one({"id": p["id"]}, {"$set": {"preferred_language": lang, "updated_at": now_iso()}})
+    return {"ok": True, "preferred_language": lang}
+
 
 
 @api.post("/portal/profile/health-card")
@@ -3875,11 +3909,12 @@ async def _accept_new_patient(doc, actor):
     portal_url = (os.environ.get("APP_BASE_URL") or notify_svc.PORTAL_URL or "").strip().rstrip("/")
     if email and portal_url and portal_url.startswith("https://"):
         activate_url = f"{portal_url}/activate?uid={uid}&token={token}"
+        acct_lang = email_service.norm_lang(doc.get("preferred_language"))
         try:
             await email_service.send_email(
                 to=email,
-                subject="You've been accepted — activate your VIsita EMR portal",
-                html=email_service.account_activation_html(first or "there", activate_url),
+                subject=email_service.subject("account_activation", acct_lang),
+                html=email_service.account_activation_html(first or "there", activate_url, lang=acct_lang),
             )
         except Exception as e:
             logger.warning(f"[activation email] failed: {e}")
@@ -3940,11 +3975,12 @@ async def application_update(item_id: str, body: ApplicationUpdateBody,
         updates["internal_status"] = "WAITING_LIST"
         email = (doc.get("email") or "").lower().strip()
         if email and not doc.get("waitlist_email_sent"):
+            wl_lang = email_service.norm_lang(doc.get("preferred_language"))
             try:
                 await email_service.send_email(
                     to=email,
-                    subject="You've been placed on Dr. Aguayo's waiting list",
-                    html=email_service.waiting_list_html(doc.get("first_name") or "there"),
+                    subject=email_service.subject("waiting_list", wl_lang),
+                    html=email_service.waiting_list_html(doc.get("first_name") or "there", lang=wl_lang),
                 )
                 updates["waitlist_email_sent"] = True
                 updates["waitlist_email_at"] = now_iso()

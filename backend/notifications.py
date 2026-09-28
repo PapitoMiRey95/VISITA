@@ -35,6 +35,10 @@ async def _patient(db, patient_id):
     return await db.patients.find_one({"id": patient_id}, {"_id": 0})
 
 
+def _lang(p) -> str:
+    return email_service.norm_lang((p or {}).get("preferred_language"))
+
+
 def _time24(appt) -> str:
     t = appt.get("confirmed_slot_time")
     if not t:
@@ -59,13 +63,14 @@ def confirmed_dt_utc(appt):
     return _confirmed_dt_utc(appt)
 
 
-def _type_label(appt) -> str:
+def _type_label(appt, lang="en") -> str:
     t = (appt or {}).get("appointment_type")
+    es = email_service.norm_lang(lang) == "es"
     if t == "TELEPHONE":
-        return "Telephone Appointment"
+        return "Cita telefónica" if es else "Telephone Appointment"
     if t == "IN_CLINIC":
-        return "In-Clinic Appointment"
-    return "Not specified"
+        return "Cita en la clínica" if es else "In-Clinic Appointment"
+    return "No especificado" if es else "Not specified"
 
 
 def _fmt_when(appt) -> str:
@@ -130,46 +135,50 @@ async def cancel_reminders(db, appointment_id):
 
 async def appointment_confirmed(db, appt):
     p = await _patient(db, appt.get("patient_id"))
+    lang = _lang(p)
     first = (p or {}).get("first_name") or (appt.get("patient_name") or "").split(",")[-1].strip() or "there"
     when = _fmt_when(appt)
     disp = appt.get("confirmed_display") or when
-    tlabel = _type_label(appt)
+    tlabel = _type_label(appt, lang)
     await _in_portal(db, appt["patient_id"], "Appointment confirmed",
-                     f"Your {tlabel} with Dr. Aguayo is confirmed for {disp}. See your Patient Portal for details.")
+                     f"Your {_type_label(appt)} with Dr. Aguayo is confirmed for {disp}. See your Patient Portal for details.")
     email = (p or {}).get("email")
-    html = email_service.appointment_confirmed_html(first, disp, PORTAL_URL, tlabel)
-    await _send_email(db, appt["patient_id"], email, "Appointment Confirmed — Dr. Aguayo", html)
+    html = email_service.appointment_confirmed_html(first, disp, PORTAL_URL, tlabel, lang=lang)
+    await _send_email(db, appt["patient_id"], email, email_service.subject("appt_confirmed", lang), html)
     await schedule_reminders(db, appt)
 
 
 async def appointment_type_changed(db, appt):
     p = await _patient(db, appt.get("patient_id"))
+    lang = _lang(p)
     first = (p or {}).get("first_name") or (appt.get("patient_name") or "").split(",")[-1].strip() or "there"
     disp = appt.get("confirmed_display") or _fmt_when(appt)
-    tlabel = _type_label(appt)
+    tlabel = _type_label(appt, lang)
     await _in_portal(db, appt["patient_id"], "Appointment type updated",
-                     f"Your appointment with Dr. Aguayo on {disp} is now a {tlabel}. "
+                     f"Your appointment with Dr. Aguayo on {disp} is now a {_type_label(appt)}. "
                      "See your Patient Portal for details.")
     email = (p or {}).get("email")
-    html = email_service.appointment_type_changed_html(first, disp, PORTAL_URL, tlabel)
-    await _send_email(db, appt["patient_id"], email, "Appointment Update — Dr. Aguayo", html)
+    html = email_service.appointment_type_changed_html(first, disp, PORTAL_URL, tlabel, lang=lang)
+    await _send_email(db, appt["patient_id"], email, email_service.subject("appt_type_changed", lang), html)
 
 
 async def appointment_rescheduled(db, appt):
     p = await _patient(db, appt.get("patient_id"))
+    lang = _lang(p)
     first = (p or {}).get("first_name") or (appt.get("patient_name") or "").split(",")[-1].strip() or "there"
     when = _fmt_when(appt)
     disp = appt.get("confirmed_display") or when
     await _in_portal(db, appt["patient_id"], "Appointment rescheduled",
                      f"Your appointment with Dr. Aguayo has been rescheduled to {disp}. See your Patient Portal for details.")
     email = (p or {}).get("email")
-    html = email_service.appointment_reschedule_html(first, disp, PORTAL_URL)
-    await _send_email(db, appt["patient_id"], email, "Appointment Rescheduled — Dr. Aguayo", html)
+    html = email_service.appointment_reschedule_html(first, disp, PORTAL_URL, lang=lang)
+    await _send_email(db, appt["patient_id"], email, email_service.subject("appt_rescheduled", lang), html)
     await schedule_reminders(db, appt)
 
 
 async def appointment_cancelled(db, appt, reason=None):
     p = await _patient(db, appt.get("patient_id"))
+    lang = _lang(p)
     first = (p or {}).get("first_name") or "there"
     when = _fmt_when(appt)
     disp = appt.get("confirmed_display") or when
@@ -178,21 +187,22 @@ async def appointment_cancelled(db, appt, reason=None):
                      f"Your appointment with Dr. Aguayo scheduled for {disp} has been cancelled.{note} "
                      "Please contact the office if you have questions.")
     email = (p or {}).get("email")
-    html = email_service.appointment_cancelled_html(first, disp, PORTAL_URL)
-    await _send_email(db, appt["patient_id"], email, "Appointment Cancelled — Dr. Aguayo", html)
+    html = email_service.appointment_cancelled_html(first, disp, PORTAL_URL, lang=lang)
+    await _send_email(db, appt["patient_id"], email, email_service.subject("appt_cancelled", lang), html)
     await cancel_reminders(db, appt.get("id"))
 
 
 async def account_verified(db, patient):
     """Patient registration verified/approved — in-portal + Resend email."""
+    lang = _lang(patient)
     first = (patient or {}).get("first_name") or "there"
     pid = (patient or {}).get("id")
     await _in_portal(db, pid, "Account verified",
-                     "Your VIsita EMR patient portal account has been verified and is now active. "
+                     "Your Patient Portal account has been verified and is now active. "
                      "You can sign in to submit requests.")
     email = (patient or {}).get("email")
-    html = email_service.account_verified_html(first, PORTAL_URL)
-    await _send_email(db, pid, email, "Your VIsita EMR account has been verified", html)
+    html = email_service.account_verified_html(first, PORTAL_URL, lang=lang)
+    await _send_email(db, pid, email, email_service.subject("account_verified", lang), html)
 
 
 async def alternatives_offered(db, appt):
@@ -213,6 +223,7 @@ async def send_due_reminders(db):
             await db.appointment_reminders.update_one({"id": r["id"]}, {"$set": {"delivery_status": "cancelled"}})
             continue
         p = await _patient(db, r["patient_id"])
+        lang = _lang(p)
         disp = appt.get("confirmed_display") or f"{appt.get('confirmed_date')} {appt.get('confirmed_time')}"
         first = (p or {}).get("first_name") or "there"
         if r.get("reminder_type") != "email":
@@ -220,9 +231,9 @@ async def send_due_reminders(db):
             await db.appointment_reminders.update_one(
                 {"id": r["id"]}, {"$set": {"delivery_status": "cancelled", "updated_at": now_iso()}})
             continue
-        html = email_service.appointment_reminder_html(first, disp, PORTAL_URL)
+        html = email_service.appointment_reminder_html(first, disp, PORTAL_URL, lang=lang)
         status = await _send_email(db, r["patient_id"], (p or {}).get("email"),
-                                   "Appointment Reminder — Dr. Aguayo", html)
+                                   email_service.subject("appt_reminder", lang), html)
         await db.appointment_reminders.update_one({"id": r["id"]}, {"$set": {
             "delivery_status": status, "sent_time": now_iso()}})
         sent += 1

@@ -1,12 +1,15 @@
 import { Outlet, useNavigate, NavLink, useLocation } from "react-router-dom";
-import { useMemo } from "react";
+import { useMemo, useEffect } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { useTranslation } from "react-i18next";
 import { Home, Calendar, Pill, MessageSquare, ClipboardList, Bell, LogOut, User, Receipt } from "lucide-react";
 import { api } from "../lib/api";
 import { useAuth } from "../context/AuthContext";
 import { Logo } from "../components/Logo";
-import { setAppLanguage } from "../i18n";
+import { setAppLanguage, getSavedLanguage } from "../i18n";
+
+// Persist the patient's language to their account so emails follow their choice.
+const persistLang = (lng) => { api.post("/portal/language", { language: lng }).catch(() => {}); };
 
 const NAV = [
     { to: "/portal", icon: Home, tkey: "portal:nav.home", end: true, testid: "nav-home" },
@@ -24,6 +27,13 @@ export default function PortalLayout() {
     const { t, i18n } = useTranslation(["portal"]);
     const nav = useNavigate();
     const loc = useLocation();
+
+    // On portal load, sync the device's chosen language to the account (source of
+    // truth for emails). Only when a device preference was explicitly set.
+    useEffect(() => {
+        const saved = getSavedLanguage();
+        if (saved) persistLang(saved);
+    }, []);
 
     const overview = useQuery({
         queryKey: ["overview"],
@@ -64,7 +74,7 @@ export default function PortalLayout() {
                 <div className="flex items-center gap-1">
                     <div data-testid="portal-lang-toggle" className="flex items-center rounded-full border border-slate-200 overflow-hidden mr-1">
                         {["en", "es"].map((lng) => (
-                            <button key={lng} data-testid={`portal-lang-${lng}`} onClick={() => setAppLanguage(lng)}
+                            <button key={lng} data-testid={`portal-lang-${lng}`} onClick={() => { setAppLanguage(lng); persistLang(lng); }}
                                 className={`px-2 py-1 text-[11px] font-bold uppercase transition-colors ${(i18n.language || "en").startsWith(lng) ? "bg-portal-blue text-white" : "text-slate-500 hover:bg-slate-100"}`}>
                                 {lng}
                             </button>

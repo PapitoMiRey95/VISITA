@@ -93,7 +93,7 @@ export default function Register() {
         try {
             const first_name = joinName(form.first_name, form.second_name);
             const last_name = joinName(form.last_name, form.second_last_name);
-            const res = await register({ ...form, first_name, last_name, patient_type: type });
+            const res = await register({ ...form, first_name, last_name, patient_type: type, preferred_language: i18n.language });
             if (res?.former_detected) {
                 setFormer({ message: res.message, code: res.message_code, prefill: res.prefill || {} });
                 setForm((f) => ({ ...f, ...(res.prefill || {}) }));
@@ -118,6 +118,7 @@ export default function Register() {
                 health_card_number: form.health_card_number || null, phone: form.phone, email: form.email,
                 address: form.address || null, city: form.city || null, province: form.province || null,
                 postal_code: form.postal_code || null, patient_message: form.patient_message || null,
+                preferred_language: i18n.language,
             });
             setConfirm({ message: data.message, code: data.message_code, ref_number: data.ref_number });
             setStep("done");
@@ -140,6 +141,7 @@ export default function Register() {
                 phone: form.phone, email: form.email, city: form.city || null,
                 province: form.province || null, country: form.country || null,
                 patient_message: message || null,
+                preferred_language: i18n.language,
             });
             setConfirm({ message: data.message, code: data.message_code, ref_number: data.ref_number });
             setStep("done");

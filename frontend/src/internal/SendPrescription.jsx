@@ -11,6 +11,7 @@ import { Input } from "../components/ui/input";
 import { Textarea } from "../components/ui/textarea";
 import { Label } from "../components/ui/label";
 import { MedEditPanel } from "./MedEditPanel";
+import { useUnsavedGuard } from "./unsavedGuard";
 
 const EMPTY_MED = {
     drug: "", action: "", strength: "", unit: "", form: "", attributes: [], sig: "",
@@ -48,6 +49,12 @@ export default function SendPrescription() {
     const [drugOptions, setDrugOptions] = useState([]);
     const [fieldSuggest, setFieldSuggest] = useState({});
     const patientRefRef = useRef(null);
+    const [storedDraft, setStoredDraft] = useState(null);
+    const [changePending, setChangePending] = useState(false);
+    const { setGuard } = useUnsavedGuard();
+
+    const draftKey = (ref) => `visita_rx_draft_${ref}`;
+    const clearStoredDraft = (ref) => { try { sessionStorage.removeItem(draftKey(ref || patientRefRef.current)); } catch { /* ignore */ } };
 
     const ensureDrugSuggest = useCallback((drug) => {
         const key = (drug || "").toLowerCase().trim();
@@ -68,6 +75,30 @@ export default function SendPrescription() {
     const [busy, setBusy] = useState(false);
     const [parsing, setParsing] = useState(false);
     const [history, setHistory] = useState([]);
+
+    // --- Unsaved draft safeguard ---------------------------------------------
+    const dirty = !!patient && !busy && (
+        meds.length > 0 || !!paste.trim() || !!file || !!sourceText.trim() ||
+        (rx.note || "").trim() !== "" || (rx.months !== "" && rx.months != null) || (rx.refills !== "" && rx.refills != null)
+    );
+    const writeDraft = useCallback(() => {
+        const ref = patientRefRef.current;
+        if (!ref) return;
+        try { sessionStorage.setItem(draftKey(ref), JSON.stringify({ meds, rx, paste, sourceText, pharmacyId, savedAt: new Date().toISOString() })); } catch { /* ignore */ }
+    }, [meds, rx, paste, sourceText, pharmacyId]);
+    // "Save & leave" (shared guard) keeps the draft in sessionStorage for later recovery.
+    const saveDraftForLater = useCallback(async () => { writeDraft(); return true; }, [writeDraft]);
+    // Register with the shared layout guard so sidebar navigation + logout are intercepted.
+    useEffect(() => {
+        setGuard({ dirty, save: saveDraftForLater });
+        return () => setGuard({ dirty: false, save: null });
+    }, [dirty, saveDraftForLater, setGuard]);
+    // Browser refresh/close: native prompt + persist for same-tab reload recovery.
+    useEffect(() => {
+        const h = (e) => { if (dirty) { writeDraft(); e.preventDefault(); e.returnValue = ""; } };
+        window.addEventListener("beforeunload", h);
+        return () => window.removeEventListener("beforeunload", h);
+    }, [dirty, writeDraft]);
 
     const [query, setQuery] = useState("");
     const [pin, setPin] = useState("");
@@ -107,6 +138,7 @@ export default function SendPrescription() {
             const ref = data.directory_id || data.patient_id || id;
             patientRefRef.current = ref;
             setDrugOptions([]); setFieldSuggest({});
+            try { const raw = sessionStorage.getItem(draftKey(ref)); setStoredDraft(raw ? JSON.parse(raw) : null); } catch { setStoredDraft(null); }
             api.get(`/internal/patients/${ref}/medications`).then(({ data: pm }) => setPrevMeds(pm)).catch(() => setPrevMeds([]));
             api.get(`/internal/patients/${ref}/prescriptions`).then(({ data: rxs }) => setPrescriptions(rxs)).catch(() => setPrescriptions([]));
             api.get("/internal/rx/suggest", { params: { patient_ref: ref } }).then(({ data: sg }) => setDrugOptions(sg.drugs || [])).catch(() => setDrugOptions([]));
@@ -114,7 +146,19 @@ export default function SendPrescription() {
     };
 
     const resetRxDraft = () => { setMeds([]); setRx({ months: "", refills: "", note: "", _editing: false }); setSourceText(""); setPaste(""); setWarnings([]); setAckMismatch(false); setFile(null); };
-    const resetAll = () => { setPatient(null); setPharmacyId(""); setPrevMeds([]); setPrescriptions([]); setDrugOptions([]); setFieldSuggest({}); patientRefRef.current = null; resetRxDraft(); };
+    const resetAll = () => { setPatient(null); setPharmacyId(""); setPrevMeds([]); setPrescriptions([]); setDrugOptions([]); setFieldSuggest({}); patientRefRef.current = null; setStoredDraft(null); resetRxDraft(); };
+
+    const restoreDraft = () => {
+        const d = storedDraft; if (!d) return;
+        setMeds(d.meds || []); setRx(d.rx || { months: "", refills: "", note: "", _editing: false });
+        setPaste(d.paste || ""); setSourceText(d.sourceText || "");
+        if (d.pharmacyId) setPharmacyId(d.pharmacyId);
+        setStoredDraft(null); toast.success("Unsent prescription restored.");
+    };
+    const discardStoredDraft = () => { clearStoredDraft(); setStoredDraft(null); };
+
+    const attemptChangePatient = () => { if (dirty) { setChangePending(true); } else { clearStoredDraft(); resetAll(); } };
+    const confirmChangePatient = () => { clearStoredDraft(); resetAll(); setChangePending(false); };
 
     const repeatRx = (pm) => {
         setMeds((s) => [...s, {
@@ -195,6 +239,7 @@ export default function SendPrescription() {
             await api.post("/internal/send-rx", fd, { headers: { "Content-Type": "multipart/form-data" } });
             toast.success("Prescription sent to the pharmacy.");
             const keepPatient = patient, keepPharm = pharmacyId, keepRef = patient.directory_id || patient.patient_id;
+            clearStoredDraft(keepRef);
             resetRxDraft();
             setPatient(keepPatient); setPharmacyId(keepPharm);
             api.get(`/internal/patients/${keepRef}/medications`).then(({ data: pm }) => setPrevMeds(pm)).catch(() => {});
@@ -252,13 +297,22 @@ export default function SendPrescription() {
                                 {patient.current_pharmacy && <div className="text-slate-400 text-xs mt-0.5">Default pharmacy: {patient.current_pharmacy}</div>}
                             </div>
                         </div>
-                        <button className="text-xs text-slate-400 hover:text-slate-600" onClick={resetAll} data-testid="sendrx-change-patient">Change</button>
+                        <button className="text-xs text-slate-400 hover:text-slate-600" onClick={attemptChangePatient} data-testid="sendrx-change-patient">Change</button>
                     </div>
                 )}
             </section>
 
             {patient && (
                 <>
+                    {storedDraft && meds.length === 0 && (
+                        <div className="bg-amber-50 border border-amber-300 rounded-sm p-3 mb-4 flex items-center justify-between gap-3" data-testid="sendrx-restore">
+                            <div className="text-sm text-amber-800">You have an unsent prescription in progress for this patient.</div>
+                            <div className="flex gap-2 shrink-0">
+                                <Button size="sm" variant="outline" data-testid="sendrx-restore-btn" onClick={restoreDraft}>Restore</Button>
+                                <button className="text-xs text-slate-500 hover:underline" data-testid="sendrx-restore-discard" onClick={discardStoredDraft}>Discard</button>
+                            </div>
+                        </div>
+                    )}
                     <section className="bg-white border border-slate-300 rounded-sm p-5 mb-4">
                         <div className="text-xs uppercase tracking-wide text-slate-400 mb-2">Step 2 — Send to pharmacy</div>
                         {pharmacies.length === 0 ? (
@@ -498,6 +552,24 @@ export default function SendPrescription() {
                     </table>
                 )}
             </section>
+
+            {changePending && (
+                <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/40 p-4" data-testid="sendrx-change-guard">
+                    <div className="bg-white rounded-sm border border-slate-300 shadow-lg w-full max-w-sm p-5" role="dialog" aria-modal="true">
+                        <div className="flex items-start gap-3">
+                            <AlertTriangle className="w-5 h-5 text-amber-500 flex-shrink-0 mt-0.5" />
+                            <div>
+                                <h3 className="font-semibold text-slate-900">Unsent prescription</h3>
+                                <p className="text-sm text-slate-500 mt-1">You have an unsent prescription in progress. Changing patient will discard it.</p>
+                            </div>
+                        </div>
+                        <div className="flex items-center justify-end gap-2 mt-5">
+                            <Button variant="ghost" data-testid="sendrx-change-stay" onClick={() => setChangePending(false)}>Stay on this page</Button>
+                            <Button variant="outline" data-testid="sendrx-change-discard" onClick={confirmChangePatient} className="border-red-200 text-red-600 hover:bg-red-50">Leave and discard</Button>
+                        </div>
+                    </div>
+                </div>
+            )}
         </div>
     );
 }

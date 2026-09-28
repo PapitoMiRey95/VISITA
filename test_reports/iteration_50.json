@@ -1,0 +1,25 @@
+{
+  "summary": "Frontend-only UI verification of Pharmacy Portal Incoming Prescriptions with new Patient Information panel. Logged in as ephemeral pharmacy user snapdemo3a571e via /signin?partner=1, no password-change gate; landed directly on /pharmacy. Navigated to /pharmacy/incoming via Incoming Rx tab. Compact list verified: columns [PATIENT, PHYSICIAN, SENT, RX, PDF, STATUS] with a single row for BAGNASCO GONZALEZ, Maria Esther / Dr. Pablo Aguayo / 2026 Sep - 28 · 7:55 PM / 2 medication(s) / SENT. No forbidden tokens (OHIP, address, phones) leak into list rows. Opened the row -> detail view shows Patient Information panel (data-testid incoming-patient-info) with all expected fields: name 'BAGNASCO GONZALEZ, Maria Esther', DOB '1952 Apr - 29', VIen PIN '1951', OHIP '1572035465 VH · exp 2027 Apr - 29', Address '3174 Bathurst Street, Unit 5B / Toronto, ON, M6A 2B1', Phone 'Cell: (647) 555-0100 / Home: (416) 555-0111'. Prescriber section shows 'Dr. Pablo Aguayo / TEST Clinic Name / Sent 2026 Sep - 28 · 7:55 PM'. Prescription section renders 2 medication cards: Rosuvastatin calcium 20 mg tablet SIG 1 tablet OD, Bisoprolol fumarate 5 mg tablet SIG 1 tablet HS. Patient Info card and Prescription card are visually distinct side-by-side panels. All required data-testids present and populated.",
+  "backend_issues": {"critical": [], "minor": []},
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [],
+    "design_issues": [
+      {"screen": "Incoming Rx detail - Patient Information", "issues": ["OHIP is rendered as '1572035465 VH' (single space between number and version). Spec example showed '1572035465  VH' (double space). Cosmetic only; no functional impact."]}
+    ]
+  },
+  "test_report_links": [],
+  "action_items": [],
+  "critical_code_review_comments": [
+    "PharmacyIncoming.jsx cleanly reads detail.patient_snapshot for the info panel and keeps the list compact - matches backend contract.",
+    "OHIP formatting is 'number version_code' with single space; if the exact spacing is a product requirement, adjust the join in the OHIP Row.",
+    "Address row correctly renders Unit line ('3174 Bathurst Street, Unit 5B') plus city line; snapshot preserves prescription-time address as required."
+  ],
+  "updated_files": [],
+  "success_rate": {"backend": "N/A (skipped)", "frontend": "100%"},
+  "test_credentials": "Pharmacy portal: snapdemo3a571e / SnapDemo123! via /signin?partner=1 (role=pharmacy, must_change_password=false).",
+  "seed_data_creation": "None. Used pre-existing Rx fb83d1b5-8305-4ae8-aff0-81dcbe30c943 for BAGNASCO GONZALEZ already sent to this ephemeral pharmacy.",
+  "retest_needed": false,
+  "main_agent_can_self_test": true,
+  "context_for_next_testing_agent": "Pharmacy portal login uses /signin?partner=1 (Partner login screen). After login the app routes to /pharmacy (Rx Requests). Incoming Rx tab -> /pharmacy/incoming. Detail view exposes: incoming-patient-info, incoming-patient-name, incoming-patient-dob, incoming-patient-pin, incoming-patient-ohip, incoming-patient-address, incoming-patient-phone; medication cards use data-testid incoming-med; list rows use incoming-row; back button incoming-back; acknowledge button incoming-acknowledge; view-pdf button incoming-view-pdf."
+}

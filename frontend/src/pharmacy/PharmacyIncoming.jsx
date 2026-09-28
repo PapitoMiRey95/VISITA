@@ -57,7 +57,6 @@ export default function PharmacyIncoming() {
                             const pin = ps.visita_patient_id || detail.visita_patient_id;
                             const line2 = [ps.city, ps.province, ps.postal_code].filter(Boolean).join(", ");
                             const addr1 = [ps.address, ps.unit ? `Unit ${ps.unit}` : ""].filter(Boolean).join(", ");
-                            const ohip = ps.health_card_number ? `${ps.health_card_number}${ps.health_card_version ? `  ${ps.health_card_version}` : ""}` : null;
                             const Row = ({ label, children, testId }) => (
                                 <div className="grid grid-cols-[70px,1fr] gap-2 py-0.5" data-testid={testId}>
                                     <span className="text-[10px] uppercase tracking-wide text-slate-400 pt-0.5">{label}</span>
@@ -69,7 +68,7 @@ export default function PharmacyIncoming() {
                                     <div className="font-bold text-slate-900 mb-1" data-testid="incoming-patient-name">{name}</div>
                                     <Row label="DOB" testId="incoming-patient-dob">{dob ? formatDate(dob) : <span className="text-slate-400">Not available</span>}</Row>
                                     {pin && <Row label="VIen PIN" testId="incoming-patient-pin">{pin}</Row>}
-                                    <Row label="OHIP" testId="incoming-patient-ohip">{ohip || <span className="text-slate-400">Not available</span>}{ps.health_card_expiry_date ? <span className="text-slate-400 text-xs"> · exp {formatDate(ps.health_card_expiry_date)}</span> : null}</Row>
+                                    <Row label="OHIP" testId="incoming-patient-ohip">{ps.health_card_number ? (<span>{ps.health_card_number}{ps.health_card_version ? <span className="ml-2 font-semibold text-slate-500">{ps.health_card_version}</span> : null}</span>) : <span className="text-slate-400">Not available</span>}{ps.health_card_expiry_date ? <span className="text-slate-400 text-xs"> · exp {formatDate(ps.health_card_expiry_date)}</span> : null}</Row>
                                     {(addr1 || line2) && (
                                         <Row label="Address" testId="incoming-patient-address">
                                             {addr1 && <div>{addr1}</div>}

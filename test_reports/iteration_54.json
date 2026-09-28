@@ -1,0 +1,29 @@
+{
+  "summary": "Frontend-only testing of PHYSICIAN 'Convert to Prescription' flow. Logged in as PAGUAYO/physician, opened pharmacy request RX-000064 (ROMERO CUAHUEY, 1670 Dufferin Drug Mart) which had 5 structured medications. Verified Convert button + helper text visible for physician only, click navigates to /internal/send-rx with patient pre-selected, indigo convert banner (correct pharmacy + RX ref), pharmacy pre-selected, and 5 individual med cards (one-med-one-card). Edit / Remove / Add manual / Edit Rx-level (months+refills) all worked. Review section listed each med separately. Send Prescription succeeded with success toast and new rxtx-row (ROMERO / 4 meds / SENT) in Recently Sent. Fresh /internal/send-rx (manual flow) correctly shows NO convert banner (regression OK). All target data-testids present and functional.",
+  "backend_issues": {"critical": [], "minor": []},
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [],
+    "design_issues": [
+      {"screen": "Rx detail dialog", "issues": ["Console warning: 'Missing Description or aria-describedby for {DialogContent}' — accessibility warning from Radix Dialog; harmless but should be fixed by passing aria-describedby or a DialogDescription."]}
+    ]
+  },
+  "test_report_links": [],
+  "action_items": [
+    "OBSERVATION (not a bug): After successful Send, the pharmacy request advances to internal_status=prescription_sent and is filtered out of the physician Rx queue (physician view is action-only). This means the physician cannot personally re-open the same request from their queue to visually confirm the green 'Prescription sent from this request' banner + hidden Convert button. Rendering logic itself is correct (rx-converted-banner shows when linked_transmission_ref present and convert btn hidden), but consider surfacing recently-converted items to physician (e.g., a 'Sent' tab) or documenting that verification of the converted banner is done via staff/pharmacy views.",
+    "Fix Radix DialogContent a11y warning by adding DialogDescription or aria-describedby to the Rx detail dialog."
+  ],
+  "critical_code_review_comments": [
+    "SendPrescription.jsx is ~640 lines — approaching size limit; consider splitting Step 3 med list, review section, and unsaved-guard hooks into sub-components.",
+    "convertConsumed useEffect has empty dep array [] which triggers exhaustive-deps lint; acceptable here since it must run exactly once on mount, but add eslint-disable comment for clarity.",
+    "convertToPrescription in RxQueue.jsx passes medications_structured via sessionStorage — payload size is bounded but could be large; fine for now."
+  ],
+  "updated_files": [],
+  "success_rate": {"backend": "n/a (skipped)", "frontend": "100% of tested convert-flow steps"},
+  "test_credentials": "Physician PAGUAYO / Newman2013_! (via /signin login-email + login-password testids). Convert button gated to physician role + structured meds present.",
+  "seed_data_creation": "Used existing RX-000064 (ROMERO CUAHUEY, 1670 Dufferin Drug Mart) — 5 structured meds seeded by seed.py. Sent one prescription successfully as part of testing (now in Recently Sent).",
+  "retest_needed": false,
+  "should_main_agent_self_test": true,
+  "context_for_next_testing_agent": "RX-000064 is now already converted (linked_transmission_ref set) and hidden from physician queue. For future tests of the convert flow use another pharmacy-source request that (a) has medications_structured populated and (b) is not yet linked. TEST_* seeded pharmacy rows (RX-000044/46/49/52) currently have NO medications_structured so the Convert button is intentionally hidden for those (only free-text meds). To exercise the flow again, create a fresh pharmacy request via pharmacy account 1670dufferin / PharmPreview2026! (New Rx Request → ROMERO → structured builder).",
+  "rca of the issue": "No functional issues — feature works end-to-end. Only nit is an accessibility console warning from Radix Dialog missing description; and a UX gap where physician cannot re-view converted requests from their filtered queue after Send."
+}

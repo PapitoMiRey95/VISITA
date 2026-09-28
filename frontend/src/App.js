@@ -48,6 +48,7 @@ import PartnerLayout from "./partner/PartnerLayout";
 import PartnerProfile from "./partner/PartnerProfile";
 
 import PharmacyLayout from "./pharmacy/PharmacyLayout";
+import PharmacyHub from "./pharmacy/PharmacyHub";
 import PharmacyRx from "./pharmacy/PharmacyRx";
 import PharmacyMessages from "./pharmacy/PharmacyMessages";
 import PharmacyIncoming from "./pharmacy/PharmacyIncoming";
@@ -136,7 +137,8 @@ function App() {
                             </RoleRoute>
                         }
                     >
-                        <Route index element={<PharmacyRx />} />
+                        <Route index element={<PharmacyHub />} />
+                        <Route path="rx" element={<PharmacyRx />} />
                         <Route path="incoming" element={<PharmacyIncoming />} />
                         <Route path="messages" element={<PharmacyMessages />} />
                         <Route path="account" element={<PharmacyAccount />} />

@@ -1,13 +1,14 @@
 import { Outlet, NavLink, useNavigate } from "react-router-dom";
 import { useEffect, useState } from "react";
-import { Pill, Inbox, MessageSquare, User, LogOut } from "lucide-react";
+import { LayoutGrid, Pill, Inbox, MessageSquare, User, LogOut } from "lucide-react";
 import { useAuth } from "../context/AuthContext";
 import { api } from "../lib/api";
 import { Logo } from "../components/Logo";
 
 const NAV = [
-    { to: "/pharmacy", icon: Pill, label: "Rx", end: true },
+    { to: "/pharmacy", icon: LayoutGrid, label: "Hub", end: true },
     { to: "/pharmacy/incoming", icon: Inbox, label: "Incoming Rx", badge: "incoming" },
+    { to: "/pharmacy/rx", icon: Pill, label: "Rx Requests" },
     { to: "/pharmacy/messages", icon: MessageSquare, label: "Messages" },
     { to: "/pharmacy/account", icon: User, label: "Account" },
 ];

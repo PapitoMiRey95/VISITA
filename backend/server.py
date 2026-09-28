@@ -4474,7 +4474,7 @@ async def _build_patient_snapshot(patient_ref: str) -> Optional[dict]:
         "province": g("province"), "postal_code": g("postal_code"),
         "cell_phone": g("cell_phone", "phone"), "home_phone": g("home_phone"),
         "health_card_number": g("health_card_number"),
-        "health_card_version": g("health_card_version"),
+        "health_card_version": g("health_card_version") or g("health_card_version_code"),
         "health_card_expiry_date": g("health_card_expiry_date"),
         "patient_type": g("patient_type"),
         "snapshot_at": now_iso(),

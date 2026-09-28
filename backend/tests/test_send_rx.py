@@ -293,3 +293,69 @@ def test_15_patient_mismatch_warning(physician_token):
     d = requests.post(f"{BASE}/api/internal/rx/parse", headers=_h(physician_token),
                       json={"text": "Patient: Nonexistent Zzztestperson\nAmlodipine besylate 5 mg tablet: 1 tablet HS", "patient_ref": pid}, timeout=30).json()
     assert d["mismatch"] is True and len(d["warnings"]) >= 1
+
+
+# 16. Repeat Entire Prescription: prescriptions endpoint groups a whole Rx (many meds),
+#     is read-only (no new transmission), keeps meds as separate records, and flags a
+#     newer regimen instead of silently substituting.
+def test_16_repeat_entire_and_newer_flag(physician_token, pharmacies):
+    pid = _find_patient(physician_token)
+    snap = requests.get(f"{BASE}/api/internal/patient-snapshot/{pid}", headers=_h(physician_token), timeout=30).json()
+    real_pid = snap.get("patient_id") or snap.get("directory_id") or pid
+    d1 = f"ZZRepA{uuid.uuid4().hex[:6]}"
+    d2 = f"ZZRepB{uuid.uuid4().hex[:6]}"
+    # A multi-medication prescription (this is the historical Rx we will "repeat").
+    meds = json.dumps([
+        {"drug": d1, "strength": "10 mg", "form": "tablet", "sig": "1 tablet OD", "original_text": f"{d1} 10 mg tablet: 1 tablet OD"},
+        {"drug": d2, "strength": "5 mg", "form": "tablet", "sig": "1 tablet HS", "original_text": f"{d2} 5 mg tablet: 1 tablet HS"},
+    ])
+    r = requests.post(f"{BASE}/api/internal/send-rx", headers=_h(physician_token),
+                      data={"patient_ref": pid, "pharmacy_id": pharmacies["A_id"], "medications": meds,
+                            "months": "3", "refills": "0"}, timeout=30)
+    assert r.status_code == 200, r.text
+    old_tx = r.json()["id"]
+    _created_tx_ids.append(old_tx)
+
+    # 16a. Prescriptions endpoint groups it as one prescription with 2 separate meds.
+    rx_list = requests.get(f"{BASE}/api/internal/patients/{pid}/prescriptions", headers=_h(physician_token), timeout=30)
+    assert rx_list.status_code == 200, rx_list.text
+    mine = [p for p in rx_list.json() if p["id"] == old_tx]
+    assert len(mine) == 1
+    grp = mine[0]
+    assert len(grp["medications"]) == 2
+    assert {m["drug"] for m in grp["medications"]} == {d1, d2}
+    assert grp["months"] == 3 and grp["refills"] == 0
+    assert all(m["newer_available"] is False for m in grp["medications"])
+
+    # 16b. Reading the prescriptions list did NOT create a transmission (read-only).
+    before = db.rx_transmissions.count_documents({"patient_id": real_pid})
+    requests.get(f"{BASE}/api/internal/patients/{pid}/prescriptions", headers=_h(physician_token), timeout=30)
+    assert db.rx_transmissions.count_documents({"patient_id": real_pid}) == before
+
+    # 16c. Prescribe d1 again with a DIFFERENT regimen (newer). Old Rx's d1 must be flagged
+    #      newer_available (never auto-substituted); d2 stays unflagged.
+    newer = json.dumps([{"drug": d1, "strength": "20 mg", "form": "tablet", "sig": "1 tablet BID",
+                         "original_text": f"{d1} 20 mg tablet: 1 tablet BID"}])
+    r2 = requests.post(f"{BASE}/api/internal/send-rx", headers=_h(physician_token),
+                       data={"patient_ref": pid, "pharmacy_id": pharmacies["A_id"], "medications": newer}, timeout=30)
+    assert r2.status_code == 200, r2.text
+    _created_tx_ids.append(r2.json()["id"])
+
+    rx_list2 = requests.get(f"{BASE}/api/internal/patients/{pid}/prescriptions", headers=_h(physician_token), timeout=30).json()
+    old_grp = [p for p in rx_list2 if p["id"] == old_tx][0]
+    d1_med = [m for m in old_grp["medications"] if m["drug"] == d1][0]
+    d2_med = [m for m in old_grp["medications"] if m["drug"] == d2][0]
+    assert d1_med["newer_available"] is True
+    assert d1_med["newer"] and d1_med["newer"]["strength"] == "20 mg" and d1_med["newer"]["sig"] == "1 tablet BID"
+    # Historical record itself is unchanged (still says 10 mg / 1 tablet OD).
+    assert d1_med["strength"] == "10 mg" and d1_med["sig"] == "1 tablet OD"
+    assert d2_med["newer_available"] is False
+
+    # 16d. Historical transmission document is immutable (meds unchanged in DB).
+    stored = db.rx_transmissions.find_one({"id": old_tx})
+    stored_d1 = [m for m in stored["medications"] if m["drug"] == d1][0]
+    assert stored_d1["strength"] == "10 mg" and stored_d1["sig"] == "1 tablet OD"
+
+    db.patient_medications.delete_many({"drug": {"$in": [d1, d2]}})
+    db.medication_catalog.delete_many({"drug": {"$in": [d1, d2]}})
+

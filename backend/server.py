@@ -4340,6 +4340,52 @@ async def internal_patient_medications(patient_ref: str, user: dict = Depends(re
     return docs
 
 
+@api.get("/internal/patients/{patient_ref}/prescriptions")
+async def internal_patient_prescriptions(patient_ref: str, user: dict = Depends(require_roles(*CLINIC_ROLES))):
+    """Read-only: that patient's past physician->pharmacy prescriptions, grouped as
+    whole prescriptions (one transmission -> many meds), for 'Repeat Entire Prescription'.
+    Each medication is annotated with newer_available/newer when patient_medications
+    holds a more recent, different regimen for the same drug. Never mutates history."""
+    snap = await _resolve_rx_patient(patient_ref)
+    if not snap:
+        raise HTTPException(status_code=404, detail="Patient not found.")
+    pid = snap["patient_id"]
+    docs = await db.rx_transmissions.find(
+        {"patient_id": pid, "direction": "PHYSICIAN_TO_PHARMACY"}
+    ).sort("created_at", -1).to_list(50)
+    active = await db.patient_medications.find(
+        {"patient_id": pid, "active": True}, {"_id": 0}
+    ).to_list(300)
+    out = []
+    for t in docs:
+        meds_raw = t.get("medications") or []
+        if not meds_raw:
+            continue  # PDF-only prescriptions cannot be "repeated" as structured meds
+        pub = _rx_tx_public(t)
+        annotated = []
+        for m in meds_raw:
+            mm = dict(m)
+            mm["newer_available"] = False
+            mm["newer"] = None
+            drug_l = (m.get("drug") or "").lower().strip()
+            this_key = _regimen_key(pid, m)
+            cand = [a for a in active
+                    if (a.get("drug") or "").lower().strip() == drug_l
+                    and a.get("regimen_key") != this_key
+                    and (a.get("last_prescribed_at") or "") > (t.get("sent_at") or "")]
+            if cand:
+                cand.sort(key=lambda a: a.get("last_prescribed_at") or "", reverse=True)
+                n = cand[0]
+                mm["newer_available"] = True
+                mm["newer"] = {k: n.get(k) for k in (
+                    "drug", "action", "strength", "unit", "form", "attributes",
+                    "sig", "quantity", "additional_instructions", "note")}
+            annotated.append(mm)
+        pub["medications"] = annotated
+        out.append(pub)
+    return out
+
+
 @api.get("/internal/pharmacies")
 async def internal_list_pharmacies(user: dict = Depends(require_roles(*CLINIC_ROLES))):
     """Pharmacies that can receive a prescription in the Pharmacy Portal = pharmacy accounts."""

@@ -36,6 +36,7 @@ export default function SendPrescription() {
     const [pharmacies, setPharmacies] = useState([]);
     const [pharmacyId, setPharmacyId] = useState("");
     const [prevMeds, setPrevMeds] = useState([]);
+    const [prescriptions, setPrescriptions] = useState([]);
 
     const [meds, setMeds] = useState([]);
     const [rx, setRx] = useState({ months: "", refills: "", note: "", _editing: false });
@@ -85,11 +86,12 @@ export default function SendPrescription() {
             setPharmacyId(match ? match.pharmacy_id : (pharmacies.length === 1 ? pharmacies[0].pharmacy_id : ""));
             const ref = data.directory_id || data.patient_id || id;
             api.get(`/internal/patients/${ref}/medications`).then(({ data: pm }) => setPrevMeds(pm)).catch(() => setPrevMeds([]));
+            api.get(`/internal/patients/${ref}/prescriptions`).then(({ data: rxs }) => setPrescriptions(rxs)).catch(() => setPrescriptions([]));
         } catch (err) { toast.error(formatErr(err)); }
     };
 
     const resetRxDraft = () => { setMeds([]); setRx({ months: "", refills: "", note: "", _editing: false }); setSourceText(""); setPaste(""); setWarnings([]); setAckMismatch(false); setFile(null); };
-    const resetAll = () => { setPatient(null); setPharmacyId(""); setPrevMeds([]); resetRxDraft(); };
+    const resetAll = () => { setPatient(null); setPharmacyId(""); setPrevMeds([]); setPrescriptions([]); resetRxDraft(); };
 
     const repeatRx = (pm) => {
         setMeds((s) => [...s, {
@@ -100,6 +102,24 @@ export default function SendPrescription() {
         setRx((r) => ({ ...r, months: pm.months ?? r.months, refills: pm.refills ?? r.refills }));
         toast.success("Added to prescription. Review and send.");
     };
+
+    const repeatEntire = (tx) => {
+        const copied = (tx.medications || []).map((m) => ({
+            ...EMPTY_MED, ...m, attributes: m.attributes || [], needs_review: [], _editing: false,
+            newer_available: !!m.newer_available, newer: m.newer || null,
+        }));
+        setMeds(copied);
+        setRx({ months: tx.months ?? "", refills: tx.refills ?? "", note: tx.physician_note || "", _editing: false });
+        setSourceText(tx.source_text || "");
+        setPaste(""); setWarnings([]); setAckMismatch(false); setFile(null);
+        const flagged = copied.filter((m) => m.newer_available).length;
+        toast.success(`Draft created from ${copied.length} medication(s).${flagged ? ` ${flagged} have newer info — review before sending.` : " Review, edit, then send."}`);
+    };
+
+    const applyNewer = (i) => setMeds((s) => s.map((m, idx) => (idx === i && m.newer ? {
+        ...m, ...m.newer, attributes: m.newer.attributes || [], newer_available: false, newer: null, _editing: false,
+    } : m)));
+    const dismissNewer = (i) => setMeds((s) => s.map((m, idx) => (idx === i ? { ...m, newer_available: false } : m)));
 
     const organize = async () => {
         if (!paste.trim()) { toast.error("Paste the prescription text first."); return; }
@@ -143,7 +163,7 @@ export default function SendPrescription() {
             const fd = new FormData();
             fd.append("patient_ref", patient.directory_id || patient.patient_id);
             fd.append("pharmacy_id", pharmacyId);
-            fd.append("medications", JSON.stringify(filledMeds.map(({ _editing, needs_review, ...m }) => m)));
+            fd.append("medications", JSON.stringify(filledMeds.map(({ _editing, needs_review, newer_available, newer, ...m }) => m)));
             fd.append("physician_note", rx.note || "");
             if (rx.months !== "" && rx.months != null) fd.append("months", String(rx.months));
             if (rx.refills !== "" && rx.refills != null) fd.append("refills", String(rx.refills));
@@ -155,6 +175,7 @@ export default function SendPrescription() {
             resetRxDraft();
             setPatient(keepPatient); setPharmacyId(keepPharm);
             api.get(`/internal/patients/${keepRef}/medications`).then(({ data: pm }) => setPrevMeds(pm)).catch(() => {});
+            api.get(`/internal/patients/${keepRef}/prescriptions`).then(({ data: rxs }) => setPrescriptions(rxs)).catch(() => {});
             loadHistory();
         } catch (err) { toast.error(formatErr(err)); } finally { setBusy(false); }
     };
@@ -240,6 +261,28 @@ export default function SendPrescription() {
 
                     <section className="bg-white border border-slate-300 rounded-sm p-5 mb-4 space-y-5">
                         <div className="text-xs uppercase tracking-wide text-slate-400">Step 3 — Prescription</div>
+
+                        {prescriptions.length > 0 && (
+                            <div>
+                                <div className="text-sm font-semibold text-slate-700 mb-2">Previous Prescriptions</div>
+                                <div className="space-y-2">
+                                    {prescriptions.map((tx) => (
+                                        <div key={tx.id} data-testid="sendrx-prescription" className="flex items-start justify-between gap-3 border border-slate-200 rounded-sm px-3 py-2 bg-slate-50/60">
+                                            <div className="text-sm">
+                                                <div className="text-slate-400 text-[11px] uppercase tracking-wide">Prescription · {tx.ref_number || ""}</div>
+                                                <div className="font-semibold text-slate-800">{formatDate(tx.sent_at)}</div>
+                                                <div className="text-slate-600 text-xs mt-0.5">{(tx.medications || []).length} medication(s){(tx.months || tx.refills) ? ` · ${tx.months ? `${tx.months} month(s)` : ""}${tx.months && tx.refills ? " · " : ""}${tx.refills ? `${tx.refills} refill(s)` : ""}` : ""}</div>
+                                                <div className="text-slate-400 text-[11px] mt-0.5 truncate max-w-md">{(tx.medications || []).map((m) => [m.drug, m.strength].filter(Boolean).join(" ")).join(", ")}</div>
+                                                {(tx.medications || []).some((m) => m.newer_available) && (
+                                                    <div className="text-amber-600 text-[11px] mt-1 inline-flex items-center gap-1"><AlertTriangle className="w-3 h-3" /> Newer info exists for some medications</div>
+                                                )}
+                                            </div>
+                                            <Button size="sm" variant="outline" data-testid="sendrx-repeat-entire" onClick={() => repeatEntire(tx)}><RotateCw className="w-3.5 h-3.5 mr-1" /> Repeat Entire Prescription</Button>
+                                        </div>
+                                    ))}
+                                </div>
+                            </div>
+                        )}
 
                         <div>
                             <div className="text-sm font-semibold text-slate-700 mb-2">Previous / Current Prescriptions</div>
@@ -334,6 +377,16 @@ export default function SendPrescription() {
                                                     <div className="flex justify-end gap-2">
                                                         <button onClick={() => removeMed(i)} className="text-xs text-red-600 inline-flex items-center gap-1"><Trash2 className="w-3.5 h-3.5" /> Remove</button>
                                                         <Button size="sm" variant="outline" onClick={() => toggleEdit(i)}>Done</Button>
+                                                    </div>
+                                                </div>
+                                            )}
+                                            {m.newer_available && m.newer && (
+                                                <div className="mt-2 border border-amber-300 bg-amber-50 rounded-sm p-2" data-testid="sendrx-newer">
+                                                    <div className="flex items-center gap-1 text-amber-800 font-semibold text-xs"><AlertTriangle className="w-3.5 h-3.5" /> Newer medication information exists for this patient.</div>
+                                                    <div className="text-amber-700 text-[11px] mt-1">Newer: {[m.newer.drug, m.newer.strength].filter(Boolean).join(" ")}{m.newer.form ? ` — ${m.newer.form}` : ""}{m.newer.sig ? ` · ${m.newer.sig}` : ""}{m.newer.action ? ` · ${m.newer.action}` : ""}</div>
+                                                    <div className="flex gap-2 mt-1.5">
+                                                        <Button size="sm" variant="outline" data-testid="sendrx-use-newer" onClick={() => applyNewer(i)} className="h-7 text-xs">Use newer version</Button>
+                                                        <button onClick={() => dismissNewer(i)} data-testid="sendrx-keep-version" className="text-xs text-slate-500 hover:underline">Keep this version</button>
                                                     </div>
                                                 </div>
                                             )}

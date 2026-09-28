@@ -352,6 +352,38 @@ def _parse_segment(seg_text, action, uncertain):
     }
 
 
+def _parse_no_strength(text):
+    """A medication line with a colon but no strength (e.g. compound cream)."""
+    original = text.strip()
+    needs = ["strength"]
+    work = original
+    action = None
+    for low, up in _ACTIONS.items():
+        m = re.match(r"^\s*" + low + r"\b\s*", work, re.IGNORECASE)
+        if m:
+            action = up
+            work = work[m.end():]
+            break
+    if ":" in work:
+        descriptor, right = work.split(":", 1)
+        name = descriptor.strip(" -,:") or None
+        sig = right.strip(_PUNCT) or None
+    else:
+        name = work.strip(" -,:") or None
+        sig = None
+    if not name:
+        needs.append("drug")
+    if not sig:
+        needs.append("sig")
+    return {
+        "original_text": original, "action": action, "drug": name,
+        "strength": None, "unit": None, "form": None, "attributes": [],
+        "sig": sig, "quantity": None, "refills": None,
+        "additional_instructions": None, "note": None,
+        "needs_review": sorted(set(needs)),
+    }
+
+
 _IDENTITY_KEYS = {
     "patient": "name", "name": "name", "patient name": "name",
     "pin": "pin", "visita pin": "pin", "id": "pin",
@@ -415,7 +447,16 @@ def parse_access_rx(text: str) -> dict:
 
         med_parts.append(line)
 
-    med_text = " ".join(med_parts)
+    # Split med lines: strength-bearing text (segmented, order-preserving) vs
+    # no-strength colon lines (parsed directly so compounds are not lost).
+    strength_parts, no_strength = [], []
+    for line in med_parts:
+        if _STRENGTH_RE.search(line):
+            strength_parts.append(line)
+        else:
+            no_strength.append(line)
+
+    med_text = " ".join(strength_parts)
     # Single-paragraph safety: strip Rx-level fields that were glued into the text.
     med_text, m2, r2, _ = _strip_rx_level(med_text)
     if months is None:
@@ -430,6 +471,8 @@ def parse_access_rx(text: str) -> dict:
         if not seg_text:
             continue
         meds.append(_parse_segment(seg_text, action, uncertain))
+    for line in no_strength:
+        meds.append(_parse_no_strength(line))
 
     if lead:
         notes.insert(0, lead)

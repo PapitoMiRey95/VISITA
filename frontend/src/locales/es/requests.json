@@ -38,7 +38,7 @@
   "privateAppointments": {
     "title": "Solicitud de cita privada",
     "badge": "PRIVADO",
-    "bannerPre": "El Dr. Aguayo generalmente atiende a pacientes privados por la tarde-noche:",
+    "bannerPre": "El médico generalmente atiende a pacientes privados por la tarde-noche:",
     "bannerHoursDefault": "cualquier día, 5:30 PM–9:00 PM",
     "bannerPost": ", en ventanas de 30 minutos. Usted solo solicita un horario — la clínica revisará su solicitud. Si es posible acomodarla, podría ser aceptada; de lo contrario se le ofrecerá otra fecha y hora.",
     "whenPrefer": "¿Cuándo prefiere?",

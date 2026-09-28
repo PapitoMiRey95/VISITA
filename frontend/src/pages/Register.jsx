@@ -51,8 +51,8 @@ export default function Register() {
         first_name: "", last_name: "", second_name: "", second_last_name: "",
         date_of_birth: "", phone: "", email: "", password: "",
         health_card_number: "", health_card_version: "", health_card_issue_date: "", health_card_expiry_date: "",
-        province: "", country: "", extra_info: "",
-        address: "", city: "", postal_code: "", patient_message: "", join_reason: "",
+        province: "", country: "Canada", extra_info: "",
+        address: "", unit: "", city: "", postal_code: "", patient_message: "", join_reason: "",
     });
     const set = (k) => (e) => setForm({ ...form, [k]: e.target.value });
     // Changing the DOB re-derives any already-chosen expiry (keeps its year,
@@ -85,6 +85,9 @@ export default function Register() {
             if (ver.length !== 2) { toast.error(t("auth:register.errVersionCode")); return; }
             if (!form.health_card_issue_date) { toast.error(t("auth:register.errIssueDate")); return; }
             if (!form.health_card_expiry_date) { toast.error(t("auth:register.errExpiryDate")); return; }
+        }
+        if (!form.address?.trim() || !form.city?.trim() || !form.province?.trim() || !form.postal_code?.trim() || !form.country?.trim()) {
+            toast.error(t("auth:register.errAddress")); return;
         }
         setBusy(true);
         try {
@@ -222,12 +225,25 @@ export default function Register() {
                                 </div>
                             </>
                         )}
-                        {type === "private" && (
-                            <Field label={t("auth:register.provinceIfApplicable")} testid="reg-province"><Input value={form.province} onChange={set("province")} /></Field>
-                        )}
-                        {type === "tourist" && (
-                            <Field label={t("auth:register.country")} testid="reg-country"><Input required value={form.country} onChange={set("country")} /></Field>
-                        )}
+                        <div className="pt-1">
+                            <div className="text-sm font-semibold text-slate-700 mb-2">{t("auth:register.addressSection")}</div>
+                            <div className="space-y-3">
+                                <div className="grid grid-cols-3 gap-3">
+                                    <div className="col-span-2">
+                                        <Field label={t("auth:register.addressStreet")} testid="reg-address"><Input required value={form.address} onChange={set("address")} placeholder="123 Main St" /></Field>
+                                    </div>
+                                    <Field label={t("auth:register.addressUnit")} testid="reg-unit"><Input value={form.unit} onChange={set("unit")} placeholder={optional} /></Field>
+                                </div>
+                                <div className="grid grid-cols-2 gap-3">
+                                    <Field label={t("auth:register.addressCity")} testid="reg-city"><Input required value={form.city} onChange={set("city")} /></Field>
+                                    <Field label={t("auth:register.addressProvince")} testid="reg-address-province"><Input required value={form.province} onChange={set("province")} /></Field>
+                                </div>
+                                <div className="grid grid-cols-2 gap-3">
+                                    <Field label={t("auth:register.addressPostal")} testid="reg-postal"><Input required value={form.postal_code} onChange={set("postal_code")} /></Field>
+                                    <Field label={t("auth:register.addressCountry")} testid="reg-address-country"><Input required value={form.country} onChange={set("country")} /></Field>
+                                </div>
+                            </div>
+                        </div>
 
                         <Field label={t("auth:register.phone")} testid="reg-phone"><Input required value={form.phone} onChange={set("phone")} placeholder="(416) 555-0000" /></Field>
                         <Field label={t("auth:register.email")} testid="reg-email"><Input type="email" required value={form.email} onChange={set("email")} /></Field>

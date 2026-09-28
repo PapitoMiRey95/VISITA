@@ -136,6 +136,10 @@ class RegisterBody(BaseModel):
     health_card_expiry_date: Optional[str] = None
     province: Optional[str] = None
     country: Optional[str] = None
+    address: Optional[str] = None
+    unit: Optional[str] = None
+    city: Optional[str] = None
+    postal_code: Optional[str] = None
     extra_info: Optional[str] = None
 
 
@@ -531,6 +535,7 @@ async def register(body: RegisterBody):
         "health_card_expiry_date": body.health_card_expiry_date or None,
         "phone": identity_mod.normalize_phone(body.phone), "email": email,
         "province": body.province, "country": body.country, "extra_info": body.extra_info,
+        "address": body.address, "unit": body.unit, "city": body.city, "postal_code": body.postal_code,
         "patient_type": body.patient_type, "verification_status": "pending",
         "portal_status": "PENDING_VERIFICATION",
         "review_queue": review_queue, "directory_match": match,

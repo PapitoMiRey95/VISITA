@@ -19,6 +19,12 @@ EMAIL_KEY = os.environ.get("EMERGENT_EMAIL_KEY")
 EMAIL_FROM_NAME = os.environ.get("EMAIL_FROM_NAME", "VISITA")
 EMAIL_REPLY_TO = os.environ.get("EMAIL_REPLY_TO")
 
+# Own verified-domain sender (Resend direct). When RESEND_API_KEY is present we send
+# from our own verified visitaemr.com domain; otherwise we fall back to the managed path.
+RESEND_API_KEY = os.environ.get("RESEND_API_KEY")
+RESEND_FROM = os.environ.get("RESEND_FROM", "VIsita EMR – Dr. Aguayo Family Practice <notifications@visitaemr.com>")
+RESEND_API_URL = "https://api.resend.com/emails"
+
 _SHORTENERS = ("bit.ly", "tinyurl.com", "t.co", "is.gd", "cutt.ly", "goo.gl", "rebrand.ly")
 _CRED_ASK = ("reply with your password", "reply with the code", "send your password", "cvv",
              "send us your password", "enter your password below", "confirm your card number",
@@ -90,8 +96,29 @@ def _assert_safe_email(subject: str, html: str) -> None:
                 raise ValueError(f"Anchor text {m.group(1)!r} != real host {real!r} (G3)")
 
 
+async def _send_via_resend(to: str, subject: str, html: str) -> str | None:
+    """Send from our own verified domain (notifications@visitaemr.com) via Resend."""
+    payload = {"from": RESEND_FROM, "to": [to], "subject": subject, "html": html}
+    if EMAIL_REPLY_TO:
+        payload["reply_to"] = [EMAIL_REPLY_TO]
+    try:
+        async with httpx.AsyncClient(timeout=30) as client:
+            resp = await client.post(
+                RESEND_API_URL,
+                headers={"Authorization": f"Bearer {RESEND_API_KEY}", "Content-Type": "application/json"},
+                json=payload,
+            )
+        resp.raise_for_status()
+        return resp.json().get("id")
+    except Exception as e:
+        logger.error(f"Resend send error: {e}")
+        raise
+
+
 async def send_email(*, to: str, subject: str, html: str) -> str | None:
     _assert_safe_email(subject, html)
+    if RESEND_API_KEY:
+        return await _send_via_resend(to, subject, html)
     payload = {"to": [to], "subject": subject, "html": html, "from_name": EMAIL_FROM_NAME}
     if EMAIL_REPLY_TO:
         payload["contact_email"] = EMAIL_REPLY_TO

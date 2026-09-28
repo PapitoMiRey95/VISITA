@@ -503,6 +503,7 @@ async def register(body: RegisterBody):
         return {
             "former_detected": True,
             "message": msg,
+            "message_code": "FORMER_PATIENT_DETECTED",
             "prefill": {
                 "first_name": body.first_name, "last_name": body.last_name,
                 "date_of_birth": body.date_of_birth, "email": email,
@@ -579,7 +580,8 @@ async def return_request(body: ReturnRequestBody):
                 {"id": None, "name": f"{body.first_name} {body.last_name}", "role": "patient"},
                 new_status="REQUEST_RECEIVED", meta={"type": "former_return"})
     return {"ok": True, "ref_number": ref, "status": APP_PATIENT_STATUS["REQUEST_RECEIVED"],
-            "message": await get_template("reestablish_care_confirmation")}
+            "message": await get_template("reestablish_care_confirmation"),
+            "message_code": "REESTABLISH_CONFIRMATION"}
 
 
 @api.post("/applications/new-patient")
@@ -604,7 +606,8 @@ async def new_patient_request(body: NewPatientRequestBody):
                 {"id": None, "name": f"{body.first_name} {body.last_name}", "role": "patient"},
                 new_status="REQUEST_RECEIVED", meta={"type": "new_patient"})
     return {"ok": True, "ref_number": ref, "status": APP_PATIENT_STATUS["REQUEST_RECEIVED"],
-            "message": await get_template("new_patient_request_confirmation")}
+            "message": await get_template("new_patient_request_confirmation"),
+            "message_code": "NEW_PATIENT_CONFIRMATION"}
 
 
 @api.post("/auth/login")

@@ -54,7 +54,7 @@ function ReasonCascade({ taxonomy, value, onChange }) {
                     }}>
                     <option value="">{idx === 0 ? t("privateAppointments.selectReason") : t("privateAppointments.selectMore")}</option>
                     {Object.entries(options).map(([code, node]) => (
-                        <option key={code} value={code}>{node.label}</option>
+                        <option key={code} value={code}>{t(`reasonLabels.${node.label}`, node.label)}</option>
                     ))}
                 </select>
             ))}
@@ -214,7 +214,7 @@ export default function PortalPrivateAppointments() {
                     <Card key={pr.id} className="p-4" data-testid="private-request-card">
                         <div className="flex justify-between items-start gap-2">
                             <div>
-                                <div className="font-bold text-slate-800">{pr.reason_label}</div>
+                                <div className="font-bold text-slate-800">{t(`reasonLabels.${pr.reason_label}`, pr.reason_label)}</div>
                                 <div className="text-sm text-slate-500">{pr.ref_number} · <span className="font-semibold text-amber-700">{t("privateAppointments.badge")}</span></div>
                                 {pr.preferred_date && <div className="text-xs text-slate-500 mt-1">{t("privateAppointments.requested")} {formatDate(pr.preferred_date)} · {pr.preferred_time}</div>}
                             </div>

@@ -30,9 +30,16 @@ const NP_REASONS = [
 export default function Register() {
     const { register } = useAuth();
     const nav = useNavigate();
-    const { t } = useTranslation(["auth", "common"]);
+    const { t, i18n } = useTranslation(["auth", "common"]);
     const [params] = useSearchParams();
     const isNew = params.get("new") === "1";
+    // Standard system prose: Spanish sessions use the localized i18n text; English
+    // keeps the (possibly clinic-customized) server template.
+    const sysMsg = (obj) => {
+        if (!obj) return "";
+        if (obj.code && (i18n.language || "en").startsWith("es")) return t(`auth:sys.${obj.code}`, { defaultValue: obj.message || "" });
+        return obj.message || "";
+    };
     // steps: 1=choose, 2=current form, 99=new-patient form, "former"=neutral notice,
     //        "reestablish"=return form, "done"=confirmation
     const [step, setStep] = useState(isNew ? 99 : 1);
@@ -85,7 +92,7 @@ export default function Register() {
             const last_name = joinName(form.last_name, form.second_last_name);
             const res = await register({ ...form, first_name, last_name, patient_type: type });
             if (res?.former_detected) {
-                setFormer({ message: res.message, prefill: res.prefill || {} });
+                setFormer({ message: res.message, code: res.message_code, prefill: res.prefill || {} });
                 setForm((f) => ({ ...f, ...(res.prefill || {}) }));
                 setStep("former");
                 return;
@@ -109,7 +116,7 @@ export default function Register() {
                 address: form.address || null, city: form.city || null, province: form.province || null,
                 postal_code: form.postal_code || null, patient_message: form.patient_message || null,
             });
-            setConfirm({ message: data.message, ref_number: data.ref_number });
+            setConfirm({ message: data.message, code: data.message_code, ref_number: data.ref_number });
             setStep("done");
         } catch (err) {
             toast.error(formatErr(err));
@@ -131,7 +138,7 @@ export default function Register() {
                 province: form.province || null, country: form.country || null,
                 patient_message: message || null,
             });
-            setConfirm({ message: data.message, ref_number: data.ref_number });
+            setConfirm({ message: data.message, code: data.message_code, ref_number: data.ref_number });
             setStep("done");
         } catch (err) {
             toast.error(formatErr(err));
@@ -243,7 +250,7 @@ export default function Register() {
                 {step === "former" && (
                     <div className="bg-white rounded-2xl border border-slate-200 p-6 shadow-sm animate-fade-in" data-testid="former-notice">
                         <h2 className="text-xl font-bold text-slate-900 mb-3">{t("auth:register.former.title")}</h2>
-                        <p className="text-slate-600 mb-5 leading-relaxed">{former?.message}</p>
+                        <p className="text-slate-600 mb-5 leading-relaxed">{sysMsg(former)}</p>
                         <Button data-testid="reestablish-start" onClick={() => setStep("reestablish")}
                             className="w-full bg-portal-blue hover:bg-portal-blueDark text-white text-base h-12 rounded-xl">
                             {t("auth:register.former.reestablishBtn")}
@@ -341,7 +348,7 @@ export default function Register() {
                             <Clock className="w-7 h-7 text-portal-blueDark" />
                         </div>
                         <h2 className="text-xl font-bold text-slate-900 mb-2">{t("auth:register.done.title")}</h2>
-                        <p className="text-slate-600 leading-relaxed mb-4">{confirm?.message}</p>
+                        <p className="text-slate-600 leading-relaxed mb-4">{sysMsg(confirm)}</p>
                         {confirm?.ref_number && (
                             <p className="text-sm text-slate-500 mb-5">{t("auth:register.done.reference")} <span className="font-semibold text-slate-700">{confirm.ref_number}</span></p>
                         )}

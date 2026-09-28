@@ -48,5 +48,14 @@
     "passwordRequired": "Password required",
     "hcTenDigits": "Health Card Number must contain 10 digits",
     "selectDob": "Please select your date of birth"
+  },
+  "apiErrors": {
+    "E_TIME_UNAVAILABLE_SELECT": "This time is no longer available. Please select another time.",
+    "E_TIME_UNAVAILABLE_CONTACT": "That time is no longer available. Please contact the clinic.",
+    "E_CANNOT_CANCEL": "This request can no longer be cancelled.",
+    "E_PROOF_LOCKED": "Payment proof can no longer be uploaded for this invoice.",
+    "E_INVALID_CREDENTIALS": "Invalid credentials. Please check your email/username and password.",
+    "E_ACCOUNT_DISABLED": "This account has been disabled. Contact the clinic.",
+    "E_ENTER_IDENTIFIER": "Please enter your email or username."
   }
 }

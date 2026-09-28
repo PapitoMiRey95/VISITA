@@ -48,5 +48,14 @@
     "passwordRequired": "Se requiere una contraseña",
     "hcTenDigits": "El número de tarjeta de salud debe contener 10 dígitos",
     "selectDob": "Seleccione su fecha de nacimiento"
+  },
+  "apiErrors": {
+    "E_TIME_UNAVAILABLE_SELECT": "Esta hora ya no está disponible. Por favor seleccione otra hora.",
+    "E_TIME_UNAVAILABLE_CONTACT": "Esa hora ya no está disponible. Por favor comuníquese con la clínica.",
+    "E_CANNOT_CANCEL": "Esta solicitud ya no se puede cancelar.",
+    "E_PROOF_LOCKED": "Ya no se puede subir el comprobante de pago para esta factura.",
+    "E_INVALID_CREDENTIALS": "Credenciales inválidas. Verifique su correo/usuario y contraseña.",
+    "E_ACCOUNT_DISABLED": "Esta cuenta ha sido deshabilitada. Comuníquese con la clínica.",
+    "E_ENTER_IDENTIFIER": "Por favor ingrese su correo electrónico o usuario."
   }
 }

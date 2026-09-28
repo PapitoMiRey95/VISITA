@@ -15,6 +15,8 @@ const RECEIVED = ["fax", "phone", "other"];
 export default function PharmacyIntake() {
     const nav = useNavigate();
     const [query, setQuery] = useState("");
+    const [pin, setPin] = useState("");
+    const [pinSearching, setPinSearching] = useState(false);
     const [results, setResults] = useState([]);
     const [searching, setSearching] = useState(false);
     const [snap, setSnap] = useState(null); // selected patient snapshot
@@ -31,6 +33,20 @@ export default function PharmacyIntake() {
             const { data } = await api.get("/internal/patient-lookup", { params: { q: query.trim() } });
             setResults(data);
         } catch (err) { toast.error(formatErr(err)); } finally { setSearching(false); }
+    };
+
+    const searchPin = async (e) => {
+        e?.preventDefault();
+        const p = pin.trim();
+        if (!p) return;
+        if (!/^\d+$/.test(p)) { toast.error("PIN must be numbers only."); return; }
+        setPinSearching(true);
+        try {
+            const { data } = await api.get("/internal/patient-lookup", { params: { q: p } });
+            const exact = data.filter((r) => String(r.visita_patient_id || "") === p);
+            setResults(exact.length ? exact : data);
+            if (data.length === 0) toast.error("No patient found for that PIN.");
+        } catch (err) { toast.error(formatErr(err)); } finally { setPinSearching(false); }
     };
 
     const selectPatient = async (id) => {
@@ -83,6 +99,19 @@ export default function PharmacyIntake() {
                                 placeholder="Patient name or VISITA Patient ID / PIN" className="pl-8" />
                         </div>
                         <Button type="submit" disabled={searching} data-testid="intake-search-btn">{searching ? "…" : "Search"}</Button>
+                    </form>
+
+                    <div className="my-3 flex items-center gap-2 text-[11px] uppercase tracking-wide text-slate-400">
+                        <span className="flex-1 border-t border-slate-200" />or search by PIN<span className="flex-1 border-t border-slate-200" />
+                    </div>
+                    <form onSubmit={searchPin} className="flex gap-2">
+                        <div className="relative flex-1">
+                            <Search className="w-4 h-4 text-slate-400 absolute left-2 top-2.5" />
+                            <Input data-testid="intake-pin-search" value={pin} inputMode="numeric"
+                                onChange={(e) => setPin(e.target.value.replace(/[^\d]/g, ""))}
+                                placeholder="VISITA PIN (numbers only)" className="pl-8" />
+                        </div>
+                        <Button type="submit" variant="outline" disabled={pinSearching} data-testid="intake-pin-search-btn">{pinSearching ? "…" : "Find by PIN"}</Button>
                     </form>
                     <div className="mt-3 divide-y border border-slate-200 rounded-sm max-h-80 overflow-y-auto">
                         {results.length === 0 && <div className="px-3 py-4 text-slate-400 text-sm">Search VISITA patients (directory + portal accounts) by name, DOB, phone or VISITA PIN.</div>}

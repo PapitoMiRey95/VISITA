@@ -4101,6 +4101,21 @@ async def pharmacy_search(q: str, user: dict = Depends(require_roles("pharmacy")
         {"visita_patient_id": {"$regex": re.escape(qn), "$options": "i"}},
     ]}
     docs = await db.patient_directory.find(query).limit(25).to_list(25)
+    seen = {d["id"] for d in docs}
+    # VISITA PIN search: a verified patient's PIN can live on the portal `patients`
+    # record while the directory PIN is blank (same mapping the physician PIN lookup
+    # uses). Resolve numeric PINs through the linked patient -> directory record.
+    if qn.isdigit():
+        portal = await db.patients.find({
+            "verification_status": "verified", "active_status": True, "visita_patient_id": qn,
+        }).limit(25).to_list(25)
+        for p in portal:
+            mdir = p.get("matched_directory_id")
+            if not mdir or mdir in seen:
+                continue
+            d = await db.patient_directory.find_one({"id": mdir})
+            if d and d.get("patient_status") != "FORMER_CLOSED":
+                docs.append(d); seen.add(mdir)
     return [_pharmacy_patient_identity(d) for d in docs]
 
 

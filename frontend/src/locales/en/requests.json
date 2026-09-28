@@ -37,8 +37,8 @@
   },
   "privateAppointments": {
     "title": "Private Appointment Request",
-    "badge": "PRIVATE / UNINSURED",
-    "bannerPre": "Dr. Aguayo generally sees private / uninsured patients in the evening:",
+    "badge": "PRIVATE",
+    "bannerPre": "Dr. Aguayo generally sees private patients in the evening:",
     "bannerHoursDefault": "any day, 5:30 PM–9:00 PM",
     "bannerPost": ", in 30-minute windows. You are requesting a time only — the clinic will review your request. If it can be accommodated it may be accepted; otherwise another date and time will be offered to you.",
     "whenPrefer": "When would you prefer?",

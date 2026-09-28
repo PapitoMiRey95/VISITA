@@ -14,6 +14,25 @@ import { formatDate } from "../lib/date";
 
 const NOTE_MAX = 300;
 
+// Localize ONLY recognized English day names / ranges in the clinic-configured
+// private-hours display string for ES sessions. Times and the stored value are
+// left unchanged; unrecognized clinic prose is preserved verbatim.
+const DAY_ES = {
+    monday: "Lunes", tuesday: "Martes", wednesday: "Miércoles", thursday: "Jueves",
+    friday: "Viernes", saturday: "Sábado", sunday: "Domingo",
+    mon: "Lun", tue: "Mar", wed: "Mié", thu: "Jue", fri: "Vie", sat: "Sáb", sun: "Dom",
+    "any day": "cualquier día", "every day": "todos los días", daily: "todos los días",
+};
+function localizeHours(str, lang) {
+    if (!str || !lang || !lang.toLowerCase().startsWith("es")) return str;
+    let out = str;
+    for (const [en, es] of Object.entries(DAY_ES)) {
+        out = out.replace(new RegExp(`\\b${en}\\b`, "gi"), es);
+    }
+    return out;
+}
+
+
 // Private/uninsured evenings run 5:30–9:00 PM, any day (Mon–Sun), in fixed
 // 30-minute windows. Value stored = window start (HH:MM).
 const TIME_WINDOWS = [
@@ -88,7 +107,7 @@ function Thread({ pr, onSend }) {
 }
 
 export default function PortalPrivateAppointments() {
-    const { t } = useTranslation("requests");
+    const { t, i18n } = useTranslation("requests");
     const { refetch } = usePortal();
     const [taxonomy, setTaxonomy] = useState({});
     const [config, setConfig] = useState({ private_hours: "" });
@@ -145,7 +164,7 @@ export default function PortalPrivateAppointments() {
                 <Info className="w-5 h-5 flex-shrink-0" />
                 <div>
                     <p className="font-bold">{t("privateAppointments.badge")}</p>
-                    {t("privateAppointments.bannerPre")} <span className="font-semibold">{config.private_hours || t("privateAppointments.bannerHoursDefault")}</span>{t("privateAppointments.bannerPost")}
+                    {t("privateAppointments.bannerPre")} <span className="font-semibold">{localizeHours(config.private_hours, i18n.language) || t("privateAppointments.bannerHoursDefault")}</span>{t("privateAppointments.bannerPost")}
                 </div>
             </div>
 

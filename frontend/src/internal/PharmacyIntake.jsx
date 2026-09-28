@@ -95,7 +95,12 @@ export default function PharmacyIntake() {
                     <form onSubmit={search} className="flex gap-2">
                         <div className="relative flex-1">
                             <Search className="w-4 h-4 text-slate-400 absolute left-2 top-2.5" />
-                            <Input data-testid="intake-search" value={query} onChange={(e) => setQuery(e.target.value)}
+                            <Input data-testid="intake-search" value={query}
+                                onChange={(e) => {
+                                    const v = e.target.value;
+                                    setQuery(v);
+                                    if (!v.trim()) setResults([]);
+                                }}
                                 placeholder="Patient name or VISITA Patient ID / PIN" className="pl-8" />
                         </div>
                         <Button type="submit" disabled={searching} data-testid="intake-search-btn">{searching ? "…" : "Search"}</Button>

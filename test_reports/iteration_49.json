@@ -1,0 +1,20 @@
+{
+  "summary": "Frontend-only verification of Send Rx unsaved-work safeguard. All 6 scenarios PASS: (1) sidebar nav on dirty draft opens shared unsaved-guard-overlay (Cancel/Discard/Save&leave); (2) Save&leave persists per-patient draft to sessionStorage, restore banner (sendrx-restore) appears on same-patient re-select and Restore rehydrates the ZZGuardQA med card; (3) cross-patient safety — a different patient does NOT see the stored draft's restore banner; (4) Change patient opens local sendrx-change-guard (Stay keeps draft, Leave&discard clears patient + wipes stored draft); (5) not-dirty passthrough — sidebar navigates immediately with no modal; (6) successful Send clears dirty (no unsaved modal on next sidebar click, no restore banner on re-select). sessionStorage key confirmed as visita_rx_draft_<patient_ref>.",
+  "backend_issues": {"critical": [], "minor": []},
+  "frontend_issues": {"ui_bugs": [], "integration_issues": [], "design_issues": []},
+  "test_report_links": [],
+  "action_items": [],
+  "critical_code_review_comments": [
+    "SendPrescription.jsx is large but modular; dirty computation + setGuard registration is clean and correctly re-registers on save function/dirty change.",
+    "Change-patient uses a separate local modal (correct: same-page action) — good UX distinction from shared cross-route modal.",
+    "sessionStorage key visita_rx_draft_<ref> correctly scopes drafts per patient; verified cross-patient isolation."
+  ],
+  "updated_files": [],
+  "success_rate": {"backend": "N/A", "frontend": "100% (6/6 scenarios)"},
+  "test_credentials": "Physician PAGUAYO / Newman2013_! (login via login-email input)",
+  "seed_data_creation": "One prescription (ZZGuardQA to 1670 Dufferin Drug Mart) was successfully sent to complete the send-clears-dirty scenario. Created rx_transmission record in preview DB.",
+  "retest_needed": false,
+  "main_agent_can_self_test": true,
+  "context_for_next_testing_agent": "Signin uses testids login-email/login-password/login-submit (not signin-*). Sidebar patient link testid is sidebar-patients. Unsaved-work safeguard is fully functional. Screenshots: .screenshots/test1_sidebar_modal.png, test2_restore_banner.png, test3_different_patient.png, test4_change_guard.png.",
+  "rca of the issue": "N/A — all scenarios passed."
+}

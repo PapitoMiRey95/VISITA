@@ -1,0 +1,40 @@
+{
+  "summary": "Frontend-only UI verification of the new 'Repeat Entire Prescription' SAFE DRAFT flow on /internal/send-rx. All acceptance criteria pass: (a) Repeat Entire builds a multi-med draft with prescription-level months/refills and no network transmit, (b) newer-info amber banner appears only on the med with a newer regimen (ZZTestAlpha), (c) 'Use newer version' updates that card to the new regimen and hides the banner, (d) ZZTestBeta card does NOT show the newer block, (e) original historical prescription remains immutable after repeat + use-newer.",
+  "backend_issues": {"critical": [], "minor": []},
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [],
+    "design_issues": [
+      {"screen": "Send Prescription - Step 3 draft med card", "issues": ["Per-med Remove control (Trash2 icon) has no data-testid attribute. Testability gap — consider adding data-testid='sendrx-remove-med' (SendPrescription.jsx lines 348 & 378). Functionality itself is present and works."]}
+    ]
+  },
+  "test_report_links": [
+    "/app/.screenshots/A_prev_prescriptions.png",
+    "/app/.screenshots/B_draft_after_repeat.png",
+    "/app/.screenshots/C_newer_banner.png"
+  ],
+  "action_items": [
+    "OPTIONAL: add data-testid='sendrx-remove-med' to the Trash2 remove buttons in SendPrescription.jsx (lines ~348 and ~378) for testability parity with other sendrx-* handles."
+  ],
+  "critical_code_review_comments": [
+    "repeatEntire() correctly copies medications + rx-level fields into local state only; no API call is made — matches SAFE DRAFT requirement.",
+    "applyNewer() spreads m.newer over the med and clears newer_available/newer, and dismissNewer() only hides the banner without silent substitution — matches spec (no silent substitution).",
+    "Historical prescriptions are rendered from GET /api/internal/patients/{ref}/prescriptions and never mutated by client actions — immutability confirmed end-to-end in UI (RXTX-000027 still shows ZZTestAlpha 10 mg + ZZTestBeta 5 mg after repeat + use-newer).",
+    "SendPrescription.jsx is 510 lines — approaching the 700-line guideline; still acceptable but consider splitting into subcomponents (PreviousPrescriptions, MedCard, NewerBanner) for maintainability."
+  ],
+  "updated_files": [],
+  "success_rate": {"backend": "N/A (skipped per request)", "frontend": "100%"},
+  "test_credentials": "Physician PAGUAYO / Newman2013_! (from /app/memory/test_credentials.md) — verified working on /signin (Sign In page). Note: /login route renders landing page, not the login form; clinic staff login is at /signin.",
+  "seed_data_creation": "Created 2 ZZTest rx_transmissions for PIN 3040 (GARZA PAC, Michelle Esmeralda): RXTX-000027 (ZZTestAlpha 10 mg OD + ZZTestBeta 5 mg HS, 3 months/0 refills) and RXTX-000028 (ZZTestAlpha 20 mg BID, 1 month/0 refills). Also created corresponding patient_medications entries. All use ZZTest* fake drug names as instructed; no real patient records were modified.",
+  "retest_needed": false,
+  "main_agent_can_self_test": true,
+  "context_for_next_testing_agent": "Login route for staff/physician is /signin, not /login. Backend redirect after login lands on /internal. Repeat Entire flow verified end-to-end. Seeded test data (RXTX-000027, RXTX-000028) remains on patient PIN 3040 and can be reused. All expected data-testids exist: sendrx-prescription, sendrx-repeat-entire, sendrx-newer, sendrx-use-newer, sendrx-keep-version, sendrx-med-card, sendrx-rxlevel, sendrx-edit-med, sendrx-edit-rx. Only per-med Trash remove button is missing a data-testid.",
+  "test_evidence": {
+    "repeat_entire_no_network": "0 POST /api/internal/send-rx calls captured during Repeat Entire click (network listener attached).",
+    "draft_med_cards_after_repeat": "2 sendrx-med-card elements (ZZTestAlpha 10 mg OD, ZZTestBeta 5 mg HS)",
+    "rx_level_after_repeat": "3 month(s) · 0 refill(s) with Edit Prescription Details control",
+    "newer_banner_on_repeat_original": "1 sendrx-newer block on ZZTestAlpha card only; ZZTestBeta card has no newer block",
+    "use_newer_result": "ZZTestAlpha card updates to '20 mg tablet, 1 tablet BID' and newer block disappears (count 0)",
+    "immutability": "Original RXTX-000027 card still shows 'ZZTestAlpha 10 mg, ZZTestBeta 5 mg · 3 month(s)' after repeat + use-newer"
+  }
+}

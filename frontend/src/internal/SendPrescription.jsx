@@ -345,7 +345,7 @@ export default function SendPrescription() {
                                                     </div>
                                                     <div className="flex items-center gap-2 shrink-0">
                                                         <button onClick={() => toggleEdit(i)} data-testid="sendrx-edit-med" className="text-xs text-slate-500 hover:underline inline-flex items-center gap-1"><Pencil className="w-3.5 h-3.5" /> Edit</button>
-                                                        <button onClick={() => removeMed(i)} className="text-slate-400 hover:text-red-600"><Trash2 className="w-3.5 h-3.5" /></button>
+                                                        <button onClick={() => removeMed(i)} data-testid="sendrx-remove-med" className="text-slate-400 hover:text-red-600"><Trash2 className="w-3.5 h-3.5" /></button>
                                                     </div>
                                                 </div>
                                             ) : (
@@ -375,7 +375,7 @@ export default function SendPrescription() {
                                                     <div><Label className="text-xs">Physician note (optional)</Label><Input value={m.note} onChange={(e) => setMed(i, "note", e.target.value)} /></div>
                                                     {m.original_text && <div className="text-[11px] text-slate-400">Original: {m.original_text}</div>}
                                                     <div className="flex justify-end gap-2">
-                                                        <button onClick={() => removeMed(i)} className="text-xs text-red-600 inline-flex items-center gap-1"><Trash2 className="w-3.5 h-3.5" /> Remove</button>
+                                                        <button onClick={() => removeMed(i)} data-testid="sendrx-remove-med-edit" className="text-xs text-red-600 inline-flex items-center gap-1"><Trash2 className="w-3.5 h-3.5" /> Remove</button>
                                                         <Button size="sm" variant="outline" onClick={() => toggleEdit(i)}>Done</Button>
                                                     </div>
                                                 </div>

@@ -11,7 +11,15 @@ import { Input } from "../components/ui/input";
 import { Textarea } from "../components/ui/textarea";
 import { Label } from "../components/ui/label";
 
-const EMPTY_MED = { drug: "", strength: "", unit: "", form: "", attributes: [], sig: "", quantity: "", refills: "", note: "", original_text: "", needs_review: [], _editing: true };
+const EMPTY_MED = { drug: "", action: "", strength: "", unit: "", form: "", attributes: [], sig: "", quantity: "", refills: "", additional_instructions: "", note: "", original_text: "", needs_review: [], _editing: true };
+
+const ACTION_STYLE = {
+    HOLD: "bg-red-100 text-red-700",
+    STOP: "bg-red-100 text-red-700",
+    DISCONTINUE: "bg-red-100 text-red-700",
+    START: "bg-emerald-100 text-emerald-700",
+    CONTINUE: "bg-sky-100 text-sky-700",
+};
 
 function StatusPill({ status }) {
     const map = {
@@ -85,9 +93,9 @@ export default function SendPrescription() {
 
     const repeatRx = (pm) => {
         setMeds((s) => [...s, {
-            drug: pm.drug || "", strength: pm.strength || "", unit: pm.unit || "", form: pm.form || "",
-            attributes: pm.attributes || [], sig: pm.sig || "", quantity: "", refills: "",
-            note: pm.note || "", original_text: pm.original_text || "", needs_review: [], _editing: false,
+            drug: pm.drug || "", action: pm.action || "", strength: pm.strength || "", unit: pm.unit || "", form: pm.form || "",
+            attributes: pm.attributes || [], sig: pm.sig || "", quantity: pm.quantity || "", refills: pm.refills || "",
+            additional_instructions: pm.additional_instructions || "", note: pm.note || "", original_text: pm.original_text || "", needs_review: [], _editing: false,
         }]);
         setRx((r) => ({ ...r, months: pm.months ?? r.months, refills: pm.refills ?? r.refills }));
         toast.success("Added to prescription. Review and send.");
@@ -242,7 +250,7 @@ export default function SendPrescription() {
                                     {prevMeds.map((pm) => (
                                         <div key={pm.id} data-testid="sendrx-prevmed" className="flex items-start justify-between gap-3 border border-slate-200 rounded-sm px-3 py-2">
                                             <div className="text-sm">
-                                                <div className="font-semibold text-slate-800">{[pm.drug, pm.strength].filter(Boolean).join(" ")}</div>
+                                                <div className="font-semibold text-slate-800 flex items-center gap-2">{[pm.drug, pm.strength].filter(Boolean).join(" ")}{pm.action ? <span className={`px-1.5 py-0.5 rounded-sm text-[10px] font-bold tracking-wide ${ACTION_STYLE[pm.action] || "bg-slate-100 text-slate-600"}`}>{pm.action}</span> : null}</div>
                                                 <div className="text-slate-500 text-xs">{[pm.form, ...(pm.attributes || [])].filter(Boolean).join(" · ")}</div>
                                                 {pm.sig && <div className="text-slate-600 text-xs mt-0.5">{pm.sig}</div>}
                                                 <div className="text-slate-400 text-[11px] mt-0.5">Last prescribed: {formatDate(pm.last_prescribed_at)}</div>
@@ -280,13 +288,19 @@ export default function SendPrescription() {
                                         <div key={i} data-testid="sendrx-med-card" className="border border-slate-200 rounded-sm p-3">
                                             {!m._editing ? (
                                                 <div className="flex items-start justify-between gap-3">
-                                                    <div className="text-sm">
-                                                        <div className="font-semibold text-slate-800">{[m.drug || "(medication?)", m.strength].filter(Boolean).join(" ")}</div>
-                                                        <div className="text-slate-500 text-xs">{[m.form, ...(m.attributes || [])].filter(Boolean).join(" · ") || "—"}</div>
-                                                        {m.sig ? <div className="text-slate-700 text-xs mt-1"><span className="text-slate-400">SIG</span> {m.sig}</div> : null}
+                                                    <div className="text-sm flex-1 min-w-0">
+                                                        <div className="flex items-center gap-2 flex-wrap">
+                                                            <span className="text-slate-400 text-xs font-semibold">{i + 1}.</span>
+                                                            <span className="font-semibold text-slate-800">{[m.drug || "(medication?)", m.strength].filter(Boolean).join(" ")}</span>
+                                                            {m.action ? <span className={`px-1.5 py-0.5 rounded-sm text-[10px] font-bold tracking-wide ${ACTION_STYLE[m.action] || "bg-slate-100 text-slate-600"}`} data-testid="sendrx-action-badge">{m.action}</span> : null}
+                                                        </div>
+                                                        <div className="text-slate-500 text-xs mt-0.5">{[m.form, ...(m.attributes || [])].filter(Boolean).join(" · ") || "—"}</div>
+                                                        {m.sig ? <div className="text-slate-700 text-xs mt-1"><span className="text-slate-400 uppercase mr-1">SIG</span>{m.sig}</div> : null}
+                                                        {(m.quantity || m.refills) ? <div className="text-slate-600 text-xs mt-0.5">{m.quantity ? `Qty ${m.quantity}` : ""}{m.quantity && m.refills ? " · " : ""}{m.refills != null && m.refills !== "" ? (String(m.refills) === "0" ? "No refills" : `${m.refills} refill(s)`) : ""}</div> : null}
+                                                        {m.additional_instructions ? <div className="text-slate-500 text-[11px] mt-0.5"><span className="text-slate-400">Additional instructions:</span> {m.additional_instructions}</div> : null}
                                                         {(m.needs_review || []).length > 0 && <div className="text-amber-600 text-[11px] mt-1 inline-flex items-center gap-1"><AlertTriangle className="w-3 h-3" /> Review: {m.needs_review.join(", ")}</div>}
                                                     </div>
-                                                    <div className="flex items-center gap-2">
+                                                    <div className="flex items-center gap-2 shrink-0">
                                                         <button onClick={() => toggleEdit(i)} data-testid="sendrx-edit-med" className="text-xs text-slate-500 hover:underline inline-flex items-center gap-1"><Pencil className="w-3.5 h-3.5" /> Edit</button>
                                                         <button onClick={() => removeMed(i)} className="text-slate-400 hover:text-red-600"><Trash2 className="w-3.5 h-3.5" /></button>
                                                     </div>
@@ -297,8 +311,24 @@ export default function SendPrescription() {
                                                         <div><Label className="text-xs">Medication / Drug</Label><Input data-testid="sendrx-drug" value={m.drug} onChange={(e) => setMed(i, "drug", e.target.value)} /></div>
                                                         <div><Label className="text-xs">Strength</Label><Input value={m.strength} onChange={(e) => setMed(i, "strength", e.target.value)} /></div>
                                                         <div><Label className="text-xs">Dosage form</Label><Input value={m.form} onChange={(e) => setMed(i, "form", e.target.value)} /></div>
+                                                        <div>
+                                                            <Label className="text-xs">Action</Label>
+                                                            <select value={m.action || ""} onChange={(e) => setMed(i, "action", e.target.value)} data-testid="sendrx-action" className="w-full border border-slate-200 rounded-sm h-9 px-2 bg-white text-sm">
+                                                                <option value="">None</option>
+                                                                <option value="START">START</option>
+                                                                <option value="CONTINUE">CONTINUE</option>
+                                                                <option value="HOLD">HOLD</option>
+                                                                <option value="STOP">STOP</option>
+                                                                <option value="DISCONTINUE">DISCONTINUE</option>
+                                                            </select>
+                                                        </div>
                                                         <div><Label className="text-xs">Directions / SIG</Label><Input value={m.sig} onChange={(e) => setMed(i, "sig", e.target.value)} /></div>
+                                                        <div className="grid grid-cols-2 gap-2">
+                                                            <div><Label className="text-xs">Qty</Label><Input value={m.quantity} onChange={(e) => setMed(i, "quantity", e.target.value)} /></div>
+                                                            <div><Label className="text-xs">Refills</Label><Input value={m.refills} onChange={(e) => setMed(i, "refills", e.target.value)} /></div>
+                                                        </div>
                                                     </div>
+                                                    <div><Label className="text-xs">Additional instructions</Label><Input value={m.additional_instructions} onChange={(e) => setMed(i, "additional_instructions", e.target.value)} /></div>
                                                     <div><Label className="text-xs">Physician note (optional)</Label><Input value={m.note} onChange={(e) => setMed(i, "note", e.target.value)} /></div>
                                                     {m.original_text && <div className="text-[11px] text-slate-400">Original: {m.original_text}</div>}
                                                     <div className="flex justify-end gap-2">
@@ -354,13 +384,36 @@ export default function SendPrescription() {
                             <div><div className="text-xs text-slate-400 uppercase">Patient</div><div className="font-semibold">{patientName(patient)}</div></div>
                             <div><div className="text-xs text-slate-400 uppercase">Pharmacy</div><div className="font-semibold">{selectedPharmacy?.pharmacy_name || "—"}</div></div>
                             <div className="sm:col-span-2">
-                                <div className="text-xs text-slate-400 uppercase">Prescription</div>
+                                <div className="text-xs text-slate-400 uppercase mb-1">Prescription</div>
                                 {filledMeds.length > 0 ? (
-                                    <ul className="list-disc pl-5 text-slate-700">
-                                        {filledMeds.map((m, i) => (<li key={i}>{[m.drug, m.strength, m.form].filter(Boolean).join(" ")}{m.sig ? ` — ${m.sig}` : ""}</li>))}
-                                    </ul>
+                                    <div className="space-y-2" data-testid="sendrx-review-meds">
+                                        {filledMeds.map((m, i) => (
+                                            <div key={i} data-testid="sendrx-review-med" className="border border-slate-200 rounded-sm px-3 py-2">
+                                                <div className="flex items-center gap-2 flex-wrap">
+                                                    <span className="text-slate-400 text-xs font-semibold">{i + 1}.</span>
+                                                    <span className="font-semibold text-slate-800">{[m.drug, m.strength].filter(Boolean).join(" ")}</span>
+                                                    {m.form ? <span className="text-slate-500 text-xs">— {m.form}</span> : null}
+                                                    {m.action ? <span className={`px-1.5 py-0.5 rounded-sm text-[10px] font-bold tracking-wide ${ACTION_STYLE[m.action] || "bg-slate-100 text-slate-600"}`}>{m.action}</span> : null}
+                                                </div>
+                                                {m.sig ? <div className="text-slate-700 text-xs mt-0.5">{m.sig}</div> : null}
+                                                {(m.quantity || m.refills) ? <div className="text-slate-500 text-xs">{m.quantity ? `Qty ${m.quantity}` : ""}{m.quantity && m.refills ? " · " : ""}{m.refills != null && m.refills !== "" ? (String(m.refills) === "0" ? "No refills" : `${m.refills} refill(s)`) : ""}</div> : null}
+                                                {m.additional_instructions ? <div className="text-slate-400 text-[11px]">{m.additional_instructions}</div> : null}
+                                            </div>
+                                        ))}
+                                    </div>
                                 ) : <div className="text-slate-400">No manual medications</div>}
-                                {(rx.months || rx.refills) && <div className="text-slate-500 text-xs mt-1">{rx.months ? `${rx.months} month(s)` : ""}{rx.months && rx.refills ? " · " : ""}{rx.refills ? `${rx.refills} refill(s)` : ""}</div>}
+                                {(rx.months || rx.refills) ? (
+                                    <div className="mt-2">
+                                        <div className="text-xs text-slate-400 uppercase">Prescription details</div>
+                                        <div className="text-slate-600 text-xs">{rx.months ? `${rx.months} month(s)` : ""}{rx.months && rx.refills ? " · " : ""}{rx.refills ? `${rx.refills} refill(s)` : ""}</div>
+                                    </div>
+                                ) : null}
+                                {rx.note ? (
+                                    <div className="mt-2">
+                                        <div className="text-xs text-slate-400 uppercase">Note</div>
+                                        <div className="text-slate-600 text-xs">{rx.note}</div>
+                                    </div>
+                                ) : null}
                             </div>
                             <div className="sm:col-span-2"><div className="text-xs text-slate-400 uppercase">Attachment</div><div className="text-slate-700">{file ? file.name : "None"}</div></div>
                         </div>

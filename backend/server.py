@@ -4281,9 +4281,11 @@ async def _remember_patient_medications(tx: dict):
         else:
             await db.patient_medications.insert_one({
                 "id": str(uuid.uuid4()), "regimen_key": key, "patient_id": pid,
-                "drug": m.get("drug"), "strength": m.get("strength"), "unit": m.get("unit"),
+                "drug": m.get("drug"), "action": m.get("action"), "strength": m.get("strength"), "unit": m.get("unit"),
                 "form": m.get("form"), "attributes": m.get("attributes") or [],
-                "sig": m.get("sig"), "original_text": m.get("original_text"),
+                "sig": m.get("sig"), "quantity": m.get("quantity"),
+                "additional_instructions": m.get("additional_instructions"),
+                "original_text": m.get("original_text"),
                 "months": tx.get("months"), "refills": tx.get("refills"), "note": m.get("note"),
                 "last_prescribed_at": tx["sent_at"], "last_tx_id": tx["id"], "active": True,
                 "created_at": now, "updated_at": now})
@@ -4409,6 +4411,7 @@ async def internal_send_rx(
             continue
         meds.append({
             "drug": drug,
+            "action": (str(m.get("action") or "").strip().upper() or None),
             "strength": str(m.get("strength") or "").strip() or None,
             "unit": str(m.get("unit") or "").strip() or None,
             "form": str(m.get("form") or "").strip() or None,
@@ -4416,6 +4419,7 @@ async def internal_send_rx(
             "sig": str(m.get("sig") or "").strip() or None,
             "quantity": str(m.get("quantity") or "").strip() or None,
             "refills": str(m.get("refills") or "").strip() or None,
+            "additional_instructions": str(m.get("additional_instructions") or "").strip() or None,
             "note": str(m.get("note") or "").strip() or None,
             "original_text": str(m.get("original_text") or "").strip() or None,
         })

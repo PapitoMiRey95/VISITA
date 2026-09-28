@@ -100,16 +100,26 @@ export default function PharmacyIncoming() {
                             <ul className="space-y-2 text-sm">
                                 {detail.medications.map((m, i) => (
                                     <li key={i} className="border border-slate-100 rounded-sm p-2" data-testid="incoming-med">
-                                        <div className="font-semibold">{[m.drug, m.strength, m.form].filter(Boolean).join(" ")}</div>
+                                        <div className="font-semibold flex items-center gap-2">{[m.drug, m.strength, m.form].filter(Boolean).join(" ")}{m.action ? <span className="px-1.5 py-0.5 rounded-sm text-[10px] font-bold tracking-wide bg-slate-100 text-slate-600">{m.action}</span> : null}</div>
                                         {m.sig && <div className="text-slate-600">SIG: {m.sig}</div>}
-                                        <div className="text-slate-500 text-xs">
-                                            {m.quantity ? `Qty ${m.quantity}` : ""}{m.refills ? ` · Refills ${m.refills}` : ""}
-                                        </div>
+                                        {(m.quantity || m.refills) && (
+                                            <div className="text-slate-500 text-xs">
+                                                {m.quantity ? `Qty ${m.quantity}${m.quantity_unit ? ` ${m.quantity_unit}` : ""}` : ""}{m.quantity && (m.refills != null && m.refills !== "") ? " · " : ""}{(m.refills != null && m.refills !== "") ? (String(m.refills) === "0" ? "No refills" : `Refills ${m.refills}`) : ""}
+                                            </div>
+                                        )}
+                                        {m.additional_instructions && <div className="text-slate-400 text-xs">{m.additional_instructions}</div>}
                                         {m.note && <div className="text-slate-400 text-xs">Note: {m.note}</div>}
                                     </li>
                                 ))}
                             </ul>
                         ) : <div className="text-slate-400 text-sm">No structured medications — see the attached PDF.</div>}
+
+                        {(detail.months || detail.refills != null) && (detail.medications || []).length > 0 && (
+                            <div className="mt-3 text-sm" data-testid="incoming-rx-details">
+                                <span className="text-xs text-slate-400 uppercase">Prescription details</span>
+                                <div className="text-slate-700">{detail.months ? `${detail.months} month(s)` : ""}{detail.months && (detail.refills != null && detail.refills !== "") ? " · " : ""}{(detail.refills != null && detail.refills !== "") ? `${detail.refills} refill(s)` : ""}</div>
+                            </div>
+                        )}
 
                         {detail.physician_note && <div className="mt-3 text-sm"><span className="text-xs text-slate-400 uppercase">Note from physician</span><div className="text-slate-700">{detail.physician_note}</div></div>}
 

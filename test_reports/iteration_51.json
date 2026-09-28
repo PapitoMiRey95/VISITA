@@ -1,0 +1,36 @@
+{
+  "summary": "Frontend-only visual review of Pharmacy Portal → Incoming Prescriptions PATIENT INFORMATION panel. Logged in as snapdemoa8ef8d (Partner login), verified compact Incoming list, opened BAGNASCO GONZALEZ Rx (RXTX-000067), inspected patient info panel including new 'as of' note and grouped OHIP formatting. All requested visual tweaks are in place. One gap: prescription-level '3 months / 0 refills' is not rendered in the Prescription card.",
+  "backend_issues": {"critical": [], "minor": []},
+  "frontend_issues": {
+    "ui_bugs": [
+      {"component": "PharmacyIncoming - Prescription card", "issue": "Prescription-level duration (3 months) and refills (0) are not displayed. Only per-medication quantity/refills is templated (line 106), but the sample rx has no per-med quantity/refills so nothing renders. The review checklist explicitly asks for prescription-level '3 months / 0 refills'.", "selector": "[data-testid='incoming-med']", "priority": "MEDIUM"}
+    ],
+    "integration_issues": [],
+    "design_issues": []
+  },
+  "verified_items": [
+    "Partner login (/signin?partner=1) with snapdemoa8ef8d/SnapDemo123! → lands on /pharmacy without password-change screen.",
+    "Incoming list is COMPACT with headers exactly [Patient, Physician, Sent, Rx, PDF, Status]; row shows '2 medication(s)' and no address/OHIP/phone.",
+    "Patient Information panel (incoming-patient-info) shows: Name 'BAGNASCO GONZALEZ, Maria Esther'; DOB '1952 Apr - 29'; VIEN PIN 1951; OHIP '1572 035 465' with 'VH' as separate span (ml-2 gives visible space) and 'exp 2027 Apr - 29'; Address '3174 Bathurst Street, Unit 5B' / 'Toronto, ON, M6A 2B1'; Phone Cell '(647) 555-0100' / Home '(416) 555-0111'.",
+    "incoming-patient-ohip data-testid present and returns '1572 035 465  VH · exp 2027 Apr - 29'.",
+    "incoming-patient-asof data-testid present, text 'Patient information as of 2026 Sep - 28 · 8:37 PM', class 'text-[11px] text-slate-400 mt-2' → subtle grey/informational, NOT red/amber, no 'snapshot' term.",
+    "Prescription section shows two distinct medication cards: 'Rosuvastatin calcium 20 mg tablet' with SIG '1 tablet OD' and 'Bisoprolol fumarate 5 mg tablet' with SIG '1 tablet HS'.",
+    "Prescriber section shows 'Dr. Pablo Aguayo' + 'TEST Clinic Name' + Sent timestamp.",
+    "Patient info card and medication cards are visually distinct (separate white bordered cards, side-by-side)."
+  ],
+  "test_report_links": [],
+  "action_items": [
+    "Consider surfacing prescription-level duration '3 months' and 'Refills 0' either at the top of the Prescription card or per medication (populate m.quantity/m.refills or add rx-level fields). Currently line 106 renders nothing because the sample med objects lack quantity/refills."
+  ],
+  "critical_code_review_comments": [
+    "fmtOhip is display-only and correctly falls back to raw value for non 10-digit inputs; version code is a separate span with ml-2 for spacing (renders visually spaced although innerText concatenates without a literal space — acceptable).",
+    "As-of note uses detail.sent_at, subtle text-slate-400 text-[11px] — matches spec.",
+    "PharmacyIncoming.jsx is 181 lines, well within size guidelines."
+  ],
+  "updated_files": [],
+  "success_rate": {"backend": "N/A (skipped)", "frontend": "95%"},
+  "seed_data_creation": "None; used pre-seeded pharmacy user and Rx 6a598fab-56ef-4442-9021-f16ec0521dd0 as instructed.",
+  "retest_needed": false,
+  "should_main_agent_self_test": true,
+  "context_for_next_testing_agent": "Final visual review of PATIENT INFORMATION panel is PASS for the two new tweaks (as-of note + grouped OHIP with version). Only outstanding item is missing prescription-level '3 months / 0 refills' rendering in the Prescription card. Screenshots at /app/.screenshots/03_incoming_list.png (compact list) and /app/.screenshots/04_rx_detail.png (Rx detail with patient info panel)."
+}

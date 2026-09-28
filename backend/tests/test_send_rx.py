@@ -359,3 +359,50 @@ def test_16_repeat_entire_and_newer_flag(physician_token, pharmacies):
     db.patient_medications.delete_many({"drug": {"$in": [d1, d2]}})
     db.medication_catalog.delete_many({"drug": {"$in": [d1, d2]}})
 
+
+# 17. Smart editor: extended structured fields (route/quantity_unit/duration) persist,
+#     and physician-scoped memory + suggestions reflect ONLY sent prescriptions.
+def test_17_extended_fields_and_suggestions(physician_token, pharmacies):
+    pid = _find_patient(physician_token)
+    drug = f"ZZSmart{uuid.uuid4().hex[:6]}"
+    meds = json.dumps([{
+        "drug": drug, "strength": "1 mg/mL", "form": "prefilled pen", "sig": "1 mg once weekly",
+        "route": "Subcutaneous / SC", "quantity_unit": "pen", "duration_value": "3", "duration_unit": "month(s)",
+        "attributes": ["single-use"], "original_text": f"{drug} 1 mg/mL prefilled pen: 1 mg once weekly",
+    }])
+    r = requests.post(f"{BASE}/api/internal/send-rx", headers=_h(physician_token),
+                      data={"patient_ref": pid, "pharmacy_id": pharmacies["A_id"], "medications": meds,
+                            "months": "3", "refills": "0"}, timeout=30)
+    assert r.status_code == 200, r.text
+    tx = r.json()
+    _created_tx_ids.append(tx["id"])
+    # Extended fields persisted on the transmission med record.
+    stored_med = [m for m in db.rx_transmissions.find_one({"id": tx["id"]})["medications"] if m["drug"] == drug][0]
+    assert stored_med["route"] == "Subcutaneous / SC" and stored_med["quantity_unit"] == "pen"
+    assert stored_med["duration_value"] == "3" and stored_med["duration_unit"] == "month(s)"
+
+    # patient_medications carries the extended fields.
+    pm = requests.get(f"{BASE}/api/internal/patients/{pid}/medications", headers=_h(physician_token), timeout=30).json()
+    mine = [x for x in pm if x["drug"] == drug][0]
+    assert mine.get("route") == "Subcutaneous / SC" and mine.get("quantity_unit") == "pen"
+
+    # Suggestions for this drug include the just-sent values (physician/patient source).
+    s = requests.get(f"{BASE}/api/internal/rx/suggest", params={"drug": drug, "patient_ref": pid},
+                     headers=_h(physician_token), timeout=30).json()
+    f = s["fields"]
+    assert any(x["value"] == "1 mg/mL" for x in f["strengths"])
+    assert any(x["value"] == "prefilled pen" for x in f["forms"])
+    assert any(x["value"] == "1 mg once weekly" for x in f["sigs"])
+    assert any(x["value"] == "Subcutaneous / SC" for x in f["routes"])
+    assert any(x["value"] == "pen" for x in f["quantity_units"])
+    assert any(x["value"] == drug for x in s["drugs"])
+
+    # Physician memory is scoped to this physician and drug (workflow memory, not clinical).
+    mem = db.physician_rx_memory.find_one({"drug_key": drug.lower()})
+    assert mem is not None and mem["physician_id"]
+    assert "1 mg once weekly" in mem.get("sigs", [])
+
+    db.patient_medications.delete_many({"drug": drug})
+    db.medication_catalog.delete_many({"drug": drug})
+    db.physician_rx_memory.delete_many({"drug_key": drug.lower()})
+

@@ -1,4 +1,4 @@
-import { useEffect, useState, useCallback } from "react";
+import { useEffect, useState, useCallback, useRef } from "react";
 import { toast } from "sonner";
 import {
     Search, Plus, Trash2, Upload, FileText, X, Send, Truck, Building2,
@@ -10,8 +10,16 @@ import { Button } from "../components/ui/button";
 import { Input } from "../components/ui/input";
 import { Textarea } from "../components/ui/textarea";
 import { Label } from "../components/ui/label";
+import { MedEditPanel } from "./MedEditPanel";
 
-const EMPTY_MED = { drug: "", action: "", strength: "", unit: "", form: "", attributes: [], sig: "", quantity: "", refills: "", additional_instructions: "", note: "", original_text: "", needs_review: [], _editing: true };
+const EMPTY_MED = {
+    drug: "", action: "", strength: "", unit: "", form: "", attributes: [], sig: "",
+    quantity: "", quantity_unit: "", refills: "", additional_instructions: "", note: "",
+    route: "", duration_value: "", duration_unit: "", concentration: "", prn_reason: "",
+    eye: "", ear: "", interval: "", site: "", device: "",
+    brand: "", generic: "", din: "", manufacturer: "",
+    original_text: "", needs_review: [], _editing: true, _moreOpen: false,
+};
 
 const ACTION_STYLE = {
     HOLD: "bg-red-100 text-red-700",
@@ -37,6 +45,18 @@ export default function SendPrescription() {
     const [pharmacyId, setPharmacyId] = useState("");
     const [prevMeds, setPrevMeds] = useState([]);
     const [prescriptions, setPrescriptions] = useState([]);
+    const [drugOptions, setDrugOptions] = useState([]);
+    const [fieldSuggest, setFieldSuggest] = useState({});
+    const patientRefRef = useRef(null);
+
+    const ensureDrugSuggest = useCallback((drug) => {
+        const key = (drug || "").toLowerCase().trim();
+        if (!key || fieldSuggest[key] !== undefined) return;
+        setFieldSuggest((s) => ({ ...s, [key]: {} })); // mark in-flight
+        api.get("/internal/rx/suggest", { params: { patient_ref: patientRefRef.current || undefined, drug } })
+            .then(({ data }) => setFieldSuggest((s) => ({ ...s, [key]: data.fields || {} })))
+            .catch(() => {});
+    }, [fieldSuggest]);
 
     const [meds, setMeds] = useState([]);
     const [rx, setRx] = useState({ months: "", refills: "", note: "", _editing: false });
@@ -85,13 +105,16 @@ export default function SendPrescription() {
             const match = cur ? pharmacies.find((p) => (p.pharmacy_name || "").toLowerCase().includes(cur) || cur.includes((p.pharmacy_name || "").toLowerCase())) : null;
             setPharmacyId(match ? match.pharmacy_id : (pharmacies.length === 1 ? pharmacies[0].pharmacy_id : ""));
             const ref = data.directory_id || data.patient_id || id;
+            patientRefRef.current = ref;
+            setDrugOptions([]); setFieldSuggest({});
             api.get(`/internal/patients/${ref}/medications`).then(({ data: pm }) => setPrevMeds(pm)).catch(() => setPrevMeds([]));
             api.get(`/internal/patients/${ref}/prescriptions`).then(({ data: rxs }) => setPrescriptions(rxs)).catch(() => setPrescriptions([]));
+            api.get("/internal/rx/suggest", { params: { patient_ref: ref } }).then(({ data: sg }) => setDrugOptions(sg.drugs || [])).catch(() => setDrugOptions([]));
         } catch (err) { toast.error(formatErr(err)); }
     };
 
     const resetRxDraft = () => { setMeds([]); setRx({ months: "", refills: "", note: "", _editing: false }); setSourceText(""); setPaste(""); setWarnings([]); setAckMismatch(false); setFile(null); };
-    const resetAll = () => { setPatient(null); setPharmacyId(""); setPrevMeds([]); setPrescriptions([]); resetRxDraft(); };
+    const resetAll = () => { setPatient(null); setPharmacyId(""); setPrevMeds([]); setPrescriptions([]); setDrugOptions([]); setFieldSuggest({}); patientRefRef.current = null; resetRxDraft(); };
 
     const repeatRx = (pm) => {
         setMeds((s) => [...s, {
@@ -163,7 +186,7 @@ export default function SendPrescription() {
             const fd = new FormData();
             fd.append("patient_ref", patient.directory_id || patient.patient_id);
             fd.append("pharmacy_id", pharmacyId);
-            fd.append("medications", JSON.stringify(filledMeds.map(({ _editing, needs_review, newer_available, newer, ...m }) => m)));
+            fd.append("medications", JSON.stringify(filledMeds.map(({ _editing, _moreOpen, needs_review, newer_available, newer, ...m }) => m)));
             fd.append("physician_note", rx.note || "");
             if (rx.months !== "" && rx.months != null) fd.append("months", String(rx.months));
             if (rx.refills !== "" && rx.refills != null) fd.append("refills", String(rx.refills));
@@ -349,36 +372,7 @@ export default function SendPrescription() {
                                                     </div>
                                                 </div>
                                             ) : (
-                                                <div className="space-y-2">
-                                                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
-                                                        <div><Label className="text-xs">Medication / Drug</Label><Input data-testid="sendrx-drug" value={m.drug} onChange={(e) => setMed(i, "drug", e.target.value)} /></div>
-                                                        <div><Label className="text-xs">Strength</Label><Input value={m.strength} onChange={(e) => setMed(i, "strength", e.target.value)} /></div>
-                                                        <div><Label className="text-xs">Dosage form</Label><Input value={m.form} onChange={(e) => setMed(i, "form", e.target.value)} /></div>
-                                                        <div>
-                                                            <Label className="text-xs">Action</Label>
-                                                            <select value={m.action || ""} onChange={(e) => setMed(i, "action", e.target.value)} data-testid="sendrx-action" className="w-full border border-slate-200 rounded-sm h-9 px-2 bg-white text-sm">
-                                                                <option value="">None</option>
-                                                                <option value="START">START</option>
-                                                                <option value="CONTINUE">CONTINUE</option>
-                                                                <option value="HOLD">HOLD</option>
-                                                                <option value="STOP">STOP</option>
-                                                                <option value="DISCONTINUE">DISCONTINUE</option>
-                                                            </select>
-                                                        </div>
-                                                        <div><Label className="text-xs">Directions / SIG</Label><Input value={m.sig} onChange={(e) => setMed(i, "sig", e.target.value)} /></div>
-                                                        <div className="grid grid-cols-2 gap-2">
-                                                            <div><Label className="text-xs">Qty</Label><Input value={m.quantity} onChange={(e) => setMed(i, "quantity", e.target.value)} /></div>
-                                                            <div><Label className="text-xs">Refills</Label><Input value={m.refills} onChange={(e) => setMed(i, "refills", e.target.value)} /></div>
-                                                        </div>
-                                                    </div>
-                                                    <div><Label className="text-xs">Additional instructions</Label><Input value={m.additional_instructions} onChange={(e) => setMed(i, "additional_instructions", e.target.value)} /></div>
-                                                    <div><Label className="text-xs">Physician note (optional)</Label><Input value={m.note} onChange={(e) => setMed(i, "note", e.target.value)} /></div>
-                                                    {m.original_text && <div className="text-[11px] text-slate-400">Original: {m.original_text}</div>}
-                                                    <div className="flex justify-end gap-2">
-                                                        <button onClick={() => removeMed(i)} data-testid="sendrx-remove-med-edit" className="text-xs text-red-600 inline-flex items-center gap-1"><Trash2 className="w-3.5 h-3.5" /> Remove</button>
-                                                        <Button size="sm" variant="outline" onClick={() => toggleEdit(i)}>Done</Button>
-                                                    </div>
-                                                </div>
+                                                <MedEditPanel m={m} i={i} setMed={setMed} removeMed={removeMed} toggleEdit={toggleEdit} fieldSuggest={fieldSuggest} drugOptions={drugOptions} ensureDrugSuggest={ensureDrugSuggest} />
                                             )}
                                             {m.newer_available && m.newer && (
                                                 <div className="mt-2 border border-amber-300 bg-amber-50 rounded-sm p-2" data-testid="sendrx-newer">

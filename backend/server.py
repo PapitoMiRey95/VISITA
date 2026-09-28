@@ -4284,6 +4284,13 @@ async def _remember_patient_medications(tx: dict):
                 "drug": m.get("drug"), "action": m.get("action"), "strength": m.get("strength"), "unit": m.get("unit"),
                 "form": m.get("form"), "attributes": m.get("attributes") or [],
                 "sig": m.get("sig"), "quantity": m.get("quantity"),
+                "quantity_unit": m.get("quantity_unit"), "route": m.get("route"),
+                "duration_value": m.get("duration_value"), "duration_unit": m.get("duration_unit"),
+                "concentration": m.get("concentration"), "prn_reason": m.get("prn_reason"),
+                "eye": m.get("eye"), "ear": m.get("ear"), "interval": m.get("interval"),
+                "site": m.get("site"), "device": m.get("device"),
+                "brand": m.get("brand"), "generic": m.get("generic"),
+                "din": m.get("din"), "manufacturer": m.get("manufacturer"),
                 "additional_instructions": m.get("additional_instructions"),
                 "original_text": m.get("original_text"),
                 "months": tx.get("months"), "refills": tx.get("refills"), "note": m.get("note"),
@@ -4299,6 +4306,33 @@ async def _remember_patient_medications(tx: dict):
                              "created_at": now},
             "$addToSet": {"original_texts": m.get("original_text") or ""},
             "$set": {"updated_at": now}}, upsert=True)
+
+
+async def _remember_physician_rx(physician_id: str, meds: list):
+    """Physician-scoped workflow memory: remembers ONLY values from prescriptions
+    actually sent by THIS physician. Never crosses providers; suggestions only."""
+    now = now_iso()
+    for m in (meds or []):
+        drug = (m.get("drug") or "").strip()
+        if not drug:
+            continue
+        dk = drug.lower()
+        add = {}
+        for field, memk in [("strength", "strengths"), ("form", "forms"), ("sig", "sigs"),
+                            ("route", "routes"), ("quantity_unit", "quantity_units")]:
+            v = (m.get(field) or "").strip()
+            if v:
+                add[memk] = v
+        attrs = [str(a).strip() for a in (m.get("attributes") or []) if str(a).strip()]
+        update = {"$set": {"physician_id": physician_id, "drug_key": dk, "drug": drug, "updated_at": now},
+                  "$setOnInsert": {"id": str(uuid.uuid4()), "created_at": now}}
+        addto = {k: v for k, v in add.items()}
+        if attrs:
+            addto["attributes"] = {"$each": attrs}
+        if addto:
+            update["$addToSet"] = addto
+        await db.physician_rx_memory.update_one(
+            {"physician_id": physician_id, "drug_key": dk}, update, upsert=True)
 
 
 class RxParseBody(BaseModel):
@@ -4386,6 +4420,78 @@ async def internal_patient_prescriptions(patient_ref: str, user: dict = Depends(
     return out
 
 
+@api.get("/internal/rx/suggest")
+async def internal_rx_suggest(patient_ref: Optional[str] = None, drug: Optional[str] = None,
+                              user: dict = Depends(require_roles(*CLINIC_ROLES))):
+    """Ranked data-entry suggestions (patient -> this-physician -> catalog).
+    NOT clinical decision support. Physician memory is strictly scoped to the
+    authenticated physician and only reflects prescriptions actually sent."""
+    phys_id = user["id"]
+    pid = None
+    if patient_ref:
+        snap = await _resolve_rx_patient(patient_ref)
+        if snap:
+            pid = snap["patient_id"]
+
+    seen, drugs = set(), []
+    def _add(v, src):
+        v = (v or "").strip()
+        if v and v.lower() not in seen:
+            seen.add(v.lower())
+            drugs.append({"value": v, "source": src})
+
+    if pid:
+        for d in await db.patient_medications.find(
+                {"patient_id": pid, "active": True}, {"_id": 0, "drug": 1, "last_prescribed_at": 1}
+        ).sort("last_prescribed_at", -1).to_list(100):
+            _add(d.get("drug"), "patient")
+    for d in await db.physician_rx_memory.find(
+            {"physician_id": phys_id}, {"_id": 0, "drug": 1, "updated_at": 1}
+    ).sort("updated_at", -1).to_list(300):
+        _add(d.get("drug"), "physician")
+    for d in await db.medication_catalog.find({}, {"_id": 0, "drug": 1}).sort("updated_at", -1).to_list(400):
+        _add(d.get("drug"), "catalog")
+
+    result = {"drugs": drugs[:120]}
+
+    if drug:
+        dl = drug.lower().strip()
+        fields = {"strengths": [], "forms": [], "attributes": [], "sigs": [], "routes": [], "quantity_units": []}
+        fseen = {k: set() for k in fields}
+
+        def _addf(fk, v, src):
+            v = (v or "").strip()
+            if v and v.lower() not in fseen[fk]:
+                fseen[fk].add(v.lower())
+                fields[fk].append({"value": v, "source": src})
+
+        def _collect(doc, src):
+            for field, fk in [("strength", "strengths"), ("form", "forms"), ("sig", "sigs"),
+                              ("route", "routes"), ("quantity_unit", "quantity_units")]:
+                _addf(fk, doc.get(field), src)
+            for a in (doc.get("attributes") or []):
+                _addf("attributes", str(a), src)
+
+        if pid:
+            for doc in await db.patient_medications.find(
+                    {"patient_id": pid, "active": True}, {"_id": 0}
+            ).sort("last_prescribed_at", -1).to_list(100):
+                if (doc.get("drug") or "").lower().strip() == dl:
+                    _collect(doc, "patient")
+        pm = await db.physician_rx_memory.find_one({"physician_id": phys_id, "drug_key": dl}, {"_id": 0})
+        if pm:
+            for fk, memk in [("strengths", "strengths"), ("forms", "forms"), ("sigs", "sigs"),
+                            ("routes", "routes"), ("quantity_units", "quantity_units"), ("attributes", "attributes")]:
+                for v in (pm.get(memk) or []):
+                    _addf(fk, str(v), "physician")
+        for doc in await db.medication_catalog.find({}, {"_id": 0}).to_list(500):
+            if (doc.get("drug") or "").lower().strip() == dl:
+                _collect(doc, "catalog")
+        result["fields"] = fields
+
+    return result
+
+
 @api.get("/internal/pharmacies")
 async def internal_list_pharmacies(user: dict = Depends(require_roles(*CLINIC_ROLES))):
     """Pharmacies that can receive a prescription in the Pharmacy Portal = pharmacy accounts."""
@@ -4451,11 +4557,14 @@ async def internal_send_rx(
     except Exception:
         raise HTTPException(status_code=400, detail="Invalid medications payload.")
     meds = []
+    _OPT = ["route", "duration_value", "duration_unit", "quantity_unit", "concentration",
+            "prn_reason", "eye", "ear", "interval", "site", "device",
+            "brand", "generic", "din", "manufacturer"]
     for m in (raw_meds if isinstance(raw_meds, list) else []):
         drug = str((m or {}).get("drug") or "").strip()
         if not drug:
             continue
-        meds.append({
+        rec = {
             "drug": drug,
             "action": (str(m.get("action") or "").strip().upper() or None),
             "strength": str(m.get("strength") or "").strip() or None,
@@ -4468,7 +4577,10 @@ async def internal_send_rx(
             "additional_instructions": str(m.get("additional_instructions") or "").strip() or None,
             "note": str(m.get("note") or "").strip() or None,
             "original_text": str(m.get("original_text") or "").strip() or None,
-        })
+        }
+        for k in _OPT:
+            rec[k] = str(m.get(k) or "").strip() or None
+        meds.append(rec)
 
     attachment = await _store_rx_pdf(file) if file is not None else None
 
@@ -4498,6 +4610,7 @@ async def internal_send_rx(
     }
     await db.rx_transmissions.insert_one({**tx})
     await _remember_patient_medications(tx)
+    await _remember_physician_rx(user["id"], meds)
     await audit("rx_prescription_created", "rx_transmission", tx["id"], user,
                 meta={"pharmacy_id": pharmacy_id, "patient_id": snap["patient_id"], "med_count": len(meds)})
     if attachment:

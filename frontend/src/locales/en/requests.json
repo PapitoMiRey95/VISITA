@@ -1,4 +1,9 @@
 {
+  "apptType": {
+    "inClinic": "IN-CLINIC",
+    "phone": "PHONE",
+    "notSpecified": "NOT SPECIFIED"
+  },
   "form": {
     "submitRequest": "Submit Request",
     "submitting": "Submitting…",

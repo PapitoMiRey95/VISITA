@@ -2,6 +2,7 @@ import { useMemo, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { useNavigate } from "react-router-dom";
 import { useTranslation } from "react-i18next";
+import { es } from "date-fns/locale";
 import { toast } from "sonner";
 import { CalendarClock, CheckCircle2, AlertTriangle, Phone, X, Clock, CalendarDays, Hospital } from "lucide-react";
 import { api, formatErr } from "../lib/api";
@@ -32,7 +33,7 @@ const NOTE_MAX = 200;
 
 export default function PortalAppointments() {
     const { overview, refetch } = usePortal();
-    const { t } = useTranslation(["requests", "common"]);
+    const { t, i18n } = useTranslation(["requests", "common"]);
     const nav = useNavigate();
     const p = overview.data?.patient;
     const isPrivate = ["private", "tourist", "uninsured"].includes(p?.patient_type);
@@ -186,6 +187,7 @@ export default function PortalAppointments() {
                                 <div className="inline-block rounded-2xl border border-slate-200 bg-white" data-testid="appt-calendar">
                                     <Calendar
                                         mode="single"
+                                        locale={i18n.language?.startsWith("es") ? es : undefined}
                                         selected={selDate || undefined}
                                         onSelect={pickDate}
                                         onMonthChange={() => slotsQ.refetch()}

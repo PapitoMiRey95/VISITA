@@ -1,0 +1,36 @@
+{
+  "summary": "Final pre-deploy Spanish localization + Private-appointments regression on VIsita EMR preview. Verified end-to-end via Playwright with linda.nguyen@demo.com (Private), maria.lopez@demo.com (OHIP), and staff@visita.demo. All spec-critical items pass: (1) Sign In, Register (role-picker step 1), Forgot Password render in ES. (2) Patient Portal fully ES post-login for both Private and OHIP patients — bottom nav Inicio/Citas/Recetas/Mensajes/Solicitudes/Facturas/Perfil all present. Language survives login and full reload (localStorage visita_lang=es persists). EN/ES toggle in portal header switches live. (3) Private Appointments banner exactly matches spec: PRIVADO badge (no UNINSURED / SIN SEGURO), ES phrase 'El médico generalmente atiende a pacientes privados por la tarde-noche:' present, NO 'Aguayo' in banner, private_hours 'Monday–Wednesday, 5:30 PM–9:00 PM' correctly localized to 'Lunes–Miércoles, 5:30 PM–9:00 PM' (day names translated, times unchanged). (4) Mobile 390px viewport: pref-date + pref-time both 316px wide and vertically stacked (date_y=793, time_y=873); at 800px tablet they render side-by-side (same y=602). (5) Reason cascade first-level placeholder 'Seleccione un motivo…' in ES; localized labels via reasonLabels.* keys. (6) Invoices: neutral subtitle 'Sus facturas de servicios y detalles de pago.', EXACTLY ONE '¿Por qué hay un cargo?' reason box per invoice (15 boxes for 15 invoices for Linda), private-pay wording renders correctly and mentions OHIP by contrast (scoped to private-pay), OHIP-uninsured wording 'Esta factura es por un servicio que no está cubierto por su cobertura de OHIP.' shown for OHIP invoices. (7) Internal staff portal at /internal renders entirely in ENGLISH (Hub, Patients, Rx, Referrals, Imaging, Bloodwork, Messages, Appointments, Private Requests, Billing, Calendar, Intercom, Verifications, Applications, Organizations, Providers) even when visita_lang=es. (8) Backend /api/config/private returns valid data; /api/auth/login OK; overview confirms patient_type=private for Linda. Regression suites from prior iterations (test_regression_iter42, test_private_window_guard, test_dob_age_validation, test_pharmacy_rx) were not re-run in this iteration — spec targets Spanish localization surface which is UI-driven. Recommend main agent run those suites once before deploy for full regression coverage.",
+  "backend_issues": {"critical": [], "minor": []},
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [],
+    "design_issues": [
+      {"screen": "OHIP patient /portal/appointments (calendar)", "issues": ["Month header 'October 2026' and weekday headers 'Su Mo Tu We Th Fr Sa' render in English inside the shadcn Calendar component when visita_lang=es. Times/dates parsing unchanged. Low priority — calendar is patient-facing UI chrome; consider setting react-day-picker locale from i18n.language."]},
+      {"screen": "Patient appointment cards", "issues": ["Status label 'NOT SPECIFIED' appears in English on some appointment cards inside ES portal (see APT-000001 card). Likely a status enum rendered without translation. Low priority."]},
+      {"screen": "Post-login welcome toast (internal portals)", "issues": ["When a staff user logs in with localStorage visita_lang=es (a residual patient preference from a prior session on the same device), the success toast reads 'Bienvenido de nuevo, Kevin' even though the internal portal UI itself is fully English. Cosmetic — internal portals otherwise remain English per spec."]}
+    ]
+  },
+  "test_report_links": [],
+  "action_items": [
+    "(Optional / low priority) Localize the shadcn Calendar component (month + weekday headers) using i18n.language for ES patients on /portal/appointments.",
+    "(Optional / low priority) Localize appointment status enum labels (e.g. 'NOT SPECIFIED') on portal appointment cards.",
+    "(Optional) Consider forcing internal-role logins to reset visita_lang to 'en' so toasts don't render Spanish for staff/admin users.",
+    "Before deploy: main agent should re-run existing regression suites (test_regression_iter42.py, test_private_window_guard.py, test_dob_age_validation.py, test_pharmacy_rx.py) to complete full pre-deploy sign-off. This iteration focused only on the localization + contextual-invoice + private-banner surface described in the request."
+  ],
+  "critical_code_review_comments": [
+    "PortalPrivateAppointments.jsx localizeHours() implementation is clean and defensive: bails out on non-ES lang, uses word-boundary regex, preserves times and unrecognized clinic prose. Good.",
+    "Reason cascade correctly uses t(`reasonLabels.${node.label}`, node.label) with English fallback — submits raw reason codes so business logic unchanged. Good.",
+    "PortalPrivateAppointments grid-cols-1 sm:grid-cols-2 works as intended (confirmed at 390px and 800px viewport widths).",
+    "Invoice reason resolver correctly renders exactly one reason box per invoice; private-pay copy contrasts with OHIP by design.",
+    "server.py still ~4,100+ lines — long-standing refactor advice from iter42/43/44 still applies. Non-blocking for this deploy.",
+    "shadcn Calendar on /portal/appointments does not accept an i18n locale prop today — consider passing locale from date-fns/locale/es to react-day-picker for full ES coverage. Non-blocking."
+  ],
+  "updated_files": [],
+  "success_rate": {"backend": "N/A this iter (spot-checks only: /api/auth/login, /api/config/private, /api/portal/overview all 200)", "frontend": "~97% — all spec-critical items pass; 3 low-priority cosmetic gaps noted"},
+  "test_credentials": "linda.nguyen@demo.com / Patient2026! (Private) — verified. maria.lopez@demo.com / Patient2026! (OHIP) — verified. staff@visita.demo / Staff2026! — verified. Pharmacy 1670dufferin still must_change_password in preview (documented, not exercised).",
+  "seed_data_creation": "None — read-only navigation.",
+  "retest_needed": false,
+  "main_agent_can_self_test": true,
+  "context_for_next_testing_agent": "Preview URL https://visita-admin.preview.emergentagent.com. Language localStorage key = 'visita_lang'. Set to 'es' before navigating for Spanish coverage. Login test-ids: login-email, login-password, login-submit. Private Appointments renders at /portal/appointments for isPrivate patients (Linda). Banner test-id: private-badge-banner. Date/time test-ids: pref-date, pref-time. Reason cascade: reason-level-0..N. Invoice reason-box header text ES: '¿Por qué hay un cargo?'. Staff welcome toast picks up patient lang preference from residual localStorage — flagged as cosmetic.",
+  "rca of the issue": "N/A — spec met on all critical items."
+}

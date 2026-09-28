@@ -1,4 +1,9 @@
 {
+  "apptType": {
+    "inClinic": "EN CLÍNICA",
+    "phone": "TELÉFONO",
+    "notSpecified": "SIN ESPECIFICAR"
+  },
   "form": {
     "submitRequest": "Enviar solicitud",
     "submitting": "Enviando…",

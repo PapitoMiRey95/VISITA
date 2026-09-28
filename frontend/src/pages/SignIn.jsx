@@ -42,7 +42,8 @@ export default function SignIn() {
             nav("/change-password", { replace: true });
             return;
         }
-        toast.success(t("auth:signin.welcomeBack", { name: u.name?.split(" ")[0] || "" }));
+        const first = u.name?.split(" ")[0] || "";
+        toast.success(u.role === "patient" ? t("auth:signin.welcomeBack", { name: first }) : `Welcome back, ${first}`);
         nav(u.role === "patient" ? "/portal" : u.role === "pharmacy" ? "/pharmacy" : u.role === "partner" ? "/partner" : "/internal", { replace: true });
     };
 

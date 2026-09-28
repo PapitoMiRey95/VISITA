@@ -3462,6 +3462,7 @@ async def verifications_history(user: dict = Depends(require_roles(*CLINIC_ROLES
 
 
 
+@api.get("/internal/directory")
 async def search_directory(q: Optional[str] = None, status: Optional[str] = None,
                            user: dict = Depends(require_roles(*CLINIC_ROLES))):
     query = {}

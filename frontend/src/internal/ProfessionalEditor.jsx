@@ -39,7 +39,7 @@ function DepSelect({ label, placeholder, options, value, onChange, disabled, tes
                             <Input autoFocus className="h-8 pl-7 text-sm" placeholder="Search…" value={q} onChange={(e) => setQ(e.target.value)} data-testid={`${testid}-search`} />
                         </div>
                     </div>
-                    <div className="max-h-56 overflow-y-auto py-1">
+                    <div className="max-h-80 overflow-y-auto py-1">
                         {value && (
                             <button type="button" onClick={() => { onChange(""); setOpen(false); setQ(""); }} className="w-full px-3 py-1.5 text-left text-xs text-slate-400 hover:bg-slate-50">Clear selection</button>
                         )}
@@ -124,7 +124,7 @@ function MultiSelect({ label, placeholder, options, values, onChange, testid, ge
                             <Input autoFocus className="h-8 pl-7 text-sm" placeholder="Search…" value={q} onChange={(e) => setQ(e.target.value)} data-testid={`${testid}-search`} />
                         </div>
                     </div>
-                    <div className="max-h-64 overflow-y-auto py-1">
+                    <div className="max-h-96 overflow-y-auto py-1">
                         {filtered.length === 0 && <div className="px-3 py-2 text-xs text-slate-400">No matches</div>}
                         {grouped
                             ? groups.map(([cat, items]) => (
@@ -186,7 +186,7 @@ export default function ProfessionalEditor({ tax, initial, onClose, onSaved }) {
 
     return (
         <div className="fixed inset-0 z-50 flex items-start justify-center bg-black/40 p-4 overflow-y-auto" onClick={onClose} data-testid="prof-editor-modal">
-            <div className="bg-white rounded-lg border border-slate-200 shadow-xl w-full max-w-2xl my-6" onClick={(e) => e.stopPropagation()}>
+            <div className="bg-white rounded-lg border border-slate-200 shadow-xl w-full max-w-4xl my-6" onClick={(e) => e.stopPropagation()}>
                 <div className="flex items-center justify-between px-5 py-3 border-b border-slate-200">
                     <h2 className="text-lg font-bold text-slate-900">{initial?.id ? "Edit Professional" : "Add Professional"}</h2>
                     <button onClick={onClose} className="text-slate-400 hover:text-slate-700" data-testid="prof-editor-close"><X className="w-5 h-5" /></button>

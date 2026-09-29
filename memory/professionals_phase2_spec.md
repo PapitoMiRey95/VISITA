@@ -17,7 +17,16 @@ STATUS: Phase 1 shipped (Preview). Phase 2 import NOT started. READ-ONLY until r
 8. Pool Specialty mismatches (typos/ligatures/abbrevs/aliases/unmatched — 25 of 64 distinct match neither Speciality nor SpecialityReturned; e.g. "Dermatolody", "Gynæcology…", "OBGY"): do NOT correct. After taxonomy is complete, build an EXPLICIT legacy→taxonomy mapping instead of silently editing source.
 
 ## Still required before Phase 2 import
-Professional Sphere table (if separate), Professional Language, Practice Type, Area metadata/config, Areas of Practice (if exists).
+Professional Sphere table (if separate), Practice Type, Area metadata/config, Areas of Practice (if exists).
+
+## tblLanguage.xlsx — READ-ONLY analysis (batch: Language). NOT imported.
+- Sheet `tblLanguage`, cols A:C. Header: LanguageID, Language, Favourite. 158 data rows.
+- LanguageID range 1–158. Unique AND fully contiguous (no gaps, no duplicate IDs).
+- Favourite: boolean, 33 TRUE / 125 FALSE. TRUE ids: 5 Arabic, 20 Cantonese, 26 Chinese, 27 Croatian, 34 English, 36 Farsi, 38 Filipino, 41 French, 45 German, 46 Greek, 61 Italian, 62 Japanese, 72 Korean, 80 Macedonian, 87 Mandarin, 94 Norwegian, 101 Persian, 102 Polish, 104 Portuguese, 105 Punjabi, 109 Romanian, 110 Russian, 115 Serbian, 116 Serbo-Croatian, 123 Somali, 125 Spanish, 128 Swedish, 129 Tagalog, 131 Taiwanese, 143 Turkish, 146 Ukrainian, 147 Urdu, 150 Vietnamese.
+- DUPLICATE LABELS: 1 group — "Portuguese" ids [103 (fav=False), 104 (fav=True)]. Preserve BOTH, do NOT merge/choose; leave for explicit later review.
+- Blank/malformed/unusual/suspicious values: NONE (no blanks, no digits/symbols/URLs; accented values e.g. "Tigré" are legitimate source data, keep verbatim).
+- IMPORT BLOCKERS: none (clean contiguous IDs, no empties, self-contained). Only open item = the Portuguese duplicate pair, pending user decision.
+- PROPOSED Phase 2 mapping (NOT executed): collection `professional_languages`, one doc per row, id/`language_id` = source LanguageID (preserve, never regenerate), fields `language`, `is_favourite`. Professional Profile stores an ARRAY of language_ids (cumulative multi-value); UI = searchable multi-select with removable chips, favourites ranked higher, non-favourites fully selectable. Language is profile info only — never infer nationality/ethnicity/personal attributes.
 
 ## tblProfessionalCredentials.xlsx — READ-ONLY analysis (batch: Credentials). NOT imported.
 - Sheet `tblProfessionalCredentials`, cols A:E. Header: CredentialsID, Credentials, CredentialsReturned, Desc, Favourite.

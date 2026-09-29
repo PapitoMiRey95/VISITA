@@ -152,7 +152,11 @@ function ProfileView({ p, tax, canEdit, onClose, onEdit }) {
                     <Row label="Registration #">{p.registration_number}</Row>
                     <Row label="Credentials">{chips(p.credential_ids, maps.credentials, "prof-view-credentials")}</Row>
                     <Row label="Languages">{chips(p.language_ids, maps.languages, "prof-view-languages")}</Row>
-                    <Row label="Areas of Practice">{chips(p.areas_of_practice_ids, aopMap, "prof-view-aop")}</Row>
+                    <Row label="Areas of Practice">{
+                        (p.areas_of_practice_ids || []).length && Object.keys(aopMap).length === 0
+                            ? <span className="text-slate-400">Resolving…</span>
+                            : chips(p.areas_of_practice_ids, aopMap, "prof-view-aop")
+                    }</Row>
                     <Row label="Practice Type">{chips(p.practice_type_ids, maps.practice_types, "prof-view-practice")}</Row>
                     <Row label="Ontario Model">{chips(p.primary_care_model_ids, maps.models, "prof-view-model")}</Row>
                     <Row label="Sex">{p.sex}</Row>

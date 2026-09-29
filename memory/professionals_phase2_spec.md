@@ -1,6 +1,15 @@
 # Dr. Aguayo's Professional Construct — Phase 2 authoritative rules (from user)
 
-STATUS: Phase 1 shipped (Preview). Phase 2 import NOT started. READ-ONLY until remaining Access exports arrive. No Preview writes, no Production changes. Preserve ALL original IDs. Do NOT seed/invent/merge/rename/normalize.
+STATUS: Phase 1 shipped (Preview). Phase 2 IMPLEMENTED IN PREVIEW (2026-06) — taxonomy imported + editor live. NOT deployed to Production (awaiting explicit user GO). Preserve ALL original IDs. Do NOT seed/invent/merge/rename/normalize.
+
+## Phase 2 implementation (PREVIEW, 2026-06)
+- Seed: /app/backend/seed_professional_taxonomy.py (idempotent upsert; NEVER runs at startup; sources bundled in /app/backend/taxonomy_sources/). Rerun-safe (verified identical counts).
+- Family Medicine SpecialityID resolved from source = 133 (AreaID 36, Speciality/Returned "Family Medicine"). AOP wired to specialty_id "133" only.
+- Seeded counts (preview): spheres 2, areas 58 (sphere 1/2 only; 15 sphere-3 ZZZ/Z placeholders ignored), specialties 247 (incl. orphans 155/193 unmodified), credentials 235, languages 158, areas_of_practice 97 (Family Medicine), practice_types 24, primary_care_models 13.
+- Backend: GET /api/professionals/taxonomy (+primary_care_models), GET /api/professionals/areas-of-practice?specialty_id=, ProfessionalBody arrays areas_of_practice_ids[]/practice_type_ids[]/primary_care_model_ids[]. RBAC unchanged (view: admin/physician/staff/pharmacy; edit: admin only).
+- Frontend: internal/ProfessionalEditor.jsx (DepSelect Sphere→Area→Specialty; MultiSelect chips for AOP/credentials/languages/practice/model; registration required when Area.Required=true; credential dupes disambiguated by Desc). internal/Professionals.jsx directory + enriched ProfileView.
+- Verified: testing_agent iteration_56 (backend 11/11, frontend functional 100%). Orphans preserved, Portuguese 103/104 both kept, FRCPC 432/433/434 kept as 3 docs.
+
 
 ## Source files received (batch 1, inspected read-only; stored at /tmp only)
 - tblProfessionalSpeciality.xlsx — 247 rows: SpecialityID(PK), AreaID(FK→tblProfessionalArea, NOT yet provided; 39 distinct ids range 2–96), Speciality, SpecialityReturned, Favourite(bool 38T/209F).

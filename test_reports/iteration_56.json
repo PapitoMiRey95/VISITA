@@ -1,0 +1,40 @@
+{
+  "summary": "Phase-2 Professionals module fully validated. Backend: 11/11 pytest passing (taxonomy counts=2/58/247/235/158/24/13 with imported=true, AOP=97 for specialty_id=133 + empty for 75, RBAC 403 for physician/staff/pharmacy on POST, legacy orphans 155 'Book Keeper'/193 'Paralegal' preserved, Portuguese id 103 favourite=false + 104 favourite=true, FRCPC 432/433/434 kept as 3 separate docs, full CRUD Create -> GET -> PATCH -> Mongo delete verified 404). Frontend: admin sign-in, /internal/professionals, prof-add enabled, dependent selectors Sphere/Area/Specialty flow ok, prof-registration appears after Physician area, empty-surname toast, no-registration toast, AOP appears after Family Medicine with grouped searchable options and chip, FRCPC search shows 3 distinct entries distinguished by Desc subline, all chips render (creds 432/433/434, langs 103/104, vpt-01, vpcm-03), create succeeds ('Professional created.'), row appears in directory, profile modal shows Classification 'Health -> Physician -> Family Medicine', admin sees Edit. Created test profile deleted via Mongo (no DELETE endpoint exists) so professional_profiles is EMPTY at end.",
+  "backend_issues": {
+    "critical": [],
+    "minor": [
+      {"endpoint": "DELETE /api/professionals/{id}", "issue": "No DELETE endpoint exists; task expected API-based cleanup. Cleanup had to be done directly in MongoDB. Consider adding admin-only DELETE for symmetry / operational hygiene."}
+    ]
+  },
+  "frontend_issues": {
+    "ui_bugs": [
+      {"component": "ProfileView (Areas of Practice row)", "issue": "AOP chip renders the raw id 'vaop-007' instead of the resolved name 'Child / Pediatric Health' on first render — screenshot confirms 'AREAS OF PRACTICE: vaop-007'. The /professionals/areas-of-practice fetch inside ProfileView populates aopMap after the modal is already showing, so the fallback ({m[id] || id}) shows the id. Consider awaiting the fetch or resolving the AOP name-map from tax at open time, or refetch specialty AOPs once and cache in Professionals.jsx.", "selector": "[data-testid=\"prof-view-aop\"]", "priority": "LOW"}
+    ],
+    "integration_issues": [],
+    "design_issues": []
+  },
+  "test_report_links": [
+    "/app/backend/tests/test_professionals_phase2.py",
+    "/app/test_reports/pytest/professionals_phase2.xml"
+  ],
+  "action_items": [
+    "(Optional) Add admin-only DELETE /api/professionals/{id} so QA cleanup does not require direct Mongo access.",
+    "(Low) Fix ProfileView so AOP chip shows resolved name on first render — currently briefly shows 'vaop-xxx' before/if lookup completes; likely a useEffect timing issue in Professionals.jsx ProfileView."
+  ],
+  "critical_code_review_comments": [
+    "professionals_get / _list / _create rely on _prof_public to strip _id — good, but ProfessionalBody.model_dump() emits None for all optional fields so a bare POST {surname:'X'} would insert visibility=null, sphere_id=null etc. Consider exclude_none on model_dump or filter None values before insert. Not blocking.",
+    "PATCH uses model_dump() then filters None — but a legit clear (e.g. set accepting_patients from true->null) is impossible because None fields are dropped. Consider explicit unset semantics if needed.",
+    "No DELETE endpoint (see backend minor).",
+    "ProfileView aopMap not pre-populated in the initial Professionals.jsx tax bundle (task designs AOPs as specialty-scoped so bundling all is heavy — but at least resolve on modal open before painting chips)."
+  ],
+  "updated_files": [
+    "/app/backend/tests/test_professionals_phase2.py"
+  ],
+  "success_rate": {"backend": "100%", "frontend": "100% (all functional checks pass; 1 low-priority display bug on AOP chip label)"},
+  "test_credentials": "Admin kevinrodriguez9528@gmail.com / VisitaAdmin2026!; Physician PAGUAYO / Newman2013_!; Staff staff@visita.demo / Staff2026!; Pharmacy 1670dufferin / PharmNew2026!",
+  "seed_data_creation": "Created and then deleted 1 professional_profiles doc (surname TEST_QAProf). professional_profiles collection is EMPTY at end. Taxonomy collections not modified.",
+  "retest_needed": false,
+  "main_agent_can_self_test": true,
+  "context_for_next_testing_agent": "Backend regression suite at /app/backend/tests/test_professionals_phase2.py (11 tests, ~4s). Uses actual admin/staff/physician/pharmacy logins from test_credentials.md. Cleanup uses direct Mongo delete of professional_profiles because no DELETE API exists. Family Medicine id=133; Area Physician id=36; Sphere Health id=1. AOP is only configured for specialty 133 (97 items).",
+  "rca of the issue": "N/A — no blocking bugs. Two minor notes captured under action_items (no DELETE endpoint and AOP chip label lag)."
+}

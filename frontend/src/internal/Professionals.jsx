@@ -1,12 +1,13 @@
 import { useEffect, useState, useCallback, useMemo } from "react";
 import { toast } from "sonner";
-import { Contact, Search, ShieldCheck, UserRound, X, Pencil } from "lucide-react";
+import { Contact, Search, ShieldCheck, UserRound, X, Pencil, Users } from "lucide-react";
 import { api, formatErr } from "../lib/api";
 import { useAuth } from "../context/AuthContext";
 import { Input } from "../components/ui/input";
 import { Button } from "../components/ui/button";
 import { Badge } from "../components/ui/badge";
 import ProfessionalEditor from "./ProfessionalEditor";
+import AuthorizedEditors from "./AuthorizedEditors";
 
 // Shared VIen Professionals module (Dr. Aguayo's Professional Construct).
 // ONE Professional Profile model reused for both Directory Contacts and VIen Users;
@@ -23,6 +24,7 @@ export default function Professionals() {
     const [editing, setEditing] = useState(null); // {} for new, profile for edit
     const [selfProfile, setSelfProfile] = useState(undefined); // undefined=loading, null=none
     const [selfEditing, setSelfEditing] = useState(false);
+    const [managingEditors, setManagingEditors] = useState(null);
 
     const loadSelf = useCallback(() => {
         if (!canSelfEdit) return;
@@ -124,9 +126,10 @@ export default function Professionals() {
             </div>
 
             {selected && tax && (
-                <ProfileView p={selected} tax={tax} canEdit={canEdit}
+                <ProfileView p={selected} tax={tax}
                     onClose={() => setSelected(null)}
-                    onEdit={() => { setEditing(selected); setSelected(null); }} />
+                    onEdit={() => { setEditing(selected); setSelected(null); }}
+                    onManageEditors={() => { setManagingEditors(selected); setSelected(null); }} />
             )}
 
             {editing && tax && (
@@ -140,11 +143,15 @@ export default function Professionals() {
                     onClose={() => setSelfEditing(false)}
                     onSaved={() => { setSelfEditing(false); loadSelf(); load(); }} />
             )}
+
+            {managingEditors && (
+                <AuthorizedEditors profile={managingEditors} onClose={() => setManagingEditors(null)} />
+            )}
         </div>
     );
 }
 
-function ProfileView({ p, tax, canEdit, onClose, onEdit }) {
+function ProfileView({ p, tax, onClose, onEdit, onManageEditors }) {
     const [aopMap, setAopMap] = useState({});
     useEffect(() => {
         if (!p.specialty_id || !(p.areas_of_practice_ids || []).length) { setAopMap({}); return; }
@@ -171,14 +178,16 @@ function ProfileView({ p, tax, canEdit, onClose, onEdit }) {
                 <div className="flex items-start justify-between px-5 py-3 border-b border-slate-200">
                     <div>
                         <h2 className="text-lg font-bold text-slate-900" data-testid="prof-profile-name">{p.display_name || p.surname}</h2>
-                        <div className="mt-1">
+                        <div className="mt-1 flex flex-wrap gap-1.5">
                             {p.has_vien_access
                                 ? <Badge className="bg-emerald-100 text-emerald-700 gap-1"><ShieldCheck className="w-3 h-3" /> VIen User</Badge>
                                 : <Badge variant="secondary" className="gap-1 text-slate-600"><UserRound className="w-3 h-3" /> Directory Contact</Badge>}
+                            {p.management_label && <Badge variant="outline" className="text-slate-600" data-testid="prof-management-badge">{p.management_label}</Badge>}
                         </div>
                     </div>
                     <div className="flex items-center gap-2">
-                        {canEdit && <Button size="sm" variant="outline" onClick={onEdit} data-testid="prof-edit"><Pencil className="w-3.5 h-3.5 mr-1" /> Edit</Button>}
+                        {p.can_manage_editors && <Button size="sm" variant="outline" onClick={onManageEditors} data-testid="prof-manage-editors"><Users className="w-3.5 h-3.5 mr-1" /> Editors</Button>}
+                        {p.can_edit && <Button size="sm" variant="outline" onClick={onEdit} data-testid="prof-edit"><Pencil className="w-3.5 h-3.5 mr-1" /> Edit</Button>}
                         <button onClick={onClose} className="text-slate-400 hover:text-slate-700" data-testid="prof-profile-close"><X className="w-5 h-5" /></button>
                     </div>
                 </div>

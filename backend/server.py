@@ -5189,6 +5189,52 @@ class ProfessionalBody(BaseModel):
     visibility: Optional[str] = "authenticated"
 
 
+class EditorGrantBody(BaseModel):
+    user_id: str
+    organization_id: Optional[str] = None
+    permission_level: Optional[str] = "EDIT_PROFILE"
+
+
+class LinkUserBody(BaseModel):
+    user_id: Optional[str] = None  # None to unlink
+
+
+class AffiliationBody(BaseModel):
+    organization_id: str
+    affiliation_type: Optional[str] = None
+    start_date: Optional[str] = None
+    end_date: Optional[str] = None
+
+
+async def _active_edit_auth(user_id: str, prof_id: str):
+    return await db.professional_profile_editors.find_one({
+        "professional_id": prof_id, "user_id": user_id,
+        "permission_level": "EDIT_PROFILE", "active": True})
+
+
+async def _edit_source(user: dict, profile: dict) -> Optional[str]:
+    """Server-side authorization: who (if anyone) the current user edits this profile as."""
+    if user.get("role") == "admin":
+        return "ADMIN"
+    if profile.get("linked_user_id") and user.get("id") == profile["linked_user_id"]:
+        return "SELF"
+    if await _active_edit_auth(user["id"], profile["id"]):
+        return "AUTHORIZED_ORGANIZATION_EDITOR"
+    return None
+
+
+def _management_label(profile: dict, has_editors: bool) -> str:
+    if profile.get("linked_user_id"):
+        return "Self-managed"
+    if has_editors:
+        return "Organization-managed"
+    return "Admin-managed"
+
+
+# High-risk fields never mutated via the shared profile editor (defensive; not in ProfessionalBody).
+_HIGH_RISK_FIELDS = ("linked_user_id", "id", "source_professional_id", "created_by", "created_at", "role")
+
+
 @api.get("/professionals/taxonomy")
 async def professionals_taxonomy(user: dict = Depends(require_roles(*PROF_VIEW_ROLES))):
     """Shared taxonomy lookups. Empty until Dr. Aguayo's Access source tables are imported."""
@@ -5233,7 +5279,18 @@ async def professionals_list(q: Optional[str] = None, sphere_id: Optional[str] =
         rx = {"$regex": re.escape(q.strip()), "$options": "i"}
         query["$or"] = [{"surname": rx}, {"first_name": rx}, {"second_name": rx}, {"registration_number": rx}]
     docs = await db.professional_profiles.find(query).sort([("surname", 1), ("first_name", 1)]).limit(200).to_list(200)
-    return [_prof_public(d) for d in docs]
+    my_auth = set()
+    if user.get("role") != "admin":
+        async for a in db.professional_profile_editors.find(
+                {"user_id": user["id"], "active": True, "permission_level": "EDIT_PROFILE"}, {"professional_id": 1}):
+            my_auth.add(a["professional_id"])
+    out = []
+    for d in docs:
+        pub = _prof_public(d)
+        pub["can_edit"] = True if user.get("role") == "admin" else (
+            (d.get("linked_user_id") == user["id"]) or (d["id"] in my_auth))
+        out.append(pub)
+    return out
 
 
 PROF_SELF_ROLES = ("admin", "physician")  # may manage their OWN professional profile
@@ -5258,7 +5315,7 @@ async def professionals_upsert_me(body: ProfessionalBody, user: dict = Depends(r
         upd = {k: v for k, v in body.model_dump().items() if v is not None}
         upd["updated_at"] = now
         await db.professional_profiles.update_one({"id": existing["id"]}, {"$set": upd})
-        await audit("professional_self_update", "professional", existing["id"], user)
+        await audit("professional_self_update", "professional", existing["id"], user, meta={"edit_source": "SELF"})
         return _prof_public({**existing, **upd})
     doc = {"id": str(uuid.uuid4()), **body.model_dump(),
            "credential_ids": body.credential_ids or [], "language_ids": body.language_ids or [],
@@ -5268,8 +5325,29 @@ async def professionals_upsert_me(body: ProfessionalBody, user: dict = Depends(r
            "organization_ids": body.organization_ids or [],
            "linked_user_id": user["id"], "created_by": user.get("name"), "created_at": now, "updated_at": now}
     await db.professional_profiles.insert_one({**doc})
-    await audit("professional_self_create", "professional", doc["id"], user)
+    await audit("professional_self_create", "professional", doc["id"], user, meta={"edit_source": "SELF"})
     return _prof_public(doc)
+
+
+@api.get("/professionals/authz/user-search")
+async def professionals_user_search(q: Optional[str] = None, user: dict = Depends(require_roles("admin"))):
+    """Admin picker for granting authorized editors — searches EXISTING VIen users
+    (never creates users, never grants by free-text email alone)."""
+    query = {"role": {"$ne": "patient"}}
+    if q and q.strip():
+        rx = {"$regex": re.escape(q.strip()), "$options": "i"}
+        query["$or"] = [{"name": rx}, {"email": rx}, {"username": rx}]
+    users = await db.users.find(query).sort("name", 1).limit(25).to_list(25)
+    org_ids = list({u.get("organization_id") for u in users if u.get("organization_id")})
+    org_names = {}
+    if org_ids:
+        async for o in db.organizations.find({"id": {"$in": org_ids}}, {"_id": 0, "id": 1, "organization_name": 1}):
+            org_names[o["id"]] = o.get("organization_name")
+    return [{
+        "id": str(u["_id"]), "name": u.get("name"), "email": u.get("email"),
+        "role": u.get("role"), "organization_id": u.get("organization_id"),
+        "organization_name": org_names.get(u.get("organization_id")),
+    } for u in users]
 
 
 @api.get("/professionals/{prof_id}")
@@ -5277,7 +5355,15 @@ async def professionals_get(prof_id: str, user: dict = Depends(require_roles(*PR
     d = await db.professional_profiles.find_one({"id": prof_id})
     if not d:
         raise HTTPException(status_code=404, detail="Professional not found.")
-    return _prof_public(d)
+    pub = _prof_public(d)
+    editors_count = await db.professional_profile_editors.count_documents(
+        {"professional_id": prof_id, "active": True, "permission_level": "EDIT_PROFILE"})
+    src = await _edit_source(user, d)
+    pub["can_edit"] = bool(src)
+    pub["edit_source"] = src
+    pub["management_label"] = _management_label(d, editors_count > 0)
+    pub["can_manage_editors"] = user.get("role") == "admin"
+    return pub
 
 
 @api.post("/professionals")
@@ -5300,15 +5386,147 @@ async def professionals_create(body: ProfessionalBody, user: dict = Depends(requ
 
 
 @api.patch("/professionals/{prof_id}")
-async def professionals_update(prof_id: str, body: ProfessionalBody, user: dict = Depends(require_roles(*PROF_EDIT_ROLES))):
+async def professionals_update(prof_id: str, body: ProfessionalBody, user: dict = Depends(require_roles(*PROF_VIEW_ROLES))):
+    """Edit a Professional Profile. Server-side authorization: Admin, the linked
+    professional (SELF), or a user with an active EDIT_PROFILE authorization."""
     d = await db.professional_profiles.find_one({"id": prof_id})
     if not d:
         raise HTTPException(status_code=404, detail="Professional not found.")
-    upd = {k: v for k, v in body.model_dump().items() if v is not None}
+    source = await _edit_source(user, d)
+    if not source:
+        raise HTTPException(status_code=403, detail="You are not authorized to edit this professional profile.")
+    body_dict = body.model_dump()
+    for hk in _HIGH_RISK_FIELDS:
+        body_dict.pop(hk, None)
+    upd = {k: v for k, v in body_dict.items() if v is not None}
+    diff = {k: {"before": d.get(k), "after": v} for k, v in upd.items() if d.get(k) != v}
     upd["updated_at"] = now_iso()
     await db.professional_profiles.update_one({"id": prof_id}, {"$set": upd})
-    await audit("professional_update", "professional", prof_id, user)
+    await audit("professional_update", "professional", prof_id, user,
+                meta={"edit_source": source, "actor_organization_id": user.get("organization_id"),
+                      "fields_changed": list(diff.keys()), "diff": diff})
     return _prof_public({**d, **upd})
+
+
+# ---------- Ownership: Admin links a VIen user to a Professional Profile (explicit, audited) ----------
+@api.put("/professionals/{prof_id}/link-user")
+async def professionals_link_user(prof_id: str, body: LinkUserBody, user: dict = Depends(require_roles("admin"))):
+    d = await db.professional_profiles.find_one({"id": prof_id})
+    if not d:
+        raise HTTPException(status_code=404, detail="Professional not found.")
+    new_uid = None
+    if body.user_id:
+        try:
+            u = await db.users.find_one({"_id": ObjectId(body.user_id)})
+        except Exception:
+            u = None
+        if not u or u.get("role") == "patient":
+            raise HTTPException(status_code=400, detail="Select an existing non-patient VIen user.")
+        clash = await db.professional_profiles.find_one({"linked_user_id": body.user_id, "id": {"$ne": prof_id}})
+        if clash:
+            raise HTTPException(status_code=409, detail="That user is already linked to another professional profile.")
+        new_uid = body.user_id
+    await db.professional_profiles.update_one({"id": prof_id}, {"$set": {"linked_user_id": new_uid, "updated_at": now_iso()}})
+    await audit("professional_link_user", "professional", prof_id, user,
+                old_status=d.get("linked_user_id"), new_status=new_uid, meta={"edit_source": "ADMIN"})
+    return _prof_public({**d, "linked_user_id": new_uid})
+
+
+# ---------- Authorized editors (Admin-managed) ----------
+@api.get("/professionals/{prof_id}/editors")
+async def professionals_list_editors(prof_id: str, user: dict = Depends(require_roles("admin"))):
+    rows = await db.professional_profile_editors.find(
+        {"professional_id": prof_id, "active": True}, {"_id": 0}).sort("granted_at", -1).to_list(200)
+    for r in rows:
+        try:
+            u = await db.users.find_one({"_id": ObjectId(r["user_id"])})
+            r["user_name"] = u.get("name") if u else None
+            r["user_email"] = u.get("email") if u else None
+            r["user_role"] = u.get("role") if u else None
+        except Exception:
+            r["user_name"] = None
+        if r.get("organization_id"):
+            o = await db.organizations.find_one({"id": r["organization_id"]}, {"_id": 0, "organization_name": 1})
+            r["organization_name"] = (o or {}).get("organization_name")
+    return rows
+
+
+@api.post("/professionals/{prof_id}/editors")
+async def professionals_grant_editor(prof_id: str, body: EditorGrantBody, user: dict = Depends(require_roles("admin"))):
+    d = await db.professional_profiles.find_one({"id": prof_id})
+    if not d:
+        raise HTTPException(status_code=404, detail="Professional not found.")
+    try:
+        u = await db.users.find_one({"_id": ObjectId(body.user_id)})
+    except Exception:
+        u = None
+    if not u or u.get("role") == "patient":
+        raise HTTPException(status_code=400, detail="Select an existing non-patient VIen user.")
+    level = body.permission_level if body.permission_level in ("VIEW", "EDIT_PROFILE") else "EDIT_PROFILE"
+    existing = await db.professional_profile_editors.find_one(
+        {"professional_id": prof_id, "user_id": body.user_id, "permission_level": level, "active": True})
+    if existing:
+        return {k: v for k, v in existing.items() if k != "_id"}
+    doc = {"id": str(uuid.uuid4()), "professional_id": prof_id, "user_id": body.user_id,
+           "organization_id": body.organization_id or u.get("organization_id"),
+           "permission_level": level, "active": True,
+           "granted_by": user.get("name"), "granted_at": now_iso(), "revoked_at": None}
+    await db.professional_profile_editors.insert_one({**doc})
+    await audit("professional_editor_grant", "professional", prof_id, user,
+                meta={"edit_source": "ADMIN", "grantee_user_id": body.user_id, "permission_level": level})
+    return doc
+
+
+@api.delete("/professionals/{prof_id}/editors/{authorization_id}")
+async def professionals_revoke_editor(prof_id: str, authorization_id: str, user: dict = Depends(require_roles("admin"))):
+    r = await db.professional_profile_editors.find_one({"id": authorization_id, "professional_id": prof_id})
+    if not r:
+        raise HTTPException(status_code=404, detail="Authorization not found.")
+    await db.professional_profile_editors.update_one(
+        {"id": authorization_id}, {"$set": {"active": False, "revoked_at": now_iso()}})
+    await audit("professional_editor_revoke", "professional", prof_id, user,
+                meta={"edit_source": "ADMIN", "grantee_user_id": r.get("user_id")})
+    return {"ok": True}
+
+
+# ---------- Organization affiliations (Admin-managed; references only) ----------
+@api.get("/professionals/{prof_id}/affiliations")
+async def professionals_list_affiliations(prof_id: str, user: dict = Depends(require_roles(*PROF_VIEW_ROLES))):
+    rows = await db.professional_organization_affiliations.find(
+        {"professional_id": prof_id, "active": True}, {"_id": 0}).sort("created_at", -1).to_list(200)
+    for r in rows:
+        o = await db.organizations.find_one({"id": r["organization_id"]}, {"_id": 0, "organization_name": 1})
+        r["organization_name"] = (o or {}).get("organization_name")
+    return rows
+
+
+@api.post("/professionals/{prof_id}/affiliations")
+async def professionals_add_affiliation(prof_id: str, body: AffiliationBody, user: dict = Depends(require_roles("admin"))):
+    d = await db.professional_profiles.find_one({"id": prof_id})
+    if not d:
+        raise HTTPException(status_code=404, detail="Professional not found.")
+    o = await db.organizations.find_one({"id": body.organization_id})
+    if not o:
+        raise HTTPException(status_code=400, detail="Organization not found.")
+    doc = {"id": str(uuid.uuid4()), "professional_id": prof_id, "organization_id": body.organization_id,
+           "affiliation_type": body.affiliation_type, "active": True,
+           "start_date": body.start_date, "end_date": body.end_date,
+           "created_at": now_iso(), "created_by": user.get("name")}
+    await db.professional_organization_affiliations.insert_one({**doc})
+    await audit("professional_affiliation_add", "professional", prof_id, user,
+                meta={"edit_source": "ADMIN", "organization_id": body.organization_id})
+    return doc
+
+
+@api.delete("/professionals/{prof_id}/affiliations/{affiliation_id}")
+async def professionals_remove_affiliation(prof_id: str, affiliation_id: str, user: dict = Depends(require_roles("admin"))):
+    r = await db.professional_organization_affiliations.find_one({"id": affiliation_id, "professional_id": prof_id})
+    if not r:
+        raise HTTPException(status_code=404, detail="Affiliation not found.")
+    await db.professional_organization_affiliations.update_one(
+        {"id": affiliation_id}, {"$set": {"active": False, "end_date": now_iso()}})
+    await audit("professional_affiliation_remove", "professional", prof_id, user, meta={"edit_source": "ADMIN"})
+    return {"ok": True}
 
 
 

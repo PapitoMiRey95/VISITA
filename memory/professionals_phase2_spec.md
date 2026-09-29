@@ -17,7 +17,34 @@ STATUS: Phase 1 shipped (Preview). Phase 2 import NOT started. READ-ONLY until r
 8. Pool Specialty mismatches (typos/ligatures/abbrevs/aliases/unmatched — 25 of 64 distinct match neither Speciality nor SpecialityReturned; e.g. "Dermatolody", "Gynæcology…", "OBGY"): do NOT correct. After taxonomy is complete, build an EXPLICIT legacy→taxonomy mapping instead of silently editing source.
 
 ## Still required before Phase 2 import
-Professional Sphere table (if separate), Practice Type, Area metadata/config, Areas of Practice (if exists).
+Professional Sphere table (if separate), Area metadata/config (requires_registration/patient-facing).
+
+## NEW VIen controlled taxonomies (Areas of Practice / Practice Type / Ontario Model) — spec ONLY, NOT implemented
+SCOPE: These are NEW VIen-authored controlled fields, kept SEPARATE from authoritative Access tables. No Access-origin IDs touched. No Phase1 profiles/providers/orgs/users/credentials/languages/specialty-area records altered. Nothing imported/activated. IDs will be VIen-generated (prefix to avoid collision with Access IDs), never reusing Access numbering.
+
+Hierarchy unchanged: Sphere → Area → Specialty → Areas of Practice.
+
+### Data model (proposed)
+- `professional_areas_of_practice`: {area_of_practice_id (VIen id), specialty_id (FK→ specialty this list belongs to; this initial list scoped to Family Medicine specialty), category (source grouping e.g. "AGE / POPULATION"), name, active(bool), sort_order}. Architected so OTHER specialties can later own their own AOP lists; do NOT invent AOP for other specialties yet; do NOT auto-infer AOP from Specialty.
+- `professional_practice_types`: {practice_type_id (VIen id), name, active, sort_order}. Specialty-agnostic (global list).
+- `professional_primary_care_models`: {primary_care_model_id (VIen id), name, abbreviation, active, sort_order}. Ontario funding/org models — kept SEPARATE from Practice Type.
+- Professional Profile stores REFERENCE IDs only (no duplicated display strings): `areas_of_practice_ids` (ARRAY, cumulative), `practice_type_ids` (ARRAY, cumulative), `primary_care_model_ids` (ARRAY — modeled as array to allow future multiple affiliations, but no duplicate models created).
+- UI for all three = searchable multi-select with removable chips; favourites N/A here (no favourite col in source). AOP are declared areas, NOT certifications.
+
+### Counts (authoritative, from user's lists)
+- Family Medicine Areas of Practice = 97 (General/Comprehensive 5, Age/Population 19, Women/Reproductive/Maternity 10, Mental Health/Substance Use 9, Chronic/Clinical 19, Pain/MSK 5, Acute/Procedural 14, Older Adult/End-of-Life 5, Other Focused FM 11). No within-list exact duplicates.
+- Practice Type = 24. No within-list duplicates.
+- Ontario Primary Care Model = 13. No within-list duplicates. NOTE: use "Family Health Group (FHG)"; do NOT add "Family Integrated Group"; do not invent unofficial model names.
+
+### Overlap / review items (flagged, NOT auto-resolved)
+- Within AOP near-overlaps (kept as distinct unless you say merge): "Wound Care" vs "Suturing / Wound Care"; "Joint / Soft Tissue Injections" vs "Joint Injection" vs "Trigger Point Injection"; "Occupational Medicine" vs "Workplace / Occupational Injury Care"; "Sexual Health" vs "Sexual Medicine"; "Minor Procedures" vs "Minor Surgery".
+- CROSS-FIELD same/similar labels (expected — different fields, kept separate): "Focused Family Medicine Practice" (in AOP AND Practice Type); "Hospital Medicine / Hospitalist Care" (AOP) ~ "Hospitalist Practice" (Practice Type); "Virtual Care / Telemedicine" (AOP) ~ "Virtual / Telemedicine Practice" (Practice Type); Practice Type entries "Family Health Team"/"Community Health Centre"/"Indigenous Primary Care"/"Rural Practice"/"Remote / Northern Practice" mirror Ontario Model entries FHT/CHC/IPHCO/RNPGA — this is intentional per user (setting vs funding model are separate axes).
+
+### Specialty dependency wiring
+- AOP list is scoped to a Specialty via `specialty_id`. The Family Medicine AOP list attaches to the Family Medicine specialty record (from tblProfessionalSpeciality — resolve its SpecialityID at implementation time; do NOT hardcode/guess now). Profile editor shows the AOP multi-select ONLY when the professional's specialty has a configured AOP list. Other specialties show nothing until their own list is provided.
+
+### Blockers for implementation
+- None architecturally. One dependency: the Family Medicine `specialty_id` must be resolved from the authoritative Specialty table at build time to wire AOP correctly. Overlap decisions above are optional and can proceed as-is unless user requests merges.
 
 ## tblLanguage.xlsx — READ-ONLY analysis (batch: Language). NOT imported.
 - Sheet `tblLanguage`, cols A:C. Header: LanguageID, Language, Favourite. 158 data rows.

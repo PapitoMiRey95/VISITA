@@ -1,7 +1,7 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useNavigate, Link } from "react-router-dom";
 import { toast } from "sonner";
-import { Search, Pill, User, ArrowLeft, Send, ClipboardList } from "lucide-react";
+import { Search, Pill, User, ArrowLeft, Send, ClipboardList, Wand2, X, AlertTriangle } from "lucide-react";
 import { api, formatErr } from "../lib/api";
 import { formatLastFirst } from "../lib/name";
 import { formatDate } from "../lib/date";
@@ -11,6 +11,12 @@ import { Textarea } from "../components/ui/textarea";
 import { Label } from "../components/ui/label";
 
 const RECEIVED = ["fax", "phone", "other"];
+const DEFAULT_PHARMACY = "1670 Dufferin Drug Mart";
+
+function medDisplay(m) {
+    const head = [m.drug, m.strength, m.form].filter(Boolean).join(" ").trim();
+    return head || (m.original_text || "").trim();
+}
 
 export default function PharmacyIntake() {
     const nav = useNavigate();
@@ -22,8 +28,22 @@ export default function PharmacyIntake() {
     const [snap, setSnap] = useState(null); // selected patient snapshot
     const [selectedActive, setSelectedActive] = useState([]);
     const [busy, setBusy] = useState(false);
+    const [pharmacies, setPharmacies] = useState([]);
+    const [pasteText, setPasteText] = useState("");
+    const [organizing, setOrganizing] = useState(false);
+    const [parsedMeds, setParsedMeds] = useState([]);
+    const [parseWarnings, setParseWarnings] = useState([]);
     const [f, setF] = useState({ pharmacy: "", meds_text: "", duration_qty: "", pharmacy_note: "", received_via: "fax", internal_note: "" });
     const set = (k, v) => setF((s) => ({ ...s, [k]: v }));
+
+    // Pharmacy dropdown options: portal pharmacies (future) + the default 1670 DDM.
+    useEffect(() => {
+        api.get("/internal/pharmacies").then(({ data }) => setPharmacies(data || [])).catch(() => setPharmacies([]));
+    }, []);
+    const pharmacyOptions = (() => {
+        const names = (pharmacies || []).map((p) => p.pharmacy_name).filter(Boolean);
+        return Array.from(new Set([DEFAULT_PHARMACY, ...names]));
+    })();
 
     const search = async (e) => {
         e?.preventDefault();
@@ -53,7 +73,7 @@ export default function PharmacyIntake() {
         try {
             const { data } = await api.get(`/internal/patient-snapshot/${id}`);
             setSnap(data);
-            setF((s) => ({ ...s, pharmacy: data.current_pharmacy || s.pharmacy }));
+            setF((s) => ({ ...s, pharmacy: data.current_pharmacy || s.pharmacy || DEFAULT_PHARMACY }));
             setSelectedActive([]);
         } catch (err) { toast.error(formatErr(err)); }
     };
@@ -61,16 +81,36 @@ export default function PharmacyIntake() {
     const toggleActive = (med) =>
         setSelectedActive((s) => (s.includes(med) ? s.filter((m) => m !== med) : [...s, med]));
 
+    // Smart tool: paste raw Rx text -> Organize -> structured medication cards.
+    const organize = async () => {
+        if (!pasteText.trim()) { toast.error("Paste the prescription text first."); return; }
+        setOrganizing(true);
+        try {
+            const { data } = await api.post("/internal/rx/parse", {
+                text: pasteText, patient_ref: snap?.directory_id || snap?.patient_id || null,
+            });
+            const meds = data.medications || [];
+            if (meds.length === 0) { toast.error("No medications recognised. Check the pasted text."); }
+            setParsedMeds(meds);
+            setParseWarnings(data.warnings || []);
+            if (data.months && !f.duration_qty) set("duration_qty", `${data.months} months`);
+            if (meds.length) toast.success(`Organized ${meds.length} medication${meds.length > 1 ? "s" : ""}.`);
+        } catch (err) { toast.error(formatErr(err)); } finally { setOrganizing(false); }
+    };
+
+    const removeParsed = (idx) => setParsedMeds((s) => s.filter((_, i) => i !== idx));
+
     const submit = async () => {
         const manual = f.meds_text.split("\n").map((x) => x.trim()).filter(Boolean);
-        const medications = [...selectedActive, ...manual];
-        if (!f.pharmacy.trim()) { toast.error("Enter the pharmacy."); return; }
-        if (medications.length === 0) { toast.error("Add at least one requested medication."); return; }
+        const organized = parsedMeds.map(medDisplay).filter(Boolean);
+        const medications = [...selectedActive, ...organized, ...manual];
+        if (!f.pharmacy.trim()) { toast.error("Select a pharmacy."); return; }
+        if (medications.length === 0) { toast.error("Add at least one requested medication (paste & organize, pick from active, or type manually)."); return; }
         setBusy(true);
         try {
             await api.post("/internal/pharmacy-rx", {
                 directory_id: snap.directory_id, patient_id: snap.patient_id, pharmacy: f.pharmacy, medications,
-                selected_active_meds: selectedActive, duration_qty: f.duration_qty || null,
+                medications_structured: parsedMeds, selected_active_meds: selectedActive, duration_qty: f.duration_qty || null,
                 pharmacy_note: f.pharmacy_note || null, received_via: f.received_via,
                 internal_note: f.internal_note || null,
             });
@@ -84,8 +124,8 @@ export default function PharmacyIntake() {
             <div className="flex items-center gap-3 mb-4">
                 <Button asChild variant="ghost" size="sm"><Link to="/internal/rx"><ArrowLeft className="w-4 h-4 mr-1" /> Rx</Link></Button>
                 <div>
-                    <h1 className="text-2xl font-bold text-slate-900 tracking-tight">Request Intake</h1>
-                    <p className="text-sm text-slate-500">Log a pharmacy-initiated renewal/refill request and send it to the physician.</p>
+                    <h1 className="text-2xl font-bold text-slate-900 tracking-tight">Rx Request / Refill Intake</h1>
+                    <p className="text-sm text-slate-500">Log an Rx request or refill — from a pharmacy, or a patient who called in — and send it to the physician.</p>
                 </div>
             </div>
 
@@ -161,16 +201,60 @@ export default function PharmacyIntake() {
                         )}
                     </div>
 
-                    {/* CENTER — Pharmacy refill request */}
+                    {/* CENTER — Rx request / refill */}
                     <div className="bg-white border border-slate-300 rounded-sm p-4 space-y-3">
-                        <div className="flex items-center gap-2 text-slate-700 font-semibold"><ClipboardList className="w-4 h-4" /> Pharmacy Refill Request</div>
-                        <div><Label className="text-xs">Pharmacy</Label><Input data-testid="intake-pharmacy" value={f.pharmacy} onChange={(e) => set("pharmacy", e.target.value)} placeholder="e.g. Dufferin Drug Mart" /></div>
+                        <div className="flex items-center gap-2 text-slate-700 font-semibold"><ClipboardList className="w-4 h-4" /> Rx Request / Refill</div>
                         <div>
-                            <Label className="text-xs">Medication(s) requested {selectedActive.length > 0 && <span className="text-visita-greenDark">(+{selectedActive.length} from active list)</span>}</Label>
-                            <Textarea data-testid="intake-meds" value={f.meds_text} onChange={(e) => set("meds_text", e.target.value)} placeholder="One medication per line, e.g.&#10;Ramipril 10 mg&#10;Metformin 500 mg" rows={3} />
+                            <Label className="text-xs">Pharmacy</Label>
+                            <select data-testid="intake-pharmacy" value={f.pharmacy || ""} onChange={(e) => set("pharmacy", e.target.value)}
+                                className="w-full h-9 border border-slate-300 rounded-sm px-2 text-sm bg-white">
+                                <option value="" disabled>Select a pharmacy…</option>
+                                {pharmacyOptions.map((name) => <option key={name} value={name}>{name}</option>)}
+                            </select>
+                            <p className="text-[11px] text-slate-400 mt-1">More pharmacies appear here as they are added to the system.</p>
+                        </div>
+
+                        {/* Smart paste & organize */}
+                        <div className="border border-indigo-200 bg-indigo-50/40 rounded-sm p-2.5 space-y-2">
+                            <div className="flex items-center gap-1.5 text-xs font-semibold text-indigo-800"><Wand2 className="w-3.5 h-3.5" /> Smart Rx — paste &amp; organize</div>
+                            <Textarea data-testid="intake-paste" value={pasteText} onChange={(e) => setPasteText(e.target.value)} rows={4}
+                                placeholder={"Paste the full prescription here, e.g.\nRamipril 10 mg — 1 tab daily, Qty 90\nMetformin 500 mg BID\nNumber of months: 3"} />
+                            <Button type="button" size="sm" variant="outline" data-testid="intake-organize" disabled={organizing}
+                                onClick={organize} className="border-indigo-400 text-indigo-700 hover:bg-indigo-100">
+                                <Wand2 className="w-3.5 h-3.5 mr-1" /> {organizing ? "Organizing…" : "Organize"}
+                            </Button>
+
+                            {parseWarnings.length > 0 && (
+                                <div className="text-[11px] text-amber-700 bg-amber-50 border border-amber-200 rounded p-1.5" data-testid="intake-parse-warnings">
+                                    {parseWarnings.map((w, i) => <div key={i} className="flex items-start gap-1"><AlertTriangle className="w-3 h-3 mt-0.5 shrink-0" />{w}</div>)}
+                                </div>
+                            )}
+
+                            {parsedMeds.length > 0 && (
+                                <div className="space-y-1.5" data-testid="intake-parsed-meds">
+                                    <div className="text-[11px] uppercase text-slate-400 font-medium">Organized medications ({parsedMeds.length})</div>
+                                    {parsedMeds.map((m, idx) => (
+                                        <div key={idx} data-testid="intake-parsed-med" className="border border-slate-200 bg-white rounded px-2 py-1.5 text-sm relative">
+                                            <button type="button" onClick={() => removeParsed(idx)} data-testid="intake-parsed-remove"
+                                                className="absolute top-1.5 right-1.5 text-slate-300 hover:text-red-500"><X className="w-3.5 h-3.5" /></button>
+                                            <div className="font-semibold text-slate-800 pr-5">{idx + 1}. {medDisplay(m)}</div>
+                                            {m.sig && <div className="text-slate-600 text-xs">{m.sig}</div>}
+                                            {(m.quantity || m.refills || m.additional_instructions) && (
+                                                <div className="text-slate-500 text-[11px]">{[m.quantity && `Qty ${m.quantity}`, m.refills != null && `${m.refills} refills`, m.additional_instructions].filter(Boolean).join(" · ")}</div>
+                                            )}
+                                            {(m.needs_review || []).length > 0 && <div className="text-amber-600 text-[11px]">Needs review: {m.needs_review.join(", ")}</div>}
+                                        </div>
+                                    ))}
+                                </div>
+                            )}
+                        </div>
+
+                        <div>
+                            <Label className="text-xs">Or type medication(s) manually {selectedActive.length > 0 && <span className="text-visita-greenDark">(+{selectedActive.length} from active list)</span>}</Label>
+                            <Textarea data-testid="intake-meds" value={f.meds_text} onChange={(e) => set("meds_text", e.target.value)} placeholder="One medication per line, e.g.&#10;Ramipril 10 mg&#10;Metformin 500 mg" rows={2} />
                         </div>
                         <div><Label className="text-xs">Requested refill duration / quantity (if known)</Label><Input data-testid="intake-duration" value={f.duration_qty} onChange={(e) => set("duration_qty", e.target.value)} placeholder="e.g. 3 months" /></div>
-                        <div><Label className="text-xs">Pharmacy note</Label><Textarea value={f.pharmacy_note} onChange={(e) => set("pharmacy_note", e.target.value)} rows={2} /></div>
+                        <div><Label className="text-xs">Note (pharmacy or patient)</Label><Textarea value={f.pharmacy_note} onChange={(e) => set("pharmacy_note", e.target.value)} rows={2} /></div>
                         <div>
                             <Label className="text-xs">Received via</Label>
                             <div className="flex gap-2 mt-1">

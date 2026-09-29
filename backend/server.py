@@ -2703,6 +2703,7 @@ class PharmacyRxBody(BaseModel):
     patient_id: Optional[str] = None
     pharmacy: str
     medications: List[str]
+    medications_structured: Optional[List[dict]] = None
     selected_active_meds: Optional[List[str]] = []
     duration_qty: Optional[str] = None
     pharmacy_note: Optional[str] = None
@@ -2790,7 +2791,8 @@ async def create_pharmacy_rx(body: PharmacyRxBody, user: dict = Depends(require_
         "directory_id": rx_directory_id, "visita_patient_id": rx_vid,
         "patient_name": patient_name,
         "medication_name": "; ".join(meds), "strength": None,
-        "medications": meds, "selected_active_meds": body.selected_active_meds or [],
+        "medications": meds, "medications_structured": body.medications_structured or [],
+        "selected_active_meds": body.selected_active_meds or [],
         "pharmacy": body.pharmacy, "duration_qty": body.duration_qty,
         "pharmacy_note": body.pharmacy_note, "received_via": body.received_via,
         "requested_months": None, "delivery_method": "pharmacy",

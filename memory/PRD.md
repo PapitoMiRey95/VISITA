@@ -577,3 +577,14 @@ AUDIT: every edit -> audit_logs professional_update with meta.edit_source (ADMIN
 UI: shared editor is permission-aware. ProfileView shows management badge + Edit (if can_edit) + Editors (admin). AuthorizedEditors.jsx (admin) = search existing VIen users -> grant EDIT_PROFILE -> list/revoke. Physician 'My Professional Profile' card for self.
 TESTS: testing_agent iteration_58 — backend 38/38 (/app/backend/tests/test_professionals_authz.py; run with pytest -n 0), frontend 100%. Full authz matrix + RBAC + audit + high-risk stripping + link-user safety + affiliations + route ordering all pass. All temp test data cleaned; professional_profiles/editors/affiliations EMPTY. Seeder confirmed NOT in server startup.
 STATUS: complete & verified in PREVIEW. AWAITING explicit user GO before Production deploy. NOT deployed.
+
+## Professionals — Self-onboarding hardening (2026-06 fork, PREVIEW ONLY, NOT deployed)
+GOAL: eligible professional (physician) creates/owns ONLY their own canonical profile via the shared editor; no ownership over others; delegated editors + admin unchanged.
+- Endpoint PUT /api/professionals/me (create-or-update self): strips _HIGH_RISK_FIELDS (linked_user_id/id/source_professional_id/created_by/role) — forged values from browser IGNORED; linked_user_id assigned server-side from session; PROF_SELF_ROLES=('admin','physician'); patient/others 403; POST /professionals stays admin-only (403 for physician).
+- Duplicate guard: find-by-linked_user_id + partial-unique index on professional_profiles.linked_user_id ({$type:'string'}) created at startup + DuplicateKeyError fallback re-reads doc -> at most ONE canonical self-profile per user; double-submit/race safe.
+- Audit: self-create -> audit_logs action 'professional_profile_created', edit_source SELF (renamed from professional_self_create). No secrets.
+- No auto-claim: never links existing/legacy profiles by name/email/reg#/fuzzy; admin resolves later.
+- UI: 'My Professional Profile' card -> enabled 'Set up my profile' (opens shared editor selfMode) when none; 'Update my info' when exists (same modal, edit mode). Physicians do NOT see general '+ Add Professional' (admin-only). Why it was disabled in Prod: button gated on tax.imported and Prod taxonomy collections were empty pre-seed.
+- Canonical-profile vs Contact/Suggested/Unclaimed separation preserved (future workflows NOT built). Organization ownership vs professional ownership kept separate (no Org redesign).
+- TESTS: iteration_59 — /app/backend/tests/test_professionals_self_onboarding.py 7/7 + authz 38/38; frontend E2E 100%. All temp data cleaned (profiles/editors/affiliations EMPTY). Run pytest -n 0.
+STATUS: complete & verified in PREVIEW. AWAITING explicit user GO before Production deploy. NOT deployed.

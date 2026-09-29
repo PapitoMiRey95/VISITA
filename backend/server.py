@@ -5130,6 +5130,115 @@ async def admin_reset_pharmacy_temp_password(body: ResetPharmacyPwBody, user: di
             "must_change_password": True, "temp_password": temp}
 
 
+# ============= PROFESSIONALS — Dr. Aguayo's Professional Construct (Phase 1) =============
+# ONE shared Professional Profile model + Directory (search/view). System ACCESS stays
+# SEPARATE from professional identity (optional users.professional_id link, added later).
+# Taxonomy (Sphere/Area/Specialty/Credentials/Languages/Practice Type) is NOT seeded here
+# — it will be imported from the authoritative Access source tables. New collections only;
+# existing providers / organizations / users are never modified.
+PROF_VIEW_ROLES = ("admin", "physician", "staff", "pharmacy")
+PROF_EDIT_ROLES = ("admin",)  # architected so physician/staff can be enabled later w/o rework
+
+
+def _prof_public(p: dict) -> dict:
+    p = {k: v for k, v in p.items() if k != "_id"}
+    p["has_vien_access"] = bool(p.get("linked_user_id"))
+    p["record_type"] = "user" if p.get("linked_user_id") else "contact"
+    names = " ".join([n for n in [p.get("first_name"), p.get("second_name")] if n]).strip()
+    p["display_name"] = ", ".join([x for x in [p.get("surname"), names] if x])
+    return p
+
+
+class ProfessionalBody(BaseModel):
+    surname: str
+    first_name: Optional[str] = ""
+    second_name: Optional[str] = ""
+    sphere_id: Optional[str] = None
+    area_id: Optional[str] = None
+    specialty_id: Optional[str] = None
+    credential_ids: Optional[list] = None
+    language_ids: Optional[list] = None
+    accepting_patients: Optional[bool] = None
+    waiting_list: Optional[bool] = None
+    sex: Optional[str] = None
+    practice_type_id: Optional[str] = None
+    areas_of_practice: Optional[list] = None
+    registration_number: Optional[str] = None
+    professorship: Optional[str] = None
+    organization_ids: Optional[list] = None
+    visibility: Optional[str] = "authenticated"
+
+
+@api.get("/professionals/taxonomy")
+async def professionals_taxonomy(user: dict = Depends(require_roles(*PROF_VIEW_ROLES))):
+    """Shared taxonomy lookups. Empty until Dr. Aguayo's Access source tables are imported."""
+    async def _all(coll):
+        return await db[coll].find({}, {"_id": 0}).to_list(2000)
+    return {
+        "spheres": await _all("professional_spheres"),
+        "areas": await _all("professional_areas"),
+        "specialties": await _all("professional_specialties"),
+        "credentials": await _all("professional_credentials"),
+        "languages": await _all("professional_languages"),
+        "practice_types": await _all("professional_practice_types"),
+        "imported": bool(await db.professional_spheres.count_documents({})),
+    }
+
+
+@api.get("/professionals")
+async def professionals_list(q: Optional[str] = None, sphere_id: Optional[str] = None,
+                             area_id: Optional[str] = None, specialty_id: Optional[str] = None,
+                             accepting_patients: Optional[bool] = None,
+                             user: dict = Depends(require_roles(*PROF_VIEW_ROLES))):
+    """Directory search across Professional Profiles regardless of VIen login status."""
+    query = {}
+    if sphere_id: query["sphere_id"] = sphere_id
+    if area_id: query["area_id"] = area_id
+    if specialty_id: query["specialty_id"] = specialty_id
+    if accepting_patients is not None: query["accepting_patients"] = accepting_patients
+    if q and q.strip():
+        rx = {"$regex": re.escape(q.strip()), "$options": "i"}
+        query["$or"] = [{"surname": rx}, {"first_name": rx}, {"second_name": rx}, {"registration_number": rx}]
+    docs = await db.professional_profiles.find(query).sort([("surname", 1), ("first_name", 1)]).limit(200).to_list(200)
+    return [_prof_public(d) for d in docs]
+
+
+@api.get("/professionals/{prof_id}")
+async def professionals_get(prof_id: str, user: dict = Depends(require_roles(*PROF_VIEW_ROLES))):
+    d = await db.professional_profiles.find_one({"id": prof_id})
+    if not d:
+        raise HTTPException(status_code=404, detail="Professional not found.")
+    return _prof_public(d)
+
+
+@api.post("/professionals")
+async def professionals_create(body: ProfessionalBody, user: dict = Depends(require_roles(*PROF_EDIT_ROLES))):
+    """Create a Professional Profile (Directory Contact by default; VIen User linkage is a
+    later flow). Duplicate-warning is advisory only — never auto-merges."""
+    if not (body.surname or "").strip():
+        raise HTTPException(status_code=400, detail="Surname is required.")
+    now = now_iso()
+    doc = {"id": str(uuid.uuid4()), **body.model_dump(),
+           "credential_ids": body.credential_ids or [], "language_ids": body.language_ids or [],
+           "areas_of_practice": body.areas_of_practice or [], "organization_ids": body.organization_ids or [],
+           "linked_user_id": None, "created_by": user.get("name"), "created_at": now, "updated_at": now}
+    await db.professional_profiles.insert_one({**doc})
+    await audit("professional_create", "professional", doc["id"], user)
+    return _prof_public(doc)
+
+
+@api.patch("/professionals/{prof_id}")
+async def professionals_update(prof_id: str, body: ProfessionalBody, user: dict = Depends(require_roles(*PROF_EDIT_ROLES))):
+    d = await db.professional_profiles.find_one({"id": prof_id})
+    if not d:
+        raise HTTPException(status_code=404, detail="Professional not found.")
+    upd = {k: v for k, v in body.model_dump().items() if v is not None}
+    upd["updated_at"] = now_iso()
+    await db.professional_profiles.update_one({"id": prof_id}, {"$set": upd})
+    await audit("professional_update", "professional", prof_id, user)
+    return _prof_public({**d, **upd})
+
+
 
 
 

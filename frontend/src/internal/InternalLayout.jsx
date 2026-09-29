@@ -2,7 +2,7 @@ import { Outlet, NavLink, useNavigate } from "react-router-dom";
 import { useState, useRef, useCallback } from "react";
 import {
     ClipboardList, Pill, Calendar, Scan, Droplet, MessageSquare, ClipboardCheck,
-    Send, UserCheck, UserPlus, CalendarDays, Settings as SettingsIcon, LogOut, UserSearch, Menu, Building2, Stethoscope, Users, Receipt, AlertTriangle, Truck,
+    Send, UserCheck, UserPlus, CalendarDays, Settings as SettingsIcon, LogOut, UserSearch, Menu, Building2, Stethoscope, Users, Receipt, AlertTriangle, Truck, Contact,
 } from "lucide-react";
 import { useAuth } from "../context/AuthContext";
 import { useCounters } from "./hooks";
@@ -62,6 +62,7 @@ export default function InternalLayout() {
               { to: "/internal/referrals", icon: ClipboardCheck, label: "Referral Drop-Off", key: null },
               { to: "/internal/verifications", icon: UserCheck, label: "Verifications", key: "verifications" },
               { to: "/internal/providers", icon: Stethoscope, label: "Providers", key: null },
+              { to: "/internal/professionals", icon: Contact, label: "Professionals", key: null },
               { to: "/internal/settings", icon: SettingsIcon, label: "Settings", key: null },
           ]
         : [
@@ -82,6 +83,7 @@ export default function InternalLayout() {
               { to: "/internal/applications", icon: UserPlus, label: "Applications", key: "applications" },
               { to: "/internal/organizations", icon: Building2, label: "Organizations", key: null },
               { to: "/internal/providers", icon: Stethoscope, label: "Providers", key: null },
+              { to: "/internal/professionals", icon: Contact, label: "Professionals", key: null },
               ...(role === "admin" ? [{ to: "/internal/settings", icon: SettingsIcon, label: "Settings", key: null }] : []),
           ];
 

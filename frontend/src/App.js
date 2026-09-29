@@ -28,6 +28,7 @@ import Hub from "./internal/Hub";
 import RxQueue from "./internal/RxQueue";
 import PharmacyIntake from "./internal/PharmacyIntake";
 import SendPrescription from "./internal/SendPrescription";
+import Professionals from "./internal/Professionals";
 import AppointmentQueue from "./internal/AppointmentQueue";
 import Calendar from "./internal/Calendar";
 import ImagingQueue from "./internal/ImagingQueue";
@@ -115,6 +116,7 @@ function App() {
                         <Route path="applications" element={<Applications />} />
                         <Route path="organizations" element={<Organizations />} />
                         <Route path="providers" element={<Providers />} />
+                        <Route path="professionals" element={<Professionals />} />
                         <Route path="settings" element={<Settings />} />
                     </Route>
 

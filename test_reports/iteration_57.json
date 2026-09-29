@@ -1,0 +1,31 @@
+{
+  "summary": "Full Preview regression before Production GO. Backend: 64/64 pytest passing across professionals Phase-2 (11), rx_parser (10), send_rx (14), convert_to_prescription (6), pharmacy_smart_rx (12), professionals RBAC — plus manual API verification of new PharmacyIntake payload (medications_structured persisted), taxonomy shape (spheres=2/areas=58/specialties=247/credentials=235/languages=158/practice_types=24/primary_care_models=13, imported=true), Ontario primary_care_models contains 'Family Health Group (FHG)' and does NOT contain 'Family Integrated Group', legacy orphans preserved (155 Book Keeper area_id=2, 193 Paralegal area_id=96), Portuguese id 103 favourite=false + 104 favourite=true, FRCPC = 3 docs (432/433/434), AOP specialty_id=133 -> 97 items, specialty_id=75 -> empty, professional_profiles=0. Confirmed seed_professional_taxonomy is NOT wired into server startup (only 'from seed import seed_all'). Frontend: admin sign-in ok, Professional editor (max-w-4xl) renders cleanly, unsaved-changes dirty indicator appears, backdrop/X/Cancel while dirty ALL show prof-editor-leave-guard with Save/Keep/Discard, no-edit Cancel closes silently. Full dependent-selector create flow works (Sphere=Health->Area=Physician showing prof-registration REQUIRED->Specialty=Family Medicine showing prof-aop with 97 grouped options, chip removable, Done buttons on all 4 multi-selects (aop/credentials/languages/practice-type/care-model), FRCPC search returns 4 rows (3 true FRCPC + 1 FRCPCH — expected data). Save 200 -> row appears, ProfileView shows Classification 'Health -> Physician -> Family Medicine' and AOP resolved to the human name 'Comprehensive Family Medicine' (iteration_56 low-priority bug is FIXED). RX PIN column present (headers: Source|Ref|Patient|PIN|Detail|Status|Received), rx-row-pin shows PIN for portal patients (e.g. LOPEZ Maria=9251, VENTO VALE=578) and '—' for directory-only (ROMERO, SMITH etc.); no PHI beyond PIN added. PharmacyIntake page title 'Rx Request / Refill Intake', patient search+select works, intake-pharmacy is a real <select> with '1670 Dufferin Drug Mart' and selection persists, Smart Rx (intake-paste + intake-organize) parsed 3 medications into intake-parsed-med cards, intake-parsed-remove reduces cards, manual textarea intake-meds still available. RBAC verified: physician/staff/pharmacy GET /api/professionals + /api/professionals/taxonomy = 200; POST /api/professionals = 403 for all three; admin POST/PATCH = 200. Pharmacy login (1670dufferin/PharmNew2026!) succeeds — iteration_42 must_change_password note is STALE (already reset in iteration_55). Cleanup: created + deleted 1 professional_profiles ('RegressProf'); created + deleted 1 prescription_requests (TEST_intake_regression). professional_profiles ends EMPTY.",
+  "backend_issues": {"critical": [], "minor": []},
+  "frontend_issues": {"ui_bugs": [], "integration_issues": [], "design_issues": []},
+  "test_report_links": [
+    "/app/backend/tests/test_professionals_phase2.py",
+    "/app/backend/tests/test_send_rx.py",
+    "/app/backend/tests/test_convert_to_prescription.py",
+    "/app/backend/tests/test_pharmacy_smart_rx.py",
+    "/app/backend/tests/test_rx_parser.py",
+    "/app/test_reports/pytest/iter57_core.xml",
+    "/app/test_reports/pytest/iter57_rx.xml"
+  ],
+  "action_items": [
+    "Update /app/memory/test_credentials.md: remove the stale iteration_42 note that says pharmacy 1670dufferin is stuck on must_change_password — Preview login now works with PharmNew2026!.",
+    "(Optional, carried over from iteration_56) Add admin-only DELETE /api/professionals/{id} so QA cleanup does not require direct Mongo access."
+  ],
+  "critical_code_review_comments": [
+    "PharmacyRxBody accepts a free-text 'pharmacy' string even though /api/internal/pharmacies now returns a controlled list — consider validating body.pharmacy against the pharmacies collection to avoid typos (frontend intake-pharmacy is a <select> so it is safe from the UI, but the API is still open).",
+    "Credential search on 'FRCPC' returns 4 rows because FRCPCH matches the substring. Task expected 3. Not a bug (correct data + substring search), but if strictness is desired the search could be tokenized or match by exact code prefix.",
+    "ProfessionalBody.model_dump() still emits None for optional fields (carry-over from iter_56): consider exclude_none for POST/PATCH inserts.",
+    "prescription_requests visita_patient_id is currently backfilled from patient_directory.visita_patient_id — directory-only patients correctly show None ('—' in UI). Confirmed OK."
+  ],
+  "updated_files": [],
+  "success_rate": {"backend": "100% (64/64 pytest + manual API checks)", "frontend": "100% (all critical UI regressions pass, including iteration_56 AOP-chip-label fix confirmed)"},
+  "test_credentials": "Admin kevinrodriguez9528@gmail.com / VisitaAdmin2026!; Physician PAGUAYO / Newman2013_!; Staff staff@visita.demo / Staff2026!; Pharmacy 1670dufferin / PharmNew2026! (login WORKS — iteration_42 note is stale).",
+  "seed_data_creation": "Created + deleted 1 professional_profiles doc (surname='RegressProf', specialty=Family Medicine, 1 AOP=vaop-001) and 1 prescription_requests doc (TEST_intake_regression) via Mongo direct delete. professional_profiles ends EMPTY. No taxonomy or patient_directory or provider/organization/user modifications.",
+  "retest_needed": false,
+  "should_main_agent_self_test": false,
+  "context_for_next_testing_agent": "Preview is GO-ready. All primary regression suites live under /app/backend/tests/. Use REACT_APP_BACKEND_URL from /app/frontend/.env when running pytest. Preview pharmacy 1670dufferin password = PharmNew2026! (must_change_password=false). To reach admin UI, POST /signin?internal=1 with [data-testid=login-email/login-password/login-submit]. Professional editor selector patterns: '<field>-opt-<id>' (not 'opt-<id>'), '<field>-done' for multi-select Done buttons, '<field>-search' for search input, '<field>-chip-<id>' for chips."
+}

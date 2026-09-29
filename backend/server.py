@@ -5188,6 +5188,39 @@ class ProfessionalBody(BaseModel):
     professorship: Optional[str] = None
     organization_ids: Optional[list] = None
     visibility: Optional[str] = "authenticated"
+    # PUBLIC professional contact (separate from login/account contact; never auto-copied)
+    public_phone: Optional[str] = None
+    public_fax: Optional[str] = None
+    public_email: Optional[str] = None
+    public_address: Optional["PublicAddress"] = None
+
+
+class PublicAddress(BaseModel):
+    street: Optional[str] = ""
+    unit: Optional[str] = ""
+    city: Optional[str] = ""
+    province: Optional[str] = "Ontario"
+    postal_code: Optional[str] = ""
+    country: Optional[str] = "Canada"
+
+
+ProfessionalBody.model_rebuild()
+
+_PHONE_RX = re.compile(r"^[0-9+()\-.\s]{7,25}$")
+_POSTAL_RX = re.compile(r"^[A-Za-z]\d[A-Za-z][ -]?\d[A-Za-z]\d$")
+
+
+def _validate_public_contact(body: ProfessionalBody):
+    """Format checks ONLY when a value is entered; blanks never block saving."""
+    for label, val in (("phone", body.public_phone), ("fax", body.public_fax)):
+        if val and val.strip() and not _PHONE_RX.match(val.strip()):
+            raise HTTPException(status_code=400, detail=f"Public {label} must be 7–25 characters using digits, spaces, +, (, ), - or .")
+    if body.public_email and body.public_email.strip() and not re.match(r"^[^@\s]+@[^@\s]+\.[^@\s]+$", body.public_email.strip()):
+        raise HTTPException(status_code=400, detail="Public email is not a valid email address.")
+    a = body.public_address
+    if a and a.postal_code and a.postal_code.strip() and (a.country or "Canada").strip().lower() == "canada" \
+            and not _POSTAL_RX.match(a.postal_code.strip()):
+        raise HTTPException(status_code=400, detail="Postal code must look like A1A 1A1.")
 
 
 class EditorGrantBody(BaseModel):
@@ -5312,6 +5345,7 @@ async def professionals_upsert_me(body: ProfessionalBody, user: dict = Depends(r
     Cannot touch other profiles; linkage to the user is enforced server-side."""
     if not (body.surname or "").strip():
         raise HTTPException(status_code=400, detail="Surname is required.")
+    _validate_public_contact(body)
     now = now_iso()
     body_dict = body.model_dump()
     for hk in _HIGH_RISK_FIELDS:  # never accept linked_user_id/id/role/etc from the browser
@@ -5319,9 +5353,11 @@ async def professionals_upsert_me(body: ProfessionalBody, user: dict = Depends(r
     existing = await db.professional_profiles.find_one({"linked_user_id": user["id"]})
     if existing:
         upd = {k: v for k, v in body_dict.items() if v is not None}
+        diff = {k: {"before": existing.get(k), "after": v} for k, v in upd.items() if existing.get(k) != v}
         upd["updated_at"] = now
         await db.professional_profiles.update_one({"id": existing["id"]}, {"$set": upd})
-        await audit("professional_self_update", "professional", existing["id"], user, meta={"edit_source": "SELF"})
+        await audit("professional_self_update", "professional", existing["id"], user,
+                    meta={"edit_source": "SELF", "fields_changed": list(diff.keys()), "diff": diff})
         return _prof_public({**existing, **upd})
     doc = {"id": str(uuid.uuid4()), **body_dict,
            "credential_ids": body.credential_ids or [], "language_ids": body.language_ids or [],
@@ -5385,6 +5421,7 @@ async def professionals_create(body: ProfessionalBody, user: dict = Depends(requ
     later flow). Duplicate-warning is advisory only — never auto-merges."""
     if not (body.surname or "").strip():
         raise HTTPException(status_code=400, detail="Surname is required.")
+    _validate_public_contact(body)
     now = now_iso()
     doc = {"id": str(uuid.uuid4()), **body.model_dump(),
            "credential_ids": body.credential_ids or [], "language_ids": body.language_ids or [],
@@ -5408,6 +5445,7 @@ async def professionals_update(prof_id: str, body: ProfessionalBody, user: dict 
     source = await _edit_source(user, d)
     if not source:
         raise HTTPException(status_code=403, detail="You are not authorized to edit this professional profile.")
+    _validate_public_contact(body)
     body_dict = body.model_dump()
     for hk in _HIGH_RISK_FIELDS:
         body_dict.pop(hk, None)

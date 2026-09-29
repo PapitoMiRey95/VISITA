@@ -146,6 +146,14 @@ export default function Professionals() {
     );
 }
 
+function formatAddress(a) {
+    if (!a) return "";
+    const line1 = [a.unit && `${a.unit} –`, a.street].filter(Boolean).join(" ");
+    const line2 = [a.city, a.province].filter(Boolean).join(", ");
+    return [line1, [line2, a.postal_code].filter(Boolean).join("  "), a.country].filter((s) => s && s.trim()).join(" · ");
+}
+
+
 function ProfileView({ p, tax, onClose, onEdit, onManageEditors }) {
     const [aopMap, setAopMap] = useState({});
     useEffect(() => {
@@ -201,6 +209,13 @@ function ProfileView({ p, tax, onClose, onEdit, onManageEditors }) {
                     <Row label="Sex">{p.sex}</Row>
                     <Row label="Professorship">{p.professorship}</Row>
                     <Row label="Accepting patients">{p.accepting_patients == null ? "—" : p.accepting_patients ? "Yes" : "No"}</Row>
+                    <div className="pt-2 mt-2 border-t border-slate-100">
+                        <div className="text-xs font-semibold uppercase tracking-wide text-slate-500 mb-1">Public professional contact</div>
+                        <Row label="Phone">{p.public_phone ? <a className="text-visita-greenDark hover:underline" href={`tel:${p.public_phone}`} data-testid="prof-view-phone">{p.public_phone}</a> : null}</Row>
+                        <Row label="Fax">{p.public_fax ? <span data-testid="prof-view-fax">{p.public_fax}</span> : null}</Row>
+                        <Row label="Email">{p.public_email ? <a className="text-visita-greenDark hover:underline" href={`mailto:${p.public_email}`} data-testid="prof-view-email">{p.public_email}</a> : null}</Row>
+                        <Row label="Clinic address">{formatAddress(p.public_address) ? <span data-testid="prof-view-address">{formatAddress(p.public_address)}</span> : null}</Row>
+                    </div>
                 </dl>
             </div>
         </div>

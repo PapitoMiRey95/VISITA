@@ -146,6 +146,8 @@ function MultiSelect({ label, placeholder, options, values, onChange, testid, ge
     );
 }
 
+const EMPTY_ADDRESS = { street: "", unit: "", city: "", province: "Ontario", postal_code: "", country: "Canada" };
+
 const EMPTY = {
     surname: "", first_name: "", second_name: "", sex: "",
     sphere_id: "", area_id: "", specialty_id: "",
@@ -153,16 +155,25 @@ const EMPTY = {
     practice_type_ids: [], primary_care_model_ids: [],
     registration_number: "", professorship: "",
     accepting_patients: null, waiting_list: null,
+    public_phone: "", public_fax: "", public_email: "",
+    public_address: EMPTY_ADDRESS,
+};
+
+const normalizeInitial = (initial) => {
+    const i = { ...EMPTY, ...(initial || {}) };
+    i.public_address = { ...EMPTY_ADDRESS, ...(initial?.public_address || {}) };
+    return i;
 };
 
 export default function ProfessionalEditor({ tax, initial, onClose, onSaved, selfMode }) {
-    const [form, setForm] = useState(() => ({ ...EMPTY, ...(initial || {}) }));
+    const [form, setForm] = useState(() => normalizeInitial(initial));
     const [aop, setAop] = useState([]);
     const [saving, setSaving] = useState(false);
     const [regError, setRegError] = useState(false);
     const [confirmLeave, setConfirmLeave] = useState(false);
-    const baseline = useRef(JSON.stringify({ ...EMPTY, ...(initial || {}) }));
+    const baseline = useRef(JSON.stringify(normalizeInitial(initial)));
     const upd = (k, v) => setForm((f) => ({ ...f, [k]: v }));
+    const updAddr = (k, v) => setForm((f) => ({ ...f, public_address: { ...f.public_address, [k]: v } }));
 
     const dirty = JSON.stringify(form) !== baseline.current;
 
@@ -277,6 +288,26 @@ export default function ProfessionalEditor({ tax, initial, onClose, onSaved, sel
                                 <option value="">—</option><option value="yes">Yes</option><option value="no">No</option>
                             </select>
                         </Field>
+                    </div>
+
+                    <div className="rounded-md border border-slate-200 bg-slate-50/60 p-3 space-y-3" data-testid="prof-public-contact">
+                        <div>
+                            <div className="text-xs font-semibold uppercase tracking-wide text-slate-600">Public professional contact</div>
+                            <p className="text-xs text-slate-500">Optional. Shown to VIen internal users in the directory. Separate from your login/account details — nothing is copied automatically.</p>
+                        </div>
+                        <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                            <Field label="Public phone"><Input data-testid="prof-public-phone" value={form.public_phone || ""} onChange={(e) => upd("public_phone", e.target.value)} placeholder="416-555-0100" /></Field>
+                            <Field label="Public fax"><Input data-testid="prof-public-fax" value={form.public_fax || ""} onChange={(e) => upd("public_fax", e.target.value)} placeholder="416-555-0101" /></Field>
+                            <Field label="Public email"><Input data-testid="prof-public-email" type="email" value={form.public_email || ""} onChange={(e) => upd("public_email", e.target.value)} placeholder="clinic@example.com" /></Field>
+                        </div>
+                        <div className="grid grid-cols-1 sm:grid-cols-6 gap-3">
+                            <div className="sm:col-span-4"><Field label="Clinic / practice street address"><Input data-testid="prof-addr-street" value={form.public_address.street || ""} onChange={(e) => updAddr("street", e.target.value)} /></Field></div>
+                            <div className="sm:col-span-2"><Field label="Unit / Suite"><Input data-testid="prof-addr-unit" value={form.public_address.unit || ""} onChange={(e) => updAddr("unit", e.target.value)} /></Field></div>
+                            <div className="sm:col-span-2"><Field label="City"><Input data-testid="prof-addr-city" value={form.public_address.city || ""} onChange={(e) => updAddr("city", e.target.value)} /></Field></div>
+                            <div className="sm:col-span-2"><Field label="Province"><Input data-testid="prof-addr-province" value={form.public_address.province || ""} onChange={(e) => updAddr("province", e.target.value)} /></Field></div>
+                            <Field label="Postal code"><Input data-testid="prof-addr-postal" value={form.public_address.postal_code || ""} onChange={(e) => updAddr("postal_code", e.target.value.toUpperCase())} placeholder="A1A 1A1" /></Field>
+                            <Field label="Country"><Input data-testid="prof-addr-country" value={form.public_address.country || ""} onChange={(e) => updAddr("country", e.target.value)} /></Field>
+                        </div>
                     </div>
                 </div>
                 <div className="flex justify-end gap-2 px-5 py-3 border-t border-slate-200 bg-slate-50">

@@ -596,3 +596,9 @@ STATUS: complete & verified in PREVIEW. AWAITING explicit user GO before Product
 - API: GET /api/professionals/taxonomy returns `available` (replaces `imported`); AOP endpoint reads vien collection. Frontend: button gated on tax.available; labels use `.name`; "Professional Area" label; inline registration error; admin-only "+ Add Professional" restored (prof-add).
 - Tests: backend 56/56 (run serially: -n0 -p no:randomly); testing_agent iteration_60 full pass (UI create/edit/view/RBAC). Preview profiles cleaned to 0.
 - PRODUCTION GO CHECKLIST: deploy code → run seed_vien_professional_taxonomy.py once against Prod (needs Prod write access) → verify counts → "Set up my profile" enabled.
+
+## Professionals — Public professional contact fields (2026-06 fork, PREVIEW ONLY, NOT deployed)
+- ProfessionalBody += public_phone, public_fax, public_email, public_address{street,unit,city,province="Ontario",postal_code,country="Canada"}. All optional; format validated ONLY when entered (phone/fax 7–25 chars digits/+()-. ; email; Canadian postal A1A 1A1). Separate from account/login data — never auto-copied.
+- Applied to POST /professionals, PATCH /professionals/{id}, PUT /professionals/me. Self-update audit now records fields_changed + diff (same as PATCH).
+- UI: editor "Public professional contact" section (prof-public-phone/fax/email, prof-addr-*); ProfileView renders tel:/mailto: links + formatted address (prof-view-phone/fax/email/address). Visible to all PROF_VIEW_ROLES.
+- Verified: curl validation (400s), UI create→view→edit round-trip, audit diff, 56/56 regression. Test record cleaned (profiles 0).

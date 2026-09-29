@@ -135,6 +135,11 @@ function MultiSelect({ label, placeholder, options, values, onChange, testid, ge
                             ))
                             : filtered.map(renderOpt)}
                     </div>
+                    <div className="flex items-center justify-between px-3 py-2 border-t border-slate-100 bg-slate-50">
+                        <span className="text-xs text-slate-400">{set.size} selected</span>
+                        <button type="button" onClick={() => setOpen(false)} data-testid={`${testid}-done`}
+                            className="text-xs font-semibold text-visita-greenDark hover:underline px-2 py-1">Done</button>
+                    </div>
                 </div>
             )}
         </div>

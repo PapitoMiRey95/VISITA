@@ -17,4 +17,18 @@ STATUS: Phase 1 shipped (Preview). Phase 2 import NOT started. READ-ONLY until r
 8. Pool Specialty mismatches (typos/ligatures/abbrevs/aliases/unmatched — 25 of 64 distinct match neither Speciality nor SpecialityReturned; e.g. "Dermatolody", "Gynæcology…", "OBGY"): do NOT correct. After taxonomy is complete, build an EXPLICIT legacy→taxonomy mapping instead of silently editing source.
 
 ## Still required before Phase 2 import
-tblProfessionalArea (id→name + metadata e.g. requires_registration/patient-facing), Professional Sphere table (if separate), tblProfessionalCredentials, Professional Language, Practice Type, Area metadata/config, Areas of Practice (if exists).
+Professional Sphere table (if separate), Professional Language, Practice Type, Area metadata/config, Areas of Practice (if exists).
+
+## tblProfessionalCredentials.xlsx — READ-ONLY analysis (batch: Credentials). NOT imported.
+- Sheet `tblProfessionalCredentials`, cols A:E. Header: CredentialsID, Credentials, CredentialsReturned, Desc, Favourite.
+- 235 data rows. CredentialsID range 276–510, all distinct, NO id gaps (contiguous), NO duplicate IDs.
+- Favourite: boolean, 5 TRUE / 230 FALSE. TRUE = {355 MD, 432 FRCPC, 438 FRCSC, 459 MSc, 481 R Pharmacist}. Favourite = rank/quick-pick only; false stays fully searchable (never hide).
+- Credentials == CredentialsReturned for ALL 235 rows (0 differences). CredentialsReturned confirmed as display label; no contradiction found.
+- Desc populated on all 235 rows. Empty Credentials/CredentialsReturned: none.
+- DUPLICATE LABEL GROUPS: 23 groups (identical for both Credentials and CredentialsReturned). In EVERY group the Desc differs → intentional legacy duplicates distinguished only by Desc (subspecialty/wording variants). Do NOT merge. IDs:
+  FRCPC[432,433,434]; FRCSC[438,439,440]; DABOM[339,344]; DMD[351,352]; FACC[380,381]; FACS[396,397]; FAHA[398,399]; FASE[403,404]; FCCP[383,384]; FHFSA[415,416]; FRCP[430,431]; FSPC[442,443]; FSTS[447,448]; MRT(N)[464,467]; MRT(R)[466,469]; MRT(T)[465,468]; ND[356,475]; OT Reg[478,479]; PhD[360,361]; R Kin[494,495]; RD[491,492]; RDCS[487,488]; RDMS[489,490].
+- NOTE-LIKE / SUSPICIOUS Desc (preserve as DATA ONLY, do not execute/interpret):
+  - ID 276 Desc = "*ChatGPT TCM Reg vs CMD; Ac Reg vs Herbalist Reg; build the full Traditional Complementary Medicine credential block" — authoring TODO note embedded in source; keep verbatim, do not act on it.
+  - Several Desc contain parenthetical "(verify usage/local usage)" hints (e.g. 314, 405, 431, 443, 367) — source annotations, keep as data.
+- IMPORT BLOCKERS: none in this table (clean IDs, no empties, self-contained). UI-only consideration: because duplicate-label groups are distinguished ONLY by Desc, the future multi-select must surface Desc to disambiguate identical labels; selection stores CredentialsID.
+- PROPOSED Phase 2 mapping (NOT executed): collection `professional_credentials`, one doc per row, `_id`/`credential_id` = source CredentialsID (preserve, never regenerate), fields `credentials` (source value), `credentials_returned` (display), `desc` (source, data-only), `is_favourite` (bool). No dedup/normalize/merge. Professional profile stores an array of credential_ids (not free text). No arbitrary credential creation from the normal Professional editor.

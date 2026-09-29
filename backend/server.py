@@ -14,6 +14,7 @@ from datetime import datetime, timedelta, timezone
 from typing import List, Optional
 
 from bson import ObjectId
+from pymongo.errors import DuplicateKeyError
 from fastapi import (APIRouter, BackgroundTasks, Depends, FastAPI, File, Form,
                      Header, HTTPException, Request, Response, UploadFile)
 from pydantic import BaseModel, EmailStr, Field
@@ -5310,22 +5311,32 @@ async def professionals_upsert_me(body: ProfessionalBody, user: dict = Depends(r
     if not (body.surname or "").strip():
         raise HTTPException(status_code=400, detail="Surname is required.")
     now = now_iso()
+    body_dict = body.model_dump()
+    for hk in _HIGH_RISK_FIELDS:  # never accept linked_user_id/id/role/etc from the browser
+        body_dict.pop(hk, None)
     existing = await db.professional_profiles.find_one({"linked_user_id": user["id"]})
     if existing:
-        upd = {k: v for k, v in body.model_dump().items() if v is not None}
+        upd = {k: v for k, v in body_dict.items() if v is not None}
         upd["updated_at"] = now
         await db.professional_profiles.update_one({"id": existing["id"]}, {"$set": upd})
         await audit("professional_self_update", "professional", existing["id"], user, meta={"edit_source": "SELF"})
         return _prof_public({**existing, **upd})
-    doc = {"id": str(uuid.uuid4()), **body.model_dump(),
+    doc = {"id": str(uuid.uuid4()), **body_dict,
            "credential_ids": body.credential_ids or [], "language_ids": body.language_ids or [],
            "areas_of_practice_ids": body.areas_of_practice_ids or [],
            "practice_type_ids": body.practice_type_ids or [],
            "primary_care_model_ids": body.primary_care_model_ids or [],
            "organization_ids": body.organization_ids or [],
            "linked_user_id": user["id"], "created_by": user.get("name"), "created_at": now, "updated_at": now}
-    await db.professional_profiles.insert_one({**doc})
-    await audit("professional_self_create", "professional", doc["id"], user, meta={"edit_source": "SELF"})
+    try:
+        await db.professional_profiles.insert_one({**doc})
+    except DuplicateKeyError:
+        # Race / double-submit: a profile for this user was created concurrently — return it.
+        again = await db.professional_profiles.find_one({"linked_user_id": user["id"]})
+        if again:
+            return _prof_public(again)
+        raise
+    await audit("professional_profile_created", "professional", doc["id"], user, meta={"edit_source": "SELF"})
     return _prof_public(doc)
 
 
@@ -5821,6 +5832,10 @@ app.add_middleware(
 async def startup():
     await db.users.create_index("email", unique=True)
     await db.patients.create_index("id")
+    # One canonical self-owned profile per user (null linked_user_id excluded).
+    await db.professional_profiles.create_index(
+        "linked_user_id", unique=True,
+        partialFilterExpression={"linked_user_id": {"$type": "string"}})
     await db.referrals.create_index([("ready_to_fax", 1), ("faxed", 1)])
     try:
         storage.init_storage()

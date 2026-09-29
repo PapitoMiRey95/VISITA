@@ -1,6 +1,6 @@
 import { useEffect, useState, useCallback, useMemo } from "react";
 import { toast } from "sonner";
-import { Contact, Search, ShieldCheck, UserRound, X, Pencil, Users } from "lucide-react";
+import { Contact, Search, ShieldCheck, UserRound, X, Pencil, Users, Plus } from "lucide-react";
 import { api, formatErr } from "../lib/api";
 import { useAuth } from "../context/AuthContext";
 import { Input } from "../components/ui/input";
@@ -84,6 +84,11 @@ export default function Professionals() {
                     <Search className="w-4 h-4 absolute left-2.5 top-1/2 -translate-y-1/2 text-slate-400" />
                     <Input data-testid="prof-search" className="pl-8" placeholder="Search by name or registration #…" value={q} onChange={(e) => setQ(e.target.value)} />
                 </div>
+                {user?.role === "admin" && tax?.available && (
+                    <Button className="bg-visita-greenDark hover:bg-emerald-800 text-white" onClick={() => setEditing({})} data-testid="prof-add">
+                        <Plus className="w-4 h-4 mr-1" /> Add Professional
+                    </Button>
+                )}
             </div>
 
             <div className="bg-white rounded-lg border border-slate-200 overflow-x-auto">
@@ -98,7 +103,7 @@ export default function Professionals() {
                     </thead>
                     <tbody>
                         {loading && <tr><td colSpan={4} className="px-3 py-6 text-center text-slate-400">Loading…</td></tr>}
-                        {!loading && rows.length === 0 && <tr><td colSpan={4} className="px-3 py-8 text-center text-slate-400">No professionals found. Use “Add Professional” to create one.</td></tr>}
+                        {!loading && rows.length === 0 && <tr><td colSpan={4} className="px-3 py-8 text-center text-slate-400">No professionals found.{user?.role === "admin" ? " Use “Add Professional” to create one." : ""}</td></tr>}
                         {!loading && rows.map((p) => (
                             <tr key={p.id} className="border-t border-slate-100 hover:bg-slate-50 cursor-pointer" data-testid="prof-row" onClick={() => openProfile(p.id)}>
                                 <td className="px-3 py-2 font-semibold text-slate-800">{p.display_name || p.surname}{p.professorship ? <span className="ml-1 text-xs font-normal text-slate-400">· {p.professorship}</span> : null}</td>

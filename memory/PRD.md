@@ -588,3 +588,11 @@ GOAL: eligible professional (physician) creates/owns ONLY their own canonical pr
 - Canonical-profile vs Contact/Suggested/Unclaimed separation preserved (future workflows NOT built). Organization ownership vs professional ownership kept separate (no Org redesign).
 - TESTS: iteration_59 — /app/backend/tests/test_professionals_self_onboarding.py 7/7 + authz 38/38; frontend E2E 100%. All temp data cleaned (profiles/editors/affiliations EMPTY). Run pytest -n 0.
 STATUS: complete & verified in PREVIEW. AWAITING explicit user GO before Production deploy. NOT deployed.
+
+## Professionals — SIMPLIFIED: VIen-native modern taxonomy (2026-06 fork, PREVIEW ONLY, NOT deployed — awaiting explicit GO)
+- Decision: modern VIen Professional Profiles are VIen-native & user-owned; legacy Access professional_* collections/xlsx = DEFERRED "Legacy Access Directory / Referral Data" reference only (untouched, absent in Prod). Access Specialty export conflict (247 vs 487 rows) NOT reconciled; recorded in professionals_phase2_spec.md.
+- New runtime collections vien_professional_{spheres 2, areas 32, specialties 115, credentials 90, languages 157, areas_of_practice 97, practice_types 24, primary_care_models 13}; seed `/app/backend/seed_vien_professional_taxonomy.py` (idempotent, deterministic slug IDs; must be run once per environment — NOT yet run in Production).
+- Family Medicine = `vspec-family-medicine` under `varea-physician` (no 133/612). AOP attach via specialty_id. Credentials/Languages: `name` + `description`. Registration # required via `area.required`.
+- API: GET /api/professionals/taxonomy returns `available` (replaces `imported`); AOP endpoint reads vien collection. Frontend: button gated on tax.available; labels use `.name`; "Professional Area" label; inline registration error; admin-only "+ Add Professional" restored (prof-add).
+- Tests: backend 56/56 (run serially: -n0 -p no:randomly); testing_agent iteration_60 full pass (UI create/edit/view/RBAC). Preview profiles cleaned to 0.
+- PRODUCTION GO CHECKLIST: deploy code → run seed_vien_professional_taxonomy.py once against Prod (needs Prod write access) → verify counts → "Set up my profile" enabled.

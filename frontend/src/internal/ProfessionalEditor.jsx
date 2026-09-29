@@ -159,6 +159,7 @@ export default function ProfessionalEditor({ tax, initial, onClose, onSaved, sel
     const [form, setForm] = useState(() => ({ ...EMPTY, ...(initial || {}) }));
     const [aop, setAop] = useState([]);
     const [saving, setSaving] = useState(false);
+    const [regError, setRegError] = useState(false);
     const [confirmLeave, setConfirmLeave] = useState(false);
     const baseline = useRef(JSON.stringify({ ...EMPTY, ...(initial || {}) }));
     const upd = (k, v) => setForm((f) => ({ ...f, [k]: v }));
@@ -190,8 +191,10 @@ export default function ProfessionalEditor({ tax, initial, onClose, onSaved, sel
     const save = async () => {
         if (!form.surname.trim()) { toast.error("Surname is required."); return; }
         if (requiresReg && !(form.registration_number || "").trim()) {
+            setRegError(true);
             toast.error("A College / Professional Registration Number is required for this Professional Area."); return;
         }
+        setRegError(false);
         setSaving(true);
         try {
             const payload = { ...form };
@@ -231,7 +234,8 @@ export default function ProfessionalEditor({ tax, initial, onClose, onSaved, sel
 
                     {requiresReg && (
                         <Field label="College / Professional Registration Number *">
-                            <Input data-testid="prof-registration" value={form.registration_number || ""} onChange={(e) => upd("registration_number", e.target.value)} placeholder="Required for this Professional Area" />
+                            <Input data-testid="prof-registration" className={regError && !(form.registration_number || "").trim() ? "border-red-500" : ""} value={form.registration_number || ""} onChange={(e) => upd("registration_number", e.target.value)} placeholder="Required for this Professional Area" />
+                            {regError && !(form.registration_number || "").trim() && <p className="text-xs text-red-600 mt-1" data-testid="prof-registration-error">Registration number is required for this Professional Area.</p>}
                         </Field>
                     )}
 

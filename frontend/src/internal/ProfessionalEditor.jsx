@@ -159,7 +159,21 @@ export default function ProfessionalEditor({ tax, initial, onClose, onSaved }) {
     const [form, setForm] = useState(() => ({ ...EMPTY, ...(initial || {}) }));
     const [aop, setAop] = useState([]);
     const [saving, setSaving] = useState(false);
+    const [confirmLeave, setConfirmLeave] = useState(false);
+    const baseline = useRef(JSON.stringify({ ...EMPTY, ...(initial || {}) }));
     const upd = (k, v) => setForm((f) => ({ ...f, [k]: v }));
+
+    const dirty = JSON.stringify(form) !== baseline.current;
+
+    // Warn on browser/tab close or reload while there are unsaved changes.
+    useEffect(() => {
+        const h = (e) => { if (dirty) { e.preventDefault(); e.returnValue = ""; } };
+        window.addEventListener("beforeunload", h);
+        return () => window.removeEventListener("beforeunload", h);
+    }, [dirty]);
+
+    // Guarded close: never close silently when there are unsaved edits.
+    const attemptClose = () => { if (dirty) setConfirmLeave(true); else onClose(); };
 
     const areas = useMemo(() => tax.areas.filter((a) => !form.sphere_id || a.sphere_id === form.sphere_id), [tax.areas, form.sphere_id]);
     const specialties = useMemo(() => tax.specialties.filter((s) => !form.area_id || s.area_id === form.area_id), [tax.specialties, form.area_id]);
@@ -190,11 +204,11 @@ export default function ProfessionalEditor({ tax, initial, onClose, onSaved }) {
     };
 
     return (
-        <div className="fixed inset-0 z-50 flex items-start justify-center bg-black/40 p-4 overflow-y-auto" onClick={onClose} data-testid="prof-editor-modal">
+        <div className="fixed inset-0 z-50 flex items-start justify-center bg-black/40 p-4 overflow-y-auto" onClick={attemptClose} data-testid="prof-editor-modal">
             <div className="bg-white rounded-lg border border-slate-200 shadow-xl w-full max-w-4xl my-6" onClick={(e) => e.stopPropagation()}>
                 <div className="flex items-center justify-between px-5 py-3 border-b border-slate-200">
-                    <h2 className="text-lg font-bold text-slate-900">{initial?.id ? "Edit Professional" : "Add Professional"}</h2>
-                    <button onClick={onClose} className="text-slate-400 hover:text-slate-700" data-testid="prof-editor-close"><X className="w-5 h-5" /></button>
+                    <h2 className="text-lg font-bold text-slate-900">{initial?.id ? "Edit Professional" : "Add Professional"}{dirty && <span className="ml-2 text-xs font-normal text-amber-600" data-testid="prof-editor-dirty">• Unsaved changes</span>}</h2>
+                    <button onClick={attemptClose} className="text-slate-400 hover:text-slate-700" data-testid="prof-editor-close"><X className="w-5 h-5" /></button>
                 </div>
                 <div className="p-5 space-y-4">
                     <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
@@ -262,12 +276,29 @@ export default function ProfessionalEditor({ tax, initial, onClose, onSaved }) {
                     </div>
                 </div>
                 <div className="flex justify-end gap-2 px-5 py-3 border-t border-slate-200 bg-slate-50">
-                    <Button variant="outline" onClick={onClose} data-testid="prof-editor-cancel">Cancel</Button>
+                    <Button variant="outline" onClick={attemptClose} data-testid="prof-editor-cancel">Cancel</Button>
                     <Button className="bg-visita-greenDark hover:bg-emerald-800" onClick={save} disabled={saving} data-testid="prof-editor-save">
                         {saving ? "Saving…" : (initial?.id ? "Save changes" : "Create Professional")}
                     </Button>
                 </div>
             </div>
+
+            {confirmLeave && (
+                <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/50 p-4" onClick={(e) => { e.stopPropagation(); }} data-testid="prof-editor-leave-guard">
+                    <div className="bg-white rounded-lg shadow-xl w-full max-w-sm p-5" onClick={(e) => e.stopPropagation()}>
+                        <h3 className="text-base font-bold text-slate-900">Leave without saving?</h3>
+                        <p className="mt-1 text-sm text-slate-600">You have unsaved changes to this professional. Save them before leaving, or discard them.</p>
+                        <div className="mt-4 flex flex-col gap-2">
+                            <Button className="bg-visita-greenDark hover:bg-emerald-800" disabled={saving}
+                                onClick={() => { setConfirmLeave(false); save(); }} data-testid="prof-leave-save">
+                                {saving ? "Saving…" : "Save changes"}
+                            </Button>
+                            <Button variant="outline" onClick={() => setConfirmLeave(false)} data-testid="prof-leave-keep">Keep editing</Button>
+                            <button className="text-xs text-rose-600 hover:underline mt-1" onClick={() => { setConfirmLeave(false); onClose(); }} data-testid="prof-leave-discard">Discard changes & close</button>
+                        </div>
+                    </div>
+                </div>
+            )}
         </div>
     );
 }

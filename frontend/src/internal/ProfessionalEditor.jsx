@@ -39,7 +39,7 @@ function DepSelect({ label, placeholder, options, value, onChange, disabled, tes
                             <Input autoFocus className="h-8 pl-7 text-sm" placeholder="Search…" value={q} onChange={(e) => setQ(e.target.value)} data-testid={`${testid}-search`} />
                         </div>
                     </div>
-                    <div className="max-h-80 overflow-y-auto py-1">
+                    <div className="max-h-[32rem] overflow-y-auto py-1">
                         {value && (
                             <button type="button" onClick={() => { onChange(""); setOpen(false); setQ(""); }} className="w-full px-3 py-1.5 text-left text-xs text-slate-400 hover:bg-slate-50">Clear selection</button>
                         )}
@@ -124,7 +124,7 @@ function MultiSelect({ label, placeholder, options, values, onChange, testid, ge
                             <Input autoFocus className="h-8 pl-7 text-sm" placeholder="Search…" value={q} onChange={(e) => setQ(e.target.value)} data-testid={`${testid}-search`} />
                         </div>
                     </div>
-                    <div className="max-h-96 overflow-y-auto py-1">
+                    <div className="max-h-[32rem] overflow-y-auto py-1">
                         {filtered.length === 0 && <div className="px-3 py-2 text-xs text-slate-400">No matches</div>}
                         {grouped
                             ? groups.map(([cat, items]) => (

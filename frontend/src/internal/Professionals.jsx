@@ -13,13 +13,21 @@ import ProfessionalEditor from "./ProfessionalEditor";
 // the only difference is VIen access. Phase 2: taxonomy imported + smart editor.
 export default function Professionals() {
     const { user } = useAuth();
-    const canEdit = user?.role === "admin"; // Create/Edit = Admin only
+    const canEdit = user?.role === "admin"; // Create/Edit any = Admin only
+    const canSelfEdit = user?.role === "physician" || user?.role === "admin"; // edit OWN profile
     const [q, setQ] = useState("");
     const [rows, setRows] = useState([]);
     const [loading, setLoading] = useState(true);
     const [tax, setTax] = useState(null);
     const [selected, setSelected] = useState(null);
     const [editing, setEditing] = useState(null); // {} for new, profile for edit
+    const [selfProfile, setSelfProfile] = useState(undefined); // undefined=loading, null=none
+    const [selfEditing, setSelfEditing] = useState(false);
+
+    const loadSelf = useCallback(() => {
+        if (!canSelfEdit) return;
+        api.get("/professionals/me").then(({ data }) => setSelfProfile(data.profile)).catch(() => setSelfProfile(null));
+    }, [canSelfEdit]);
 
     const load = useCallback(async () => {
         setLoading(true);
@@ -33,6 +41,7 @@ export default function Professionals() {
     }, [q]);
 
     useEffect(() => { api.get("/professionals/taxonomy").then(({ data }) => setTax(data)).catch(() => {}); }, []);
+    useEffect(() => { loadSelf(); }, [loadSelf]);
     useEffect(() => { const t = setTimeout(load, 250); return () => clearTimeout(t); }, [load]);
 
     const openProfile = async (id) => {
@@ -50,6 +59,26 @@ export default function Professionals() {
                 <span className="text-sm text-slate-400" data-testid="prof-count">({rows.length})</span>
                 <span className="ml-auto text-xs text-slate-400">Shared VIen Professional Directory</span>
             </div>
+
+            {canSelfEdit && tax && (
+                <div className="flex items-center justify-between rounded-lg border border-emerald-200 bg-emerald-50/60 px-4 py-3" data-testid="prof-my-profile-card">
+                    <div className="flex items-center gap-2 min-w-0">
+                        <ShieldCheck className="w-4 h-4 text-visita-greenDark shrink-0" />
+                        <div className="min-w-0">
+                            <div className="text-sm font-semibold text-slate-800">My Professional Profile</div>
+                            <div className="text-xs text-slate-500 truncate">
+                                {selfProfile === undefined ? "Loading…"
+                                    : selfProfile ? `${selfProfile.display_name || selfProfile.surname}${selfProfile.registration_number ? " · " + selfProfile.registration_number : ""}`
+                                    : "You haven't set up your professional info yet."}
+                            </div>
+                        </div>
+                    </div>
+                    <Button variant="outline" className="border-visita-greenDark text-visita-greenDark hover:bg-emerald-100 shrink-0"
+                        onClick={() => setSelfEditing(true)} disabled={!tax.imported} data-testid="prof-edit-my-profile">
+                        <Pencil className="w-3.5 h-3.5 mr-1" /> {selfProfile ? "Update my info" : "Set up my profile"}
+                    </Button>
+                </div>
+            )}
 
             <div className="flex flex-wrap gap-2 items-center">
                 <div className="relative flex-1 min-w-[240px]">
@@ -104,6 +133,12 @@ export default function Professionals() {
                 <ProfessionalEditor tax={tax} initial={editing.id ? editing : null}
                     onClose={() => setEditing(null)}
                     onSaved={() => { setEditing(null); load(); }} />
+            )}
+
+            {selfEditing && tax && (
+                <ProfessionalEditor tax={tax} selfMode initial={selfProfile || null}
+                    onClose={() => setSelfEditing(false)}
+                    onSaved={() => { setSelfEditing(false); loadSelf(); load(); }} />
             )}
         </div>
     );

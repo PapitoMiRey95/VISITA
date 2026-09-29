@@ -155,7 +155,7 @@ const EMPTY = {
     accepting_patients: null, waiting_list: null,
 };
 
-export default function ProfessionalEditor({ tax, initial, onClose, onSaved }) {
+export default function ProfessionalEditor({ tax, initial, onClose, onSaved, selfMode }) {
     const [form, setForm] = useState(() => ({ ...EMPTY, ...(initial || {}) }));
     const [aop, setAop] = useState([]);
     const [saving, setSaving] = useState(false);
@@ -195,9 +195,9 @@ export default function ProfessionalEditor({ tax, initial, onClose, onSaved }) {
         setSaving(true);
         try {
             const payload = { ...form };
-            if (initial?.id) await api.patch(`/professionals/${initial.id}`, payload);
-            else await api.post("/professionals", payload);
-            toast.success(initial?.id ? "Professional updated." : "Professional created.");
+            if (selfMode) { await api.put("/professionals/me", payload); toast.success("Your professional profile was saved."); }
+            else if (initial?.id) { await api.patch(`/professionals/${initial.id}`, payload); toast.success("Professional updated."); }
+            else { await api.post("/professionals", payload); toast.success("Professional created."); }
             onSaved();
         } catch (e) { toast.error(formatErr(e)); }
         finally { setSaving(false); }
@@ -207,7 +207,7 @@ export default function ProfessionalEditor({ tax, initial, onClose, onSaved }) {
         <div className="fixed inset-0 z-50 flex items-start justify-center bg-black/40 p-4 overflow-y-auto" onClick={attemptClose} data-testid="prof-editor-modal">
             <div className="bg-white rounded-lg border border-slate-200 shadow-xl w-full max-w-4xl my-6" onClick={(e) => e.stopPropagation()}>
                 <div className="flex items-center justify-between px-5 py-3 border-b border-slate-200">
-                    <h2 className="text-lg font-bold text-slate-900">{initial?.id ? "Edit Professional" : "Add Professional"}{dirty && <span className="ml-2 text-xs font-normal text-amber-600" data-testid="prof-editor-dirty">• Unsaved changes</span>}</h2>
+                    <h2 className="text-lg font-bold text-slate-900">{selfMode ? "My Professional Profile" : (initial?.id ? "Edit Professional" : "Add Professional")}{dirty && <span className="ml-2 text-xs font-normal text-amber-600" data-testid="prof-editor-dirty">• Unsaved changes</span>}</h2>
                     <button onClick={attemptClose} className="text-slate-400 hover:text-slate-700" data-testid="prof-editor-close"><X className="w-5 h-5" /></button>
                 </div>
                 <div className="p-5 space-y-4">
@@ -278,7 +278,7 @@ export default function ProfessionalEditor({ tax, initial, onClose, onSaved }) {
                 <div className="flex justify-end gap-2 px-5 py-3 border-t border-slate-200 bg-slate-50">
                     <Button variant="outline" onClick={attemptClose} data-testid="prof-editor-cancel">Cancel</Button>
                     <Button className="bg-visita-greenDark hover:bg-emerald-800" onClick={save} disabled={saving} data-testid="prof-editor-save">
-                        {saving ? "Saving…" : (initial?.id ? "Save changes" : "Create Professional")}
+                        {saving ? "Saving…" : (selfMode ? "Save my profile" : (initial?.id ? "Save changes" : "Create Professional"))}
                     </Button>
                 </div>
             </div>

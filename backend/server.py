@@ -5236,6 +5236,42 @@ async def professionals_list(q: Optional[str] = None, sphere_id: Optional[str] =
     return [_prof_public(d) for d in docs]
 
 
+PROF_SELF_ROLES = ("admin", "physician")  # may manage their OWN professional profile
+
+
+@api.get("/professionals/me")
+async def professionals_get_me(user: dict = Depends(require_roles(*PROF_SELF_ROLES))):
+    """The professional profile linked to the current user (None if not yet created)."""
+    d = await db.professional_profiles.find_one({"linked_user_id": user["id"]})
+    return {"profile": _prof_public(d) if d else None}
+
+
+@api.put("/professionals/me")
+async def professionals_upsert_me(body: ProfessionalBody, user: dict = Depends(require_roles(*PROF_SELF_ROLES))):
+    """A physician (or admin) creates/updates their OWN professional profile only.
+    Cannot touch other profiles; linkage to the user is enforced server-side."""
+    if not (body.surname or "").strip():
+        raise HTTPException(status_code=400, detail="Surname is required.")
+    now = now_iso()
+    existing = await db.professional_profiles.find_one({"linked_user_id": user["id"]})
+    if existing:
+        upd = {k: v for k, v in body.model_dump().items() if v is not None}
+        upd["updated_at"] = now
+        await db.professional_profiles.update_one({"id": existing["id"]}, {"$set": upd})
+        await audit("professional_self_update", "professional", existing["id"], user)
+        return _prof_public({**existing, **upd})
+    doc = {"id": str(uuid.uuid4()), **body.model_dump(),
+           "credential_ids": body.credential_ids or [], "language_ids": body.language_ids or [],
+           "areas_of_practice_ids": body.areas_of_practice_ids or [],
+           "practice_type_ids": body.practice_type_ids or [],
+           "primary_care_model_ids": body.primary_care_model_ids or [],
+           "organization_ids": body.organization_ids or [],
+           "linked_user_id": user["id"], "created_by": user.get("name"), "created_at": now, "updated_at": now}
+    await db.professional_profiles.insert_one({**doc})
+    await audit("professional_self_create", "professional", doc["id"], user)
+    return _prof_public(doc)
+
+
 @api.get("/professionals/{prof_id}")
 async def professionals_get(prof_id: str, user: dict = Depends(require_roles(*PROF_VIEW_ROLES))):
     d = await db.professional_profiles.find_one({"id": prof_id})

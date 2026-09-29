@@ -14,7 +14,6 @@ import AuthorizedEditors from "./AuthorizedEditors";
 // the only difference is VIen access. Phase 2: taxonomy imported + smart editor.
 export default function Professionals() {
     const { user } = useAuth();
-    const canEdit = user?.role === "admin"; // Create/Edit any = Admin only
     const canSelfEdit = user?.role === "physician" || user?.role === "admin"; // edit OWN profile
     const [q, setQ] = useState("");
     const [rows, setRows] = useState([]);
@@ -51,8 +50,6 @@ export default function Professionals() {
         catch (e) { toast.error(formatErr(e)); }
     };
 
-    const taxReady = !!(tax && tax.imported);
-
     return (
         <div className="space-y-4" data-testid="professionals-page">
             <div className="flex items-center gap-2">
@@ -87,13 +84,6 @@ export default function Professionals() {
                     <Search className="w-4 h-4 absolute left-2.5 top-1/2 -translate-y-1/2 text-slate-400" />
                     <Input data-testid="prof-search" className="pl-8" placeholder="Search by name or registration #…" value={q} onChange={(e) => setQ(e.target.value)} />
                 </div>
-                {canEdit && (
-                    <Button className="bg-visita-greenDark hover:bg-emerald-800" disabled={!taxReady}
-                        title={taxReady ? "" : "Available after the taxonomy import"}
-                        onClick={() => setEditing({})} data-testid="prof-add">
-                        + Add Professional
-                    </Button>
-                )}
             </div>
 
             <div className="bg-white rounded-lg border border-slate-200 overflow-x-auto">

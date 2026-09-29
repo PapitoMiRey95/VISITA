@@ -76,56 +76,55 @@ class TestTaxonomy:
         r = requests.get(f"{BASE_URL}/api/professionals/taxonomy", headers=_h(admin_token))
         assert r.status_code == 200
         d = r.json()
-        assert d["imported"] is True
+        assert d["available"] is True
         assert len(d["spheres"]) == 2, f"spheres={len(d['spheres'])}"
-        assert len(d["areas"]) == 58, f"areas={len(d['areas'])}"
-        assert len(d["specialties"]) == 247, f"specialties={len(d['specialties'])}"
-        assert len(d["credentials"]) == 235, f"credentials={len(d['credentials'])}"
-        assert len(d["languages"]) == 158, f"languages={len(d['languages'])}"
+        assert len(d["areas"]) == 32, f"areas={len(d['areas'])}"
+        assert len(d["specialties"]) == 115, f"specialties={len(d['specialties'])}"
+        assert len(d["credentials"]) == 90, f"credentials={len(d['credentials'])}"
+        assert len(d["languages"]) == 157, f"languages={len(d['languages'])}"
         assert len(d["practice_types"]) == 24, f"practice_types={len(d['practice_types'])}"
         assert len(d["primary_care_models"]) == 13, f"pcm={len(d['primary_care_models'])}"
+        for coll in ("spheres", "areas", "specialties", "credentials", "languages"):
+            assert all(str(x["id"]).startswith("v") for x in d[coll]), f"non-VIen id in {coll}"
 
     def test_aop_family_medicine_97(self, admin_token):
         r = requests.get(f"{BASE_URL}/api/professionals/areas-of-practice",
-                         params={"specialty_id": "133"}, headers=_h(admin_token))
+                         params={"specialty_id": "vspec-family-medicine"}, headers=_h(admin_token))
         assert r.status_code == 200
         aop = r.json()
         assert len(aop) == 97, f"AOP fam med = {len(aop)}"
         for row in aop:
-            assert row["specialty_id"] == "133"
+            assert row["specialty_id"] == "vspec-family-medicine"
             assert row["id"].startswith("vaop-")
             assert "category" in row and "name" in row and "sort_order" in row
 
     def test_aop_empty_for_non_configured(self, admin_token):
         r = requests.get(f"{BASE_URL}/api/professionals/areas-of-practice",
-                         params={"specialty_id": "75"}, headers=_h(admin_token))
+                         params={"specialty_id": "vspec-cardiology"}, headers=_h(admin_token))
         assert r.status_code == 200
         assert r.json() == []
 
 
-# ---------- Data-safety: legacy orphans + Portuguese + FRCPC dup preservation ----------
-class TestDataSafety:
-    def test_legacy_orphans_and_duplicates(self, admin_token):
+# ---------- Modern VIen-native taxonomy (no legacy Access IDs at runtime) ----------
+class TestModernTaxonomy:
+    def test_family_medicine_is_physician_specialty_with_vien_id(self, admin_token):
         r = requests.get(f"{BASE_URL}/api/professionals/taxonomy", headers=_h(admin_token))
-        assert r.status_code == 200
         d = r.json()
-        sp_by_id = {str(s["id"]): s for s in d["specialties"]}
-        assert "155" in sp_by_id and sp_by_id["155"]["speciality"] == "Book Keeper"
-        assert str(sp_by_id["155"]["area_id"]) == "2"
-        assert "193" in sp_by_id and sp_by_id["193"]["speciality"] == "Paralegal"
-        assert str(sp_by_id["193"]["area_id"]) == "96"
-
-        langs = {str(l["id"]): l for l in d["languages"]}
-        assert "103" in langs and "104" in langs
-        assert langs["103"].get("favourite", False) is False
-        assert langs["104"].get("favourite", False) is True
-        assert langs["103"]["language"].lower().startswith("portug")
-        assert langs["104"]["language"].lower().startswith("portug")
-
-        frcpc = [c for c in d["credentials"] if str(c.get("credentials", "")).upper() == "FRCPC"]
-        ids = sorted(str(c["id"]) for c in frcpc)
-        assert set(["432", "433", "434"]).issubset(set(ids)), f"FRCPC ids={ids}"
-        assert len(frcpc) >= 3
+        fm = [s for s in d["specialties"] if s["name"] == "Family Medicine"]
+        assert len(fm) == 1 and fm[0]["id"] == "vspec-family-medicine"
+        assert fm[0]["area_id"] == "varea-physician"
+        phys = [a for a in d["areas"] if a["id"] == "varea-physician"][0]
+        assert phys["name"] == "Physician" and phys["required"] is True
+        assert phys["sphere_id"] == "vsph-health"
+        # No legacy Access numeric ids anywhere in the modern taxonomy
+        for s in d["specialties"]:
+            assert s["id"] not in ("133", "612")
+        langs = [l for l in d["languages"] if l["name"] == "Portuguese"]
+        assert len(langs) == 1 and langs[0]["id"] == "vlang-portuguese"
+        creds = [c for c in d["credentials"] if c["name"] == "FRCPC"]
+        assert len(creds) == 1 and creds[0]["id"] == "vcred-frcpc"
+        models = [m["name"] for m in d["primary_care_models"]]
+        assert "Family Health Group (FHG)" in models and "Family Integrated Group" not in " ".join(models)
 
 
 # ---------- RBAC ----------
@@ -164,12 +163,12 @@ class TestProfessionalCRUD:
         body = {
             "surname": "TEST_QAProf",
             "first_name": "QA",
-            "sphere_id": "1",
-            "area_id": "36",
-            "specialty_id": "133",
+            "sphere_id": "vsph-health",
+            "area_id": "varea-physician",
+            "specialty_id": "vspec-family-medicine",
             "registration_number": "REG-TEST-001",
-            "credential_ids": ["432", "433", "434"],
-            "language_ids": ["103", "104"],
+            "credential_ids": ["vcred-md", "vcred-ccfp", "vcred-fcfp"],
+            "language_ids": ["vlang-portuguese", "vlang-spanish"],
             "areas_of_practice_ids": ["vaop-007"],
             "practice_type_ids": ["vpt-01"],
             "primary_care_model_ids": ["vpcm-03"],
@@ -179,9 +178,9 @@ class TestProfessionalCRUD:
         assert r.status_code in (200, 201), f"{r.status_code} {r.text}"
         d = r.json()
         assert d["surname"] == "TEST_QAProf"
-        assert d["sphere_id"] == "1" and d["area_id"] == "36" and d["specialty_id"] == "133"
-        assert set(d["credential_ids"]) == {"432", "433", "434"}
-        assert set(d["language_ids"]) == {"103", "104"}
+        assert d["sphere_id"] == "vsph-health" and d["area_id"] == "varea-physician" and d["specialty_id"] == "vspec-family-medicine"
+        assert set(d["credential_ids"]) == {"vcred-md", "vcred-ccfp", "vcred-fcfp"}
+        assert set(d["language_ids"]) == {"vlang-portuguese", "vlang-spanish"}
         assert d["areas_of_practice_ids"] == ["vaop-007"]
         assert d["practice_type_ids"] == ["vpt-01"]
         assert d["primary_care_model_ids"] == ["vpcm-03"]
@@ -197,11 +196,11 @@ class TestProfessionalCRUD:
     def test_patch_profile(self, admin_token):
         pid = TestProfessionalCRUD.created_id
         assert pid, "no created id"
-        body = {"surname": "TEST_QAProf", "language_ids": ["103"], "accepting_patients": False}
+        body = {"surname": "TEST_QAProf", "language_ids": ["vlang-spanish"], "accepting_patients": False}
         r = requests.patch(f"{BASE_URL}/api/professionals/{pid}", json=body, headers=_h(admin_token))
         assert r.status_code == 200
         d = r.json()
-        assert d["language_ids"] == ["103"]
+        assert d["language_ids"] == ["vlang-spanish"]
         assert d["accepting_patients"] is False
 
         g = requests.get(f"{BASE_URL}/api/professionals/{pid}", headers=_h(admin_token))

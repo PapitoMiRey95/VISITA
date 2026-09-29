@@ -73,7 +73,7 @@ export default function Professionals() {
                         </div>
                     </div>
                     <Button variant="outline" className="border-visita-greenDark text-visita-greenDark hover:bg-emerald-100 shrink-0"
-                        onClick={() => setSelfEditing(true)} disabled={!tax.imported} data-testid="prof-edit-my-profile">
+                        onClick={() => setSelfEditing(true)} disabled={!tax.available} data-testid="prof-edit-my-profile">
                         <Pencil className="w-3.5 h-3.5 mr-1" /> {selfProfile ? "Update my info" : "Set up my profile"}
                     </Button>
                 </div>
@@ -152,9 +152,9 @@ function ProfileView({ p, tax, onClose, onEdit, onManageEditors }) {
     const maps = useMemo(() => ({
         spheres: Object.fromEntries(tax.spheres.map((x) => [x.id, x.name])),
         areas: Object.fromEntries(tax.areas.map((x) => [x.id, x.name])),
-        specialties: Object.fromEntries(tax.specialties.map((x) => [x.id, x.speciality_returned || x.speciality])),
-        credentials: Object.fromEntries(tax.credentials.map((x) => [x.id, x.credentials_returned || x.credentials])),
-        languages: Object.fromEntries(tax.languages.map((x) => [x.id, x.language])),
+        specialties: Object.fromEntries(tax.specialties.map((x) => [x.id, x.name])),
+        credentials: Object.fromEntries(tax.credentials.map((x) => [x.id, x.name])),
+        languages: Object.fromEntries(tax.languages.map((x) => [x.id, x.name])),
         practice_types: Object.fromEntries(tax.practice_types.map((x) => [x.id, x.name])),
         models: Object.fromEntries(tax.primary_care_models.map((x) => [x.id, x.name])),
     }), [tax]);

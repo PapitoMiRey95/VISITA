@@ -1,5 +1,18 @@
 # Dr. Aguayo's Professional Construct — Phase 2 authoritative rules (from user)
 
+## ARCHITECTURAL DECISION (2026-06) — SIMPLIFIED PROFESSIONAL PROFILE MANAGEMENT
+Two SEPARATE domains:
+1. **VIen Professional Profiles (MODERN, user-owned, runtime).** Self-onboarding / self-edit / delegated editing / directory read from `vien_professional_*` collections ONLY (seed: `/app/backend/seed_vien_professional_taxonomy.py`, idempotent, deterministic slug IDs, never at startup). Profiles store ONLY vien IDs for taxonomy fields. No fallback that mixes modern + legacy records. "Set up my profile" depends only on `GET /api/professionals/taxonomy` → `available` (modern areas+specialties present) — NEVER on Access import state.
+   - Hierarchy: Sphere (`vsph-health`/`vsph-non-health`) → Professional Area (`varea-*`, 32; `required`=registration # mandatory) → Specialty (`vspec-*`, 115; physician specialties `vspec-<name>`, others `vspec-<area>-<name>`) → Areas of Practice (`vaop-001..097`, attached to `specialty_id = vspec-family-medicine`).
+   - Family Medicine = Specialty under Professional Area = Physician, id `vspec-family-medicine`. NOT tied to Access SpecialityID 133 or 612.
+   - Credentials `vcred-*` (90 curated, one per label, `name`+`description`). Languages `vlang-*` (157 = 158 Access names with the exact-duplicate "Portuguese" collapsed; Access LanguageIDs NOT reused; dialect variants kept distinct). Practice Types `vpt-01..24`, Ontario Primary Care Models `vpcm-01..13` (FHG present; no "Family Integrated Group").
+   - Terminology strict: Professional Area ≠ Areas of Practice. "97 Areas of Practice options under Physician → Family Medicine".
+   - Ownership/RBAC unchanged (Admin any; linked professional SELF; explicit EDIT_PROFILE editor; Add Professional admin-only).
+2. **Legacy Access Professional / Referral Directory — DEFERRED — LEGACY ACCESS DIRECTORY / REFERRAL DATA.** Legacy `professional_*` collections (Preview only; absent in Production) and `/app/backend/taxonomy_sources/*.xlsx` + `seed_professional_taxonomy.py` are kept UNTOUCHED as reference. Not read by the modern editor. Everything below this section is historical analysis of that legacy data.
+   - Legacy Access Professional Specialty source reconciliation deferred to Legacy Access Directory / Referral project. Conflict on record: previously analyzed export = 247 rows (Family Medicine 133, Book Keeper 155, Paralegal 193); newer attached export (2026-06) = 487 rows, SpecialityID 459–945 (Family Medicine 612, Book Keeper 508, Paralegal 808; references AreaIDs 0/2/3/6/20 absent from tblProfessionalArea). Neither chosen as authoritative. Attached tblProfessionalArea / tblProfessionalCredentials / tblLanguage (2026-06) were byte-identical to the bundled sources.
+
+## LEGACY (reference only, deferred) ↓↓↓
+
 STATUS: Phase 1 shipped (Preview). Phase 2 IMPLEMENTED IN PREVIEW (2026-06) — taxonomy imported + editor live. NOT deployed to Production (awaiting explicit user GO). Preserve ALL original IDs. Do NOT seed/invent/merge/rename/normalize.
 
 ## Phase 2 implementation (PREVIEW, 2026-06)

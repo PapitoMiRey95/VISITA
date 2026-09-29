@@ -5238,19 +5238,21 @@ _HIGH_RISK_FIELDS = ("linked_user_id", "id", "source_professional_id", "created_
 
 @api.get("/professionals/taxonomy")
 async def professionals_taxonomy(user: dict = Depends(require_roles(*PROF_VIEW_ROLES))):
-    """Shared taxonomy lookups. Empty until Dr. Aguayo's Access source tables are imported."""
+    """Modern VIen-native taxonomy (vien_professional_* ONLY; seed_vien_professional_taxonomy.py).
+    Legacy Access-origin professional_* collections are never read here."""
     async def _all(coll):
-        return await db[coll].find({}, {"_id": 0}).to_list(2000)
-    return {
-        "spheres": await _all("professional_spheres"),
-        "areas": await _all("professional_areas"),
-        "specialties": await _all("professional_specialties"),
-        "credentials": await _all("professional_credentials"),
-        "languages": await _all("professional_languages"),
-        "practice_types": await _all("professional_practice_types"),
-        "primary_care_models": await _all("professional_primary_care_models"),
-        "imported": bool(await db.professional_spheres.count_documents({})),
+        return await db[coll].find({"active": {"$ne": False}}, {"_id": 0}).sort("sort_order", 1).to_list(2000)
+    out = {
+        "spheres": await _all("vien_professional_spheres"),
+        "areas": await _all("vien_professional_areas"),
+        "specialties": await _all("vien_professional_specialties"),
+        "credentials": await _all("vien_professional_credentials"),
+        "languages": await _all("vien_professional_languages"),
+        "practice_types": await _all("vien_professional_practice_types"),
+        "primary_care_models": await _all("vien_professional_primary_care_models"),
     }
+    out["available"] = bool(out["areas"] and out["specialties"])
+    return out
 
 
 @api.get("/professionals/areas-of-practice")
@@ -5261,7 +5263,7 @@ async def professionals_areas_of_practice(specialty_id: Optional[str] = None,
     query = {"active": True}
     if specialty_id:
         query["specialty_id"] = specialty_id
-    docs = await db.professional_areas_of_practice.find(query, {"_id": 0}).sort("sort_order", 1).to_list(500)
+    docs = await db.vien_professional_areas_of_practice.find(query, {"_id": 0}).sort("sort_order", 1).to_list(500)
     return docs
 
 

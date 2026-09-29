@@ -190,7 +190,7 @@ export default function ProfessionalEditor({ tax, initial, onClose, onSaved, sel
     const save = async () => {
         if (!form.surname.trim()) { toast.error("Surname is required."); return; }
         if (requiresReg && !(form.registration_number || "").trim()) {
-            toast.error("A College / Professional Registration Number is required for this Area."); return;
+            toast.error("A College / Professional Registration Number is required for this Professional Area."); return;
         }
         setSaving(true);
         try {
@@ -221,17 +221,17 @@ export default function ProfessionalEditor({ tax, initial, onClose, onSaved, sel
                         <DepSelect label="Sphere" testid="prof-sphere" options={tax.spheres} value={form.sphere_id}
                             getLabel={(o) => o.name}
                             onChange={(v) => setForm((f) => ({ ...f, sphere_id: v, area_id: "", specialty_id: "" }))} />
-                        <DepSelect label="Area" testid="prof-area" options={areas} value={form.area_id} disabled={!form.sphere_id}
+                        <DepSelect label="Professional Area" testid="prof-area" options={areas} value={form.area_id} disabled={!form.sphere_id}
                             getLabel={(o) => o.name}
                             onChange={(v) => setForm((f) => ({ ...f, area_id: v, specialty_id: "" }))} />
                         <DepSelect label="Specialty" testid="prof-specialty" options={specialties} value={form.specialty_id} disabled={!form.area_id}
-                            getLabel={(o) => o.speciality_returned || o.speciality}
+                            getLabel={(o) => o.name}
                             onChange={(v) => upd("specialty_id", v)} />
                     </div>
 
                     {requiresReg && (
                         <Field label="College / Professional Registration Number *">
-                            <Input data-testid="prof-registration" value={form.registration_number || ""} onChange={(e) => upd("registration_number", e.target.value)} placeholder="Required for this Area" />
+                            <Input data-testid="prof-registration" value={form.registration_number || ""} onChange={(e) => upd("registration_number", e.target.value)} placeholder="Required for this Professional Area" />
                         </Field>
                     )}
 
@@ -243,12 +243,12 @@ export default function ProfessionalEditor({ tax, initial, onClose, onSaved, sel
 
                     <MultiSelect label="Credentials" testid="prof-credentials" options={tax.credentials}
                         values={form.credential_ids} onChange={(v) => upd("credential_ids", v)}
-                        getLabel={(o) => o.credentials_returned || o.credentials} getSub={(o) => o.desc}
+                        getLabel={(o) => o.name} getSub={(o) => o.description}
                         placeholder="Search credentials…" />
 
                     <MultiSelect label="Languages" testid="prof-languages" options={tax.languages}
                         values={form.language_ids} onChange={(v) => upd("language_ids", v)}
-                        getLabel={(o) => o.language} placeholder="Search languages…" />
+                        getLabel={(o) => o.name} placeholder="Search languages…" />
 
                     <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                         <MultiSelect label="Practice Type" testid="prof-practice-type" options={tax.practice_types}

@@ -73,7 +73,7 @@ def profiles(sessions, created_ids):
     for label in ("TEST_AuthzA", "TEST_AuthzB"):
         r = requests.post(f"{BASE_URL}/api/professionals",
                           json={"surname": label, "first_name": "QA",
-                                "sphere_id": "1", "area_id": "36", "specialty_id": "133"},
+                                "sphere_id": "vsph-health", "area_id": "varea-physician", "specialty_id": "vspec-family-medicine"},
                           headers=admin_h)
         assert r.status_code in (200, 201), f"create {label}: {r.status_code} {r.text}"
         pid = r.json()["id"]
@@ -368,8 +368,8 @@ class TestPermissionFields:
         """Create fresh profile C with editor only (not linked) -> Organization-managed."""
         admin_h = _h(sessions["admin"]["token"])
         r = requests.post(f"{BASE_URL}/api/professionals",
-                          json={"surname": "TEST_AuthzC", "sphere_id": "1",
-                                "area_id": "36", "specialty_id": "133"},
+                          json={"surname": "TEST_AuthzC", "sphere_id": "vsph-health",
+                                "area_id": "varea-physician", "specialty_id": "vspec-family-medicine"},
                           headers=admin_h)
         pid = r.json()["id"]
         created_ids["profiles"].append(pid)

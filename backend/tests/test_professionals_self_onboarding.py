@@ -87,10 +87,10 @@ class TestSelfOnboarding:
             "role": "admin",
             "surname": "ZZSelfTest",
             "given_name": "QA",
-            "sphere_id": "1",
-            "area_id": "36",
+            "sphere_id": "vsph-health",
+            "area_id": "varea-physician",
             "registration": "CPSO-QA1",
-            "specialty_id": "133",
+            "specialty_id": "vspec-family-medicine",
             "areas_of_practice_ids": [],
             "language_ids": [],
             "credential_ids": [],
@@ -115,8 +115,8 @@ class TestSelfOnboarding:
                              headers=phys_headers, timeout=10).json()["profile"]
         assert first is not None
         r = requests.put(f"{BASE_URL}/api/professionals/me",
-                         json={"surname": "ZZSelfTest", "sphere_id": "1", "area_id": "36",
-                               "registration": "CPSO-QA1", "specialty_id": "133"},
+                         json={"surname": "ZZSelfTest", "sphere_id": "vsph-health", "area_id": "varea-physician",
+                               "registration": "CPSO-QA1", "specialty_id": "vspec-family-medicine"},
                          headers=phys_headers, timeout=15)
         assert r.status_code == 200
         assert r.json()["id"] == first["id"]
@@ -141,8 +141,8 @@ class TestSelfOnboarding:
 
     def test_physician_cannot_post_canonical(self, phys_headers):
         r = requests.post(f"{BASE_URL}/api/professionals",
-                          json={"surname": "ZZOther", "sphere_id": "1", "area_id": "36",
-                                "specialty_id": "133", "registration": "X"},
+                          json={"surname": "ZZOther", "sphere_id": "vsph-health", "area_id": "varea-physician",
+                                "specialty_id": "vspec-family-medicine", "registration": "X"},
                           headers=phys_headers, timeout=10)
         assert r.status_code == 403, f"expected 403, got {r.status_code} {r.text[:200]}"
 

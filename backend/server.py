@@ -5161,8 +5161,9 @@ class ProfessionalBody(BaseModel):
     accepting_patients: Optional[bool] = None
     waiting_list: Optional[bool] = None
     sex: Optional[str] = None
-    practice_type_id: Optional[str] = None
-    areas_of_practice: Optional[list] = None
+    areas_of_practice_ids: Optional[list] = None   # cumulative (VIen AOP ids, scoped by specialty)
+    practice_type_ids: Optional[list] = None        # cumulative (VIen practice-type ids)
+    primary_care_model_ids: Optional[list] = None   # Ontario models (array; kept separate)
     registration_number: Optional[str] = None
     professorship: Optional[str] = None
     organization_ids: Optional[list] = None
@@ -5181,8 +5182,21 @@ async def professionals_taxonomy(user: dict = Depends(require_roles(*PROF_VIEW_R
         "credentials": await _all("professional_credentials"),
         "languages": await _all("professional_languages"),
         "practice_types": await _all("professional_practice_types"),
+        "primary_care_models": await _all("professional_primary_care_models"),
         "imported": bool(await db.professional_spheres.count_documents({})),
     }
+
+
+@api.get("/professionals/areas-of-practice")
+async def professionals_areas_of_practice(specialty_id: Optional[str] = None,
+                                          user: dict = Depends(require_roles(*PROF_VIEW_ROLES))):
+    """Controlled Areas of Practice for a given Specialty (currently only Family
+    Medicine is configured). Empty list when the specialty has no configured list."""
+    query = {"active": True}
+    if specialty_id:
+        query["specialty_id"] = specialty_id
+    docs = await db.professional_areas_of_practice.find(query, {"_id": 0}).sort("sort_order", 1).to_list(500)
+    return docs
 
 
 @api.get("/professionals")
@@ -5220,7 +5234,10 @@ async def professionals_create(body: ProfessionalBody, user: dict = Depends(requ
     now = now_iso()
     doc = {"id": str(uuid.uuid4()), **body.model_dump(),
            "credential_ids": body.credential_ids or [], "language_ids": body.language_ids or [],
-           "areas_of_practice": body.areas_of_practice or [], "organization_ids": body.organization_ids or [],
+           "areas_of_practice_ids": body.areas_of_practice_ids or [],
+           "practice_type_ids": body.practice_type_ids or [],
+           "primary_care_model_ids": body.primary_care_model_ids or [],
+           "organization_ids": body.organization_ids or [],
            "linked_user_id": None, "created_by": user.get("name"), "created_at": now, "updated_at": now}
     await db.professional_profiles.insert_one({**doc})
     await audit("professional_create", "professional", doc["id"], user)

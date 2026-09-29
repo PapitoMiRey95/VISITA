@@ -32,7 +32,7 @@ const COLUMNS = [
     { header: "Source", cell: (i) => <SourceBadge source={i.source} /> },
     { header: "Ref", cell: (i) => <span className="text-slate-500">{i.ref_number}</span> },
     { header: "Patient", cell: (i) => <span className="font-semibold">{formatCombinedName(i.patient_name)}</span> },
-    { header: "Medication", cell: (i) => `${i.medication_name || ""} ${i.strength || ""}`.trim() },
+    { header: "PIN", cell: (i) => <span className="font-mono text-slate-700" data-testid="rx-row-pin">{i.visita_patient_id || "—"}</span> },
     { header: "Detail", cell: (i) => (i.source === "pharmacy" ? (i.pharmacy || "") : `${i.requested_months || ""} mo`) },
     { header: "Status", cell: (i) => <StatusPill status={i.internal_status} /> },
 ];

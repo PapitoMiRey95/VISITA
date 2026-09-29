@@ -2671,7 +2671,24 @@ async def rx_queue(q: Optional[str] = None, status: Optional[str] = None, user: 
         # Hide voided/archived requests from the normal active queue.
         query["internal_status"] = {"$nin": ["voided"]}
     query.update(_search_filter(q, ["patient_name", "medication_name", "ref_number"]))
-    return await db.prescription_requests.find(query, {"_id": 0}).sort("created_at", -1).to_list(500)
+    rows = await db.prescription_requests.find(query, {"_id": 0}).sort("created_at", -1).to_list(500)
+    # Backfill each row's patient PIN (visita_patient_id) so the queue can show it.
+    pids = {r.get("patient_id") for r in rows if r.get("patient_id")}
+    dids = {r.get("directory_id") for r in rows if r.get("directory_id")}
+    pin_map = {}
+    if pids:
+        async for p in db.patients.find({"id": {"$in": list(pids)}}, {"_id": 0, "id": 1, "visita_patient_id": 1}):
+            if p.get("visita_patient_id"):
+                pin_map[p["id"]] = p["visita_patient_id"]
+    if dids:
+        async for d in db.patient_directory.find({"id": {"$in": list(dids)}}, {"_id": 0, "id": 1, "visita_patient_id": 1}):
+            if d.get("visita_patient_id"):
+                pin_map[d["id"]] = d["visita_patient_id"]
+    for r in rows:
+        if not r.get("visita_patient_id"):
+            r["visita_patient_id"] = pin_map.get(r.get("patient_id")) or pin_map.get(r.get("directory_id")) \
+                or (r.get("patient_snapshot") or {}).get("visita_patient_id")
+    return rows
 
 
 @api.patch("/internal/prescriptions/{item_id}")

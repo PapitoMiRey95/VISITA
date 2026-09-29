@@ -62,7 +62,7 @@ export default function InternalLayout() {
               { to: "/internal/referrals", icon: ClipboardCheck, label: "Referral Drop-Off", key: null },
               { to: "/internal/verifications", icon: UserCheck, label: "Verifications", key: "verifications" },
               { to: "/internal/providers", icon: Stethoscope, label: "Providers", key: null },
-              { to: "/internal/professionals", icon: Contact, label: "Professionals", key: null },
+              { to: "/internal/professionals", icon: Contact, label: "Professional profile", key: null },
               { to: "/internal/settings", icon: SettingsIcon, label: "Settings", key: null },
           ]
         : [
@@ -83,7 +83,7 @@ export default function InternalLayout() {
               { to: "/internal/applications", icon: UserPlus, label: "Applications", key: "applications" },
               { to: "/internal/organizations", icon: Building2, label: "Organizations", key: null },
               { to: "/internal/providers", icon: Stethoscope, label: "Providers", key: null },
-              { to: "/internal/professionals", icon: Contact, label: "Professionals", key: null },
+              { to: "/internal/professionals", icon: Contact, label: "Professional profile", key: null },
               ...(role === "admin" ? [{ to: "/internal/settings", icon: SettingsIcon, label: "Settings", key: null }] : []),
           ];
 

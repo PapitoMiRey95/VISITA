@@ -54,7 +54,7 @@ export default function Professionals() {
         <div className="space-y-4" data-testid="professionals-page">
             <div className="flex items-center gap-2">
                 <Contact className="w-5 h-5 text-visita-greenDark" />
-                <h1 className="text-xl font-bold text-slate-900">Professionals</h1>
+                <h1 className="text-xl font-bold text-slate-900">My professional profile</h1>
                 <span className="text-sm text-slate-400" data-testid="prof-count">({rows.length})</span>
                 <span className="ml-auto text-xs text-slate-400">Shared VIen Professional Directory</span>
             </div>

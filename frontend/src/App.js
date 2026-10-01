@@ -45,6 +45,7 @@ import Organizations from "./internal/Organizations";
 import Providers from "./internal/Providers";
 import PrivateRequests from "./internal/PrivateRequests";
 import Billing from "./internal/Billing";
+import RegistrationQR from "./internal/RegistrationQR";
 
 import PartnerLayout from "./partner/PartnerLayout";
 import PartnerProfile from "./partner/PartnerProfile";
@@ -117,6 +118,7 @@ function App() {
                         <Route path="referrals" element={<Referrals />} />
                         <Route path="verifications" element={<Verifications />} />
                         <Route path="applications" element={<Applications />} />
+                        <Route path="registration-qr" element={<RegistrationQR />} />
                         <Route path="organizations" element={<Organizations />} />
                         <Route path="providers" element={<Providers />} />
                         <Route path="professionals" element={<Professionals />} />

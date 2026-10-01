@@ -116,3 +116,9 @@ body {
 @layer base {
     [data-debug-wrapper="true"] { display: contents !important; }
 }
+
+@media print {
+    body * { visibility: hidden; }
+    [data-testid="qr-card"], [data-testid="qr-card"] * { visibility: visible; }
+    [data-testid="qr-card"] { position: absolute; left: 0; top: 0; width: 100%; border: 0; }
+}

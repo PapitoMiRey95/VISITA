@@ -572,6 +572,24 @@ async def practice_by_slug(slug: str):
     return _public_practice(p)
 
 
+@api.get("/internal/my-practice")
+async def my_practice(user: dict = Depends(require_roles(*CLINIC_ROLES))):
+    """The caller's own practice registration context for the Registration QR —
+    slug + display names only. No internal ids, no registration_code."""
+    pid = user.get("practice_id")
+    p = await db.practices.find_one({"id": pid, "active": True}, {"_id": 0}) if pid else None
+    if not p:
+        raise HTTPException(status_code=404, detail="No active practice is associated with your account.")
+    return {
+        "slug": p.get("slug"),
+        "physician_name": p.get("physician_name"),
+        "clinic_name": p.get("clinic_name"),
+        "clinic_phone": p.get("clinic_phone"),
+        "clinic_address": p.get("clinic_address"),
+        "register_path": f"/register/{p.get('slug')}",
+    }
+
+
 @api.post("/auth/register")
 async def register(body: RegisterBody):
     validate_dob_age(body.date_of_birth)

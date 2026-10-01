@@ -1,5 +1,14 @@
 # VIen EMR — Changelog
 
+## 2026-06 — Quick win: per-practice Registration QR (PREVIEW ONLY)
+Effortless onboarding — each active practice gets a QR pointing at its own `/register/{slug}`. Reuses the Stage A slug/context model; NO new registration system. Self-verified (backend curl + UI screenshots, all 6 checkpoints).
+
+- **Backend**: `GET /api/internal/my-practice` (CLINIC_ROLES) returns the caller's practice slug + display names + `register_path` ONLY — no internal ids, no registration_code. Patients/pharmacy/partner → 403.
+- **Frontend**: new `internal/RegistrationQR.jsx` (route `/internal/registration-qr`, nav "Registration QR" for staff/physician/admin). Builds `${window.location.origin}/register/{slug}` (preview vs prod auto), renders a QRCodeCanvas, and offers Copy link / Download PNG / Print. Added `qrcode.react` (yarn). Print CSS in index.css isolates the QR card.
+- **Scan flow (unchanged Stage A)**: QR → `/register/{slug}` auto-resolves practice → "You're registering with Dr. [Name]" → "Are you already a patient at this clinic?" Yes/No. No code, no physician search, no clinic selection.
+- **Isolation**: each practice's QR encodes only its own slug; registration resolves+stamps strictly by slug, so a practice's QR can never register into another practice. Existing registration logic untouched. NOT deployed to Production.
+
+
 ## 2026-06 — Multi-physician Registration STAGE C: patient↔practice relationships (PREVIEW ONLY)
 ONE global canonical patient identity (patient_directory + canonical PIN); per-practice relationship state lives separately in the NEW `patient_provider_relationships` collection. A patient can be active at one practice and applicant/former/inactive at another WITHOUT duplicate identities and with NO clinical-record merging. Verified: testing_agent iteration_63 (13/13 backend, frontend OK, zero product bugs) + my own curl/UI smoke.
 

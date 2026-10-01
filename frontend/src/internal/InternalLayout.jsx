@@ -2,7 +2,7 @@ import { Outlet, NavLink, useNavigate } from "react-router-dom";
 import { useState, useRef, useCallback } from "react";
 import {
     ClipboardList, Pill, Calendar, Scan, Droplet, MessageSquare, ClipboardCheck,
-    Send, UserCheck, UserPlus, CalendarDays, Settings as SettingsIcon, LogOut, UserSearch, Menu, Building2, Stethoscope, Users, Receipt, AlertTriangle, Truck, Contact,
+    Send, UserCheck, UserPlus, CalendarDays, Settings as SettingsIcon, LogOut, UserSearch, Menu, Building2, Stethoscope, Users, Receipt, AlertTriangle, Truck, Contact, QrCode,
 } from "lucide-react";
 import { useAuth } from "../context/AuthContext";
 import { useCounters } from "./hooks";
@@ -55,6 +55,7 @@ export default function InternalLayout() {
               { to: "/internal/bloodwork", icon: Droplet, label: "Bloodwork", key: "bloodwork" },
               { to: "/internal/messages", icon: MessageSquare, label: "Messages", key: "messages" },
               { to: "/internal/applications", icon: UserPlus, label: "Applications", key: "applications" },
+              { to: "/internal/registration-qr", icon: QrCode, label: "Registration QR", key: null },
               { to: "/internal/calendar", icon: CalendarDays, label: "Calendar", key: null },
               { to: "/internal/private-requests", icon: Users, label: "Private Requests", key: null },
               { to: "/internal/billing", icon: Receipt, label: "Billing", key: null },
@@ -81,6 +82,7 @@ export default function InternalLayout() {
               { to: "/internal/tasks", icon: Send, label: "Intercom", key: "doctor_tasks" },
               { to: "/internal/verifications", icon: UserCheck, label: "Verifications", key: "verifications" },
               { to: "/internal/applications", icon: UserPlus, label: "Applications", key: "applications" },
+              { to: "/internal/registration-qr", icon: QrCode, label: "Registration QR", key: null },
               { to: "/internal/organizations", icon: Building2, label: "Organizations", key: null },
               { to: "/internal/providers", icon: Stethoscope, label: "Providers", key: null },
               { to: "/internal/professionals", icon: Contact, label: "Professional profile", key: null },

@@ -1,5 +1,12 @@
 # VIen EMR — Changelog
 
+## 2026-06 — Patients stale-data RCA fix + Copy patient info (PREVIEW)
+- **RCA**: Internal Patients search (`_search_patients_merged`) returned the `patient_directory` snapshot for VERIFIED portal patients linked to a directory record (matched_directory_id), so canonical edits (portal profile/email/address/health-card) didn't show — the screen read a stale directory copy. Canonical `patients` data was correct all along (write path fine; read source wrong).
+- **Smallest safe fix (read-path only, no data change)**: for verified portal patients, return the CANONICAL `_portal_patient_snapshot(p)`, backfilling only PIN + pharmacy from the linked directory. Verified: canonical edit (city) now reflects immediately in the Patients screen; PIN preserved. Fix is in code — deploying it resolves Production; no prod data migration needed.
+- **Copy patient info** button added to the Patients detail (clean text: name, DOB, VIen PIN, phone, email, address, OHIP+version+expiry, pharmacy).
+- STILL PENDING (next phase, not built): Phase B staff Patient-Portal Account panel + actions, Physician Medical Record view, physician medication management (Continue/Change/Stop/Add → patient_medications w/ portal sync), Portal Access nav pending-counter badge.
+
+
 ## 2026-06 — Portal account: sex at signup + self email-change (code) + request PIN (PREVIEW ONLY)
 Self-tested (curl + screenshots). NOT deployed.
 - **Sex at signup**: added Sex (Male/Female/X) to Create Patient Portal account form; stored on the patient at registration (RegisterBody.sex). Post-signup edit already existed.

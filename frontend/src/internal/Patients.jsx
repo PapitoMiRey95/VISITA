@@ -1,6 +1,6 @@
 import { useState, useRef, useEffect } from "react";
 import { toast } from "sonner";
-import { UserSearch, Search, MapPin, Phone, IdCard, Building2, Lock, RefreshCw, Pencil, ShieldCheck, X } from "lucide-react";
+import { UserSearch, Search, MapPin, Phone, IdCard, Building2, Lock, RefreshCw, Pencil, ShieldCheck, X, Copy } from "lucide-react";
 import { api, formatErr } from "../lib/api";
 import { formatDate } from "../lib/date";
 import { formatPatientName } from "../lib/name";
@@ -235,6 +235,25 @@ export default function Patients() {
                                 </Button>
                             )}
                             {!canEdit && <span className="text-xs text-slate-400 flex items-center gap-1"><Lock className="w-3.5 h-3.5" /> Read-only</span>}
+                            <Button variant="outline" size="sm" data-testid="patient-copy-btn"
+                                onClick={() => {
+                                    const s = selected;
+                                    const hc = s.health_card_display ? `${s.health_card_display}${s.health_card_version_code ? " " + s.health_card_version_code : ""}${s.health_card_expiry_date ? " · exp " + formatDate(s.health_card_expiry_date) : ""}` : "";
+                                    const lines = [
+                                        `Name: ${formatPatientName(s)}`,
+                                        `DOB: ${formatDate(s.date_of_birth) || "—"}`,
+                                        `VIen PIN: ${s.visita_patient_id || "—"}`,
+                                        (s.cell_phone || s.home_phone) ? `Phone: ${s.cell_phone || s.home_phone}` : null,
+                                        s.email ? `Email: ${s.email}` : null,
+                                        s.address_full ? `Address: ${s.address_full}` : null,
+                                        hc ? `OHIP: ${hc}` : null,
+                                        s.current_pharmacy ? `Pharmacy: ${s.current_pharmacy}` : null,
+                                    ].filter(Boolean);
+                                    navigator.clipboard?.writeText(lines.join("\n"));
+                                    toast.success("Patient info copied.");
+                                }}>
+                                <Copy className="w-3.5 h-3.5 mr-1" /> Copy patient info
+                            </Button>
                             <Button variant="outline" size="sm" data-testid="patient-change-btn"
                                 onClick={() => { setShowResults(results.length > 0); searchRef.current?.querySelector("input")?.focus(); }}>
                                 <RefreshCw className="w-3.5 h-3.5 mr-1" /> Change Patient

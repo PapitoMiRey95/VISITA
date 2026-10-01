@@ -4321,10 +4321,19 @@ async def _search_patients_merged(qn: str, limit: int = 40, include_pin: bool = 
         if mdir:
             if mdir in seen_dir:
                 continue
+            seen_dir.add(mdir)
+            # Always show CANONICAL demographics from the patients record (current,
+            # authoritative). Backfill only the PIN/pharmacy from the linked
+            # directory record so they aren't lost. Fixes stale directory reads.
             d = await db.patient_directory.find_one({"id": mdir})
+            snap = _portal_patient_snapshot(p)
             if d:
-                results.append(_directory_snapshot(d)); seen_dir.add(d["id"])
-                continue
+                snap["visita_patient_id"] = snap.get("visita_patient_id") or d.get("visita_patient_id")
+                snap["current_pharmacy"] = snap.get("current_pharmacy") or d.get("current_pharmacy")
+                snap["directory_id"] = d["id"]
+            results.append(snap)
+            seen_pid.add(p["id"])
+            continue
         if p["id"] in seen_pid:
             continue
         results.append(_portal_patient_snapshot(p)); seen_pid.add(p["id"])

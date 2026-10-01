@@ -395,19 +395,10 @@ export default function Register() {
 
 function FindClinic({ onResolved }) {
     const { t } = useTranslation(["auth", "common"]);
-    const [code, setCode] = useState("");
     const [q, setQ] = useState("");
     const [results, setResults] = useState(null);
     const [busy, setBusy] = useState(false);
 
-    const submitCode = async () => {
-        if (!code.trim()) return;
-        setBusy(true);
-        try {
-            const { data } = await api.get(`/practices/by-code/${encodeURIComponent(code.trim())}`);
-            onResolved(data);
-        } catch (e) { toast.error(t("auth:register.ctx.find.badCode")); } finally { setBusy(false); }
-    };
     const search = async () => {
         if (!q.trim()) return;
         setBusy(true);
@@ -423,24 +414,15 @@ function FindClinic({ onResolved }) {
             <p className="text-sm text-slate-500">{t("auth:register.ctx.find.sub")}</p>
 
             <div>
-                <Label className="text-sm font-semibold text-slate-700">{t("auth:register.ctx.find.codeQ")}</Label>
-                <div className="flex gap-2 mt-1">
-                    <Input data-testid="find-code-input" value={code} onChange={(e) => setCode(e.target.value.toUpperCase())}
-                        onKeyDown={(e) => e.key === "Enter" && submitCode()} placeholder={t("auth:register.ctx.find.codeLabel")} />
-                    <Button data-testid="find-code-btn" disabled={busy} onClick={submitCode}
-                        className="bg-portal-blue hover:bg-portal-blueDark text-white">{t("auth:register.ctx.find.codeBtn")}</Button>
-                </div>
-            </div>
-
-            <div className="pt-2 border-t border-slate-100">
                 <Label className="text-sm font-semibold text-slate-700">{t("auth:register.ctx.find.searchLabel")}</Label>
                 <div className="flex gap-2 mt-1">
                     <div className="relative flex-1">
                         <Search className="w-4 h-4 text-slate-400 absolute left-2 top-3" />
                         <Input data-testid="find-search-input" value={q} onChange={(e) => setQ(e.target.value)}
-                            onKeyDown={(e) => e.key === "Enter" && search()} className="pl-8" />
+                            onKeyDown={(e) => e.key === "Enter" && search()} className="pl-8" autoFocus />
                     </div>
-                    <Button data-testid="find-search-btn" variant="outline" disabled={busy} onClick={search}>{t("auth:register.ctx.find.searchBtn")}</Button>
+                    <Button data-testid="find-search-btn" disabled={busy} onClick={search}
+                        className="bg-portal-blue hover:bg-portal-blueDark text-white">{t("auth:register.ctx.find.searchBtn")}</Button>
                 </div>
                 {results && results.length === 0 && <p className="text-sm text-slate-400 mt-2">{t("auth:register.ctx.find.none")}</p>}
                 {results && results.length > 0 && (

@@ -1,5 +1,14 @@
 # VIen EMR — Changelog
 
+## 2026-06 — Cleanup deploy: QR fail-safe + remove temporary migration endpoint
+Bundled, cleanup-only (no new features, no schema, no migrations, no data cleanup). Preview rule-6 smoke passed (all logins + all internal queues 200).
+
+- **QR fail-safe (rule 7)**: `RegistrationQR.jsx` no longer shows infinite "Loading…". `useQuery` retry:1/800ms; on error renders a clear "Practice context unavailable" card (`qr-error`) with a Retry button (`qr-retry`); `isLoading` spinner is bounded and ends on settle. Happy path unchanged (QR + copy/download/print).
+- **Removed** `POST /api/internal/admin/run-stage-migrations` + MigrationRunBody + hmac import + the three migrate_* module imports from server.py (endpoint now 404 in preview). The migrate_*.py scripts remain in the repo as the canonical CLI migrations.
+- Removed `MIGRATION_RUN_TOKEN` from preview backend/.env. Production secret to be removed/rotated by the user after live verification.
+- Established `/app/memory/RELEASE_SAFETY_CHECKLIST.md` (mandatory pre-deploy checklist).
+
+
 ## 2026-06 — One-time maintenance endpoint to run Stage A/B/C migrations in Production
 Root cause of the stuck QR ("Loading your practice…"): the three manual prod migrations never ran (deployer has no prod write path; preview MONGO_URL ≠ prod). Fix = a TEMPORARY, admin-only, token-gated endpoint that runs the exact three approved backfills using the app's own (production) DB connection.
 

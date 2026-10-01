@@ -2,7 +2,7 @@ import { useRef } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { QRCodeCanvas } from "qrcode.react";
 import { toast } from "sonner";
-import { QrCode, Copy, Download, Printer, Link2 } from "lucide-react";
+import { QrCode, Copy, Download, Printer, Link2, AlertTriangle, RefreshCw, Loader2 } from "lucide-react";
 import { api, formatErr } from "../lib/api";
 import { Button } from "../components/ui/button";
 
@@ -11,6 +11,8 @@ export default function RegistrationQR() {
     const q = useQuery({
         queryKey: ["my-practice"],
         queryFn: async () => (await api.get("/internal/my-practice")).data,
+        retry: 1,
+        retryDelay: 800,
     });
     const p = q.data;
     const registerUrl = p ? `${window.location.origin}${p.register_path}` : "";
@@ -45,10 +47,33 @@ export default function RegistrationQR() {
                 practice — no registration code, physician search, or clinic selection needed.
             </p>
 
-            {q.isLoading && <p className="text-slate-400 text-sm">Loading your practice…</p>}
-            {q.isError && <p className="text-red-600 text-sm" data-testid="qr-error">{formatErr(q.error)}</p>}
+            {q.isLoading && (
+                <p className="flex items-center gap-2 text-slate-400 text-sm" data-testid="qr-loading">
+                    <Loader2 className="w-4 h-4 animate-spin" /> Loading your practice…
+                </p>
+            )}
 
-            {p && (
+            {!q.isLoading && q.isError && (
+                <div className="rounded-md border border-amber-200 bg-amber-50 p-5" data-testid="qr-error">
+                    <div className="flex items-start gap-3">
+                        <AlertTriangle className="w-5 h-5 text-amber-600 shrink-0 mt-0.5" />
+                        <div>
+                            <div className="font-semibold text-slate-800">Practice context unavailable</div>
+                            <p className="text-sm text-slate-600 mt-1">
+                                We couldn't load your practice details, so the registration QR can't be
+                                generated right now. This usually means your account isn't linked to an
+                                active practice yet. Please try again, or contact your administrator if it persists.
+                            </p>
+                            <p className="text-xs text-slate-400 mt-1" data-testid="qr-error-detail">{formatErr(q.error)}</p>
+                            <Button onClick={() => q.refetch()} data-testid="qr-retry" variant="outline" className="h-9 mt-3">
+                                <RefreshCw className="w-4 h-4 mr-1.5" /> Retry
+                            </Button>
+                        </div>
+                    </div>
+                </div>
+            )}
+
+            {!q.isLoading && !q.isError && p && (
                 <div className="bg-white border border-slate-300 rounded-sm p-6 print:border-0" data-testid="qr-card">
                     <div className="text-center mb-4">
                         <div className="text-xs uppercase tracking-wide text-slate-400">Registering with</div>

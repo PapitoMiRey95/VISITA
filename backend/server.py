@@ -32,10 +32,6 @@ import identity as identity_mod
 import notifications as notify_svc
 import organizations as orgs_mod
 import relationships as rel_mod
-import hmac
-import migrate_practice_backfill as m_practice_backfill
-import migrate_internal_user_practices as m_user_practices
-import migrate_relationships_backfill as m_relationships_backfill
 import storage
 from db import (APPT_PATIENT_STATUS, BLD_ACTIVE, BLD_PATIENT_STATUS, IMG_ACTIVE,
                 IMG_PATIENT_STATUS, MSG_ACTIVE, MSG_PATIENT_STATUS, RX_ACTIVE,
@@ -592,48 +588,6 @@ async def my_practice(user: dict = Depends(require_roles(*CLINIC_ROLES))):
         "clinic_address": p.get("clinic_address"),
         "register_path": f"/register/{p.get('slug')}",
     }
-
-
-class MigrationRunBody(BaseModel):
-    token: str
-    dry_run: bool = True
-
-
-@api.post("/internal/admin/run-stage-migrations")
-async def run_stage_migrations(body: MigrationRunBody, user: dict = Depends(require_roles("admin"))):
-    """TEMPORARY one-time maintenance endpoint — runs ONLY the three approved Stage A/B/C
-    backfills (practice -> internal users -> relationships) against this app's own DB,
-    in order. Admin role + MIGRATION_RUN_TOKEN required. No arbitrary scripts/collections/
-    queries. Returns safe summary counts only (no PHI, no raw docs). Remove after use."""
-    expected = os.environ.get("MIGRATION_RUN_TOKEN")
-    if not expected or not hmac.compare_digest(body.token or "", expected):
-        # Never log or echo the token.
-        raise HTTPException(status_code=403, detail="Invalid or missing migration token.")
-
-    mode = "dry-run" if body.dry_run else "apply"
-    results = []
-
-    r1 = await m_practice_backfill.run(db, body.dry_run)
-    results.append(r1)
-    if not r1.get("ok"):
-        return {"mode": mode, "ok": False, "stopped_at": "practice_backfill", "results": results}
-
-    r2 = await m_user_practices.run(db, body.dry_run)
-    results.append(r2)
-    if not r2.get("ok"):
-        return {"mode": mode, "ok": False, "stopped_at": "internal_user_practices", "results": results}
-
-    r3 = await m_relationships_backfill.run(db, body.dry_run)
-    results.append(r3)
-    if not r3.get("ok"):
-        return {"mode": mode, "ok": False, "stopped_at": "relationships_backfill", "results": results}
-
-    if not body.dry_run:
-        await audit("run_stage_migrations", "system", "stage_abc", user,
-                    meta={"mode": mode, "practice_changed": r1.get("total_changed"),
-                          "users_changed": r2.get("changed"),
-                          "relationships_total": r3.get("relationships_total")})
-    return {"mode": mode, "ok": True, "results": results}
 
 
 @api.post("/auth/register")

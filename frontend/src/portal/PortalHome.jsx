@@ -1,7 +1,8 @@
 import { useNavigate } from "react-router-dom";
+import { useState, useEffect } from "react";
 import { useTranslation } from "react-i18next";
 import { toast } from "sonner";
-import { Calendar, Pill, FileHeart, MessageSquare, ClipboardList, Scan, Droplet, ChevronRight, User, CalendarClock, FlaskConical, FileText, BellRing } from "lucide-react";
+import { Calendar, Pill, FileHeart, MessageSquare, ClipboardList, Scan, Droplet, ChevronRight, User, Users, CalendarClock, FlaskConical, FileText, BellRing } from "lucide-react";
 import { api, formatErr } from "../lib/api";
 import { EmergencyNotice } from "../components/EmergencyNotice";
 import { usePortal, PendingBanner, Card, StatusPill } from "./shared";
@@ -124,6 +125,29 @@ function UpcomingAppointment() {
     );
 }
 
+function PeopleIManageCard() {
+    const nav = useNavigate();
+    const [managing, setManaging] = useState([]);
+    useEffect(() => {
+        api.get("/portal/my-delegations").then(({ data }) => setManaging(data.managing || [])).catch(() => {});
+    }, []);
+    if (managing.length === 0) return null;
+    return (
+        <Card data-testid="people-i-manage-card">
+            <div className="flex items-center gap-2 mb-2"><Users className="w-4 h-4 text-portal-blue" /><h2 className="font-bold text-slate-800 text-sm">People I help manage</h2></div>
+            <div className="space-y-1.5">
+                {managing.map((m) => (
+                    <button key={m.patient_id} data-testid="people-i-manage-item" onClick={() => nav(`/portal/manage/${m.patient_id}`)}
+                        className="w-full flex items-center justify-between p-2.5 rounded-lg border border-slate-200 hover:border-portal-blue text-left">
+                        <span className="text-sm"><b className="text-slate-800">{m.patient_name}</b> <span className="text-slate-400">· {m.relationship}</span></span>
+                        <ChevronRight className="w-4 h-4 text-slate-300" />
+                    </button>
+                ))}
+            </div>
+        </Card>
+    );
+}
+
 export default function PortalHome() {
     const nav = useNavigate();
     const { t, i18n } = useTranslation(["portal"]);
@@ -143,6 +167,8 @@ export default function PortalHome() {
             {p && <PendingBanner status={p.verification_status} />}
 
             <NewUpdatesCard />
+
+            <PeopleIManageCard />
 
             <UpcomingAppointment />
 

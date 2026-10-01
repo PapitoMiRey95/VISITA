@@ -9,6 +9,7 @@ import { Input } from "../components/ui/input";
 import { Label } from "../components/ui/label";
 import { Button } from "../components/ui/button";
 import { HealthCardNumberInput } from "../components/HealthCardNumberInput";
+import FamilyAccess from "./FamilyAccess";
 
 const HC_BADGE = {
     VALID: "bg-emerald-100 text-emerald-700",
@@ -330,6 +331,7 @@ export default function Patients() {
                     </p>
                     </>
                     )}
+                    <FamilyAccess patient={selected} />
                 </div>
             )}
         </div>

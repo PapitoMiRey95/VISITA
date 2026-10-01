@@ -23,6 +23,8 @@ import PortalMyRequests from "./portal/PortalMyRequests";
 import PortalDocuments from "./portal/PortalDocuments";
 import PortalInvoices from "./portal/PortalInvoices";
 import PortalAccount from "./portal/PortalAccount";
+import ManagedPeople from "./portal/ManagedPeople";
+import ManagedPortal from "./portal/ManagedPortal";
 
 import InternalLayout from "./internal/InternalLayout";
 import Hub from "./internal/Hub";
@@ -76,12 +78,14 @@ function App() {
                     <Route
                         path="/portal"
                         element={
-                            <RoleRoute roles={["patient"]}>
+                            <RoleRoute roles={["patient", "caregiver"]}>
                                 <PortalLayout />
                             </RoleRoute>
                         }
                     >
                         <Route index element={<PortalHome />} />
+                        <Route path="people" element={<ManagedPeople />} />
+                        <Route path="manage/:patientId" element={<ManagedPortal />} />
                         <Route path="appointments" element={<PortalAppointments />} />
                         <Route path="prescriptions" element={<PortalPrescriptions />} />
                         <Route path="referrals" element={<PortalReferrals />} />

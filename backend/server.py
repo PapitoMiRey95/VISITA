@@ -32,6 +32,7 @@ import identity as identity_mod
 import notifications as notify_svc
 import organizations as orgs_mod
 import relationships as rel_mod
+import delegates as delegates_mod
 import storage
 from db import (APPT_PATIENT_STATUS, BLD_ACTIVE, BLD_PATIENT_STATUS, IMG_ACTIVE,
                 IMG_PATIENT_STATUS, MSG_ACTIVE, MSG_PATIENT_STATUS, RX_ACTIVE,
@@ -113,6 +114,60 @@ async def require_verified_patient(user: dict = Depends(get_current_user)) -> di
     if p.get("verification_status") != "verified":
         raise HTTPException(status_code=403, detail="Your account is still pending verification by the clinic.")
     return p
+
+
+class PortalCtx:
+    """Resolved portal actor: either the patient acting for themselves, or a delegate
+    acting on behalf of a granted patient. Carries the target patient record plus
+    correct audit attribution."""
+    def __init__(self, patient: dict, user: dict, grant: dict = None):
+        self.patient = patient
+        self.user = user
+        self.grant = grant
+
+    @property
+    def is_delegate(self) -> bool:
+        return self.grant is not None
+
+    def audit_actor(self) -> dict:
+        if self.grant:
+            return {"id": self.user["id"], "name": self.user.get("name"), "role": self.user.get("role")}
+        return {"id": self.patient["id"], "name": self.patient["first_name"], "role": "patient"}
+
+    def audit_meta(self, extra: dict = None) -> dict:
+        m = dict(extra or {})
+        if self.grant:
+            m["acted_by_user_id"] = self.user["id"]
+            m["on_behalf_of_patient_id"] = self.patient["id"]
+            m["delegate_relationship"] = self.grant.get("relationship")
+        return m
+
+
+def portal_access(permission: str = None):
+    """Dependency factory for portal endpoints that support delegated access.
+    No `on_behalf_of` -> the authenticated verified patient acts for themselves.
+    With `on_behalf_of` (header X-On-Behalf-Of or query param) -> enforce an ACTIVE
+    delegate grant, the required permission, the patient's practice, and verification,
+    all SERVER-SIDE. Unauthorized direct-ID access returns 404 (no existence leak)."""
+    async def dep(request: Request, user: dict = Depends(get_current_user)) -> PortalCtx:
+        pid = request.headers.get("X-On-Behalf-Of") or request.query_params.get("on_behalf_of")
+        if pid:
+            grant = await delegates_mod.active_grant(db, pid, user["id"])
+            if not grant:
+                raise HTTPException(status_code=404, detail="Not found")
+            if permission and permission not in grant.get("permissions", []):
+                raise HTTPException(status_code=403, detail="This action isn't included in your access for this person.")
+            p = await db.patients.find_one({"id": pid}, {"_id": 0})
+            if not p or p.get("practice_id") != grant.get("practice_id"):
+                raise HTTPException(status_code=404, detail="Not found")
+            if p.get("verification_status") != "verified":
+                raise HTTPException(status_code=403, detail="This person's account is still pending verification by the clinic.")
+            return PortalCtx(p, user, grant)
+        p = await get_patient_record(user)
+        if p.get("verification_status") != "verified":
+            raise HTTPException(status_code=403, detail="Your account is still pending verification by the clinic.")
+        return PortalCtx(p, user, None)
+    return dep
 
 
 async def notify_patient(patient_id: str, title: str, body: str):
@@ -1209,7 +1264,8 @@ async def get_availability_doc():
 
 
 @api.post("/portal/appointments")
-async def create_appointment(body: AppointmentBody, p: dict = Depends(require_verified_patient)):
+async def create_appointment(body: AppointmentBody, ctx: PortalCtx = Depends(portal_access(delegates_mod.APPOINTMENTS))):
+    p = ctx.patient
     if await _has_outstanding_fee(p["id"]):
         raise HTTPException(status_code=403, detail=OUTSTANDING_FEE_MSG)
     options = [o for o in (body.options or []) if o.get("date") and o.get("time")][:3]
@@ -1239,7 +1295,8 @@ async def create_appointment(body: AppointmentBody, p: dict = Depends(require_ve
         "created_at": now_iso(), "updated_at": now_iso(), "completed_at": None,
     }
     await db.appointment_requests.insert_one({**doc})
-    await audit("create", "appointment", doc["id"], {"id": p["id"], "name": p["first_name"], "role": "patient"}, new_status="requested")
+    await audit("create", "appointment", doc["id"], ctx.audit_actor(), new_status="requested",
+                meta=ctx.audit_meta())
     doc.pop("_id", None)
     return doc
 
@@ -2440,7 +2497,8 @@ async def download_my_proof(inv_id: str, att_id: str, user: dict = Depends(get_c
 
 
 @api.post("/portal/prescriptions")
-async def create_rx(body: PrescriptionBody, p: dict = Depends(require_verified_patient)):
+async def create_rx(body: PrescriptionBody, ctx: PortalCtx = Depends(portal_access(delegates_mod.RX_REQUESTS))):
+    p = ctx.patient
     ref = await next_ref("RX")
     doc = {
         "id": str(uuid.uuid4()), "ref_number": ref, "patient_id": p["id"],
@@ -2450,7 +2508,8 @@ async def create_rx(body: PrescriptionBody, p: dict = Depends(require_verified_p
         "created_at": now_iso(), "updated_at": now_iso(), "completed_at": None,
     }
     await db.prescription_requests.insert_one({**doc})
-    await audit("create", "prescription", doc["id"], {"id": p["id"], "name": p["first_name"], "role": "patient"}, new_status="received")
+    await audit("create", "prescription", doc["id"], ctx.audit_actor(), new_status="received",
+                meta=ctx.audit_meta())
     doc.pop("_id", None)
     return doc
 
@@ -3681,14 +3740,82 @@ async def share_attachment(att_id: str, body: ShareAttachmentBody,
 
 
 # ----------------------------- Patient documents & updates (portal) -----------------------------
+@api.get("/portal/my-delegations")
+async def my_delegations(user: dict = Depends(get_current_user)):
+    """'People I help manage' — patients the authenticated user has active access to."""
+    grants = await delegates_mod.grants_for_delegate(db, user["id"])
+    out = []
+    for g in grants:
+        p = await db.patients.find_one({"id": g["patient_id"]},
+                                       {"_id": 0, "first_name": 1, "last_name": 1})
+        if not p:
+            continue
+        out.append({
+            "patient_id": g["patient_id"],
+            "patient_name": f"{p.get('first_name','')} {p.get('last_name','')}".strip(),
+            "relationship": g.get("relationship"),
+            "permissions": g.get("permissions", []),
+            "granted_at": g.get("granted_at"),
+        })
+    return {"has_own_patient": bool(user.get("patient_id")), "managing": out}
+
+
+@api.get("/portal/managed/{patient_id}/summary")
+async def managed_summary(patient_id: str, ctx: PortalCtx = Depends(portal_access())):
+    """Permission-filtered read of a managed patient's portal. Only sections the delegate
+    is permitted to see are populated. No internal notes/attachments ever leak."""
+    if not ctx.is_delegate or ctx.patient["id"] != patient_id:
+        raise HTTPException(status_code=404, detail="Not found")
+    p = ctx.patient
+    perms = set(ctx.grant.get("permissions", []))
+    data = {
+        "patient_id": p["id"],
+        "patient_name": f"{p.get('first_name','')} {p.get('last_name','')}".strip(),
+        "relationship": ctx.grant.get("relationship"),
+        "permissions": sorted(perms),
+        "appointments": None, "documents": None, "requests": None,
+    }
+    if delegates_mod.APPOINTMENTS in perms:
+        appts = await db.appointment_requests.find(
+            {"patient_id": p["id"], "status": {"$in": ["requested", "alternatives_offered",
+             "more_info_required", "confirmed"]}}, {"_id": 0}).sort("created_at", -1).to_list(50)
+        data["appointments"] = [{
+            "ref_number": a.get("ref_number"), "reason": a.get("reason"),
+            "status": APPT_PATIENT_STATUS.get(a.get("status"), a.get("status")),
+            "confirmed_display": a.get("confirmed_display"),
+            "preferred_date": a.get("preferred_date"), "preferred_time": a.get("preferred_time"),
+            "created_at": a.get("created_at"),
+        } for a in appts]
+    if delegates_mod.DOCUMENTS in perms:
+        data["documents"] = await attach_mod.list_shared_for_patient(db, p["id"])
+    if delegates_mod.REQUEST_STATUS in perms:
+        reqs = []
+        for coll, label, smap in [
+            ("prescription_requests", "Prescription", RX_PATIENT_STATUS),
+            ("imaging_requests", "Imaging", IMG_PATIENT_STATUS),
+            ("bloodwork_requests", "Bloodwork", BLD_PATIENT_STATUS),
+        ]:
+            for r in await db[coll].find({"patient_id": p["id"]}, {"_id": 0}).sort("created_at", -1).to_list(50):
+                reqs.append({"type": label, "ref_number": r.get("ref_number"),
+                             "status": smap.get(r.get("internal_status"), r.get("internal_status")),
+                             "created_at": r.get("created_at")})
+        for rf in await db.referrals.find({"patient_id": p["id"]}, {"_id": 0}).sort("created_at", -1).to_list(50):
+            reqs.append({"type": "Referral", "ref_number": rf.get("ref_number"),
+                         "status": "Sent" if rf.get("faxed") else "In progress",
+                         "created_at": rf.get("created_at")})
+        data["requests"] = sorted(reqs, key=lambda x: x.get("created_at") or "", reverse=True)
+    return data
+
+
 @api.get("/portal/documents")
-async def portal_documents(p: dict = Depends(require_verified_patient)):
-    return await attach_mod.list_shared_for_patient(db, p["id"])
+async def portal_documents(ctx: PortalCtx = Depends(portal_access(delegates_mod.DOCUMENTS))):
+    return await attach_mod.list_shared_for_patient(db, ctx.patient["id"])
+
 
 
 @api.get("/portal/documents/{att_id}/download")
-async def portal_document_download(att_id: str, p: dict = Depends(require_verified_patient)):
-    return await attach_mod.serve_shared_for_patient(db, att_id, p["id"])
+async def portal_document_download(att_id: str, ctx: PortalCtx = Depends(portal_access(delegates_mod.DOCUMENTS))):
+    return await attach_mod.serve_shared_for_patient(db, att_id, ctx.patient["id"])
 
 
 @api.post("/portal/updates/{update_id}/read")
@@ -4203,6 +4330,215 @@ async def _rel_summary_for_patient(p, user):
                 "label": _REL_LABEL.get(r.get("status"), r.get("status")),
             })
     return summary
+
+
+# ----------------------------- Family / Caregiver delegated access -----------------------------
+class CaregiverCreateBody(BaseModel):
+    name: str
+    email: str
+
+
+class DelegateCreateBody(BaseModel):
+    delegate_user_id: Optional[str] = None          # existing VIen user
+    new_caregiver: Optional[CaregiverCreateBody] = None  # or create a caregiver-only user
+    relationship: str
+    relationship_other: Optional[str] = None
+    permissions: List[str] = []
+    consent_type: str
+    consent_note: Optional[str] = None
+
+
+class DelegateEditBody(BaseModel):
+    relationship: Optional[str] = None
+    relationship_other: Optional[str] = None
+    permissions: Optional[List[str]] = None
+
+
+@api.get("/internal/user-search")
+async def internal_user_search(q: str = "", user: dict = Depends(require_roles(*CLINIC_ROLES))):
+    """Find existing patient/caregiver VIen users to grant delegate access to.
+    Excludes staff/physician/admin/pharmacy/partner accounts."""
+    q = (q or "").strip()
+    if len(q) < 2:
+        return []
+    rx = {"$regex": re.escape(q), "$options": "i"}
+    docs = await db.users.find(
+        {"role": {"$in": ["patient", "caregiver"]},
+         "$or": [{"name": rx}, {"email": rx}, {"username": rx}]},
+        {"_id": 1, "name": 1, "email": 1, "role": 1}).limit(15).to_list(15)
+    return [{"id": str(d["_id"]), "name": d.get("name"), "email": d.get("email"),
+             "role": d.get("role")} for d in docs]
+
+
+@api.post("/internal/caregivers")
+async def create_caregiver(body: CaregiverCreateBody, user: dict = Depends(require_roles(*CLINIC_ROLES))):
+    """Create a caregiver-only user (no patient record, no chart, no PIN). Reuses the
+    existing JWT login + bcrypt + must_change_password flow. Returns a one-time temp
+    password. If the email already belongs to a VIen user, that user is reused."""
+    email = (body.email or "").strip().lower()
+    if not email or "@" not in email:
+        raise HTTPException(status_code=400, detail="A valid email is required.")
+    existing = await db.users.find_one({"email": email})
+    if existing:
+        return {"reused": True, "user_id": str(existing["_id"]), "name": existing.get("name"),
+                "email": email, "role": existing.get("role")}
+    temp = _gen_temp_password()
+    uid = (await db.users.insert_one({
+        "email": email, "password_hash": authlib.hash_password(temp),
+        "name": (body.name or "").strip() or email, "role": "caregiver",
+        "active": True, "must_change_password": True, "patient_id": None,
+        "created_at": now_iso(), "updated_at": now_iso(),
+    })).inserted_id
+    await audit("create_caregiver_account", "user", str(uid), user, meta={"email": email})
+    return {"reused": False, "user_id": str(uid), "name": body.name, "email": email,
+            "role": "caregiver", "temp_password": temp, "must_change_password": True}
+
+
+async def _enrich_delegate(g: dict) -> dict:
+    u = None
+    try:
+        u = await db.users.find_one({"_id": ObjectId(g["delegate_user_id"])},
+                                    {"_id": 0, "name": 1, "email": 1, "role": 1})
+    except Exception:
+        u = None
+    d = delegates_mod.serialize(g)
+    d["delegate_name"] = (u or {}).get("name")
+    d["delegate_email"] = (u or {}).get("email")
+    d["delegate_role"] = (u or {}).get("role")
+    return d
+
+
+@api.get("/internal/patients/{patient_id}/delegates")
+async def list_patient_delegates(patient_id: str, user: dict = Depends(require_roles(*CLINIC_ROLES))):
+    p = await db.patients.find_one({"id": patient_id})
+    if not p:
+        raise HTTPException(status_code=404, detail="Not found")
+    assert_practice(p, user)
+    grants = await delegates_mod.grants_for_patient(db, patient_id)
+    return [await _enrich_delegate(g) for g in grants]
+
+
+@api.post("/internal/patients/{patient_id}/delegates")
+async def add_patient_delegate(patient_id: str, body: DelegateCreateBody,
+                               user: dict = Depends(require_roles(*CLINIC_ROLES))):
+    p = await db.patients.find_one({"id": patient_id})
+    if not p:
+        raise HTTPException(status_code=404, detail="Not found")
+    assert_practice(p, user)
+    if body.relationship not in delegates_mod.RELATIONSHIPS:
+        raise HTTPException(status_code=400, detail="Invalid relationship.")
+    if body.consent_type not in delegates_mod.CONSENT_TYPES:
+        raise HTTPException(status_code=400, detail="An authorization basis is required.")
+    perms = delegates_mod.clean_permissions(body.permissions)
+    if not perms:
+        raise HTTPException(status_code=400, detail="Select at least one permission.")
+
+    # Resolve the delegate user: existing id, or create/reuse a caregiver by email.
+    delegate_user_id = body.delegate_user_id
+    if not delegate_user_id and body.new_caregiver:
+        created = await create_caregiver(body.new_caregiver, user)
+        delegate_user_id = created["user_id"]
+        temp_pw = created.get("temp_password")
+    else:
+        temp_pw = None
+    if not delegate_user_id:
+        raise HTTPException(status_code=400, detail="Select an existing user or create a caregiver account.")
+    try:
+        du = await db.users.find_one({"_id": ObjectId(delegate_user_id)})
+    except Exception:
+        du = None
+    if not du:
+        raise HTTPException(status_code=404, detail="Delegate user not found.")
+    if du.get("role") in ("staff", "physician", "admin", "pharmacy", "partner"):
+        raise HTTPException(status_code=400, detail="Clinic/partner accounts cannot be delegates.")
+    # A delegate cannot be granted access to their OWN patient record.
+    if du.get("patient_id") == patient_id:
+        raise HTTPException(status_code=400, detail="This is the patient's own account.")
+
+    existing = await db[delegates_mod.COLL].find_one(
+        {"patient_id": patient_id, "delegate_user_id": delegate_user_id, "active": True})
+    if existing:
+        raise HTTPException(status_code=409, detail="This person already has active access to this patient.")
+
+    now = now_iso()
+    g = {
+        "id": "del_" + uuid.uuid4().hex,
+        "patient_id": patient_id,
+        "delegate_user_id": delegate_user_id,
+        "practice_id": p.get("practice_id"),
+        "relationship": body.relationship,
+        "relationship_other": (body.relationship_other or "").strip() if body.relationship == "Other" else None,
+        "permissions": perms,
+        "active": True,
+        "granted_at": now,
+        "granted_by": user["id"],
+        "consent_type": body.consent_type,
+        "consent_note": (body.consent_note or "").strip() or None,
+        "revoked_at": None, "revoked_by": None,
+        "created_at": now, "updated_at": now,
+    }
+    await db[delegates_mod.COLL].insert_one({**g})
+    await audit("delegate_access_granted", "patient", patient_id, user,
+                meta={"delegate_user_id": delegate_user_id, "relationship": body.relationship,
+                      "permissions": perms, "consent_type": body.consent_type})
+    out = await _enrich_delegate(g)
+    if temp_pw:
+        out["temp_password"] = temp_pw  # one-time display for a freshly created caregiver
+    return out
+
+
+@api.patch("/internal/patients/{patient_id}/delegates/{grant_id}")
+async def edit_patient_delegate(patient_id: str, grant_id: str, body: DelegateEditBody,
+                                user: dict = Depends(require_roles(*CLINIC_ROLES))):
+    p = await db.patients.find_one({"id": patient_id})
+    if not p:
+        raise HTTPException(status_code=404, detail="Not found")
+    assert_practice(p, user)
+    g = await db[delegates_mod.COLL].find_one({"id": grant_id, "patient_id": patient_id})
+    if not g:
+        raise HTTPException(status_code=404, detail="Access grant not found.")
+    updates = {"updated_at": now_iso()}
+    if body.relationship is not None:
+        if body.relationship not in delegates_mod.RELATIONSHIPS:
+            raise HTTPException(status_code=400, detail="Invalid relationship.")
+        updates["relationship"] = body.relationship
+        updates["relationship_other"] = (body.relationship_other or "").strip() if body.relationship == "Other" else None
+    if body.permissions is not None:
+        perms = delegates_mod.clean_permissions(body.permissions)
+        if not perms:
+            raise HTTPException(status_code=400, detail="Select at least one permission.")
+        updates["permissions"] = perms
+    await db[delegates_mod.COLL].update_one({"id": grant_id}, {"$set": updates})
+    await audit("delegate_access_updated", "patient", patient_id, user,
+                meta={"grant_id": grant_id, **{k: v for k, v in updates.items() if k != "updated_at"}})
+    return await _enrich_delegate(await db[delegates_mod.COLL].find_one({"id": grant_id}))
+
+
+@api.post("/internal/patients/{patient_id}/delegates/{grant_id}/revoke")
+async def revoke_patient_delegate(patient_id: str, grant_id: str,
+                                  user: dict = Depends(require_roles(*CLINIC_ROLES))):
+    """Soft-revoke (active=false) — access stops immediately; history is preserved."""
+    p = await db.patients.find_one({"id": patient_id})
+    if not p:
+        raise HTTPException(status_code=404, detail="Not found")
+    assert_practice(p, user)
+    g = await db[delegates_mod.COLL].find_one({"id": grant_id, "patient_id": patient_id})
+    if not g:
+        raise HTTPException(status_code=404, detail="Access grant not found.")
+    if g.get("active"):
+        await db[delegates_mod.COLL].update_one({"id": grant_id}, {"$set": {
+            "active": False, "revoked_at": now_iso(), "revoked_by": user["id"], "updated_at": now_iso()}})
+        await audit("delegate_access_revoked", "patient", patient_id, user,
+                    meta={"grant_id": grant_id, "delegate_user_id": g.get("delegate_user_id")})
+    return await _enrich_delegate(await db[delegates_mod.COLL].find_one({"id": grant_id}))
+
+
+@api.get("/internal/delegate-options")
+async def delegate_options(user: dict = Depends(require_roles(*CLINIC_ROLES))):
+    return {"relationships": delegates_mod.RELATIONSHIPS,
+            "consent_types": delegates_mod.CONSENT_TYPES,
+            "permissions": sorted(delegates_mod.PERMISSIONS)}
+
 
 
 

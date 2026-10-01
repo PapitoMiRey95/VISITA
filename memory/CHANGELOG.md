@@ -1,5 +1,9 @@
 # VIen EMR — Changelog
 
+## 2026-06 — Landing search emphasis (Google-style) (PREVIEW ONLY, visual)
+- Landing search is now the dominant control: standalone centered pill (w-full max-w-[760px], h-14 mobile / h-16 desktop), left search icon, Search button integrated on the right, readable placeholder. Removed the uppercase "FIND YOUR CLINIC…" label. Sign in + Create Patient Portal + Apply for care moved into a compact card below; emergency notice below that. Pure Landing.jsx CSS/structure change — search backend, routing, auth, role filter, portal/apply, QR, i18n all unchanged. Verified desktop (search 760×64, results render) + no horizontal overflow; testids unchanged (iteration_67 flows preserved). Not deployed.
+
+
 ## 2026-06 — Landing + patient login UX simplification (PREVIEW ONLY)
 One universal entry point. Verified: testing_agent iteration_66 (15/15, 100% backend+frontend, zero issues) + curl + screenshots. NOT deployed to Production.
 

@@ -31,6 +31,7 @@ import email_service
 import identity as identity_mod
 import notifications as notify_svc
 import organizations as orgs_mod
+import relationships as rel_mod
 import storage
 from db import (APPT_PATIENT_STATUS, BLD_ACTIVE, BLD_PATIENT_STATUS, IMG_ACTIVE,
                 IMG_PATIENT_STATUS, MSG_ACTIVE, MSG_PATIENT_STATUS, RX_ACTIVE,
@@ -654,6 +655,14 @@ async def register(body: RegisterBody):
         await audit("directory_match_suggested", "patient", patient_id,
                     {"id": uid, "name": patient["first_name"], "role": "patient"},
                     meta={"outcome": match["outcome"], "candidate_count": len(match["candidates"])})
+    # Stage C — record the per-practice relationship for this canonical patient.
+    # ACTIVE_MATCH = already an active patient at this practice; everything else
+    # (unmatched/ambiguous self-declared) is an applicant until staff verify/link.
+    rel_status = rel_mod.ACTIVE if match.get("outcome") == directory_mod.ACTIVE_MATCH else rel_mod.APPLICANT
+    await rel_mod.upsert_relationship(
+        db, practice_id=practice["id"], status=rel_status,
+        directory_id=match.get("matched_id"), patient_id=patient_id,
+        visita_patient_id=None, by=patient["first_name"], source="registration")
     token = authlib.create_access_token(uid, email, "patient")
     user = await db.users.find_one({"_id": res.inserted_id})
     return {"token": token, "user": serialize_user(user)}
@@ -721,6 +730,10 @@ async def new_patient_request(body: NewPatientRequestBody):
     await audit("create", "patient_application", doc["id"],
                 {"id": None, "name": f"{body.first_name} {body.last_name}", "role": "patient"},
                 new_status="REQUEST_RECEIVED", meta={"type": "new_patient"})
+    # Stage C — applicant relationship at this practice (no canonical identity yet).
+    await rel_mod.upsert_relationship(
+        db, practice_id=practice["id"], status=rel_mod.APPLICANT,
+        application_id=doc["id"], by="patient", source="application")
     return {"ok": True, "ref_number": ref, "status": APP_PATIENT_STATUS["REQUEST_RECEIVED"],
             "message": await get_template("new_patient_request_confirmation"),
             "message_code": "NEW_PATIENT_CONFIRMATION"}
@@ -3718,6 +3731,7 @@ async def verifications(user: dict = Depends(require_roles(*CLINIC_ROLES))):
             "health_card_masked": mask_hcn(p.get("health_card_number")),
             "review_queue": p.get("review_queue"),
             "directory_match": p.get("directory_match"),
+            "relationship": await _rel_summary_for_patient(p, user),
         })
     return out
 
@@ -3974,6 +3988,13 @@ async def verify_patient(patient_id: str, body: VerifyBody, user: dict = Depends
             await db.patient_directory.update_one({"id": link_dir_id}, {"$set": {
                 "linked_patient_id": patient_id, "updated_at": now_iso()}})
             await audit("patient_linked", "patient", patient_id, user, meta={"directory_id": link_dir_id})
+            # Stage C — verified + linked ⇒ active relationship anchored to canonical identity.
+            if p.get("practice_id"):
+                await rel_mod.upsert_relationship(
+                    db, practice_id=p["practice_id"], status=rel_mod.ACTIVE,
+                    directory_id=link_dir_id, patient_id=patient_id,
+                    visita_patient_id=d.get("visita_patient_id"),
+                    by=user["name"], source="verification")
     # Auto-assign a unique 4-digit VISITA PIN ONLY for a portal-only patient becoming
     # verified with no existing PIN and no directory link. Never overwrite / never backfill.
     final_pin = updates.get("visita_patient_id") or p.get("visita_patient_id")
@@ -3986,6 +4007,21 @@ async def verify_patient(patient_id: str, body: VerifyBody, user: dict = Depends
         await audit("visita_pin_assigned", "patient", patient_id, user, meta={"visita_patient_id": new_pin})
     await db.patients.update_one({"id": patient_id}, {"$set": updates})
     await audit("verify_patient", "patient", patient_id, user, new_status=body.decision)
+    # Stage C — a verified portal account is an ACTIVE patient at its practice (covers
+    # the portal-only case with no directory link; link case handled above). A rejected
+    # account's practice relationship is marked inactive.
+    if p.get("practice_id"):
+        if body.decision == "verified":
+            await rel_mod.upsert_relationship(
+                db, practice_id=p["practice_id"], status=rel_mod.ACTIVE,
+                directory_id=updates.get("matched_directory_id") or p.get("matched_directory_id"),
+                patient_id=patient_id, visita_patient_id=updates.get("visita_patient_id") or p.get("visita_patient_id"),
+                by=user["name"], source="verification")
+        elif body.decision == "rejected":
+            await rel_mod.upsert_relationship(
+                db, practice_id=p["practice_id"], status=rel_mod.INACTIVE,
+                directory_id=p.get("matched_directory_id"), patient_id=patient_id,
+                by=user["name"], source="verification_rejected")
     if body.decision == "verified" and not was_verified:
         fresh = await db.patients.find_one({"id": patient_id}, {"_id": 0})
         await notify_svc.account_verified(db, fresh)
@@ -4002,6 +4038,7 @@ async def identity_links(user: dict = Depends(require_roles(*CLINIC_ROLES))):
     canonical VISITA record — the manual Identity Link Review queue. Ambiguous
     matches live here too; nothing is linked automatically."""
     pend = await db.patients.find({
+        **pscope(user),
         "active_status": True,
         "identity_linked": {"$ne": True},
         "directory_match.candidates.0": {"$exists": True},
@@ -4023,6 +4060,7 @@ async def identity_links(user: dict = Depends(require_roles(*CLINIC_ROLES))):
             "health_card_masked": mask_hcn(p.get("health_card_number")),
             "strength": (p.get("directory_match") or {}).get("strength"),
             "candidates": (p.get("directory_match") or {}).get("candidates", []),
+            "relationship": await _rel_summary_for_patient(p, user),
         })
     return out
 
@@ -4061,7 +4099,93 @@ async def link_patient_directory(patient_id: str, body: LinkDirectoryBody,
         "linked_patient_id": patient_id, "updated_at": now_iso()}})
     await audit("identity_linked", "patient", patient_id, user,
                 meta={"directory_id": d["id"], "visita_patient_id": pin, "preserved_pin": bool(pin)})
+    # Stage C — canonical linking re-anchors this practice's relationship to the
+    # canonical identity. Preserve an existing status if present, else mark active.
+    if p.get("practice_id"):
+        prior = await rel_mod.relationship_for_patient(db, p["practice_id"], patient_id=patient_id,
+                                                        directory_id=d["id"])
+        await rel_mod.upsert_relationship(
+            db, practice_id=p["practice_id"],
+            status=(prior.get("status") if prior else rel_mod.ACTIVE),
+            directory_id=d["id"], patient_id=patient_id, visita_patient_id=pin,
+            by=user["name"], source="identity_link")
     return {"ok": True, "visita_patient_id": pin, "directory_id": d["id"]}
+
+
+_REL_LABEL = {"active": "Active patient", "applicant": "Applicant",
+              "former": "Former patient", "inactive": "Inactive"}
+
+
+async def _practice_name(practice_id):
+    if not practice_id:
+        return None
+    p = await db.practices.find_one({"id": practice_id}, {"_id": 0, "physician_name": 1, "clinic_name": 1, "slug": 1})
+    if not p:
+        return practice_id
+    return p.get("clinic_name") or p.get("physician_name") or p.get("slug") or practice_id
+
+
+@api.get("/internal/patients/{patient_id}/relationship")
+async def patient_relationship(patient_id: str, user: dict = Depends(require_roles(*CLINIC_ROLES))):
+    """The caller-practice relationship for a portal patient's canonical identity.
+    Scoped: a staff member only sees their own practice's relationship record."""
+    p = await db.patients.find_one({"id": patient_id})
+    if not p:
+        raise HTTPException(status_code=404, detail="Not found")
+    assert_practice(p, user)
+    rel = await rel_mod.relationship_for_patient(
+        db, user.get("practice_id"), patient_id=patient_id, directory_id=p.get("matched_directory_id"))
+    out = rel_mod.serialize(rel)
+    if out:
+        out["label"] = _REL_LABEL.get(out.get("status"), out.get("status"))
+    return {"relationship": out}
+
+
+@api.get("/internal/canonical/{directory_id}/relationships")
+async def canonical_relationships(directory_id: str, user: dict = Depends(require_roles(*CLINIC_ROLES))):
+    """Cross-practice view of ONE canonical patient identity. The caller sees their
+    own practice's relationship in full; other practices are summarised to
+    {practice, status} ONLY (no PHI, no records) so the global identity is visible
+    without breaching practice data isolation."""
+    rels = await rel_mod.relationships_for_directory(db, directory_id)
+    own, others = None, []
+    for r in rels:
+        if r.get("practice_id") == user.get("practice_id"):
+            own = rel_mod.serialize(r)
+            if own:
+                own["label"] = _REL_LABEL.get(own.get("status"), own.get("status"))
+        else:
+            others.append({
+                "practice_id": r.get("practice_id"),
+                "practice_name": await _practice_name(r.get("practice_id")),
+                "status": r.get("status"),
+                "label": _REL_LABEL.get(r.get("status"), r.get("status")),
+                "updated_at": r.get("updated_at"),
+            })
+    return {"directory_id": directory_id, "own": own, "others": others}
+
+
+async def _rel_summary_for_patient(p, user):
+    """Compact relationship summary for a portal patient: own-practice status +
+    other-practice statuses (status only, no PHI). Used to annotate review queues."""
+    pid = user.get("practice_id")
+    own = await rel_mod.relationship_for_patient(
+        db, pid, patient_id=p["id"], directory_id=p.get("matched_directory_id"))
+    summary = {"own": None, "others": []}
+    if own:
+        summary["own"] = {"status": own.get("status"),
+                          "label": _REL_LABEL.get(own.get("status"), own.get("status"))}
+    if p.get("matched_directory_id"):
+        for r in await rel_mod.relationships_for_directory(db, p["matched_directory_id"]):
+            if r.get("practice_id") == pid:
+                continue
+            summary["others"].append({
+                "practice_name": await _practice_name(r.get("practice_id")),
+                "status": r.get("status"),
+                "label": _REL_LABEL.get(r.get("status"), r.get("status")),
+            })
+    return summary
+
 
 
 # ----------------------------- Patient Applications (new / former return) -----------------------------
@@ -4240,6 +4364,14 @@ async def _accept_new_patient(doc, actor):
                                 "your password and activate your patient portal.")
     await audit("new_patient_account_created", "patient", patient_id, actor,
                 meta={"application_id": doc["id"], "user_id": uid, "visita_patient_id": pin})
+    # Stage C — acceptance transitions the applicant into an ACTIVE patient at this
+    # practice, now anchored to the freshly-created canonical identity (dir_id).
+    if doc.get("practice_id"):
+        await rel_mod.upsert_relationship(
+            db, practice_id=doc["practice_id"], status=rel_mod.ACTIVE,
+            directory_id=dir_id, patient_id=patient_id, application_id=doc["id"],
+            visita_patient_id=pin, by=actor.get("name", "physician"), source="application_accepted",
+            note="New-patient application accepted")
     return {"account_created": True, "user_id": uid, "patient_id": patient_id, "visita_patient_id": pin}
 
 
@@ -4278,6 +4410,12 @@ async def application_update(item_id: str, body: ApplicationUpdateBody,
                     await audit("physician_reactivation", "patient_directory", d["id"], user,
                                 old_status=directory_mod.FORMER_CLOSED, new_status=directory_mod.ACTIVE,
                                 meta={"application_id": item_id})
+                    if doc.get("practice_id"):
+                        await rel_mod.upsert_relationship(
+                            db, practice_id=doc["practice_id"], status=rel_mod.ACTIVE,
+                            directory_id=d["id"], application_id=item_id,
+                            visita_patient_id=d.get("visita_patient_id"),
+                            by=user["name"], source="former_return_accepted")
             # New-patient acceptance: create ACTIVE directory + portal account + activation email
             elif doc.get("application_type") == "new_patient" and old != "ACCEPTED" and not doc.get("account_created_user_id"):
                 result = await _accept_new_patient(doc, user)

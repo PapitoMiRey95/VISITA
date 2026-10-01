@@ -1,7 +1,7 @@
 import { useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { toast } from "sonner";
-import { UserCheck, UserX, History, Link2, ShieldCheck, Search, GitMerge } from "lucide-react";
+import { UserCheck, UserX, History, Link2, ShieldCheck, Search, GitMerge, Building2 } from "lucide-react";
 import { api, formatErr } from "../lib/api";
 import { useInvalidate } from "./hooks";
 import { useAuth } from "../context/AuthContext";
@@ -12,6 +12,34 @@ import { formatDate, formatDateTime } from "../lib/date";
 import { formatLastFirst } from "../lib/name";
 
 const TYPE = { ohip: "OHIP", private: "Private / Uninsured", tourist: "Tourist / Visitor", uninsured: "Private / Uninsured" };
+
+const REL_STYLE = {
+    active: "bg-emerald-100 text-emerald-700",
+    applicant: "bg-sky-100 text-sky-700",
+    former: "bg-amber-100 text-amber-700",
+    inactive: "bg-slate-100 text-slate-600",
+};
+
+function RelationshipBadges({ rel }) {
+    if (!rel) return null;
+    const own = rel.own;
+    const others = rel.others || [];
+    if (!own && others.length === 0) return null;
+    return (
+        <div className="flex flex-wrap items-center gap-1.5 mt-1" data-testid="relationship-badges">
+            {own && (
+                <span data-testid="relationship-own" className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-sm text-xs font-semibold ${REL_STYLE[own.status] || REL_STYLE.inactive}`}>
+                    <Building2 className="w-3 h-3" /> This practice: {own.label}
+                </span>
+            )}
+            {others.map((o, i) => (
+                <span key={i} data-testid="relationship-other" className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-sm text-xs ${REL_STYLE[o.status] || REL_STYLE.inactive}`}>
+                    {o.practice_name}: {o.label}
+                </span>
+            ))}
+        </div>
+    );
+}
 
 const REVIEW = {
     ACTIVE_MATCH: ["Active match — verify & link", "bg-emerald-100 text-emerald-700"],
@@ -104,6 +132,7 @@ function IdentityLinks({ canDecide }) {
                                 {p.verification_status === "verified" ? "Verified portal account" : "Pending verification"}
                                 {p.visita_patient_id ? ` · current PIN ${p.visita_patient_id}` : " · no PIN"}
                             </div>
+                            <RelationshipBadges rel={p.relationship} />
                         </div>
                         <div className="text-sm">
                             <div className="text-xs uppercase tracking-wide text-slate-400 mb-1">
@@ -206,6 +235,7 @@ export default function Verifications() {
                                 )}
                                 <div className="font-bold text-slate-800 text-base" data-testid="verification-name">{formatLastFirst(p.last_name, p.first_name)}</div>
                                 <div className="text-slate-600">DOB: {formatDate(p.date_of_birth)} · {TYPE[p.patient_type] || p.patient_type}</div>
+                                <RelationshipBadges rel={p.relationship} />
                                 <div className="text-slate-600">Phone: {p.phone} · Email: {p.email}</div>
                                 {p.health_card_masked && <div className="text-slate-600">Health Card: {p.health_card_masked}</div>}
                                 {p.province && <div className="text-slate-600">Province: {p.province}</div>}

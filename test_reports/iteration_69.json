@@ -1,0 +1,52 @@
+{
+  "summary": "Phase B — Staff Portal Account panel + Physician Medical Record + Medication lifecycle (add/edit/continue/discontinue) tested end-to-end. 18/18 backend tests PASS against preview URL. Frontend smoke verified: Portal Account panel renders on Maria Lopez with status Active, login_email, email_verified, access, must_change_password, last_login, temp_password_expires visible; Send/Temp/Force-change/Change-email/Disable buttons all have correct data-testids; Send password reset click produced success toast 'Reset code sent to maria.lopez@demo.com'. Medical Record collapsible renders with mr-add-med-btn and mr-active-meds. Portal Access nav badge shows 8 (matches counters.portal_access).",
+  "backend_issues": {"critical": [], "minor": []},
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [],
+    "design_issues": [
+      {"screen": "Portal Account panel on Patient detail", "issues": ["EMAIL VERIFIED badge shows 'Not verified' for Maria after a staff email change/revert cycle. This is correct per spec (change_email sets email_verified=false and spec says there is NO merge/no auto re-verify), but staff may be surprised that reverting to the ORIGINAL seeded email doesn't re-flag it as verified. Consider adding a small helper text 'Patient must verify via portal' near the badge, or a 'Mark verified' admin override. Non-blocking."]}
+    ]
+  },
+  "verified_flows": [
+    "GET /api/internal/patients/{pid}/portal-account returns {has_account, login_email, name, role, status, email_verified, active, disabled, must_change_password, pending_activation, locked, last_login_at, temp_password_expires_at} for Maria Lopez",
+    "POST .../portal-account/send-reset -> 200 {sent_to: maria.lopez@demo.com}; UI toast confirmed",
+    "POST .../portal-account/temp-password -> 200 one-time plaintext temp_password, expires_at set, must_change_password=true, pending_activation=false; login with temp works and /auth/change-password restores Patient2026!",
+    "POST .../portal-account/force-password-change -> 200 sets must_change_password=true; verified via subsequent GET; restored via staff temp-password + patient change-password",
+    "POST .../portal-account/email with Linda's existing email -> 409 duplicate; change to scratch email -> 200 with email_verified=false; revert -> 200",
+    "POST .../portal-account/disable -> 200 active:false; login /auth/login returns 403 'account has been disabled'; patient directory record / PIN remain intact; .../enable -> 200 active:true; login works again (password login returns 200)",
+    "GET /api/internal/counters -> includes 'portal_access' integer; preview value = 8 (shown in sidebar badge)",
+    "GET /api/internal/patients/{pid}/medical-record (physician) returns summary, encounters, medications.active[Metformin, Ramipril, Atorvastatin + any added], medications.discontinued, documents; patient JWT -> 401/403 (role-scoped)",
+    "POST /api/internal/patients/{pid}/medications (physician) adds authoritative row with regimen_key, source=physician_manual, active=true, history event {action: added}",
+    "PATCH .../medications/{med_id} with action_type=edit records previous+new in history and keeps active=true",
+    "PATCH .../medications/{med_id} with action_type=continue updates last_prescribed_at and keeps/sets active=true",
+    "PATCH .../medications/{med_id} with action_type=discontinue sets active=false + discontinued_at, pushes history event; GET /api/portal/medications no longer returns it; GET .../medical-record still shows it under discontinued (history preserved)",
+    "Regression: GET /api/internal/prescriptions and GET /api/internal/patient-lookup?q=Maria both 200",
+    "UI: Portal Account panel + Medical Record both render for admin after selecting LOPEZ, Maria. All required data-testids present (pa-send-reset, pa-temp-password, pa-force-change, pa-change-email, pa-disable, medical-record-toggle, mr-add-med-btn, mr-active-meds). pa-email-input/pa-email-save and pa-enable render only when the respective edit/disabled state is active — expected."
+  ],
+  "test_report_links": [
+    "/app/backend/tests/test_phase_b_portal_account_and_medrec.py",
+    "/app/test_reports/pytest/phase_b_results.xml"
+  ],
+  "action_items": [
+    "INFO: No blocking issues. Phase B is green on both backend and UI smoke. Main agent can proceed.",
+    "LOW/UX: Consider explaining to staff that email_verified stays false after any staff-side email change, even when reverted to the original (per 'no merge, no auto-verify' spec). A tooltip or 'Patient must re-verify' hint next to the Not verified badge would help.",
+    "INFO (edge not exercised): temp_password expiry 403 path in login() is implemented (lines ~906-915) but was not reproduced in tests because TTL is hours; code path is simple fromisoformat < now compare, considered covered by review."
+  ],
+  "critical_code_review_comments": [
+    "backend/server.py get_portal_account response uses `login_email` (not `email`); make sure any other UI consumer of this endpoint keys off `login_email`. Current PortalAccountPanel.jsx renders correctly.",
+    "portal_account_change_email also updates db.patients.email but does NOT clear patient.email_verified; patients collection has no separate email_verified flag — only users.email_verified matters for login/UI, so this is fine.",
+    "portal_account_disable sets users.active=False only (good). Confirmed login path returns 403 'disabled'. Patient directory, VISITA PIN, patient_medications and portal_access_requests are not touched. Spec compliance OK.",
+    "physician_update_medication edit history event stores `previous` and `new` slices only for provided fields — matches spec ('edit records previous+new'). History append on discontinue preserves full record and does NOT remove the document. Good.",
+    "GET /internal/counters now returns `portal_access` for both physician and staff branches. Confirmed sidebar badge shows this count."
+  ],
+  "updated_files": [
+    "/app/backend/tests/test_phase_b_portal_account_and_medrec.py (new, 18 tests)"
+  ],
+  "success_rate": {"backend": "18/18 (100%)", "frontend": "Panel+MR render and send-reset action verified"},
+  "test_credentials": "Admin kevinrodriguez9528@gmail.com / VisitaAdmin2026! OK; Physician PAGUAYO / Newman2013_! OK (identifier login via /signin or /login clinic flow); maria.lopez@demo.com / Patient2026! OK (restored after force-change test); linda.nguyen@demo.com / Patient2026! OK (restored after temp-password test). Robert.helper.qa drift (reported in iteration_68) still unresolved but out of scope here.",
+  "seed_data_creation": "Tests create and then discontinue a 'TEST_Phase_B_Rx 250 mg Tablet' on Maria Lopez (regimen_key reused across runs). Maria's seeded 3 meds (Metformin/Ramipril/Atorvastatin) remain Active and untouched. Linda has an extra 'edited' history entry if run multiple times; otherwise unchanged. One side-effect that could not be reverted via API: Maria's users.email_verified is now False (because the staff change-email flow sets email_verified=false and there is no admin 'mark verified' endpoint). Patient can re-verify via portal /api/portal/account/email/request+/verify. Non-blocking.",
+  "retest_needed": false,
+  "main_agent_can_self_test": true,
+  "context_for_next_testing_agent": "Backend contract: GET /api/internal/patients/{pid}/portal-account response uses `login_email` (not `email`). Clinic/admin login URL is reached by /#/ -> Sign in -> role-clinic (NOT /signin which is PATIENT only; /login redirects to landing). Patient search returns 'LASTNAME, Firstname' rows (e.g. 'LOPEZ, Maria'); click that string, NOT 'Maria Lopez'. pa-email-input / pa-email-save / pa-enable testids only mount in their respective sub-states (email edit mode / disabled state). Linda's and Maria's passwords are both back to Patient2026!. Phase B is green; subsequent testing can focus on new features."
+}

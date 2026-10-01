@@ -1,5 +1,21 @@
 # VIen EMR — Changelog
 
+## 2026-10-01 — Phase B: Staff Portal Account Mgmt + Physician Medical Record + Medication Mgmt (PREVIEW ONLY, NOT DEPLOYED)
+Tested by testing_agent iteration_69: 18/18 backend PASS; UI panels render + actions verified. No blocking issues.
+- **Staff/Admin Portal Account panel** (`PortalAccountPanel.jsx`, roles admin+staff) in Patients detail. Shows status, login email, email_verified, access enabled/disabled, must_change_password, last_login_at, temp-password expiry. Actions (all audited, practice-scoped, current password never shown):
+  - `GET /api/internal/patients/{id}/portal-account`
+  - `POST .../portal-account/send-reset` (emails 6-digit reset code)
+  - `POST .../portal-account/resend-verification` (re-issues 72h activation link; only when pending_activation)
+  - `POST .../portal-account/temp-password` (one-time temp pw, 72h expiry, must_change_password=true, shown once)
+  - `POST .../portal-account/force-password-change`
+  - `POST .../portal-account/email` (duplicate→409; sets email_verified=false; no merge)
+  - `POST .../portal-account/disable` + `/enable` (login-only block; patient/PIN/history preserved)
+- **Login** now records `last_login_at` and rejects an expired one-time temp password (403).
+- **Portal Access nav badge**: `GET /api/internal/counters` now returns `portal_access` = PENDING portal_access_requests (practice-scoped); sidebar badge wired.
+- **Physician Medical Record** (`MedicalRecord.jsx`, roles admin+physician): `GET /api/internal/patients/{id}/medical-record` → summary, encounters (appointment_requests), medications {active, discontinued}, documents. Shows only existing VIen data (no fabrication). Cross-practice → 404.
+- **Medication Management** (physician/admin): `POST /api/internal/patients/{id}/medications` (Add) and `PATCH .../medications/{med_id}` with action_type continue|edit|discontinue. Reuses `patient_medications` + `_regimen_key` + `medication_catalog` + `physician_rx_memory`. Discontinue sets active=false (never deletes); edit stores previous+new in a `history[]`. Patient Portal "Your Medicines" (`GET /api/portal/medications`) reflects state live.
+
+
 ## 2026-06 — Patients stale-data RCA fix + Copy patient info (PREVIEW)
 - **RCA**: Internal Patients search (`_search_patients_merged`) returned the `patient_directory` snapshot for VERIFIED portal patients linked to a directory record (matched_directory_id), so canonical edits (portal profile/email/address/health-card) didn't show — the screen read a stale directory copy. Canonical `patients` data was correct all along (write path fine; read source wrong).
 - **Smallest safe fix (read-path only, no data change)**: for verified portal patients, return the CANONICAL `_portal_patient_snapshot(p)`, backfilling only PIN + pharmacy from the linked directory. Verified: canonical edit (city) now reflects immediately in the Patients screen; PIN preserved. Fix is in code — deploying it resolves Production; no prod data migration needed.

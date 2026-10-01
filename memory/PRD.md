@@ -605,3 +605,7 @@ STATUS: complete & verified in PREVIEW. AWAITING explicit user GO before Product
 - Applied to POST /professionals, PATCH /professionals/{id}, PUT /professionals/me. Self-update audit now records fields_changed + diff (same as PATCH).
 - UI: editor "Public professional contact" section (prof-public-phone/fax/email, prof-addr-*); ProfileView renders tel:/mailto: links + formatted address (prof-view-phone/fax/email/address). Visible to all PROF_VIEW_ROLES.
 - Verified: curl validation (400s), UI create→view→edit round-trip, audit diff, 56/56 regression. Test record cleaned (profiles 0).
+
+## STATUS 2026-10-01 (PREVIEW)
+- Phase B COMPLETE in preview (NOT deployed): Staff/Admin Portal Account Management panel, Physician Medical Record view, Physician Medication Management (Add/Continue/Edit/Discontinue -> patient_medications w/ live portal "Your Medicines" sync), Portal Access nav pending-badge. Tested testing_agent iteration_69 (18/18 backend pass; UI verified).
+- Patient lookup stale-data fix + Copy patient info: DEPLOYED to Production earlier this session.

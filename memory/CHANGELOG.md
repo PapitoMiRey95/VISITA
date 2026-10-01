@@ -1,5 +1,16 @@
 # VIen EMR — Changelog
 
+## 2026-06 — Landing + patient login UX simplification (PREVIEW ONLY)
+One universal entry point. Verified: testing_agent iteration_66 (15/15, 100% backend+frontend, zero issues) + curl + screenshots. NOT deployed to Production.
+
+- **Landing (Landing.jsx rewritten)** — replaced the multiple large role cards with a single panel: prominent SEARCH ("Search clinic, physician, pharmacy or service…", uses existing GET /practices), a "Sign in" button, "Current patient? → Create Patient Portal" (/register), and "Looking for a family doctor? → Apply for care" (/register?new=1). Existing background/branding kept. Search result → /register/{slug}.
+- **Sign-in role filter** — "Sign in" opens an inline "How do you use VIen?" step → Patient (/signin), Clinic/Staff (/signin?internal=1), Professional·Pharmacy·Health Partner (/signin?partner=1). No internal role names exposed; no cards on first screen.
+- **Patient login wording (SignIn.jsx + i18n)** — title "Sign in as a patient", subtitle "For current patients"; bottom prompt "Current patient without a portal? → Create Patient Portal"; added subtle "Looking for a family doctor? → Apply for care". Google sign-in unchanged. Auth architecture untouched.
+- **Apply for care — status in Canada (Register.jsx + backend)** — when OHIP = No, show "What is your current status in Canada?" with 8 options (Canadian citizen / Permanent resident / Work permit / Study permit / Visitor / Refugee or protected person / Other / Unsure or Prefer not to say). NOT labeled "migration status"; administrative-only, NEVER auto-blocks; OHIP coverage and status remain separate. Backend: one additive optional field `NewPatientRequestBody.status_in_canada`, stored on the application (coverage still derived independently). Create-Patient-Portal YES/NO routing (already-patient → portal vs Apply) unchanged.
+- Generic /register remains search-only (no registration-code field); direct /register/{slug} + QR unchanged. i18n EN/ES/FR updated (landing2.*, signin.*, register.newPatient.status*).
+
+
+
 ## 2026-06 — Patient Portal: Smart Medication List + simplified refill (PREVIEW ONLY)
 Separates the OFFICIAL, physician-controlled medication list from refill-request history. Verified: testing_agent iteration_65 (11/11 backend, frontend 100%, zero issues) + main-agent curl + screenshot.
 

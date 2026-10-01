@@ -37,17 +37,17 @@ export default function Landing() {
                 <span className="pl-1 pr-1.5 text-[9px] uppercase tracking-widest text-slate-500 inline">{t("common:language.comingSoon")}</span>
             </div>
 
-            <div className="relative z-10 min-h-screen flex flex-col lg:flex-row lg:items-center lg:justify-between px-6 py-12 lg:px-16 gap-10">
-                {/* Branding — unchanged identity */}
-                <div className="w-full max-w-2xl lg:max-w-3xl text-center rounded-2xl border border-white/10 bg-gradient-to-br from-[rgba(8,20,35,0.72)] to-[rgba(8,20,35,0.55)] backdrop-blur-md px-8 py-10 lg:px-12 lg:py-14 shadow-[0_20px_60px_-15px_rgba(0,0,0,0.7)]">
-                    <Logo variant="dark" iconClass="h-20 w-20 lg:h-28 lg:w-28 drop-shadow-[0_0_30px_rgba(23,179,196,0.35)]"
-                        textClass="text-4xl sm:text-5xl lg:text-6xl" className="justify-center" />
-                    <p className="mt-4 text-lg text-slate-100 font-semibold tracking-wide">{t("common:practice")}</p>
-                    <p className="mt-2 max-w-md mx-auto text-sm text-slate-300 leading-relaxed">{t("common:tagline")}</p>
-                    <div className="mt-6 h-px w-40 mx-auto bg-gradient-to-r from-cyan-400/50 to-transparent" />
+            <div className="relative z-10 min-h-screen flex flex-col items-center px-6 py-16 lg:py-20 gap-8">
+                {/* Branding — centered hero (unchanged identity) */}
+                <div className="w-full max-w-2xl text-center rounded-2xl border border-white/10 bg-gradient-to-br from-[rgba(8,20,35,0.72)] to-[rgba(8,20,35,0.5)] backdrop-blur-md px-8 py-8 lg:px-12 lg:py-10 shadow-[0_20px_60px_-15px_rgba(0,0,0,0.7)]">
+                    <Logo variant="dark" iconClass="h-16 w-16 lg:h-24 lg:w-24 drop-shadow-[0_0_30px_rgba(23,179,196,0.35)]"
+                        textClass="text-3xl sm:text-4xl lg:text-5xl" className="justify-center" />
+                    <p className="mt-3 text-base lg:text-lg text-slate-100 font-semibold tracking-wide">{t("common:practice")}</p>
+                    <p className="mt-1.5 max-w-md mx-auto text-sm text-slate-300 leading-relaxed">{t("common:tagline")}</p>
+                    <div className="mt-5 h-px w-40 mx-auto bg-gradient-to-r from-transparent via-cyan-400/50 to-transparent" />
                 </div>
 
-                {/* Single entry panel */}
+                {/* Single entry panel — centered directly below the hero */}
                 <div className="w-full max-w-md">
                     <div className="rounded-2xl border border-cyan-400/25 bg-[#0b1524]/85 backdrop-blur-xl p-6 shadow-[0_20px_60px_-15px_rgba(0,0,0,0.85)]">
                         {mode === "home" ? (
@@ -56,7 +56,7 @@ export default function Landing() {
                             <RolePanel nav={nav} t={t} onBack={() => setMode("home")} />
                         )}
                     </div>
-                    <p className="mt-4 text-[11px] leading-relaxed text-slate-300 rounded-2xl border border-white/10 bg-gradient-to-br from-[rgba(8,20,35,0.72)] to-[rgba(8,20,35,0.55)] backdrop-blur-md px-4 py-3 shadow-[0_20px_60px_-15px_rgba(0,0,0,0.7)]">{t("common:emergencyNotice")}</p>
+                    <p className="mt-4 text-[11px] leading-relaxed text-center text-slate-300 rounded-2xl border border-white/10 bg-gradient-to-br from-[rgba(8,20,35,0.72)] to-[rgba(8,20,35,0.55)] backdrop-blur-md px-4 py-3 shadow-[0_20px_60px_-15px_rgba(0,0,0,0.7)]">{t("common:emergencyNotice")}</p>
                 </div>
             </div>
         </div>

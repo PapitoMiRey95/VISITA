@@ -1,5 +1,17 @@
 # VIen EMR — Changelog
 
+## 2026-10-01 — Stage A correction: removed former-patient / re-establish-care routing (PREVIEW ONLY)
+Registration now keys off the CURRENT relationship with the resolved practice only. Verified via curl (FORMER→application, ACTIVE→verification, UNMATCHED→manual verification) + UI smoke.
+
+- **`/auth/register` FORMER branch replaced**: a FORMER_CLOSED directory match no longer returns `former_detected`/re-establish. It now returns `{application_required: true, message_code: "APPLICATION_REQUIRED", prefill}` and creates NO account — the person is routed to the normal New Patient Application like any prospective patient.
+- **ACTIVE** → unchanged (portal account + verification queue, `practice_id` stamped). **UNMATCHED self-declared** → unchanged (account + `UNMATCHED_CURRENT_PATIENT` manual verification). Coverage (OHIP/No-OHIP) unaffected.
+- **`POST /applications/return-request`** marked **LEGACY/DORMANT** (docstring) — unreferenced by any UI, retained only so historical `former_return` applications stay processable. No new `former_return` records can be created from the patient journey.
+- **Frontend `Register.jsx`**: removed the `former` notice step, the `reestablish` form, `submitReestablish`, and `former` state. `application_required` now routes to the apply form (step 99) with a neutral toast. No "Former Patient" / "Re-establish Care" patient-facing UI remains.
+- **AuthContext**: `former_detected` → `application_required`.
+- Legacy-but-dormant retained (document only, not reachable from new flow): `return-request` endpoint; internal Applications queue still renders historical `former_return` records + their acceptance path; seed templates `former_patient_detected` / `reestablish_care_confirmation` (unused); `directory.FORMER_MATCH` still used for *detection* (to route to application). No historical data deleted.
+
+Production MONGO_URL note: Emergent support has **rotated** the exposed Production Mongo credential — rotation is **complete**, no longer a pending blocker.
+
 ## 2026-10-01 — Multi-physician Registration Stage A (PREVIEW ONLY, not deployed)
 Care-ownership context model + simplified registration UX. Verified via curl (practice endpoints, context stamping, 404/400, idempotent migration, generic default) and UI smoke (slug route banner, Yes/No → OHIP, No → application, generic Find-your-clinic).
 

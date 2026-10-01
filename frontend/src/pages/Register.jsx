@@ -43,11 +43,10 @@ export default function Register() {
     // only. If VIen already knows the practice from the link, we never ask again.
     const [practice, setPractice] = useState(null);
     // steps: "resolving" | "findClinic" | 1=patient? | "coverage" | 2=current form |
-    //        99=new-patient form | "former" | "reestablish" | "done"
+    //        99=new-patient form | "done"
     const [step, setStep] = useState("resolving");
     const [type, setType] = useState(null);
     const [busy, setBusy] = useState(false);
-    const [former, setFormer] = useState(null);
     const [confirm, setConfirm] = useState(null);
     const [form, setForm] = useState({
         first_name: "", last_name: "", second_name: "", second_last_name: "",
@@ -105,30 +104,15 @@ export default function Register() {
             const first_name = joinName(form.first_name, form.second_name);
             const last_name = joinName(form.last_name, form.second_last_name);
             const res = await register({ ...form, first_name, last_name, patient_type: type, preferred_language: i18n.language, ...practiceCtx });
-            if (res?.former_detected) {
-                setFormer({ message: res.message, code: res.message_code, prefill: res.prefill || {} });
+            if (res?.application_required) {
                 setForm((f) => ({ ...f, ...(res.prefill || {}) }));
-                setStep("former");
+                setType("none");
+                setStep(99);
+                toast.info(t("auth:register.ctx.notActiveApply"));
                 return;
             }
             toast.success(t("auth:register.accountCreated"));
             nav("/portal", { replace: true });
-        } catch (err) { toast.error(formatErr(err)); } finally { setBusy(false); }
-    };
-
-    const submitReestablish = async (e) => {
-        e.preventDefault();
-        setBusy(true);
-        try {
-            const { data } = await api.post("/applications/return-request", {
-                first_name: joinName(form.first_name, form.second_name), last_name: joinName(form.last_name, form.second_last_name), date_of_birth: form.date_of_birth,
-                health_card_number: form.health_card_number || null, phone: form.phone, email: form.email,
-                address: form.address || null, city: form.city || null, province: form.province || null,
-                postal_code: form.postal_code || null, patient_message: form.patient_message || null,
-                preferred_language: i18n.language, ...practiceCtx,
-            });
-            setConfirm({ message: data.message, code: data.message_code, ref_number: data.ref_number });
-            setStep("done");
         } catch (err) { toast.error(formatErr(err)); } finally { setBusy(false); }
     };
 
@@ -292,55 +276,6 @@ export default function Register() {
                         <Button data-testid="reg-submit" type="submit" disabled={busy}
                             className="w-full bg-portal-blue hover:bg-portal-blueDark text-white text-base h-12 rounded-xl">
                             {busy ? <Loader2 className="w-4 h-4 animate-spin" /> : t("auth:register.createAccountBtn")}
-                        </Button>
-                    </form>
-                )}
-
-                {step === "former" && (
-                    <div className="bg-white rounded-2xl border border-slate-200 p-6 shadow-sm animate-fade-in" data-testid="former-notice">
-                        <h2 className="text-xl font-bold text-slate-900 mb-3">{t("auth:register.former.title")}</h2>
-                        <p className="text-slate-600 mb-5 leading-relaxed">{sysMsg(former)}</p>
-                        <Button data-testid="reestablish-start" onClick={() => setStep("reestablish")}
-                            className="w-full bg-portal-blue hover:bg-portal-blueDark text-white text-base h-12 rounded-xl">
-                            {t("auth:register.former.reestablishBtn")}
-                        </Button>
-                        <p className="text-center text-sm text-slate-600 mt-5">
-                            {t("auth:register.former.alreadyPortal")}{" "}
-                            <Link to="/signin" className="text-portal-blueDark font-bold hover:underline">{t("auth:register.signIn")}</Link>
-                        </p>
-                    </div>
-                )}
-
-                {step === "reestablish" && (
-                    <form onSubmit={submitReestablish} data-testid="reestablish-form" className="bg-white rounded-2xl border border-slate-200 p-6 shadow-sm animate-fade-in space-y-4">
-                        <button type="button" onClick={() => setStep("former")} className="flex items-center text-slate-500 text-sm">
-                            <ChevronLeft className="w-4 h-4" /> {t("common:actions.back")}
-                        </button>
-                        <h2 className="text-xl font-bold text-slate-900">{t("auth:register.reestablish.title")}</h2>
-                        <p className="text-sm text-slate-500">{t("auth:register.reestablish.subtitle")}</p>
-
-                        <div className="grid grid-cols-2 gap-3">
-                            <Field label={t("auth:register.firstName")} testid="re-first"><Input required value={form.first_name} onChange={set("first_name")} /></Field>
-                            <Field label={t("auth:register.secondName")} testid="re-second"><Input value={form.second_name} onChange={set("second_name")} placeholder={optional} /></Field>
-                        </div>
-                        <div className="grid grid-cols-2 gap-3">
-                            <Field label={t("auth:register.firstLastName")} testid="re-last"><Input required value={form.last_name} onChange={setSurname("last_name")} /></Field>
-                            <Field label={t("auth:register.secondLastName")} testid="re-second-last"><Input value={form.second_last_name} onChange={setSurname("second_last_name")} placeholder={optional} /></Field>
-                        </div>
-                        <Field label={t("auth:register.dob")} testid="re-dob"><DobPicker value={form.date_of_birth} onChange={setDob} testid="re-dob" /></Field>
-                        <Field label={t("auth:register.reestablish.hcNumber")} testid="re-hcn"><HealthCardNumberInput value={form.health_card_number} onChange={(v) => setForm({ ...form, health_card_number: v })} placeholder="1234 567 890" /></Field>
-                        <Field label={t("auth:register.phone")} testid="re-phone"><Input required value={form.phone} onChange={set("phone")} /></Field>
-                        <Field label={t("auth:register.email")} testid="re-email"><Input type="email" required value={form.email} onChange={set("email")} /></Field>
-                        <Field label={t("auth:register.reestablish.addressOptional")} testid="re-address"><Input value={form.address} onChange={set("address")} /></Field>
-                        <div className="grid grid-cols-2 gap-3">
-                            <Field label={t("auth:register.reestablish.city")} testid="re-city"><Input value={form.city} onChange={set("city")} /></Field>
-                            <Field label={t("auth:register.reestablish.postalCode")} testid="re-postal"><Input value={form.postal_code} onChange={set("postal_code")} /></Field>
-                        </div>
-                        <Field label={t("auth:register.reestablish.messageOptional")} testid="re-message"><Input value={form.patient_message} onChange={set("patient_message")} placeholder={t("auth:register.reestablish.messagePlaceholder")} /></Field>
-
-                        <Button data-testid="reestablish-submit" type="submit" disabled={busy}
-                            className="w-full bg-portal-blue hover:bg-portal-blueDark text-white text-base h-12 rounded-xl">
-                            {busy ? <Loader2 className="w-4 h-4 animate-spin" /> : t("auth:register.reestablish.submit")}
                         </Button>
                     </form>
                 )}

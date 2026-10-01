@@ -589,19 +589,18 @@ async def register(body: RegisterBody):
     match = await directory_mod.match_registration(
         db, body.first_name, body.last_name, body.date_of_birth, body.health_card_number)
 
-    # FORMER_CLOSED match: do NOT create a current-patient portal account.
-    # Route the person to the neutral re-establish-care request flow instead.
+    # FORMER_CLOSED is historical/reference data only. It no longer grants a
+    # special re-establish route: treat the person as NOT currently active and
+    # send them through the normal New Patient Application, like any prospective
+    # patient. No account is created here; the frontend switches to the apply form.
     if match["outcome"] == directory_mod.FORMER_MATCH:
-        msg = await get_template("former_patient_detected")
         return {
-            "former_detected": True,
-            "message": msg,
-            "message_code": "FORMER_PATIENT_DETECTED",
+            "application_required": True,
+            "message_code": "APPLICATION_REQUIRED",
             "prefill": {
                 "first_name": body.first_name, "last_name": body.last_name,
                 "date_of_birth": body.date_of_birth, "email": email,
-                "phone": body.phone, "health_card_number": body.health_card_number,
-                "province": body.province,
+                "phone": body.phone, "province": body.province,
             },
         }
 
@@ -654,6 +653,11 @@ async def register(body: RegisterBody):
 
 @api.post("/applications/return-request")
 async def return_request(body: ReturnRequestBody):
+    """LEGACY / DORMANT — the 'Request to Re-establish Care' flow has been removed
+    from the VIen patient journey. This endpoint is no longer referenced by any UI
+    and should not be called. It is retained (read-only/dormant) only so historical
+    `former_return` applications remain processable. Former patients now use the
+    normal New Patient Application (POST /applications/new-patient)."""
     validate_dob_age(body.date_of_birth)
     practice = await resolve_practice_for_registration(body)
     match = await directory_mod.match_registration(

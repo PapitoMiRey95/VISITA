@@ -4732,6 +4732,210 @@ async def delegate_options(user: dict = Depends(require_roles(*CLINIC_ROLES))):
             "permissions": sorted(delegates_mod.PERMISSIONS)}
 
 
+# ---------------- Public caregiver / on-behalf-of access requests ----------------
+# INTAKE ONLY. A public submission is an UNAPPROVED request — it never creates a
+# patient_portal_delegates grant, never auto-links a patient by name/DOB/OHIP, and
+# never shares credentials. Staff review and APPROVE to create/activate the real
+# delegate grant in the existing architecture; DECLINE leaves no authorization.
+ACCESS_REQ_COLL = "portal_access_requests"
+
+
+class PortalAccessRequestBody(BaseModel):
+    practice_slug: Optional[str] = None
+    practice_id: Optional[str] = None
+    # Person being helped (claimed identifiers — staff confirm the real patient)
+    patient_first_name: str
+    patient_last_name: str
+    patient_date_of_birth: str
+    patient_health_card_number: Optional[str] = None
+    # Requester (the caregiver — uses their OWN account)
+    first_name: str
+    last_name: str
+    email: str
+    phone: str
+    relationship: str
+    authorization_basis: str
+    note: Optional[str] = None
+
+
+class ApproveAccessRequestBody(BaseModel):
+    patient_id: str
+    permissions: Optional[List[str]] = None
+    relationship: Optional[str] = None
+    review_note: Optional[str] = None
+
+
+class DeclineAccessRequestBody(BaseModel):
+    review_note: Optional[str] = None
+
+
+async def _resolve_access_practice(body: PortalAccessRequestBody):
+    pr = None
+    if body.practice_slug:
+        pr = await db.practices.find_one({"slug": body.practice_slug})
+    if not pr and body.practice_id:
+        pr = await db.practices.find_one({"id": body.practice_id})
+    return pr
+
+
+@api.post("/portal-access-requests")
+async def create_portal_access_request(body: PortalAccessRequestBody):
+    email = (body.email or "").strip().lower()
+    if "@" not in email:
+        raise HTTPException(status_code=400, detail="A valid email is required.")
+    if body.relationship not in delegates_mod.RELATIONSHIPS:
+        raise HTTPException(status_code=400, detail="Please select a relationship.")
+    if body.authorization_basis not in delegates_mod.CONSENT_TYPES:
+        raise HTTPException(status_code=400, detail="Please select how you are authorized to help.")
+    practice = await _resolve_access_practice(body)
+    if not practice:
+        raise HTTPException(status_code=400, detail="We couldn't identify the clinic. Please use your clinic's link.")
+    # Note an existing VIen user (reuse later) WITHOUT creating anything now.
+    existing_user = await db.users.find_one({"email": email}, {"_id": 1, "name": 1, "role": 1})
+    now = now_iso()
+    ref = await next_ref("PAR")
+    doc = {
+        "id": str(uuid.uuid4()), "ref_number": ref,
+        "practice_id": practice["id"], "practice_slug": practice.get("slug"),
+        "patient_first_name": body.patient_first_name.strip(),
+        "patient_last_name": body.patient_last_name.strip(),
+        "patient_date_of_birth": body.patient_date_of_birth,
+        "patient_health_card_number": (body.patient_health_card_number or "").strip() or None,
+        "requester_user_id": str(existing_user["_id"]) if existing_user else None,
+        "requester_name": f"{body.first_name.strip()} {body.last_name.strip()}".strip(),
+        "requester_first_name": body.first_name.strip(), "requester_last_name": body.last_name.strip(),
+        "requester_email": email, "requester_phone": identity_mod.normalize_phone(body.phone),
+        "relationship": body.relationship,
+        "authorization_basis": body.authorization_basis,
+        "note": (body.note or "").strip() or None,
+        "status": "PENDING",
+        "linked_patient_id": None, "resulting_delegate_id": None,
+        "reviewed_by": None, "reviewed_at": None, "review_note": None,
+        "submitted_at": now, "created_at": now, "updated_at": now,
+        "history": [{"status": "PENDING", "at": now, "by": "public"}],
+    }
+    await db[ACCESS_REQ_COLL].insert_one({**doc})
+    await audit("portal_access_requested", "portal_access_request", doc["id"],
+                {"id": doc["requester_user_id"], "name": doc["requester_name"], "role": "caregiver"},
+                new_status="PENDING",
+                meta={"practice_id": practice["id"], "relationship": body.relationship,
+                      "existing_user": bool(existing_user)})
+    return {"ok": True, "ref_number": ref,
+            "message": "Request received. The clinic will review and approve your access before you can see this patient's information."}
+
+
+@api.get("/internal/portal-access-requests")
+async def list_portal_access_requests(status: Optional[str] = None,
+                                      user: dict = Depends(require_roles(*CLINIC_ROLES))):
+    q = {**pscope(user)}
+    if status:
+        q["status"] = status.upper()
+    reqs = await db[ACCESS_REQ_COLL].find(q, {"_id": 0}).sort("created_at", -1).to_list(200)
+    return reqs
+
+
+@api.post("/internal/portal-access-requests/{req_id}/approve")
+async def approve_portal_access_request(req_id: str, body: ApproveAccessRequestBody,
+                                        user: dict = Depends(require_roles(*CLINIC_ROLES))):
+    req = await db[ACCESS_REQ_COLL].find_one({"id": req_id})
+    if not req:
+        raise HTTPException(status_code=404, detail="Request not found.")
+    assert_practice(req, user)
+    if req.get("status") != "PENDING":
+        raise HTTPException(status_code=409, detail="This request has already been reviewed.")
+
+    patient = await db.patients.find_one({"id": body.patient_id})
+    if not patient:
+        raise HTTPException(status_code=404, detail="Select a valid patient to link.")
+    assert_practice(patient, user)
+
+    relationship = body.relationship or req.get("relationship")
+    if relationship not in delegates_mod.RELATIONSHIPS:
+        raise HTTPException(status_code=400, detail="Invalid relationship.")
+    consent_type = req.get("authorization_basis")
+    if consent_type not in delegates_mod.CONSENT_TYPES:
+        raise HTTPException(status_code=400, detail="Missing authorization basis on the request.")
+    perms = delegates_mod.clean_permissions(body.permissions) or sorted(delegates_mod.PERMISSIONS)
+
+    # Resolve the caregiver user: reuse existing by email, else create a caregiver-only account.
+    temp_pw = None
+    du = None
+    if req.get("requester_user_id"):
+        try:
+            du = await db.users.find_one({"_id": ObjectId(req["requester_user_id"])})
+        except Exception:
+            du = None
+    if not du:
+        du = await db.users.find_one({"email": req["requester_email"]})
+    if not du:
+        created = await create_caregiver(
+            CaregiverCreateBody(name=req["requester_name"], email=req["requester_email"]), user)
+        temp_pw = created.get("temp_password")
+        du = await db.users.find_one({"_id": ObjectId(created["user_id"])})
+    if not du:
+        raise HTTPException(status_code=500, detail="Could not resolve the caregiver account.")
+    delegate_user_id = str(du["_id"])
+    if du.get("role") in ("staff", "physician", "admin", "pharmacy", "partner"):
+        raise HTTPException(status_code=400, detail="Clinic/partner accounts cannot be delegates.")
+    if du.get("patient_id") == body.patient_id:
+        raise HTTPException(status_code=400, detail="This is the patient's own account.")
+
+    existing_grant = await db[delegates_mod.COLL].find_one(
+        {"patient_id": body.patient_id, "delegate_user_id": delegate_user_id, "active": True})
+    now = now_iso()
+    if existing_grant:
+        grant_id = existing_grant["id"]
+    else:
+        grant_id = "del_" + uuid.uuid4().hex
+        g = {
+            "id": grant_id, "patient_id": body.patient_id, "delegate_user_id": delegate_user_id,
+            "practice_id": patient.get("practice_id"),
+            "relationship": relationship, "relationship_other": None,
+            "permissions": perms, "active": True,
+            "granted_at": now, "granted_by": user["id"],
+            "consent_type": consent_type,
+            "consent_note": req.get("note"),
+            "source_request_id": req_id,
+            "revoked_at": None, "revoked_by": None, "created_at": now, "updated_at": now,
+        }
+        await db[delegates_mod.COLL].insert_one({**g})
+        await audit("delegate_access_granted", "patient", body.patient_id, user,
+                    meta={"delegate_user_id": delegate_user_id, "relationship": relationship,
+                          "permissions": perms, "consent_type": consent_type, "via": "access_request"})
+
+    await db[ACCESS_REQ_COLL].update_one({"id": req_id}, {"$set": {
+        "status": "APPROVED", "linked_patient_id": body.patient_id, "resulting_delegate_id": grant_id,
+        "reviewed_by": user["id"], "reviewed_at": now, "review_note": (body.review_note or "").strip() or None,
+        "updated_at": now,
+    }, "$push": {"history": {"status": "APPROVED", "at": now, "by": user.get("name")}}})
+    await audit("portal_access_approved", "portal_access_request", req_id, user,
+                new_status="APPROVED", meta={"patient_id": body.patient_id, "grant_id": grant_id})
+
+    out = {"ok": True, "grant_id": grant_id, "patient_id": body.patient_id,
+           "delegate_user_id": delegate_user_id}
+    if temp_pw:
+        out["temp_password"] = temp_pw  # one-time display for a freshly created caregiver
+    return out
+
+
+@api.post("/internal/portal-access-requests/{req_id}/decline")
+async def decline_portal_access_request(req_id: str, body: DeclineAccessRequestBody,
+                                        user: dict = Depends(require_roles(*CLINIC_ROLES))):
+    req = await db[ACCESS_REQ_COLL].find_one({"id": req_id})
+    if not req:
+        raise HTTPException(status_code=404, detail="Request not found.")
+    assert_practice(req, user)
+    if req.get("status") != "PENDING":
+        raise HTTPException(status_code=409, detail="This request has already been reviewed.")
+    now = now_iso()
+    await db[ACCESS_REQ_COLL].update_one({"id": req_id}, {"$set": {
+        "status": "DECLINED", "reviewed_by": user["id"], "reviewed_at": now,
+        "review_note": (body.review_note or "").strip() or None, "updated_at": now,
+    }, "$push": {"history": {"status": "DECLINED", "at": now, "by": user.get("name")}}})
+    await audit("portal_access_declined", "portal_access_request", req_id, user, new_status="DECLINED")
+    return {"ok": True}
+
+
 
 
 # ----------------------------- Patient Applications (new / former return) -----------------------------

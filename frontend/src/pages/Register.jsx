@@ -2,7 +2,7 @@ import { useState, useEffect, useCallback } from "react";
 import { useNavigate, Link, useSearchParams, useParams } from "react-router-dom";
 import { useTranslation } from "react-i18next";
 import { toast } from "sonner";
-import { ChevronLeft, Loader2, Clock, Stethoscope, Search } from "lucide-react";
+import { ChevronLeft, Loader2, Clock, Stethoscope, Search, Eye, EyeOff, User, HeartHandshake, CheckCircle2 } from "lucide-react";
 import { useAuth } from "../context/AuthContext";
 import { api, formatErr } from "../lib/api";
 import { DobPicker } from "../components/DobPicker";
@@ -66,7 +66,7 @@ export default function Register() {
     const [confirm, setConfirm] = useState(null);
     const [form, setForm] = useState({
         first_name: "", last_name: "", second_name: "", second_last_name: "",
-        date_of_birth: "", phone: "", email: "", password: "",
+        date_of_birth: "", phone: "", email: "", password: "", confirm_password: "",
         health_card_number: "", health_card_version: "", health_card_issue_date: "", health_card_expiry_date: "",
         province: "", country: "Canada", extra_info: "",
         address: "", unit: "", city: "", postal_code: "", patient_message: "", join_reason: "",
@@ -79,11 +79,11 @@ export default function Register() {
         try {
             if (slug) {
                 const { data } = await api.get(`/practices/${encodeURIComponent(slug)}`);
-                setPractice(data); setStep(isNew ? 99 : 1); return;
+                setPractice(data); setStep(isNew ? 99 : "whoFor"); return;
             }
             if (code) {
                 const { data } = await api.get(`/practices/by-code/${encodeURIComponent(code)}`);
-                setPractice(data); setStep(isNew ? 99 : 1); return;
+                setPractice(data); setStep(isNew ? 99 : "whoFor"); return;
             }
         } catch (e) { /* fall through to generic lookup */ }
         setStep("findClinic");
@@ -116,6 +116,8 @@ export default function Register() {
         if (!form.address?.trim() || !form.city?.trim() || !form.province?.trim() || !form.postal_code?.trim() || !form.country?.trim()) {
             toast.error(t("auth:register.errAddress")); return;
         }
+        if ((form.password || "").length < 6) { toast.error(t("auth:register.errPwShort")); return; }
+        if (form.password !== form.confirm_password) { toast.error(t("auth:register.errPwMismatch")); return; }
         setBusy(true);
         try {
             const first_name = joinName(form.first_name, form.second_name);
@@ -172,7 +174,7 @@ export default function Register() {
                     <Logo variant="light" iconClass="h-9 w-9" textClass="text-xl" />
                 </div>
 
-                {practice && [1, "coverage", 2, 99].includes(step) && (
+                {practice && [1, "coverage", 2, 99, "whoFor", "caregiver"].includes(step) && (
                     <div data-testid="practice-banner" className="bg-white rounded-2xl border border-portal-blue/30 p-4 shadow-sm mb-4 flex items-center gap-3">
                         <div className="w-10 h-10 rounded-full bg-portal-blue/10 flex items-center justify-center flex-shrink-0">
                             <Stethoscope className="w-5 h-5 text-portal-blueDark" />
@@ -192,7 +194,45 @@ export default function Register() {
                 )}
 
                 {step === "findClinic" && (
-                    <FindClinic onResolved={(p) => { setPractice(p); setStep(isNew ? 99 : 1); }} />
+                    <FindClinic onResolved={(p) => { setPractice(p); setStep(isNew ? 99 : "whoFor"); }} />
+                )}
+
+                {step === "whoFor" && (
+                    <div className="animate-fade-in" data-testid="register-whofor">
+                        <h1 className="text-2xl font-bold text-slate-900 mb-5">{t("auth:register.whoFor.title")}</h1>
+                        <div className="space-y-3">
+                            <button data-testid="whofor-myself" onClick={() => setStep(1)}
+                                className="w-full flex items-center gap-3 bg-white rounded-2xl border border-slate-200 p-5 shadow-sm hover:border-portal-blue hover:shadow transition active:scale-[0.99] text-left">
+                                <span className="w-11 h-11 rounded-full bg-portal-blue/10 flex items-center justify-center flex-shrink-0"><User className="w-5 h-5 text-portal-blueDark" /></span>
+                                <span className="font-bold text-slate-900">{t("auth:register.whoFor.myself")}</span>
+                            </button>
+                            <button data-testid="whofor-caregiver" onClick={() => setStep("caregiver")}
+                                className="w-full flex items-center gap-3 bg-white rounded-2xl border border-slate-200 p-5 shadow-sm hover:border-portal-blue hover:shadow transition active:scale-[0.99] text-left">
+                                <span className="w-11 h-11 rounded-full bg-portal-blue/10 flex items-center justify-center flex-shrink-0"><HeartHandshake className="w-5 h-5 text-portal-blueDark" /></span>
+                                <span className="font-bold text-slate-900">{t("auth:register.whoFor.caregiver")}</span>
+                            </button>
+                        </div>
+                        <p className="text-center text-sm text-slate-600 mt-6">
+                            {t("auth:register.alreadyRegistered")}{" "}
+                            <Link to="/signin" className="text-portal-blueDark font-bold hover:underline">{t("auth:register.signIn")}</Link>
+                        </p>
+                    </div>
+                )}
+
+                {step === "caregiver" && (
+                    <CaregiverRequestForm practice={practice} t={t} onBack={() => setStep("whoFor")} onDone={() => setStep("caregiverDone")} />
+                )}
+
+                {step === "caregiverDone" && (
+                    <div className="bg-white rounded-2xl border border-slate-200 p-8 shadow-sm animate-fade-in text-center" data-testid="caregiver-done">
+                        <CheckCircle2 className="w-12 h-12 text-emerald-500 mx-auto mb-3" />
+                        <h2 className="text-xl font-bold text-slate-900 mb-2">{t("auth:register.caregiver.doneTitle")}</h2>
+                        <p className="text-slate-600 text-sm leading-relaxed">{t("auth:register.caregiver.doneBody")}</p>
+                        <Button data-testid="caregiver-done-signin" onClick={() => nav("/signin")}
+                            className="mt-5 bg-portal-blue hover:bg-portal-blueDark text-white h-11 rounded-xl px-6">
+                            {t("auth:register.signIn")}
+                        </Button>
+                    </div>
                 )}
 
                 {step === 1 && (
@@ -291,7 +331,19 @@ export default function Register() {
 
                         <Field label={t("auth:register.phone")} testid="reg-phone"><Input required value={form.phone} onChange={set("phone")} placeholder="(416) 555-0000" /></Field>
                         <Field label={t("auth:register.email")} testid="reg-email"><Input type="email" required value={form.email} onChange={set("email")} /></Field>
-                        <Field label={t("auth:register.password")} testid="reg-password"><Input type="password" required minLength={6} value={form.password} onChange={set("password")} /></Field>
+                        <div>
+                            <Label className="text-sm font-semibold text-slate-700">{t("auth:register.password")}</Label>
+                            <PasswordInput testid="reg-password" value={form.password} onChange={(v) => setForm({ ...form, password: v })} minLength={6} required />
+                        </div>
+                        <div>
+                            <Label className="text-sm font-semibold text-slate-700">{t("auth:register.confirmPassword")}</Label>
+                            <PasswordInput testid="reg-confirm-password" value={form.confirm_password} onChange={(v) => setForm({ ...form, confirm_password: v })} minLength={6} required />
+                            {form.confirm_password.length > 0 && (
+                                form.password === form.confirm_password
+                                    ? <p className="text-xs text-emerald-600 font-semibold mt-1" data-testid="pw-match">{t("auth:register.pwMatch")}</p>
+                                    : <p className="text-xs text-rose-600 font-semibold mt-1" data-testid="pw-mismatch">{t("auth:register.pwMismatch")}</p>
+                            )}
+                        </div>
                         {type === "private" && (
                             <Field label={t("auth:register.extraInfoOptional")} testid="reg-extra"><Input value={form.extra_info} onChange={set("extra_info")} /></Field>
                         )}
@@ -300,7 +352,8 @@ export default function Register() {
                             {t("auth:register.reviewNotice")}
                         </div>
 
-                        <Button data-testid="reg-submit" type="submit" disabled={busy}
+                        <Button data-testid="reg-submit" type="submit"
+                            disabled={busy || form.password.length < 6 || form.password !== form.confirm_password}
                             className="w-full bg-portal-blue hover:bg-portal-blueDark text-white text-base h-12 rounded-xl">
                             {busy ? <Loader2 className="w-4 h-4 animate-spin" /> : t("auth:register.createAccountBtn")}
                         </Button>
@@ -488,5 +541,108 @@ function Field({ label, testid, children }) {
             <Label className="text-sm font-semibold text-slate-700">{label}</Label>
             <div className="mt-1">{children}</div>
         </div>
+    );
+}
+
+
+function PasswordInput({ value, onChange, testid, minLength = 6, required = false }) {
+    const [show, setShow] = useState(false);
+    return (
+        <div className="relative mt-1">
+            <Input type={show ? "text" : "password"} required={required} minLength={minLength}
+                value={value} onChange={(e) => onChange(e.target.value)} data-testid={testid} className="pr-10" />
+            <button type="button" tabIndex={-1} data-testid={`${testid}-toggle`} onClick={() => setShow((s) => !s)}
+                className="absolute right-2 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600"
+                aria-label={show ? "Hide password" : "Show password"}>
+                {show ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+            </button>
+        </div>
+    );
+}
+
+const CG_RELATIONSHIPS = ["Daughter", "Son", "Spouse / Partner", "Parent", "Caregiver", "Legal / Substitute Decision Maker", "Other"];
+const CG_BASES = [
+    { value: "Patient consent", k: "consent" },
+    { value: "Legal / Substitute Decision Maker", k: "legal" },
+    { value: "Other authorized basis", k: "other" },
+];
+
+function CaregiverRequestForm({ practice, t, onBack, onDone }) {
+    const [f, setF] = useState({
+        patient_first_name: "", patient_last_name: "", patient_date_of_birth: "", patient_health_card_number: "",
+        first_name: "", last_name: "", email: "", phone: "",
+        relationship: "", authorization_basis: "", note: "",
+    });
+    const [busy, setBusy] = useState(false);
+    const set = (k) => (e) => setF({ ...f, [k]: e.target.value });
+
+    const submit = async (e) => {
+        e.preventDefault();
+        if (!f.relationship) { toast.error(t("auth:register.caregiver.errRelationship")); return; }
+        if (!f.authorization_basis) { toast.error(t("auth:register.caregiver.errBasis")); return; }
+        setBusy(true);
+        try {
+            await api.post("/portal-access-requests", {
+                practice_slug: practice?.slug, practice_id: practice?.id,
+                patient_first_name: f.patient_first_name, patient_last_name: f.patient_last_name,
+                patient_date_of_birth: f.patient_date_of_birth,
+                patient_health_card_number: f.patient_health_card_number || null,
+                first_name: f.first_name, last_name: f.last_name, email: f.email, phone: f.phone,
+                relationship: f.relationship, authorization_basis: f.authorization_basis,
+                note: f.note || null,
+            });
+            onDone();
+        } catch (err) { toast.error(formatErr(err)); } finally { setBusy(false); }
+    };
+
+    return (
+        <form onSubmit={submit} data-testid="caregiver-request-form" className="bg-white rounded-2xl border border-slate-200 p-6 shadow-sm animate-fade-in space-y-4">
+            <button type="button" onClick={onBack} className="flex items-center text-slate-500 text-sm">
+                <ChevronLeft className="w-4 h-4" /> {t("common:actions.back")}
+            </button>
+            <h2 className="text-xl font-bold text-slate-900">{t("auth:register.caregiver.title")}</h2>
+            <div className="bg-portal-blue/5 border border-portal-blue/20 rounded-lg p-3 text-sm text-slate-700">
+                {t("auth:register.caregiver.explain")}
+            </div>
+
+            <div className="text-sm font-semibold text-slate-700 pt-1">{t("auth:register.caregiver.personSection")}</div>
+            <div className="grid grid-cols-2 gap-3">
+                <Field label={t("auth:register.firstName")} testid="cg-patient-first"><Input required value={f.patient_first_name} onChange={set("patient_first_name")} /></Field>
+                <Field label={t("auth:register.firstLastName")} testid="cg-patient-last"><Input required value={f.patient_last_name} onChange={set("patient_last_name")} /></Field>
+            </div>
+            <Field label={t("auth:register.dob")} testid="cg-patient-dob"><DobPicker value={f.patient_date_of_birth} onChange={(v) => setF({ ...f, patient_date_of_birth: v })} testid="cg-patient-dob" /></Field>
+            <Field label={t("auth:register.caregiver.hcOptional")} testid="cg-patient-hc"><Input value={f.patient_health_card_number} onChange={set("patient_health_card_number")} placeholder={t("common:status.optional")} /></Field>
+
+            <div className="text-sm font-semibold text-slate-700 pt-1">{t("auth:register.caregiver.yourSection")}</div>
+            <div className="grid grid-cols-2 gap-3">
+                <Field label={t("auth:register.firstName")} testid="cg-your-first"><Input required value={f.first_name} onChange={set("first_name")} /></Field>
+                <Field label={t("auth:register.firstLastName")} testid="cg-your-last"><Input required value={f.last_name} onChange={set("last_name")} /></Field>
+            </div>
+            <Field label={t("auth:register.email")} testid="cg-your-email"><Input type="email" required value={f.email} onChange={set("email")} /></Field>
+            <Field label={t("auth:register.phone")} testid="cg-your-phone"><Input required value={f.phone} onChange={set("phone")} placeholder="(416) 555-0000" /></Field>
+
+            <Field label={t("auth:register.caregiver.relationshipQ")} testid="cg-relationship">
+                <Select value={f.relationship} onValueChange={(v) => setF({ ...f, relationship: v })}>
+                    <SelectTrigger data-testid="cg-relationship-trigger"><SelectValue placeholder={t("auth:register.caregiver.select")} /></SelectTrigger>
+                    <SelectContent>
+                        {CG_RELATIONSHIPS.map((r) => <SelectItem key={r} value={r}>{r}</SelectItem>)}
+                    </SelectContent>
+                </Select>
+            </Field>
+            <Field label={t("auth:register.caregiver.basisQ")} testid="cg-basis">
+                <Select value={f.authorization_basis} onValueChange={(v) => setF({ ...f, authorization_basis: v })}>
+                    <SelectTrigger data-testid="cg-basis-trigger"><SelectValue placeholder={t("auth:register.caregiver.select")} /></SelectTrigger>
+                    <SelectContent>
+                        {CG_BASES.map((b) => <SelectItem key={b.value} value={b.value}>{t(`auth:register.caregiver.basisOptions.${b.k}`)}</SelectItem>)}
+                    </SelectContent>
+                </Select>
+            </Field>
+            <Field label={t("auth:register.caregiver.noteOptional")} testid="cg-note"><Input value={f.note} onChange={set("note")} placeholder={t("common:status.optional")} /></Field>
+
+            <Button data-testid="cg-submit" type="submit" disabled={busy}
+                className="w-full bg-portal-blue hover:bg-portal-blueDark text-white text-base h-12 rounded-xl">
+                {busy ? <Loader2 className="w-4 h-4 animate-spin" /> : t("auth:register.caregiver.submitBtn")}
+            </Button>
+        </form>
     );
 }

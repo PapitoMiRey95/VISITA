@@ -125,6 +125,33 @@ function UpcomingAppointment() {
     );
 }
 
+function YourMedicinesCard() {
+    const nav = useNavigate();
+    const { t } = useTranslation(["portal"]);
+    const [meds, setMeds] = useState(null);
+    useEffect(() => {
+        api.get("/portal/medications").then(({ data }) => setMeds(data.medications || [])).catch(() => setMeds([]));
+    }, []);
+    if (!meds || meds.length === 0) return null;
+    return (
+        <Card data-testid="your-medicines-home-card">
+            <div className="flex items-center gap-3">
+                <div className="w-10 h-10 rounded-full bg-emerald-50 flex items-center justify-center flex-shrink-0">
+                    <Pill className="w-5 h-5 text-emerald-500" />
+                </div>
+                <div className="flex-1">
+                    <p className="font-bold text-slate-800">{t("home.medicines.title")}</p>
+                    <p className="text-sm text-slate-500" data-testid="your-medicines-count">{t("home.medicines.count", { count: meds.length })}</p>
+                </div>
+                <button data-testid="your-medicines-view" onClick={() => nav("/portal/prescriptions")}
+                    className="inline-flex items-center gap-1 px-4 py-2 rounded-xl bg-emerald-500 hover:bg-emerald-600 text-white text-sm font-bold transition active:scale-95">
+                    {t("home.medicines.view")} <ChevronRight className="w-4 h-4" />
+                </button>
+            </div>
+        </Card>
+    );
+}
+
 function PeopleIManageCard() {
     const nav = useNavigate();
     const [managing, setManaging] = useState([]);
@@ -167,6 +194,8 @@ export default function PortalHome() {
             {p && <PendingBanner status={p.verification_status} />}
 
             <NewUpdatesCard />
+
+            <YourMedicinesCard />
 
             <PeopleIManageCard />
 

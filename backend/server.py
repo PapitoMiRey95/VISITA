@@ -181,6 +181,70 @@ async def notify_patient(patient_id: str, title: str, body: str):
     })
 
 
+# ---- Smart medication list + refill helpers ----
+# v1 destination pharmacy for patient refills: the clinic's established pharmacy.
+# Resolved from the practice's configured relationship when present, else the
+# clinic default. Kept extensible for future VIen-connected pharmacies.
+DEFAULT_CLINIC_PHARMACY_LABEL = "1670 Dufferin Drug Mart"
+
+
+async def _refill_pharmacy_label(patient: dict) -> str:
+    pr_id = (patient or {}).get("practice_id")
+    if pr_id:
+        pr = await db.practices.find_one({"id": pr_id}, {"_id": 0, "default_pharmacy_name": 1})
+        if pr and pr.get("default_pharmacy_name"):
+            return pr["default_pharmacy_name"]
+    return DEFAULT_CLINIC_PHARMACY_LABEL
+
+
+def _med_strength_display(d: dict) -> str:
+    """Simple patient-facing strength string from the authoritative medication."""
+    s = " ".join([str(x).strip() for x in (d.get("strength"), d.get("unit")) if x]).strip()
+    return s or (d.get("strength") or "")
+
+
+async def _notify_patient_rx_sent(req: dict):
+    """No-PHI patient update + in-portal notification + generic email when a
+    patient-originated prescription request is sent to the pharmacy."""
+    pid = req.get("patient_id")
+    if not pid:
+        return
+    await db.patient_updates.insert_one({
+        "id": str(uuid.uuid4()), "patient_id": pid, "type": "prescription_sent",
+        "source_type": "prescription", "source_id": req.get("id"),
+        "title": "Prescription sent to your pharmacy",
+        "body": "Your prescription request has been processed and sent to your pharmacy.",
+        "read": False, "created_at": now_iso(),
+    })
+    await notify_patient(pid, "Prescription sent to your pharmacy",
+                         "Your prescription has been sent to your pharmacy. Sign in to the Patient Portal for details.")
+    p = await db.patients.find_one({"id": pid}, {"_id": 0})
+    if p and p.get("email"):
+        portal_url = notify_svc.PORTAL_URL or ""
+        link = (f"<p style='margin:16px 0'><a href='{portal_url}' "
+                f"style='background:#1d4ed8;color:#fff;padding:10px 18px;border-radius:8px;"
+                f"text-decoration:none;font-weight:bold'>Open Patient Portal</a></p>" if portal_url else "")
+        html = (
+            "<table role='presentation' width='100%'><tr><td style='padding:24px;font-family:Arial,sans-serif;color:#0f172a'>"
+            "<h2 style='margin:0 0 12px'>An update is available</h2>"
+            f"<p>Hello {(_clean_name(p.get('first_name')))},</p>"
+            "<p>There is a new update on one of your Patient Portal requests. "
+            "Please sign in to view the details.</p>"
+            f"{link}"
+            "<p style='font-size:12px;color:#888;margin-top:20px'>This message contains no medical information.</p>"
+            "</td></tr></table>"
+        )
+        try:
+            await notify_svc._send_email(db, pid, p["email"],
+                                         "An update is available in your Patient Portal", html)
+        except Exception as e:
+            logger.warning(f"[rx-sent patient email] failed: {e}")
+
+
+def _clean_name(v) -> str:
+    return (str(v or "").strip() or "there")
+
+
 # ----------------------------- Bodies -----------------------------
 class RegisterBody(BaseModel):
     patient_type: str
@@ -289,6 +353,15 @@ class PrescriptionBody(BaseModel):
     delivery_method: str = "pickup"
     pharmacy_id: Optional[str] = None
     new_pharmacy_details: Optional[str] = None
+    patient_note: Optional[str] = None
+
+
+class RefillRequestBody(BaseModel):
+    medication_ids: List[str] = []
+    supply_type: str = "standard"               # standard | longer
+    requested_months: Optional[int] = None      # 1/2/3 (standard) or 4/5/6 (longer)
+    requested_supply_text: Optional[str] = None  # free text when "Other"
+    travel_note: Optional[str] = None
     patient_note: Optional[str] = None
 
 
@@ -2503,6 +2576,7 @@ async def create_rx(body: PrescriptionBody, ctx: PortalCtx = Depends(portal_acce
     doc = {
         "id": str(uuid.uuid4()), "ref_number": ref, "patient_id": p["id"],
         "patient_name": f"{p['last_name']}, {p['first_name']}",
+        "practice_id": p.get("practice_id"),
         **body.model_dump(), "internal_status": "received", "assigned_to": None,
         "internal_notes": [], "history": [{"status": "received", "at": now_iso(), "by": "patient"}],
         "created_at": now_iso(), "updated_at": now_iso(), "completed_at": None,
@@ -2510,6 +2584,118 @@ async def create_rx(body: PrescriptionBody, ctx: PortalCtx = Depends(portal_acce
     await db.prescription_requests.insert_one({**doc})
     await audit("create", "prescription", doc["id"], ctx.audit_actor(), new_status="received",
                 meta=ctx.audit_meta())
+    doc.pop("_id", None)
+    return doc
+
+
+@api.get("/portal/medications")
+async def portal_medications(ctx: PortalCtx = Depends(portal_access(delegates_mod.RX_REQUESTS))):
+    """Patient-facing READ-ONLY medication list: active, physician-confirmed meds only.
+    Sourced from the authoritative `patient_medications` (populated only when a
+    physician sends a prescription). Patients can never add/edit/delete here."""
+    pid = ctx.patient["id"]
+    docs = await db.patient_medications.find(
+        {"patient_id": pid, "active": True}, {"_id": 0}
+    ).sort("last_prescribed_at", -1).to_list(100)
+    meds = [{
+        "id": d.get("id"), "regimen_key": d.get("regimen_key"),
+        "drug": d.get("drug"), "strength": _med_strength_display(d),
+        "form": d.get("form"), "directions": d.get("sig"),
+        "status": "Active",
+    } for d in docs]
+    return {"pharmacy_label": await _refill_pharmacy_label(ctx.patient), "medications": meds}
+
+
+@api.post("/portal/refill-requests")
+async def create_refill_requests(body: RefillRequestBody,
+                                 ctx: PortalCtx = Depends(portal_access(delegates_mod.RX_REQUESTS))):
+    """Refill from the official list. One prescription_request per selected medicine,
+    grouped by a shared batch_id, with authoritative medication fields copied from
+    `patient_medications` (never patient free-text). Longer supply stays a REQUEST
+    (received) for physician review and is never auto-approved."""
+    p = ctx.patient
+    ids = [i for i in (body.medication_ids or []) if i]
+    if not ids:
+        raise HTTPException(status_code=400, detail="Select at least one medication to refill.")
+    meds = await db.patient_medications.find(
+        {"id": {"$in": ids}, "patient_id": p["id"], "active": True}, {"_id": 0}).to_list(100)
+    if not meds:
+        raise HTTPException(status_code=404, detail="We couldn't find those medications on your list.")
+
+    longer = body.supply_type == "longer"
+    months = body.requested_months if isinstance(body.requested_months, int) else None
+    if longer:
+        if months not in (4, 5, 6):
+            months = months if (isinstance(months, int) and months > 0) else None
+        supply_text = (body.requested_supply_text or "").strip() or (f"{months} months" if months else "Longer supply")
+    else:
+        months = months if months in (1, 2, 3) else 1
+        supply_text = f"{months} month(s)"
+
+    pharmacy_label = await _refill_pharmacy_label(p)
+    batch_id = str(uuid.uuid4())
+    now = now_iso()
+    created = []
+    for m in meds:
+        ref = await next_ref("RX")
+        doc = {
+            "id": str(uuid.uuid4()), "ref_number": ref, "batch_id": batch_id,
+            "patient_id": p["id"], "patient_name": f"{p['last_name']}, {p['first_name']}",
+            "practice_id": p.get("practice_id"),
+            "source": "patient_refill",
+            "patient_medication_id": m.get("id"), "regimen_key": m.get("regimen_key"),
+            "medication_name": m.get("drug"), "strength": _med_strength_display(m),
+            "directions": m.get("sig"),
+            "requested_months": months, "supply_type": body.supply_type,
+            "requested_supply_text": supply_text,
+            "travel_note": ((body.travel_note or "").strip() or None) if longer else None,
+            "delivery_method": "pharmacy", "destination_pharmacy_label": pharmacy_label,
+            "patient_note": (body.patient_note or "").strip() or None,
+            "internal_status": "received", "assigned_to": None, "internal_notes": [],
+            "history": [{"status": "received", "at": now, "by": "patient"}],
+            "created_at": now, "updated_at": now, "completed_at": None,
+        }
+        await db.prescription_requests.insert_one({**doc})
+        await audit("create", "prescription", doc["id"], ctx.audit_actor(), new_status="received",
+                    meta=ctx.audit_meta({"batch_id": batch_id, "source": "patient_refill",
+                                         "supply_type": body.supply_type}))
+        doc.pop("_id", None)
+        created.append(doc)
+    return {"batch_id": batch_id, "count": len(created), "requests": created}
+
+
+@api.post("/portal/prescriptions/photo")
+async def create_rx_photo(
+    file: UploadFile = File(...),
+    medication_name: str = Form(""),
+    patient_note: str = Form(""),
+    ctx: PortalCtx = Depends(portal_access(delegates_mod.RX_REQUESTS)),
+):
+    """'I don't see my medicine' — photo-first, review-only submission. Stored in
+    object storage for staff/physician review. NEVER updates the official
+    `patient_medications` list; only a physician-sent prescription can do that."""
+    p = ctx.patient
+    attachment = await _store_pharmacy_upload(file, "patient_rx")
+    ref = await next_ref("RX")
+    now = now_iso()
+    name = (medication_name or "").strip() or "Medication (photo submitted)"
+    doc = {
+        "id": str(uuid.uuid4()), "ref_number": ref,
+        "patient_id": p["id"], "patient_name": f"{p['last_name']}, {p['first_name']}",
+        "practice_id": p.get("practice_id"),
+        "source": "patient_photo", "review_required": True,
+        "medication_name": name, "strength": None, "directions": None,
+        "requested_months": None, "delivery_method": "pharmacy",
+        "destination_pharmacy_label": await _refill_pharmacy_label(p),
+        "patient_note": (patient_note or "").strip() or None,
+        "attachment": attachment,
+        "internal_status": "received", "assigned_to": None, "internal_notes": [],
+        "history": [{"status": "received", "at": now, "by": "patient"}],
+        "created_at": now, "updated_at": now, "completed_at": None,
+    }
+    await db.prescription_requests.insert_one({**doc})
+    await audit("create", "prescription", doc["id"], ctx.audit_actor(), new_status="received",
+                meta=ctx.audit_meta({"source": "patient_photo", "has_attachment": True}))
     doc.pop("_id", None)
     return doc
 
@@ -2629,6 +2815,10 @@ async def portal_overview(user: dict = Depends(get_current_user)):
         "appointments": [appt_view(a) for a in appts],
         "prescriptions": [{"id": r["id"], "ref_number": r["ref_number"], "medication_name": r["medication_name"],
                            "strength": r.get("strength"), "status": RX_PATIENT_STATUS.get(r["internal_status"]),
+                           "batch_id": r.get("batch_id"), "source": r.get("source"),
+                           "supply_type": r.get("supply_type"), "requested_months": r.get("requested_months"),
+                           "requested_supply_text": r.get("requested_supply_text"),
+                           "destination_pharmacy_label": r.get("destination_pharmacy_label"),
                            "created_at": r["created_at"]} for r in rxs],
         "imaging": [{"id": i["id"], "ref_number": i["ref_number"], "imaging_type": i["imaging_type"],
                      "body_part": i["body_part"], "status": IMG_PATIENT_STATUS.get(i["internal_status"]),
@@ -5670,17 +5860,20 @@ async def internal_send_rx(
     # pharmacy request itself is preserved unchanged as historical evidence
     # (we only add the link + a status/history entry; never overwrite it).
     if source_request_id.strip():
-        src = await db.prescription_requests.find_one({"id": source_request_id.strip(), "source": "pharmacy"})
-        if src:
+        src = await db.prescription_requests.find_one({"id": source_request_id.strip()})
+        if src and src.get("internal_status") != "prescription_sent":
             await db.prescription_requests.update_one(
                 {"id": src["id"]},
                 {"$set": {"internal_status": "prescription_sent",
                           "linked_transmission_id": tx["id"], "linked_transmission_ref": tx["ref_number"],
                           "prescription_sent_at": now, "updated_at": now},
                  "$push": {"history": {"status": "prescription_sent", "at": now, "by": user.get("name"),
-                                       "note": f"Prescription {tx['ref_number']} sent from pharmacy request"}}})
+                                       "note": f"Prescription {tx['ref_number']} sent"}}})
             await audit("rx_request_converted", "prescription", src["id"], user, new_status="prescription_sent",
                         meta={"transmission_id": tx["id"], "pharmacy_id": pharmacy_id})
+            # Patient-originated requests get a no-PHI 'sent to your pharmacy' update.
+            if src.get("source") in ("patient_refill", "patient_photo"):
+                await _notify_patient_rx_sent(src)
 
     # Generic, PHI-free notification to the pharmacy account (no meds, no PDF).
     if acct.get("email"):

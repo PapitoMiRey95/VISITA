@@ -5,6 +5,7 @@ import { ArrowLeft, Calendar, Pill, FileText, ClipboardList, Download, Plus } fr
 import { api, formatErr } from "../lib/api";
 import { Button } from "../components/ui/button";
 import { Input } from "../components/ui/input";
+import MedicationRefill from "./MedicationRefill";
 
 export default function ManagedPortal() {
     const { patientId } = useParams();
@@ -63,8 +64,8 @@ export default function ManagedPortal() {
             {can("RX_REQUESTS") && (
                 <Section icon={Pill} title="Prescription renewals" testid="managed-rx"
                     action={<Button size="sm" variant="outline" data-testid="managed-request-rx" onClick={() => setShowRx((v) => !v)}><Plus className="w-4 h-4 mr-1" /> Refill</Button>}>
-                    {showRx && <RxForm patientId={patientId} onDone={() => { setShowRx(false); load(); }} />}
-                    <p className="text-xs text-slate-400">Submit a refill request on behalf of {data.patient_name}.</p>
+                    {showRx && <MedicationRefill onBehalfOf={patientId} onSubmitted={() => { setShowRx(false); load(); }} />}
+                    {!showRx && <p className="text-xs text-slate-400">Submit a refill request on behalf of {data.patient_name}.</p>}
                 </Section>
             )}
 
@@ -106,26 +107,6 @@ const Section = ({ icon: Icon, title, testid, action, children }) => (
         {children}
     </div>
 );
-
-function RxForm({ patientId, onDone }) {
-    const [med, setMed] = useState(""); const [strength, setStrength] = useState(""); const [note, setNote] = useState(""); const [busy, setBusy] = useState(false);
-    const submit = async () => {
-        if (!med.trim()) return toast.error("Enter the medication name.");
-        setBusy(true);
-        try {
-            await api.post(`/portal/prescriptions?on_behalf_of=${patientId}`, { medication_name: med, strength, directions: note, requested_months: 1, delivery_method: "pickup" });
-            toast.success("Refill request submitted."); onDone();
-        } catch (e) { toast.error(formatErr(e)); } finally { setBusy(false); }
-    };
-    return (
-        <div className="mb-3 space-y-2" data-testid="managed-rx-form">
-            <Input data-testid="managed-rx-med" value={med} onChange={(e) => setMed(e.target.value)} placeholder="Medication name" />
-            <Input data-testid="managed-rx-strength" value={strength} onChange={(e) => setStrength(e.target.value)} placeholder="Strength (optional)" />
-            <Input data-testid="managed-rx-note" value={note} onChange={(e) => setNote(e.target.value)} placeholder="Directions / note (optional)" />
-            <Button data-testid="managed-rx-submit" disabled={busy} onClick={submit} className="bg-portal-blue text-white">{busy ? "Submitting…" : "Submit refill"}</Button>
-        </div>
-    );
-}
 
 function ApptForm({ patientId, onDone }) {
     const [reason, setReason] = useState(""); const [date, setDate] = useState(""); const [time, setTime] = useState(""); const [busy, setBusy] = useState(false);

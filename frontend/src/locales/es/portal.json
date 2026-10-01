@@ -40,6 +40,12 @@
       "messages": "Solicitudes y ayuda",
       "requests": "Mis solicitudes",
       "profile": "Mi perfil"
+    },
+    "medicines": {
+      "title": "Tus Medicamentos",
+      "count_one": "{{count}} medicamento activo",
+      "count_other": "{{count}} medicamentos activos",
+      "view": "Ver medicamentos"
     }
   },
   "documents": {

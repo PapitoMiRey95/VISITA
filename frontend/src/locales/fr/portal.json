@@ -1,5 +1,13 @@
 {
   "nav": {
     "invoices": "Factures"
+  },
+  "home": {
+    "medicines": {
+      "title": "Vos Médicaments",
+      "count_one": "{{count}} médicament actif",
+      "count_other": "{{count}} médicaments actifs",
+      "view": "Voir les médicaments"
+    }
   }
 }

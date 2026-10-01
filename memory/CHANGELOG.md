@@ -1,5 +1,20 @@
 # VIen EMR — Changelog
 
+## 2026-06 — Patient Portal: Smart Medication List + simplified refill (PREVIEW ONLY)
+Separates the OFFICIAL, physician-controlled medication list from refill-request history. Verified: testing_agent iteration_65 (11/11 backend, frontend 100%, zero issues) + main-agent curl + screenshot.
+
+- **"Your Medicines" (read-only)** — `GET /api/portal/medications` returns `{pharmacy_label, medications[]}` from the authoritative `patient_medications` (active, physician-confirmed only; populated solely by `_remember_patient_medications` when a physician SENDS a prescription). Patients can never add/edit/delete here. Delegate-aware (`portal_access(RX_REQUESTS)`).
+- **Refill from the list** — `POST /api/portal/refill-requests` {medication_ids[], supply_type(standard|longer), requested_months, requested_supply_text, travel_note, patient_note}. Creates ONE `prescription_request` per selected med sharing one `batch_id` (keeps physician Rx queue single-med rendering 100% intact); authoritative drug/strength/directions are copied from `patient_medications` (never patient free-text). source=`patient_refill`.
+- **Longer supply / travel** — 4/5/6/Other months + optional travel note + disclaimer. Remains `internal_status=received` (physician review; NEVER auto-approved).
+- **Fixed v1 pharmacy** — destination = "1670 Dufferin Drug Mart" via `_refill_pharmacy_label` (reads `practices.default_pharmacy_name`, else the default constant). NO pharmacy picker / preferred-pharmacy field anywhere.
+- **"I don't see my medicine" (photo review)** — `POST /api/portal/prescriptions/photo` (multipart file + optional name/note). source=`patient_photo`, review_required=true, image stored in object storage (reuses `_store_pharmacy_upload`), viewable by staff/physician at `/api/internal/prescriptions/{id}/attachment`. NEVER mutates `patient_medications` — only a physician-sent prescription can.
+- **Status/notify** — send-rx link-back now advances ANY source request to `prescription_sent` and, for patient-origin requests, emits a no-PHI patient_update + in-portal notification + generic email ("Prescription sent to your pharmacy").
+- **Delegate compatibility** — all three endpoints use `portal_access(RX_REQUESTS)`; `on_behalf_of` is server-verified and audited (acted_by=delegate, on_behalf_of=patient). Delegates get no medication-editing rights.
+- **Frontend** — new shared `portal/MedicationRefill.jsx` (used by `PortalPrescriptions.jsx` self + `ManagedPortal.jsx` delegate), `PortalHome` "Your Medicines" card, i18n en/es/fr. Created requests carry `practice_id` so they appear in the scoped internal queue.
+- NOT deployed to Production (awaiting approval). Seeded test meds: Maria (3), Linda (2, delegated to Maria w/ RX_REQUESTS).
+
+
+
 ## 2026-06 — Caregiver v1 final check + public link-preview branding (PREVIEW ONLY)
 - **Non-patient caregiver (already supported, re-verified end-to-end)**: staff "Add access -> New caregiver" (name+email) creates a role=caregiver user with NO patient_id, NO patient record, NO PIN, must_change_password=true, one-time temp password; existing email is reused (no duplicate). Confirmed: caregiver logs in, sees only delegated patients (has_own_patient=false), managed summary honours only granted permissions, self-portal /portal/overview -> 403, action without permission -> 403. Existing-VIen-user path unchanged. No code changes were needed for Part 1.
 - **Public link-preview branding**: `frontend/public/index.html` — replaced `<meta name="description" content="A product of emergent.sh">` with "Patient portal for appointments, prescription requests, and clinic communication."; title "VIen EMR" -> "Visita EMR Network"; added og:site_name/title/description/type/url (https://visitaemr.com/) + twitter:card/title/description. Verified rendered preview HTML contains new metadata and 0 occurrences of "A product of emergent.sh". Platform emergent-main.js script left untouched. No manifest.json exists. No routes/workflows/registration/isolation touched. (Production previews update only after the next deploy; WhatsApp/social caches may show old preview for a while.)

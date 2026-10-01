@@ -1,5 +1,15 @@
 # VIen EMR — Changelog
 
+## 2026-06 — One-time maintenance endpoint to run Stage A/B/C migrations in Production
+Root cause of the stuck QR ("Loading your practice…"): the three manual prod migrations never ran (deployer has no prod write path; preview MONGO_URL ≠ prod). Fix = a TEMPORARY, admin-only, token-gated endpoint that runs the exact three approved backfills using the app's own (production) DB connection.
+
+- **`POST /api/internal/admin/run-stage-migrations`** (admin role + `MIGRATION_RUN_TOKEN`, `hmac.compare_digest`). Body `{token, dry_run}`. Runs ONLY practice_backfill → internal_user_practices → relationships_backfill, IN ORDER, stopping if any step's `ok` is false. NOT generic: no arbitrary scripts/collections/queries/shell. Returns safe summary counts only (no PHI/raw docs). Token never logged or echoed; 403 on missing/bad token.
+- Refactored the three `migrate_*` scripts to expose importable `run(db, dry_run)` returning structured summaries (CLI `__main__` still works). relationships_backfill adds a duplicate-(practice,directory) detector → aborts (`ok:false`) if any duplicate canonical-identity rows exist.
+- Safety preserved: additive, idempotent, never overwrites existing non-null practice_id, no deletes, no PIN changes, no FORMER_CLOSED cleanup, no pharmacy/partner/provider touch.
+- Preview verified: staff→403, admin+bad token→403, dry-run 0 writes, apply idempotent (practice 0 / users 0 / relationships stable / dups 0).
+- `MIGRATION_RUN_TOKEN` added to preview backend/.env (preview-only test value). Production value must be set in Production secrets. Endpoint + token to be REMOVED in a follow-up deploy after prod verification.
+
+
 ## 2026-06 — Professional Profile SIMPLIFICATION (PREVIEW ONLY)
 Lightweight descriptive layer; core VIen (users→practices→patients→relationships→workflows) stays fully independent. Frontend-only + one backend doc comment. No schema change, no patient-care/RBAC/isolation change. Self-verified (UI screenshots + curl).
 

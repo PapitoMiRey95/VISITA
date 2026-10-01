@@ -45,11 +45,11 @@ def now_iso():
     return datetime.now(timezone.utc).isoformat()
 
 
-async def ensure_default_practice(db, dry_run: bool) -> dict:
+async def ensure_default_practice(db, dry_run: bool):
     existing = await db.practices.find_one({"slug": DEFAULT_SLUG})
     if existing:
-        print(f"[practice] default practice already exists: id={existing['id']} slug={existing['slug']}")
-        return existing
+        return existing, {"existed": True, "created": False, "slug": existing.get("slug"),
+                          "active": existing.get("active")}
     settings = await db.settings.find_one({"id": "clinic"}) or {}
     physician = await db.users.find_one({"role": "physician"})
     practice = {
@@ -66,41 +66,50 @@ async def ensure_default_practice(db, dry_run: bool) -> dict:
         "created_at": now_iso(),
         "updated_at": now_iso(),
     }
-    if dry_run:
-        print(f"[practice] WOULD CREATE default practice slug={DEFAULT_SLUG} "
-              f"physician={practice['physician_name']!r} clinic={practice['clinic_name']!r}")
-        return practice
-    await db.practices.insert_one({**practice})
-    print(f"[practice] CREATED default practice id={practice['id']} slug={practice['slug']} "
-          f"physician={practice['physician_name']!r}")
-    return practice
+    if not dry_run:
+        await db.practices.insert_one({**practice})
+    return practice, {"existed": False, "created": (not dry_run), "slug": DEFAULT_SLUG,
+                      "active": True}
 
 
 async def backfill(db, practice_id: str, dry_run: bool):
-    total = 0
+    collections, total_examined, total_changed = [], 0, 0
     for coll in WORKFLOW_COLLECTIONS:
         missing = {"$or": [{"practice_id": {"$exists": False}}, {"practice_id": None}]}
         count = await db[coll].count_documents(missing)
-        if count == 0:
-            print(f"[backfill] {coll:24s} already fully scoped (0 to update)")
-            continue
-        if dry_run:
-            print(f"[backfill] {coll:24s} WOULD stamp {count} record(s)")
-        else:
+        changed = 0
+        if count and not dry_run:
             res = await db[coll].update_many(
                 missing, {"$set": {"practice_id": practice_id, "practice_backfilled_at": now_iso()}})
-            print(f"[backfill] {coll:24s} stamped {res.modified_count} record(s)")
-        total += count
-    print(f"[backfill] total records {'to update' if dry_run else 'updated'}: {total}")
+            changed = res.modified_count
+        collections.append({"name": coll, "examined": count, "changed": changed})
+        total_examined += count
+        total_changed += changed
+    return collections, total_examined, total_changed
+
+
+async def run(db, dry_run: bool = False) -> dict:
+    """Importable entry point. Returns a safe summary (no secrets, no raw docs)."""
+    errors = []
+    practice, pinfo = await ensure_default_practice(db, dry_run)
+    collections, total_examined, total_changed = await backfill(db, practice["id"], dry_run)
+    return {
+        "migration": "practice_backfill",
+        "mode": "dry-run" if dry_run else "apply",
+        "practice": pinfo,
+        "collections": collections,
+        "total_examined": total_examined,
+        "total_changed": total_changed,
+        "ok": True,
+        "errors": errors,
+    }
 
 
 async def main(dry_run: bool):
     client = AsyncIOMotorClient(os.environ["MONGO_URL"])
     db = client[os.environ["DB_NAME"]]
-    print(f"=== Stage A practice backfill {'(DRY RUN)' if dry_run else '(APPLY)'} ===")
-    practice = await ensure_default_practice(db, dry_run)
-    await backfill(db, practice["id"], dry_run)
-    print("=== done ===")
+    summary = await run(db, dry_run)
+    print(summary)
     client.close()
 
 

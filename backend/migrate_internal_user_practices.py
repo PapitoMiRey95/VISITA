@@ -15,26 +15,38 @@ load_dotenv()
 CLINIC_ROLES = ["staff", "physician", "admin"]
 
 
-async def main(dry_run: bool):
-    client = AsyncIOMotorClient(os.environ["MONGO_URL"])
-    db = client[os.environ["DB_NAME"]]
+async def run(db, dry_run: bool = False) -> dict:
+    """Importable entry point. Returns a safe summary (no secrets, no raw docs)."""
     practice = await db.practices.find_one({"slug": "dr-aguayo"})
     if not practice:
-        print("ERROR: default dr-aguayo practice not found. Run migrate_practice_backfill.py first.")
-        client.close()
-        return 1
+        return {
+            "migration": "internal_user_practices",
+            "mode": "dry-run" if dry_run else "apply",
+            "examined": 0, "changed": 0, "ok": False,
+            "errors": ["default dr-aguayo practice not found; run practice_backfill first"],
+        }
     pid = practice["id"]
     q = {"role": {"$in": CLINIC_ROLES},
          "$or": [{"practice_id": {"$exists": False}}, {"practice_id": None}]}
     count = await db.users.count_documents(q)
-    print(f"=== internal-user practice backfill {'(DRY RUN)' if dry_run else '(APPLY)'} ===")
-    print(f"internal users to assign to dr-aguayo ({pid}): {count}")
-    if not dry_run and count:
+    changed = 0
+    if count and not dry_run:
         res = await db.users.update_many(q, {"$set": {"practice_id": pid}})
-        print(f"assigned {res.modified_count} users")
-    print("=== done ===")
+        changed = res.modified_count
+    return {
+        "migration": "internal_user_practices",
+        "mode": "dry-run" if dry_run else "apply",
+        "examined": count, "changed": changed, "ok": True, "errors": [],
+    }
+
+
+async def main(dry_run: bool):
+    client = AsyncIOMotorClient(os.environ["MONGO_URL"])
+    db = client[os.environ["DB_NAME"]]
+    summary = await run(db, dry_run)
+    print(summary)
     client.close()
-    return 0
+    return 0 if summary["ok"] else 1
 
 
 if __name__ == "__main__":

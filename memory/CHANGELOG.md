@@ -1,5 +1,17 @@
 # VIen EMR — Changelog
 
+## 2026-06 — Family / Caregiver delegated portal access (v1) (PREVIEW ONLY)
+A delegate uses their OWN login to act on behalf of a granted patient — no duplicate identities, no shared passwords, no impersonation. Verified: testing_agent iteration_64 (17/17 backend, frontend 100%, zero issues) + main-agent curl.
+
+- **New collection `patient_portal_delegates`** + `backend/delegates.py` {id, patient_id, delegate_user_id, practice_id, relationship(+other), permissions[], active, granted_at/by, consent_type/note, revoked_at/by, created/updated}. Permissions: APPOINTMENTS, RX_REQUESTS, DOCUMENTS, REQUEST_STATUS.
+- **`PortalCtx` + `portal_access(permission)` dependency**: no `on_behalf_of` ⇒ self (verified patient); with `on_behalf_of` (header X-On-Behalf-Of or query param) ⇒ enforce active grant + required permission + patient practice + verification, all server-side. Unauthorized/cross-practice ⇒ 404 (no existence leak); missing permission ⇒ 403.
+- **Delegate-aware endpoints**: POST /portal/appointments (APPOINTMENTS), POST /portal/prescriptions (RX_REQUESTS), GET /portal/documents + download (DOCUMENTS). Reads: GET /portal/my-delegations, GET /portal/managed/{id}/summary (permission-filtered, patient-facing statuses only, released docs only).
+- **Audit**: every delegated action records actor=delegate (id/name/role) + meta.on_behalf_of_patient_id + acted_by_user_id + delegate_relationship. Never attributed solely to the patient.
+- **Staff/admin**: GET/POST /internal/patients/{id}/delegates, PATCH, POST .../{grant_id}/revoke (soft: active=false + revoked_at/by, history preserved, immediate access loss), GET /internal/user-search, POST /internal/caregivers (role=caregiver, no chart/PIN, temp password + must_change_password, reuses existing email), GET /internal/delegate-options.
+- **Frontend**: internal `FamilyAccess.jsx` on the Patients record (list/add existing-or-new-caregiver/revoke); portal `ManagedPeople.jsx` (/portal/people), `ManagedPortal.jsx` (/portal/manage/:id with 'You are managing X's account' banner + Return to my account + permission-gated sections + fail-safe error), PortalHome 'People I help manage' card. /portal now allows roles patient + caregiver.
+- Reused existing bcrypt/JWT auth (no new auth mechanism). NOT deployed to Production (awaiting approval).
+
+
 ## 2026-06 — Cleanup deploy: QR fail-safe + remove temporary migration endpoint
 Bundled, cleanup-only (no new features, no schema, no migrations, no data cleanup). Preview rule-6 smoke passed (all logins + all internal queues 200).
 

@@ -1,6 +1,8 @@
 import { useNavigate } from "react-router-dom";
 import { useTranslation } from "react-i18next";
-import { Calendar, Pill, FileHeart, MessageSquare, ClipboardList, Scan, Droplet, ChevronRight, User, CalendarClock, FlaskConical } from "lucide-react";
+import { toast } from "sonner";
+import { Calendar, Pill, FileHeart, MessageSquare, ClipboardList, Scan, Droplet, ChevronRight, User, CalendarClock, FlaskConical, FileText, BellRing } from "lucide-react";
+import { api, formatErr } from "../lib/api";
 import { EmergencyNotice } from "../components/EmergencyNotice";
 import { usePortal, PendingBanner, Card, StatusPill } from "./shared";
 import { formatDate } from "../lib/date";
@@ -8,6 +10,7 @@ import { formatDate } from "../lib/date";
 const TILES = [
     { to: "/portal/appointments", icon: Calendar, tkey: "home.tiles.appointments", color: "text-portal-blue", testid: "tile-appointments" },
     { to: "/portal/prescriptions", icon: Pill, tkey: "home.tiles.prescriptions", color: "text-emerald-500", testid: "tile-prescriptions" },
+    { to: "/portal/documents", icon: FileText, tkey: "home.tiles.documents", color: "text-cyan-600", testid: "tile-documents" },
     { to: "/portal/bloodwork", icon: Droplet, tkey: "home.tiles.bloodwork", color: "text-rose-500", testid: "tile-bloodwork" },
     { to: "/portal/imaging", icon: Scan, tkey: "home.tiles.imaging", color: "text-sky-500", testid: "tile-imaging" },
     { to: "/portal/referrals", icon: FileHeart, tkey: "home.tiles.referrals", color: "text-violet-500", testid: "tile-referrals" },
@@ -15,6 +18,41 @@ const TILES = [
     { to: "/portal/requests", icon: ClipboardList, tkey: "home.tiles.requests", color: "text-slate-500", testid: "tile-requests" },
     { to: "/portal/account", icon: User, tkey: "home.tiles.profile", color: "text-teal-500", testid: "tile-profile" },
 ];
+
+function NewUpdatesCard() {
+    const nav = useNavigate();
+    const { t } = useTranslation(["portal"]);
+    const { overview, refetch } = usePortal();
+    const updates = overview.data?.updates || [];
+    if (updates.length === 0) return null;
+
+    const open = async () => {
+        try {
+            await Promise.all(updates.map((u) => api.post(`/portal/updates/${u.id}/read`).catch(() => {})));
+        } catch (e) { toast.error(formatErr(e)); }
+        refetch && refetch();
+        nav("/portal/documents");
+    };
+
+    return (
+        <Card data-testid="new-update-card" className="bg-cyan-50 border-cyan-200">
+            <div className="flex items-start gap-3">
+                <div className="relative w-10 h-10 rounded-full bg-cyan-100 flex items-center justify-center flex-shrink-0">
+                    <BellRing className="w-5 h-5 text-cyan-700" />
+                    <span data-testid="new-update-badge" className="absolute -top-1 -right-1 bg-red-500 text-white text-[10px] min-w-[18px] h-[18px] px-1 rounded-full flex items-center justify-center font-bold">{updates.length}</span>
+                </div>
+                <div className="flex-1">
+                    <p className="font-bold text-cyan-900">{t("home.updates.title")}</p>
+                    <p className="text-sm text-cyan-800 mt-0.5">{t("home.updates.body")}</p>
+                    <button data-testid="new-update-view" onClick={open}
+                        className="mt-3 inline-flex items-center gap-1 px-4 py-2 rounded-xl bg-cyan-700 hover:bg-cyan-800 text-white text-sm font-bold transition active:scale-95">
+                        {t("home.updates.cta")} <ChevronRight className="w-4 h-4" />
+                    </button>
+                </div>
+            </div>
+        </Card>
+    );
+}
 
 const todayIso = () => {
     const d = new Date();
@@ -103,6 +141,8 @@ export default function PortalHome() {
             </div>
 
             {p && <PendingBanner status={p.verification_status} />}
+
+            <NewUpdatesCard />
 
             <UpcomingAppointment />
 

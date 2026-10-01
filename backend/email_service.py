@@ -163,6 +163,8 @@ SUBJECTS = {
                      "es": "Ha sido colocado en la lista de espera"},
     "invoice_issued": {"en": "New invoice from Dr. Aguayo's office",
                        "es": "Nueva factura del consultorio del Dr. Aguayo"},
+    "document_available": {"en": "A new document is available in your VIen Patient Portal",
+                           "es": "Un nuevo documento está disponible en su Portal del Paciente VIen"},
 }
 
 # Shared chrome strings (never contain patient/clinical free text).
@@ -363,6 +365,38 @@ def account_verified_html(name: str, portal_url: str = "", lang="en") -> str:
         p1 = ("Your registration with Dr. Aguayo's office has been verified and your Patient Portal account "
               "is now active.")
         p2 = "You can now sign in to access the Patient Portal and submit requests."
+    return (
+        '<table role="presentation" width="100%"><tr><td style="padding:24px;font-family:Arial,sans-serif;color:#0f172a">'
+        f'<h2 style="margin:0 0 12px">{heading}</h2>'
+        f'<p>{hello}</p>'
+        f'<p>{p1}</p>'
+        f'<p>{p2}</p>'
+        f'{link}'
+        f'<p style="margin-top:16px"><strong>{_CHROME["office"][L]}</strong><br>VIsita EMR</p>'
+        f'<p style="font-size:12px;color:#888;margin-top:20px">{_CHROME["no_medical"][L]}</p>'
+        '</td></tr></table>'
+    )
+
+
+def document_available_html(name: str, portal_url: str = "", lang="en") -> str:
+    """Generic 'a document is available' email. Contains NO clinical info, no
+    result, no attachment — only a prompt to sign in securely."""
+    L = norm_lang(lang)
+    safe_name = _clean(name) or _DEFAULT_NAME[L]
+    hello = _CHROME["hello"][L].format(n=safe_name)
+    link = ""
+    if portal_url and portal_url.startswith("https://"):
+        link = (f'<p style="margin:18px 0"><a href="{portal_url}/portal" '
+                f'style="background:#0e7490;color:#fff;padding:10px 18px;border-radius:6px;'
+                f'text-decoration:none">{_CHROME["open_portal"][L]}</a></p>')
+    if L == "es":
+        heading = "Un nuevo documento está disponible"
+        p1 = "Un nuevo documento está disponible para usted en el Portal del Paciente VIen."
+        p2 = "Inicie sesión de forma segura para verlo o descargarlo."
+    else:
+        heading = "A new document is available"
+        p1 = "A new document is available for you in the VIen Patient Portal."
+        p2 = "Sign in securely to view or download it."
     return (
         '<table role="presentation" width="100%"><tr><td style="padding:24px;font-family:Arial,sans-serif;color:#0f172a">'
         f'<h2 style="margin:0 0 12px">{heading}</h2>'

@@ -20,6 +20,7 @@ import PortalMessages from "./portal/PortalMessages";
 import PortalImaging from "./portal/PortalImaging";
 import PortalBloodwork from "./portal/PortalBloodwork";
 import PortalMyRequests from "./portal/PortalMyRequests";
+import PortalDocuments from "./portal/PortalDocuments";
 import PortalInvoices from "./portal/PortalInvoices";
 import PortalAccount from "./portal/PortalAccount";
 
@@ -86,6 +87,7 @@ function App() {
                         <Route path="imaging" element={<PortalImaging />} />
                         <Route path="bloodwork" element={<PortalBloodwork />} />
                         <Route path="requests" element={<PortalMyRequests />} />
+                        <Route path="documents" element={<PortalDocuments />} />
                         <Route path="invoices" element={<PortalInvoices />} />
                         <Route path="account" element={<PortalAccount />} />
                     </Route>

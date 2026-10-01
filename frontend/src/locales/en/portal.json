@@ -25,9 +25,15 @@
       "body": "Questions about your results? Some results require a medical appointment for proper review and discussion. If the doctor determines that follow-up is needed, the clinic may contact you. You can request an appointment at any time to discuss your results or other medical concerns.",
       "cta": "Request an appointment"
     },
+    "updates": {
+      "title": "New update",
+      "body": "A document from your imaging request is now available.",
+      "cta": "View / Download"
+    },
     "tiles": {
       "appointments": "Request an Appointment",
       "prescriptions": "Prescription Request",
+      "documents": "Documents & Results",
       "bloodwork": "Bloodwork Request",
       "imaging": "X-Ray / Ultrasound",
       "referrals": "Referral Status",
@@ -35,6 +41,15 @@
       "requests": "My Requests",
       "profile": "My Profile"
     }
+  },
+  "documents": {
+    "title": "Documents & Results",
+    "subtitle": "Documents the clinic has released to you.",
+    "empty": "No documents have been shared with you yet. When the clinic releases a document, it will appear here.",
+    "document": "Document",
+    "sharedOn": "Shared on",
+    "view": "View",
+    "download": "Download"
   },
   "account": {
     "myInformation": "My Information",

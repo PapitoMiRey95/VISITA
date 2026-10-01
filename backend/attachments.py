@@ -64,6 +64,9 @@ def _public(doc: dict) -> dict:
         "uploaded_at": doc.get("uploaded_at"),
         "entity_type": doc.get("entity_type"),
         "entity_id": doc.get("entity_id"),
+        "shared_with_patient": bool(doc.get("shared_with_patient")),
+        "shared_by": doc.get("shared_by"),
+        "shared_at": doc.get("shared_at"),
     }
 
 
@@ -134,3 +137,71 @@ async def soft_delete_attachment(db, att_id: str, user: dict) -> dict:
     await audit("attachment_removed", doc.get("entity_type"), doc.get("entity_id"), user,
                 meta={"attachment_id": att_id, "filename": doc.get("original_filename")})
     return {"ok": True, "id": att_id}
+
+
+# entity_type -> patient-facing label for released documents
+PATIENT_DOC_LABELS = {
+    "imaging": "Imaging",
+    "bloodwork": "Bloodwork",
+    "message": "Message",
+}
+
+
+async def mark_shared(db, att_id: str, user: dict):
+    """Release ONE internal attachment to the patient. Idempotent. Returns
+    (attachment_doc, parent_record). Never exposes anything beyond this doc."""
+    doc = await db.attachments.find_one({"id": att_id, "is_deleted": {"$ne": True}})
+    if not doc:
+        raise HTTPException(status_code=404, detail="Attachment not found.")
+    coll = ENTITY_COLLECTIONS.get(doc.get("entity_type"))
+    parent = await db[coll].find_one({"id": doc["entity_id"]}) if coll else None
+    if not parent:
+        raise HTTPException(status_code=404, detail="The linked record was not found.")
+    patient_id = parent.get("patient_id")
+    if not patient_id:
+        raise HTTPException(status_code=400, detail="This record has no linked patient to share with.")
+    if not doc.get("shared_with_patient"):
+        await db.attachments.update_one({"id": att_id}, {"$set": {
+            "shared_with_patient": True, "shared_at": now_iso(),
+            "shared_by": user.get("name"), "shared_by_id": user.get("id"),
+            "patient_id": patient_id}})
+    await audit("attachment_shared", doc.get("entity_type"), doc.get("entity_id"), user,
+                meta={"attachment_id": att_id, "patient_id": patient_id})
+    fresh = await db.attachments.find_one({"id": att_id})
+    return fresh, parent
+
+
+async def list_shared_for_patient(db, patient_id: str) -> list:
+    """Documents explicitly released to THIS patient. Internal attachments are
+    never included. Ownership is enforced by the patient_id filter."""
+    docs = await db.attachments.find(
+        {"patient_id": patient_id, "shared_with_patient": True, "is_deleted": {"$ne": True}}
+    ).sort("shared_at", -1).to_list(500)
+    out = []
+    for d in docs:
+        coll = ENTITY_COLLECTIONS.get(d.get("entity_type"))
+        parent = await db[coll].find_one({"id": d["entity_id"]}) if coll else None
+        out.append({
+            "id": d["id"],
+            "original_filename": d.get("original_filename"),
+            "content_type": d.get("content_type"),
+            "size": d.get("size"),
+            "entity_type": d.get("entity_type"),
+            "service_label": PATIENT_DOC_LABELS.get(d.get("entity_type"), "Document"),
+            "related_ref": (parent or {}).get("ref_number"),
+            "shared_at": d.get("shared_at"),
+        })
+    return out
+
+
+async def serve_shared_for_patient(db, att_id: str, patient_id: str) -> Response:
+    """Serve a released document ONLY if it belongs to this patient."""
+    doc = await db.attachments.find_one(
+        {"id": att_id, "shared_with_patient": True, "is_deleted": {"$ne": True}})
+    if not doc or doc.get("patient_id") != patient_id:
+        raise HTTPException(status_code=404, detail="Document not found.")
+    data, ctype = storage.get_object(doc["storage_path"])
+    ctype = doc.get("content_type") or ctype
+    fname = doc.get("original_filename") or "document"
+    return Response(content=data, media_type=ctype,
+                    headers={"Content-Disposition": f'inline; filename="{fname}"'})

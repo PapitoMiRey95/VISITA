@@ -164,6 +164,18 @@
       "X-Ray / Ultrasound": "Radiografía / Ultrasonido"
     }
   },
+  "docRequest": {
+    "action": "Solicitud de resultados / documento",
+    "prompt": "¿De qué desea una copia? La clínica revisará su solicitud.",
+    "toast": "Su solicitud de documento fue enviada a la clínica.",
+    "requestAppointment": "Solicitar una cita",
+    "interpretationPre": "Si desea que el médico revise o explique sus resultados, por favor",
+    "purposes": {
+      "copy_result": "Solicitar copia de un resultado",
+      "copy_imaging": "Solicitar copia de un informe de imagenología",
+      "copy_other": "Solicitar copia de otro documento disponible"
+    }
+  },
   "referrals": {
     "title": "Estado de referencia",
     "needNewTitle": "¿Necesita una nueva referencia?",

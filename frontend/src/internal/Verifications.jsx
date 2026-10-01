@@ -1,7 +1,7 @@
 import { useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { toast } from "sonner";
-import { UserCheck, UserX, History, Link2, ShieldCheck } from "lucide-react";
+import { UserCheck, UserX, History, Link2, ShieldCheck, Search, GitMerge } from "lucide-react";
 import { api, formatErr } from "../lib/api";
 import { useInvalidate } from "./hooks";
 import { useAuth } from "../context/AuthContext";
@@ -18,6 +18,108 @@ const REVIEW = {
     AMBIGUOUS_MATCH: ["Ambiguous match — confirm identity", "bg-amber-100 text-amber-700"],
     UNMATCHED_CURRENT_PATIENT: ["Unmatched — staff review required", "bg-slate-100 text-slate-600"],
 };
+
+function CandidateLine({ c, onLink, linking }) {
+    return (
+        <div data-testid="identity-candidate" className="text-xs text-slate-700 bg-emerald-50 border border-emerald-100 rounded-sm px-2 py-1.5 mb-1 flex items-center justify-between gap-2">
+            <div>
+                <span className="font-semibold">{formatLastFirst(c.last_name, c.first_name)}</span>
+                {" · "}DOB {formatDate(c.date_of_birth)} · HC {c.health_card_masked || "—"}
+                {c.visita_patient_id ? <> · <span className="font-semibold">VISITA #{c.visita_patient_id}</span></> : ""}
+                {c.city ? ` · ${c.city}` : ""} {c.province || ""}
+                {c.linked_patient_id ? <span className="ml-1 text-amber-700">(already linked)</span> : ""}
+            </div>
+            <Button size="sm" disabled={linking || !!c.linked_patient_id} data-testid={`identity-link-${c.id}`}
+                onClick={() => onLink(c.id)} className="h-7 bg-visita-green hover:bg-visita-greenDark text-white shrink-0">
+                <Link2 className="w-3.5 h-3.5 mr-1" /> Link
+            </Button>
+        </div>
+    );
+}
+
+function IdentitySearchLink({ patientId, onLinked, canDecide }) {
+    const [q, setQ] = useState("");
+    const [results, setResults] = useState(null);
+    const [busy, setBusy] = useState(false);
+    const search = async () => {
+        if (!q.trim()) return;
+        setBusy(true);
+        try {
+            const { data } = await api.get("/internal/directory", { params: { q: q.trim() } });
+            setResults(data);
+        } catch (e) { toast.error(formatErr(e)); } finally { setBusy(false); }
+    };
+    if (!canDecide) return null;
+    return (
+        <div className="mt-2 border-t border-slate-200 pt-2">
+            <div className="text-xs uppercase tracking-wide text-slate-400 mb-1">Find another canonical record</div>
+            <div className="flex gap-2">
+                <div className="relative flex-1">
+                    <Search className="w-4 h-4 text-slate-400 absolute left-2 top-2.5" />
+                    <Input data-testid={`identity-search-${patientId}`} value={q} onChange={(e) => setQ(e.target.value)}
+                        onKeyDown={(e) => e.key === "Enter" && search()} placeholder="Search name, HC, VISITA #…" className="pl-8 h-9 bg-white" />
+                </div>
+                <Button size="sm" variant="outline" disabled={busy} onClick={search} data-testid={`identity-search-btn-${patientId}`}>Search</Button>
+            </div>
+            {results && results.length === 0 && <p className="text-xs text-slate-400 mt-1">No directory records found.</p>}
+            {results && results.length > 0 && (
+                <div className="mt-1.5">
+                    {results.map((c) => <CandidateLine key={c.id} c={c} linking={false} onLink={(did) => onLinked(did)} />)}
+                </div>
+            )}
+        </div>
+    );
+}
+
+function IdentityLinks({ canDecide }) {
+    const invalidate = useInvalidate();
+    const [linkingId, setLinkingId] = useState(null);
+    const q = useQuery({ queryKey: ["queue", "/internal/identity-links"], queryFn: async () => (await api.get("/internal/identity-links")).data });
+    const items = q.data || [];
+
+    const link = async (patientId, directoryId) => {
+        if (!window.confirm("Link this portal account to the selected canonical patient? The canonical VISITA PIN will be preserved and future activity will use it. No clinical records are merged.")) return;
+        setLinkingId(patientId);
+        try {
+            const { data } = await api.post(`/internal/patients/${patientId}/link-directory`, { directory_id: directoryId });
+            toast.success(`Linked to canonical patient${data.visita_patient_id ? ` · VISITA #${data.visita_patient_id}` : ""}.`);
+            invalidate(); q.refetch();
+        } catch (e) { toast.error(formatErr(e)); } finally { setLinkingId(null); }
+    };
+
+    return (
+        <div className="space-y-2" data-testid="identity-links">
+            <p className="text-sm text-slate-500">Portal accounts with a possible existing VISITA record. Linking preserves the canonical PIN and never merges clinical history or overwrites demographics. Ambiguous matches are resolved manually here.</p>
+            {items.length === 0 && <p className="text-slate-400 text-sm">No accounts awaiting identity review.</p>}
+            {items.map((p) => (
+                <div key={p.id} data-testid="identity-item" className="bg-white border border-slate-300 rounded-sm p-4">
+                    <div className="grid md:grid-cols-2 gap-4">
+                        <div className="text-sm space-y-0.5">
+                            <div className="text-xs uppercase tracking-wide text-slate-400 mb-1">Portal registration</div>
+                            <div className="font-bold text-slate-800 text-base" data-testid="identity-portal-name">{formatLastFirst(p.last_name, p.first_name)}</div>
+                            <div className="text-slate-600">DOB: {formatDate(p.date_of_birth)} · {TYPE[p.patient_type] || p.patient_type}</div>
+                            <div className="text-slate-600">Phone: {p.phone} · Email: {p.email}</div>
+                            {p.health_card_masked && <div className="text-slate-600">Health Card: {p.health_card_masked}</div>}
+                            <div className="text-slate-500 text-xs">
+                                {p.verification_status === "verified" ? "Verified portal account" : "Pending verification"}
+                                {p.visita_patient_id ? ` · current PIN ${p.visita_patient_id}` : " · no PIN"}
+                            </div>
+                        </div>
+                        <div className="text-sm">
+                            <div className="text-xs uppercase tracking-wide text-slate-400 mb-1">
+                                Suggested canonical record{(p.candidates.length > 1) ? "s" : ""}{p.strength ? ` · ${p.strength} match` : ""}
+                            </div>
+                            {p.candidates.map((c) => (
+                                <CandidateLine key={c.id} c={c} linking={linkingId === p.id} onLink={(did) => link(p.id, did)} />
+                            ))}
+                            <IdentitySearchLink patientId={p.id} canDecide={canDecide} onLinked={(did) => link(p.id, did)} />
+                        </div>
+                    </div>
+                </div>
+            ))}
+        </div>
+    );
+}
 
 function VerifiedHistory() {
     const q = useQuery({ queryKey: ["queue", "/internal/verifications/history"], queryFn: async () => (await api.get("/internal/verifications/history")).data });
@@ -84,9 +186,13 @@ export default function Verifications() {
                     className={`px-3 py-2 text-sm font-semibold -mb-px border-b-2 inline-flex items-center gap-1 ${tab === "history" ? "border-visita-green text-visita-greenDark" : "border-transparent text-slate-500 hover:text-slate-700"}`}>
                     <History className="w-4 h-4" /> Recently Verified
                 </button>
+                <button data-testid="verif-tab-identity" onClick={() => setTab("identity")}
+                    className={`px-3 py-2 text-sm font-semibold -mb-px border-b-2 inline-flex items-center gap-1 ${tab === "identity" ? "border-visita-green text-visita-greenDark" : "border-transparent text-slate-500 hover:text-slate-700"}`}>
+                    <GitMerge className="w-4 h-4" /> Identity Link Review
+                </button>
             </div>
 
-            {tab === "history" ? <VerifiedHistory /> : (
+            {tab === "identity" ? <IdentityLinks canDecide={canDecide} /> : tab === "history" ? <VerifiedHistory /> : (
             <div className="space-y-2">
                 {items.length === 0 && <p className="text-slate-400 text-sm">No pending verifications.</p>}
                 {items.map((p) => (

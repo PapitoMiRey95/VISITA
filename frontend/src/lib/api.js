@@ -52,3 +52,15 @@ export async function openAttachment(url) {
     window.open(objUrl, "_blank", "noopener");
     setTimeout(() => URL.revokeObjectURL(objUrl), 60000);
 }
+
+export async function saveAttachment(url, filename) {
+    const { data } = await api.get(url, { responseType: "blob" });
+    const objUrl = URL.createObjectURL(data);
+    const a = document.createElement("a");
+    a.href = objUrl;
+    a.download = filename || "document";
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    setTimeout(() => URL.revokeObjectURL(objUrl), 60000);
+}

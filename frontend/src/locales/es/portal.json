@@ -25,9 +25,15 @@
       "body": "¿Preguntas sobre sus resultados? Algunos resultados requieren una cita médica para su revisión y análisis adecuados. Si el médico determina que es necesario un seguimiento, la clínica puede comunicarse con usted. Puede solicitar una cita en cualquier momento para analizar sus resultados u otras inquietudes médicas.",
       "cta": "Solicitar una cita"
     },
+    "updates": {
+      "title": "Nueva actualización",
+      "body": "Ya está disponible un documento de su solicitud de imagenología.",
+      "cta": "Ver / Descargar"
+    },
     "tiles": {
       "appointments": "Solicitar una cita",
       "prescriptions": "Solicitar receta",
+      "documents": "Documentos y resultados",
       "bloodwork": "Solicitar análisis de sangre",
       "imaging": "Radiografía / Ultrasonido",
       "referrals": "Estado de referencia",
@@ -35,6 +41,15 @@
       "requests": "Mis solicitudes",
       "profile": "Mi perfil"
     }
+  },
+  "documents": {
+    "title": "Documentos y resultados",
+    "subtitle": "Documentos que la clínica ha compartido con usted.",
+    "empty": "Todavía no se ha compartido ningún documento con usted. Cuando la clínica publique un documento, aparecerá aquí.",
+    "document": "Documento",
+    "sharedOn": "Compartido el",
+    "view": "Ver",
+    "download": "Descargar"
   },
   "account": {
     "myInformation": "Mi información",

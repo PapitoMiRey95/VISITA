@@ -164,6 +164,18 @@
       "X-Ray / Ultrasound": "X-Ray / Ultrasound"
     }
   },
+  "docRequest": {
+    "action": "Results / Document Request",
+    "prompt": "What would you like a copy of? The clinic will review your request.",
+    "toast": "Your document request was sent to the clinic.",
+    "requestAppointment": "Request an Appointment",
+    "interpretationPre": "If you would like the doctor to review or explain your results, please",
+    "purposes": {
+      "copy_result": "Request copy of a result",
+      "copy_imaging": "Request copy of an imaging report",
+      "copy_other": "Request copy of another available document"
+    }
+  },
   "referrals": {
     "title": "Referral Status",
     "needNewTitle": "Need a new referral?",

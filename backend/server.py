@@ -2441,6 +2441,9 @@ async def portal_overview(user: dict = Depends(get_current_user)):
                       "created_at": m["created_at"]} for m in msgs],
         "referrals": referrals,
         "notifications": notes,
+        "updates": await db.patient_updates.find(
+            {"patient_id": pid, "read": {"$ne": True}}, {"_id": 0}).sort("created_at", -1).to_list(50),
+        "documents": await attach_mod.list_shared_for_patient(db, pid),
         "billing": {"open": inv_open, "total": inv_total},
     }
 
@@ -3482,6 +3485,98 @@ async def delete_attachment(att_id: str, user: dict = Depends(require_roles(*CLI
     return await attach_mod.soft_delete_attachment(db, att_id, user)
 
 
+class ShareAttachmentBody(BaseModel):
+    complete: bool = True
+
+
+@api.post("/internal/attachments/{att_id}/share")
+async def share_attachment(att_id: str, body: ShareAttachmentBody,
+                           user: dict = Depends(require_roles(*CLINIC_ROLES))):
+    """Explicitly release ONE internal attachment to the patient and (optionally)
+    complete the source request. Creates a reusable patient update event, an
+    in-portal notification and a GENERIC (no-PHI) email. Never emails the file."""
+    att, parent = await attach_mod.mark_shared(db, att_id, user)
+    patient_id = att["patient_id"]
+    entity_type = att["entity_type"]
+    update_id = str(uuid.uuid4())
+    await db.patient_updates.insert_one({
+        "id": update_id, "patient_id": patient_id, "type": "document_shared",
+        "source_type": entity_type, "source_id": att["entity_id"], "attachment_id": att_id,
+        "title": "A new document is available",
+        "body": "A document from your imaging request is now available.",
+        "read": False, "created_at": now_iso(),
+    })
+    await notify_patient(patient_id, "New document available",
+                         "A new document is available in your Patient Portal. Sign in to view or download it.")
+    p = await db.patients.find_one({"id": patient_id}, {"_id": 0})
+    if p and p.get("email"):
+        lang = email_service.norm_lang(p.get("preferred_language"))
+        html = email_service.document_available_html(p.get("first_name") or "", notify_svc.PORTAL_URL, lang=lang)
+        await notify_svc._send_email(db, patient_id, p["email"],
+                                     email_service.subject("document_available", lang), html)
+    if body.complete and entity_type == "imaging":
+        await db.imaging_requests.update_one({"id": att["entity_id"]}, {"$set": {
+            "internal_status": "completed", "completed_at": now_iso(), "updated_at": now_iso()}})
+        await audit("complete", "imaging", att["entity_id"], user, new_status="completed",
+                    meta={"via": "share_with_patient", "attachment_id": att_id})
+    return {"ok": True, "shared": True, "update_id": update_id}
+
+
+# ----------------------------- Patient documents & updates (portal) -----------------------------
+@api.get("/portal/documents")
+async def portal_documents(p: dict = Depends(require_verified_patient)):
+    return await attach_mod.list_shared_for_patient(db, p["id"])
+
+
+@api.get("/portal/documents/{att_id}/download")
+async def portal_document_download(att_id: str, p: dict = Depends(require_verified_patient)):
+    return await attach_mod.serve_shared_for_patient(db, att_id, p["id"])
+
+
+@api.post("/portal/updates/{update_id}/read")
+async def portal_update_read(update_id: str, p: dict = Depends(require_verified_patient)):
+    r = await db.patient_updates.update_one(
+        {"id": update_id, "patient_id": p["id"]},
+        {"$set": {"read": True, "read_at": now_iso()}})
+    if r.matched_count == 0:
+        raise HTTPException(status_code=404, detail="Update not found.")
+    return {"ok": True}
+
+
+RESULT_DOC_PURPOSES = {
+    "copy_result": "Copy of a result",
+    "copy_imaging": "Copy of an imaging report",
+    "copy_other": "Copy of another available document",
+}
+
+
+class DocumentRequestBody(BaseModel):
+    purpose: str
+
+
+@api.post("/portal/document-requests")
+async def create_document_request(body: DocumentRequestBody, p: dict = Depends(require_verified_patient)):
+    """Structured 'Results / Document Request'. No free text — the patient picks a
+    fixed purpose. Flows into the existing staff message queue."""
+    label = RESULT_DOC_PURPOSES.get(body.purpose)
+    if not label:
+        raise HTTPException(status_code=400, detail="Invalid request purpose.")
+    ref = await next_ref("MSG")
+    text = f"Results / Document Request: {label}"
+    doc = {
+        "id": str(uuid.uuid4()), "ref_number": ref, "patient_id": p["id"],
+        "patient_name": f"{p['last_name']}, {p['first_name']}",
+        "category": "Document Request", "subject": f"Results / Document Request — {label}", "body": text,
+        "sender": "patient", "status": "new", "assigned_to": None,
+        "thread": [{"from": "patient", "body": text, "at": now_iso()}],
+        "internal_notes": [], "created_at": now_iso(), "updated_at": now_iso(), "completed_at": None,
+    }
+    await db.patient_messages.insert_one({**doc})
+    await audit("create", "message", doc["id"], {"id": p["id"], "name": p["first_name"], "role": "patient"},
+                new_status="new", meta={"document_request": body.purpose})
+    return {"ok": True, "ref_number": ref}
+
+
 # ----------------------------- Patient verification -----------------------------
 @api.get("/internal/verifications")
 async def verifications(user: dict = Depends(require_roles(*CLINIC_ROLES))):
@@ -3771,6 +3866,75 @@ async def verify_patient(patient_id: str, body: VerifyBody, user: dict = Depends
         await notify_patient(patient_id, "Account update",
                              "Your portal account has been reviewed. Please log in to your Patient Portal.")
     return {"ok": True}
+
+
+# ----------------------------- Identity Link Review -----------------------------
+@api.get("/internal/identity-links")
+async def identity_links(user: dict = Depends(require_roles(*CLINIC_ROLES))):
+    """Portal accounts that have directory candidates but are not yet linked to a
+    canonical VISITA record — the manual Identity Link Review queue. Ambiguous
+    matches live here too; nothing is linked automatically."""
+    pend = await db.patients.find({
+        "active_status": True,
+        "identity_linked": {"$ne": True},
+        "directory_match.candidates.0": {"$exists": True},
+    }, {"_id": 0}).sort("created_at", -1).to_list(300)
+    out = []
+    for p in pend:
+        link_id = p.get("matched_directory_id")
+        # Skip rows already linked both ways (defensive — identity_linked covers most).
+        if link_id:
+            d = await db.patient_directory.find_one({"id": link_id}, {"_id": 0, "linked_patient_id": 1})
+            if d and d.get("linked_patient_id") == p["id"]:
+                continue
+        out.append({
+            "id": p["id"], "first_name": p["first_name"], "last_name": p["last_name"],
+            "date_of_birth": p.get("date_of_birth"), "phone": p.get("phone"), "email": p.get("email"),
+            "patient_type": p.get("patient_type"),
+            "verification_status": p.get("verification_status"),
+            "visita_patient_id": p.get("visita_patient_id"),
+            "health_card_masked": mask_hcn(p.get("health_card_number")),
+            "strength": (p.get("directory_match") or {}).get("strength"),
+            "candidates": (p.get("directory_match") or {}).get("candidates", []),
+        })
+    return out
+
+
+class LinkDirectoryBody(BaseModel):
+    directory_id: str
+
+
+@api.post("/internal/patients/{patient_id}/link-directory")
+async def link_patient_directory(patient_id: str, body: LinkDirectoryBody,
+                                  user: dict = Depends(require_roles("staff", "admin"))):
+    """Explicitly link a portal account to an existing canonical directory record.
+    Preserves the canonical PIN, writes an audit event, and NEVER merges clinical
+    history or silently overwrites demographics. Ambiguity is resolved by the
+    caller choosing an explicit directory_id."""
+    p = await db.patients.find_one({"id": patient_id})
+    if not p:
+        raise HTTPException(status_code=404, detail="Portal patient not found.")
+    d = await db.patient_directory.find_one({"id": body.directory_id})
+    if not d:
+        raise HTTPException(status_code=404, detail="VISITA directory record not found.")
+    existing = d.get("linked_patient_id")
+    if existing and existing != patient_id:
+        raise HTTPException(status_code=409,
+                            detail="This VISITA record is already linked to another portal account.")
+    pin = d.get("visita_patient_id")
+    updates = {
+        "matched_directory_id": d["id"], "canonical_directory_id": d["id"],
+        "identity_linked": True, "identity_linked_by": user["name"],
+        "identity_linked_at": now_iso(), "updated_at": now_iso(),
+    }
+    if pin:
+        updates["visita_patient_id"] = pin
+    await db.patients.update_one({"id": patient_id}, {"$set": updates})
+    await db.patient_directory.update_one({"id": d["id"]}, {"$set": {
+        "linked_patient_id": patient_id, "updated_at": now_iso()}})
+    await audit("identity_linked", "patient", patient_id, user,
+                meta={"directory_id": d["id"], "visita_patient_id": pin, "preserved_pin": bool(pin)})
+    return {"ok": True, "visita_patient_id": pin, "directory_id": d["id"]}
 
 
 # ----------------------------- Patient Applications (new / former return) -----------------------------

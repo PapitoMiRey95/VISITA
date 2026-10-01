@@ -145,7 +145,7 @@
     "toast": "Prescription request received."
   },
   "messages": {
-    "title": "Message the Clinic",
+    "title": "Requests & Help",
     "introFallback": "What can we help you with?",
     "messageForDoctor": "Message for Doctor",
     "other": "Other",

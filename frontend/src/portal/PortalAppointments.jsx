@@ -277,11 +277,6 @@ export default function PortalAppointments() {
                                     </div>
                                     <Textarea className="mt-1" value={note} maxLength={NOTE_MAX} data-testid="appt-note"
                                         onChange={(e) => setNote(e.target.value.slice(0, NOTE_MAX))} />
-                                    <p className="text-xs text-slate-400 mt-1">
-                                        {t("requests:appointments.longerMessagePre")}{" "}
-                                        <button type="button" onClick={() => nav("/portal/messages")} data-testid="appt-note-messages-link"
-                                            className="text-portal-blue font-semibold underline">{t("requests:appointments.messagesLink")}</button>{" "}{t("requests:appointments.longerMessagePost")}
-                                    </p>
                                 </div>
                             </div>
                         )}

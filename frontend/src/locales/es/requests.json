@@ -145,7 +145,7 @@
     "toast": "Solicitud de receta recibida."
   },
   "messages": {
-    "title": "Mensaje a la clínica",
+    "title": "Solicitudes y ayuda",
     "introFallback": "¿En qué podemos ayudarle?",
     "messageForDoctor": "Mensaje para el médico",
     "other": "Otro",

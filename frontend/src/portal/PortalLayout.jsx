@@ -15,7 +15,7 @@ const NAV = [
     { to: "/portal", icon: Home, tkey: "portal:nav.home", end: true, testid: "nav-home" },
     { to: "/portal/appointments", icon: Calendar, tkey: "portal:nav.appts", testid: "nav-appointments" },
     { to: "/portal/prescriptions", icon: Pill, tkey: "portal:nav.rx", testid: "nav-prescriptions" },
-    { to: "/portal/messages", icon: MessageSquare, tkey: "portal:nav.messages", testid: "nav-messages" },
+    { to: "/portal/messages", icon: MessageSquare, tkey: "portal:nav.help", testid: "nav-messages" },
     { to: "/portal/requests", icon: ClipboardList, tkey: "portal:nav.requests", testid: "nav-requests" },
     { to: "/portal/account", icon: User, tkey: "portal:nav.profile", testid: "nav-profile" },
 ];

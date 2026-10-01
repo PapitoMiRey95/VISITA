@@ -4,6 +4,7 @@
     "appts": "Citas",
     "rx": "Recetas",
     "messages": "Mensajes",
+    "help": "Ayuda",
     "requests": "Solicitudes",
     "profile": "Perfil",
     "invoices": "Facturas"
@@ -11,13 +12,26 @@
   "home": {
     "greeting": "Hola,",
     "patientFallback": "Paciente",
+    "upcoming": {
+      "title": "Su próxima cita",
+      "viewAppointment": "Ver cita",
+      "viewAll": "Ver todas las citas",
+      "noneTitle": "No hay citas próximas",
+      "nonePrompt": "¿Necesita ver al médico?",
+      "requestCta": "Solicitar una cita"
+    },
+    "results": {
+      "title": "Resultados y seguimiento",
+      "body": "¿Preguntas sobre sus resultados? Algunos resultados requieren una cita médica para su revisión y análisis adecuados. Si el médico determina que es necesario un seguimiento, la clínica puede comunicarse con usted. Puede solicitar una cita en cualquier momento para analizar sus resultados u otras inquietudes médicas.",
+      "cta": "Solicitar una cita"
+    },
     "tiles": {
       "appointments": "Solicitar una cita",
       "prescriptions": "Solicitar receta",
       "bloodwork": "Solicitar análisis de sangre",
       "imaging": "Radiografía / Ultrasonido",
       "referrals": "Estado de referencia",
-      "messages": "Mensaje a la clínica",
+      "messages": "Solicitudes y ayuda",
       "requests": "Mis solicitudes",
       "profile": "Mi perfil"
     }

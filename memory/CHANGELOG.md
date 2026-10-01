@@ -1,5 +1,10 @@
 # VIen EMR — Changelog
 
+## 2026-06 — Caregiver v1 final check + public link-preview branding (PREVIEW ONLY)
+- **Non-patient caregiver (already supported, re-verified end-to-end)**: staff "Add access -> New caregiver" (name+email) creates a role=caregiver user with NO patient_id, NO patient record, NO PIN, must_change_password=true, one-time temp password; existing email is reused (no duplicate). Confirmed: caregiver logs in, sees only delegated patients (has_own_patient=false), managed summary honours only granted permissions, self-portal /portal/overview -> 403, action without permission -> 403. Existing-VIen-user path unchanged. No code changes were needed for Part 1.
+- **Public link-preview branding**: `frontend/public/index.html` — replaced `<meta name="description" content="A product of emergent.sh">` with "Patient portal for appointments, prescription requests, and clinic communication."; title "VIen EMR" -> "Visita EMR Network"; added og:site_name/title/description/type/url (https://visitaemr.com/) + twitter:card/title/description. Verified rendered preview HTML contains new metadata and 0 occurrences of "A product of emergent.sh". Platform emergent-main.js script left untouched. No manifest.json exists. No routes/workflows/registration/isolation touched. (Production previews update only after the next deploy; WhatsApp/social caches may show old preview for a while.)
+
+
 ## 2026-06 — Family / Caregiver delegated portal access (v1) (PREVIEW ONLY)
 A delegate uses their OWN login to act on behalf of a granted patient — no duplicate identities, no shared passwords, no impersonation. Verified: testing_agent iteration_64 (17/17 backend, frontend 100%, zero issues) + main-agent curl.
 

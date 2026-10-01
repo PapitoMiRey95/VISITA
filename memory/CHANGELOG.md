@@ -1,5 +1,17 @@
 # VIen EMR — Changelog
 
+## 2026-06 — Multi-physician Registration STAGE C: patient↔practice relationships (PREVIEW ONLY)
+ONE global canonical patient identity (patient_directory + canonical PIN); per-practice relationship state lives separately in the NEW `patient_provider_relationships` collection. A patient can be active at one practice and applicant/former/inactive at another WITHOUT duplicate identities and with NO clinical-record merging. Verified: testing_agent iteration_63 (13/13 backend, frontend OK, zero product bugs) + my own curl/UI smoke.
+
+- **New collection `patient_provider_relationships`** `{id(rel_*), practice_id, directory_id?, patient_id?, application_id?, visita_patient_id?, status, source, created_by, created_at, updated_at, history[]}`. Statuses: active | applicant | former | inactive. At most ONE row per (practice_id, canonical identity).
+- **New module `backend/relationships.py`**: `upsert_relationship(...)` de-dupes by (practice_id, directory_id > patient_id > application_id), attaches newly-known anchors without clobbering, appends `history` ONLY on status change. `relationships_for_directory`, `relationship_for_patient`, `serialize`.
+- **Wired into every flow** (server.py): register → active (ACTIVE_MATCH) else applicant; `/applications/new-patient` → applicant (by application_id); physician accept of new-patient application → applicant→active anchored to the single freshly-created canonical directory+PIN (history preserved); former_return accept → active; verify → active, reject → inactive; Identity Link `link-directory` → re-anchors relationship to canonical directory_id, preserves PIN, never creates a 2nd identity, 409 on cross-account.
+- **New read endpoints**: `GET /api/internal/patients/{id}/relationship` (caller-practice, 404 cross-practice); `GET /api/internal/canonical/{directory_id}/relationships` → `{own: full, others: [{practice_name,status,label} ONLY — no PHI]}`. `/internal/verifications` + `/internal/identity-links` payloads now carry `relationship:{own,others}`; `/internal/identity-links` is now practice-scoped (pscope).
+- **Frontend**: `Verifications.jsx` `RelationshipBadges` (testids relationship-badges/relationship-own/relationship-other) render "This practice: <status>" + other-practice status chips on Pending + Identity Link Review items.
+- **Idempotent backfill** `backend/migrate_relationships_backfill.py` (dry-run supported) — ran in preview: 61 relationships (23 active, 38 applicant), all dr-aguayo; re-run = stable.
+- **No re-establish regression**: FORMER_CLOSED register still returns `application_required` with NO account and NO relationship row (reference-only). NOT deployed to Production.
+
+
 ## 2026-06 — Stage B verification pass + isolation leak fixes (PREVIEW ONLY)
 Independent verification (testing_agent iteration_62, 42/44) found cross-practice leaks that were NOT covered when pscope() was retrofitted. Fixed + re-verified (regression test_practice_isolation.py now 44/44).
 

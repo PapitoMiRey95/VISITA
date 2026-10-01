@@ -1,0 +1,43 @@
+{
+  "summary": "Stage C — patient_provider_relationships verification. Wrote 13 focused backend tests covering: (1) registration→applicant row w/ history; (2) duplicate-email 400 preserved; (3) FORMER_CLOSED match returns application_required with NO account + NO relationship (regression gate); (4) /applications/new-patient→applicant keyed by application_id; (5) physician accept transitions SAME relationship row applicant→active, anchored to exactly ONE newly-created canonical directory + patient_id + PIN with full history; (6) verify→active, reject→inactive; (7) /patients/{id}/link-directory preserves PIN, re-anchors to directory_id, creates no 2nd canonical row, returns 409 when directory already linked to a different account; (8) duplicate prevention — 3× verify ⇒ ONE relationship, history preserved; (9) GET /internal/patients/{id}/relationship returns scoped data, 404 on cross-practice; (10) GET /internal/canonical/{dir}/relationships returns full own + Practice-B status-only summary (no PHI leak); (11) /internal/identity-links scoping — Practice-B rows do NOT leak into dr-aguayo queue. Also smoke-tested Verifications UI: 10 pending items each render data-testid=relationship-own; no console errors; Identity Link Review tab currently empty in preview but renders cleanly. 13/13 backend pass, UI OK. All synthetic artefacts (TEST_STAGEC tag) cleaned up in teardown — real dr-aguayo practice, real users, demo patients, and existing 61 relationships untouched.",
+  "backend_issues": {
+    "critical": [],
+    "minor": [
+      {
+        "endpoint": "pytest xdist concurrency",
+        "issue": "Running the Stage C suite with default pytest-xdist (-n auto, LoadScope) occasionally wiped seeded relationships mid-session when another worker's session-scoped autouse teardown fired early. Resolved by scoping teardown deletes to _test_tag=TEST_STAGEC only (no broad 'source: test_seed' delete). Not a product bug — test-infra note for next agent: run `pytest backend/tests/test_stage_c_relationships.py -o addopts='-p no:xdist'` for deterministic runs."
+      }
+    ]
+  },
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [],
+    "design_issues": []
+  },
+  "test_report_links": [
+    "/app/backend/tests/test_stage_c_relationships.py",
+    "/app/test_reports/pytest/stagec_results.xml"
+  ],
+  "action_items": [],
+  "critical_code_review_comments": [
+    "upsert_relationship de-dup priority (directory_id > patient_id > application_id) correctly merges the applicant-by-application row into the active-by-directory row on accept, with history preserved — verified empirically.",
+    "verify_patient has a slight redundancy: the 'verified + linked' branch at ~3993 and the generic fallback at ~4015 both call upsert_relationship with status=ACTIVE for the same patient. Idempotent (status unchanged on 2nd call), but one call is enough. Low-priority cleanup — consider short-circuiting the fallback when the linked branch already ran.",
+    "FORMER_CLOSED regression correctly handled: /auth/register returns application_required and NO relationship row is written on this path (verified). Good — matches the stated invariant that former status is reference-only.",
+    "Cross-practice canonical endpoint strictly returns {practice_name,status,label,practice_id,updated_at} for 'others' — no patient_id/email/name/dob/phone/PIN/HCN leak. PHI-safety verified by explicit disallow-list assertion.",
+    "server.py now ~6324 lines — compounded from the ~6181 last iteration. Stage C added ~140 lines around register/verify/link/new-patient-accept and 2 new endpoints + helpers. Factor the relationship-upsert call sites into a thinner adapter and split into server_relationships.py submodule to stay maintainable.",
+    "Stage B counters pscope fix from iteration_62 is NOT re-verified here (out of scope); keep that on the retest list."
+  ],
+  "updated_files": [
+    "/app/backend/tests/test_stage_c_relationships.py"
+  ],
+  "success_rate": {
+    "backend": "100% (13/13)",
+    "frontend": "100% — Verifications UI loads cleanly, 10 pending items render 10 relationship-own badges, no console errors"
+  },
+  "test_credentials": "Used /app/memory/test_credentials.md: admin kevinrodriguez9528@gmail.com / VisitaAdmin2026!, staff staff@visita.demo / Staff2026!, physician PAGUAYO / Newman2013_! — all worked.",
+  "seed_data_creation": "Per-test synthetic rows all tagged _test_tag='TEST_STAGEC': (a) a synthetic Practice B (session fixture) + two portal patients + 2 relationships to a shared synthetic canonical directory record (cross-practice isolation); (b) a synthetic FORMER_CLOSED directory record for the former-regression test; (c) pending portal patients + applicant relationships for the verify/reject/dup tests; (d) a canonical directory record + two portal patients for the link-directory + 409 test. Teardown deletes everything with _test_tag=TEST_STAGEC across patient_provider_relationships / patient_directory / patients / patient_applications / users / practices / visita_pins / account_activations plus any registration/application artefacts whose email starts with 'stagec_'. The real dr-aguayo practice (86167166-27f3-4e46-89ee-f9000f700eff), real internal users, demo patients, and the 61 pre-existing relationships were NEVER modified or deleted.",
+  "retest_needed": false,
+  "should_main_agent_self_test": false,
+  "context_for_next_testing_agent": "Reusable regression file: /app/backend/tests/test_stage_c_relationships.py. ALWAYS run with xdist disabled (`-o addopts='-p no:xdist'`) — otherwise session-scope autouse teardown can race across workers and wipe seeded relationships mid-session (not a product issue; a test-infra limitation). Fixtures: `practice_b` (session) seeds a synthetic practice; `canonical_cross` seeds a shared canonical directory with relationships in both practices for isolation checks. Preview DB currently has ZERO patient_directory rows with patient_status=FORMER_CLOSED (the 2156 FORMER_CLOSED documented in test_credentials.md are not loaded) — the former-regression test therefore seeds a synthetic FORMER row to exercise the branch. Stage B counters pscope leak flagged in iteration_62 is still open per code review (not re-tested in this iteration — out of scope).",
+  "rca of the issue": "No product bugs found. One test-infra race documented above and mitigated in the test file."
+}

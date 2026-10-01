@@ -66,7 +66,7 @@ export default function Register() {
     const [confirm, setConfirm] = useState(null);
     const [form, setForm] = useState({
         first_name: "", last_name: "", second_name: "", second_last_name: "",
-        date_of_birth: "", phone: "", email: "", password: "", confirm_password: "",
+        date_of_birth: "", phone: "", email: "", password: "", confirm_password: "", sex: "",
         health_card_number: "", health_card_version: "", health_card_issue_date: "", health_card_expiry_date: "",
         province: "", country: "Canada", extra_info: "",
         address: "", unit: "", city: "", postal_code: "", patient_message: "", join_reason: "",
@@ -290,6 +290,14 @@ export default function Register() {
                             <Field label={t("auth:register.secondLastName")} testid="reg-second-last"><Input value={form.second_last_name} onChange={setSurname("second_last_name")} placeholder={optional} /></Field>
                         </div>
                         <Field label={t("auth:register.dob")} testid="reg-dob"><DobPicker value={form.date_of_birth} onChange={setDob} testid="reg-dob" /></Field>
+                        <Field label={t("auth:register.sexLabel")} testid="reg-sex">
+                            <Select value={form.sex} onValueChange={(v) => setForm({ ...form, sex: v })}>
+                                <SelectTrigger data-testid="reg-sex-trigger"><SelectValue placeholder={t("auth:register.sexSelect")} /></SelectTrigger>
+                                <SelectContent>
+                                    {["Male", "Female", "X"].map((o) => <SelectItem key={o} value={o}>{t(`auth:register.sexOptions.${o}`)}</SelectItem>)}
+                                </SelectContent>
+                            </Select>
+                        </Field>
 
                         {type === "ohip" && (
                             <>

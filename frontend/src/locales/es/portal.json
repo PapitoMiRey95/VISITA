@@ -118,7 +118,21 @@
       "Female": "Femenino",
       "X": "X"
     },
-    "emergencyNotice": "Este portal no se supervisa continuamente y no debe utilizarse para emergencias. Si está experimentando una emergencia médica, llame al 911 o acuda al Departamento de Emergencias más cercano."
+    "emergencyNotice": "Este portal no se supervisa continuamente y no debe utilizarse para emergencias. Si está experimentando una emergencia médica, llame al 911 o acuda al Departamento de Emergencias más cercano.",
+    "loginEmail": "Correo de acceso",
+    "changeEmail": "Cambiar correo",
+    "newEmail": "Nuevo correo",
+    "currentPassword": "Contraseña actual",
+    "emailCodeHint": "Enviaremos un código de 6 dígitos al nuevo correo para confirmarlo. Tu correo no cambiará hasta que ingreses el código.",
+    "sendCode": "Enviar código",
+    "emailCodeSent": "Código enviado a tu nuevo correo.",
+    "emailAwaiting": "Ingresa el código que enviamos a {{email}}.",
+    "enterCode": "Código de confirmación",
+    "confirmEmail": "Confirmar nuevo correo",
+    "emailChanged": "Tu correo de acceso fue actualizado.",
+    "requestPin": "Solicitar mi PIN",
+    "requestPinHint": "Pide a la clínica que te comparta tu PIN de Visita.",
+    "pinRequested": "Hemos pedido a la clínica que te comparta tu PIN."
   },
   "language": {
     "label": "Idioma",

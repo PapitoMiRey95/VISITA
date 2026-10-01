@@ -118,7 +118,21 @@
       "Female": "Female",
       "X": "X"
     },
-    "emergencyNotice": "This portal is not monitored continuously and should not be used for emergencies. If you are experiencing a medical emergency, call 911 or go to the nearest Emergency Department."
+    "emergencyNotice": "This portal is not monitored continuously and should not be used for emergencies. If you are experiencing a medical emergency, call 911 or go to the nearest Emergency Department.",
+    "loginEmail": "Login email",
+    "changeEmail": "Change email",
+    "newEmail": "New email",
+    "currentPassword": "Current password",
+    "emailCodeHint": "We'll send a 6-digit code to the new email to confirm it. Your email won't change until you enter the code.",
+    "sendCode": "Send code",
+    "emailCodeSent": "Code sent to your new email.",
+    "emailAwaiting": "Enter the code we sent to {{email}}.",
+    "enterCode": "Confirmation code",
+    "confirmEmail": "Confirm new email",
+    "emailChanged": "Your login email was updated.",
+    "requestPin": "Request my PIN",
+    "requestPinHint": "Ask the clinic to share your Visita PIN with you.",
+    "pinRequested": "We've asked the clinic to share your PIN."
   },
   "language": {
     "label": "Language",

@@ -39,6 +39,37 @@ export default function PortalAccount() {
     const [hcOpen, setHcOpen] = useState(false);
     const [hc, setHc] = useState({ health_card_number: "", health_card_version: "", health_card_issue_date: "", health_card_expiry_date: "" });
     const [busy, setBusy] = useState(false);
+    // Email change (code-verified) + PIN request
+    const [emailStep, setEmailStep] = useState(null); // null | "form" | "code"
+    const [em, setEm] = useState({ new_email: "", current_password: "", code: "", pending: "" });
+    const [pinBusy, setPinBusy] = useState(false);
+
+    const requestEmailCode = async () => {
+        setBusy(true);
+        try {
+            const { data } = await api.post("/portal/account/email/request", { new_email: em.new_email.trim(), current_password: em.current_password });
+            setEm({ ...em, pending: data.pending_email, current_password: "" });
+            setEmailStep("code");
+            toast.success(t("portal:account.emailCodeSent"));
+        } catch (e) { toast.error(formatErr(e)); } finally { setBusy(false); }
+    };
+    const verifyEmailCode = async () => {
+        setBusy(true);
+        try {
+            await api.post("/portal/account/email/verify", { code: em.code.trim() });
+            toast.success(t("portal:account.emailChanged"));
+            setEmailStep(null); setEm({ new_email: "", current_password: "", code: "", pending: "" });
+            refetch();
+        } catch (e) { toast.error(formatErr(e)); } finally { setBusy(false); }
+    };
+    const requestPin = async () => {
+        setPinBusy(true);
+        try {
+            await api.post("/portal/account/request-pin");
+            toast.success(t("portal:account.pinRequested"));
+            refetch();
+        } catch (e) { toast.error(formatErr(e)); } finally { setPinBusy(false); }
+    };
 
     const markRead = async () => {
         await api.post("/portal/notifications/read");
@@ -129,7 +160,14 @@ export default function PortalAccount() {
             <Card>
                 <div className="font-bold text-slate-700 mb-1">{t("portal:account.myInformation")}</div>
 
-                <Row icon={IdCard} label={t("portal:account.visitaPin")} testid="acct-pin">{p?.visita_patient_id || t("portal:account.notAssigned")}</Row>
+                <div className="py-2 border-t border-slate-100 first:border-t-0">
+                    <div className="flex items-center justify-between">
+                        <div className="flex items-center gap-2 text-slate-500 text-sm"><IdCard className="w-4 h-4" /> {t("portal:account.visitaPin")}</div>
+                        <button data-testid="acct-request-pin" disabled={pinBusy} onClick={requestPin} className="text-portal-blueDark text-sm font-bold disabled:opacity-50">{t("portal:account.requestPin")}</button>
+                    </div>
+                    <div className="font-semibold text-slate-800 mt-0.5" data-testid="acct-pin">{p?.visita_patient_id || t("portal:account.notAssigned")}</div>
+                    <div className="text-xs text-slate-400 mt-0.5">{t("portal:account.requestPinHint")}</div>
+                </div>
 
                 <div className="py-2 border-t border-slate-100">
                     <div className="flex items-center justify-between">
@@ -147,7 +185,34 @@ export default function PortalAccount() {
                     )}
                 </div>
 
-                {p?.email && <Row icon={Mail} label={t("portal:account.emailLabel")} testid="acct-email">{p.email}</Row>}
+                <div className="py-2 border-t border-slate-100">
+                    <div className="flex items-center justify-between">
+                        <div className="flex items-center gap-2 text-slate-500 text-sm"><Mail className="w-4 h-4" /> {t("portal:account.loginEmail")}</div>
+                        {emailStep === null && <button data-testid="acct-change-email" className="text-portal-blueDark text-sm font-bold" onClick={() => { setEm({ new_email: "", current_password: "", code: "", pending: "" }); setEmailStep("form"); }}>{t("portal:account.changeEmail")}</button>}
+                    </div>
+                    <div className="font-semibold text-slate-800 mt-0.5" data-testid="acct-email">{user?.email || p?.email || dash}</div>
+                    {emailStep === "form" && (
+                        <div className="mt-2 space-y-2 border-t border-slate-100 pt-2" data-testid="email-change-form">
+                            <div><Label className="text-xs">{t("portal:account.newEmail")}</Label><Input data-testid="email-new" type="email" value={em.new_email} onChange={(e) => setEm({ ...em, new_email: e.target.value })} /></div>
+                            <div><Label className="text-xs">{t("portal:account.currentPassword")}</Label><Input data-testid="email-current-pw" type="password" value={em.current_password} onChange={(e) => setEm({ ...em, current_password: e.target.value })} /></div>
+                            <p className="text-xs text-slate-500">{t("portal:account.emailCodeHint")}</p>
+                            <div className="flex gap-2">
+                                <Button data-testid="email-send-code" disabled={busy || !em.new_email || !em.current_password} onClick={requestEmailCode} className="bg-portal-blue text-white">{t("portal:account.sendCode")}</Button>
+                                <Button variant="outline" onClick={() => setEmailStep(null)}>{t("common:actions.cancel")}</Button>
+                            </div>
+                        </div>
+                    )}
+                    {emailStep === "code" && (
+                        <div className="mt-2 space-y-2 border-t border-slate-100 pt-2" data-testid="email-verify-form">
+                            <p className="text-xs text-slate-600">{t("portal:account.emailAwaiting", { email: em.pending })}</p>
+                            <div><Label className="text-xs">{t("portal:account.enterCode")}</Label><Input data-testid="email-code" value={em.code} onChange={(e) => setEm({ ...em, code: e.target.value })} inputMode="numeric" maxLength={6} placeholder="123456" /></div>
+                            <div className="flex gap-2">
+                                <Button data-testid="email-verify" disabled={busy || em.code.length < 6} onClick={verifyEmailCode} className="bg-portal-blue text-white">{t("portal:account.confirmEmail")}</Button>
+                                <Button variant="outline" onClick={() => setEmailStep("form")}>{t("common:actions.back")}</Button>
+                            </div>
+                        </div>
+                    )}
+                </div>
 
                 <div className="py-2 border-t border-slate-100">
                     <div className="flex items-center justify-between">

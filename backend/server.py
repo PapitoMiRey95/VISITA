@@ -251,6 +251,7 @@ class RegisterBody(BaseModel):
     first_name: str
     last_name: str
     date_of_birth: str
+    sex: Optional[str] = None
     phone: str
     email: EmailStr
     password: str = Field(min_length=6)
@@ -776,6 +777,7 @@ async def register(body: RegisterBody):
         "first_name": body.first_name.strip(), "last_name": body.last_name.strip(),
         "date_of_birth": body.date_of_birth, "health_card_number": hc_num,
         "health_card_version": hc_ver,
+        "sex": (body.sex or None),
         "health_card_issue_date": body.health_card_issue_date or None,
         "health_card_expiry_date": body.health_card_expiry_date or None,
         "phone": identity_mod.normalize_phone(body.phone), "email": email,
@@ -1226,6 +1228,98 @@ async def reset_password(body: ResetBody):
     await db.password_resets.delete_one({"user_id": str(user["_id"])})
     await audit("reset_password", "user", str(user["_id"]),
                 {"id": str(user["_id"]), "name": user.get("name"), "role": user.get("role")})
+
+class EmailChangeRequestBody(BaseModel):
+    new_email: EmailStr
+    current_password: str
+
+
+class EmailChangeVerifyBody(BaseModel):
+    code: str
+
+
+@api.post("/portal/account/email/request")
+async def portal_email_change_request(body: EmailChangeRequestBody, user: dict = Depends(get_current_user)):
+    """Patient/caregiver changes THEIR OWN login email. Requires current password,
+    sends a 6-digit code to the NEW address; the email is only swapped after the
+    code is verified. Conflict-checked so we never overwrite another user."""
+    doc = await db.users.find_one({"_id": ObjectId(user["id"])})
+    if not doc or not authlib.verify_password(body.current_password, doc["password_hash"]):
+        raise HTTPException(status_code=401, detail="Your current password is incorrect.")
+    new_email = body.new_email.lower().strip()
+    if new_email == (doc.get("email") or "").lower():
+        raise HTTPException(status_code=400, detail="That is already your email address.")
+    if await db.users.find_one({"email": new_email}):
+        raise HTTPException(status_code=409, detail="That email is already in use by another account.")
+    code = f"{secrets.randbelow(1000000):06d}"
+    await db.email_changes.update_one({"user_id": user["id"]}, {"$set": {
+        "user_id": user["id"], "new_email": new_email,
+        "code_hash": authlib.hash_password(code),
+        "expires_at": (datetime.now(timezone.utc) + timedelta(minutes=15)).isoformat(),
+        "attempts": 0, "created_at": now_iso(),
+    }}, upsert=True)
+    lang = "en"
+    if doc.get("patient_id"):
+        pat = await db.patients.find_one({"id": doc["patient_id"]}, {"preferred_language": 1})
+        lang = email_service.norm_lang((pat or {}).get("preferred_language"))
+    try:
+        await email_service.send_email(to=new_email, subject=email_service.subject("reset_code", lang),
+                                       html=email_service.reset_code_html(doc.get("name"), code, lang=lang))
+    except Exception:
+        raise HTTPException(status_code=502, detail="We couldn't send the code right now. Please try again shortly.")
+    await audit("email_change_requested", "user", user["id"], user)
+    return {"ok": True, "pending_email": new_email}
+
+
+@api.post("/portal/account/email/verify")
+async def portal_email_change_verify(body: EmailChangeVerifyBody, user: dict = Depends(get_current_user)):
+    rec = await db.email_changes.find_one({"user_id": user["id"]})
+    if not rec:
+        raise HTTPException(status_code=400, detail="No pending email change. Please start again.")
+    if datetime.fromisoformat(rec["expires_at"]) < datetime.now(timezone.utc):
+        await db.email_changes.delete_one({"user_id": user["id"]})
+        raise HTTPException(status_code=400, detail="Your code has expired. Please request a new one.")
+    if rec.get("attempts", 0) >= 5:
+        await db.email_changes.delete_one({"user_id": user["id"]})
+        raise HTTPException(status_code=429, detail="Too many attempts. Please request a new code.")
+    if not authlib.verify_password(body.code.strip(), rec["code_hash"]):
+        await db.email_changes.update_one({"user_id": user["id"]}, {"$inc": {"attempts": 1}})
+        raise HTTPException(status_code=400, detail="Invalid or expired code.")
+    new_email = rec["new_email"]
+    if await db.users.find_one({"email": new_email, "_id": {"$ne": ObjectId(user["id"])}}):
+        await db.email_changes.delete_one({"user_id": user["id"]})
+        raise HTTPException(status_code=409, detail="That email is already in use by another account.")
+    doc = await db.users.find_one({"_id": ObjectId(user["id"])})
+    old_email = doc.get("email")
+    await db.users.update_one({"_id": ObjectId(user["id"])},
+                              {"$set": {"email": new_email, "email_verified": True, "updated_at": now_iso()}})
+    if doc.get("patient_id"):
+        await db.patients.update_one({"id": doc["patient_id"]}, {"$set": {"email": new_email, "updated_at": now_iso()}})
+    await db.email_changes.delete_one({"user_id": user["id"]})
+    await audit("email_changed", "user", user["id"], user, meta={"old_email": old_email, "new_email": new_email})
+    return {"ok": True, "email": new_email}
+
+
+@api.post("/portal/account/request-pin")
+async def portal_request_pin(user: dict = Depends(get_current_user)):
+    """Patient asks the clinic to share their Visita PIN (sent out-of-band by staff)."""
+    if user.get("role") != "patient" or not user.get("patient_id"):
+        raise HTTPException(status_code=400, detail="Only patients can request their PIN.")
+    p = await db.patients.find_one({"id": user["patient_id"]})
+    if not p:
+        raise HTTPException(status_code=404, detail="Patient not found.")
+    now = now_iso()
+    ref = await next_ref("PIN")
+    await db.pin_requests.insert_one({
+        "id": str(uuid.uuid4()), "ref_number": ref, "patient_id": p["id"],
+        "patient_name": f"{p['last_name']}, {p['first_name']}", "practice_id": p.get("practice_id"),
+        "status": "PENDING", "requested_at": now, "created_at": now,
+    })
+    await audit("pin_requested", "patient", p["id"], user, meta={"ref": ref})
+    await notify_patient(p["id"], "PIN request received",
+                         "We've asked the clinic to share your Visita PIN with you. They'll follow up shortly.")
+    return {"ok": True, "ref_number": ref}
+
     return {"ok": True}
 
 

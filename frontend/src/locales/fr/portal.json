@@ -9,5 +9,21 @@
       "count_other": "{{count}} médicaments actifs",
       "view": "Voir les médicaments"
     }
+  },
+  "account": {
+    "loginEmail": "Courriel de connexion",
+    "changeEmail": "Changer le courriel",
+    "newEmail": "Nouveau courriel",
+    "currentPassword": "Mot de passe actuel",
+    "emailCodeHint": "Nous enverrons un code à 6 chiffres au nouveau courriel pour le confirmer. Votre courriel ne changera pas tant que vous n'aurez pas saisi le code.",
+    "sendCode": "Envoyer le code",
+    "emailCodeSent": "Code envoyé à votre nouveau courriel.",
+    "emailAwaiting": "Saisissez le code envoyé à {{email}}.",
+    "enterCode": "Code de confirmation",
+    "confirmEmail": "Confirmer le nouveau courriel",
+    "emailChanged": "Votre courriel de connexion a été mis à jour.",
+    "requestPin": "Demander mon NIP",
+    "requestPinHint": "Demandez à la clinique de vous communiquer votre NIP Visita.",
+    "pinRequested": "Nous avons demandé à la clinique de vous communiquer votre NIP."
   }
 }

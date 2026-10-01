@@ -1,5 +1,13 @@
 # VIen EMR — Changelog
 
+## 2026-06 — Portal account: sex at signup + self email-change (code) + request PIN (PREVIEW ONLY)
+Self-tested (curl + screenshots). NOT deployed.
+- **Sex at signup**: added Sex (Male/Female/X) to Create Patient Portal account form; stored on the patient at registration (RegisterBody.sex). Post-signup edit already existed.
+- **Patient self email change (code-verified)**: `POST /api/portal/account/email/request` (requires current password; 409 if another user owns the new email) sends a 6-digit code to the NEW address; `POST /api/portal/account/email/verify` swaps user.email + patient.email only after the code matches — same patient_id/PIN/clinical record preserved, audited old→new. Stored in `email_changes` (hashed code, 15-min, 5-try, single-use). Operates on the logged-in user's own account, so a delegate can't change a managed patient's email. UI in PortalAccount (Change email → code).
+- **Request my PIN**: `POST /api/portal/account/request-pin` creates a `pin_requests` record (practice-scoped) + patient confirmation + audit; button next to the VISITA PIN. (Staff-side PIN-request queue UI is a follow-up.)
+- i18n EN/ES/FR added. Phase B staff portal-account management still pending.
+
+
 ## 2026-06 — Caregiver public signup + clinic review + password UX (Phase A, PREVIEW ONLY)
 Verified: testing_agent iteration_68 (backend 11/12, frontend 100%; both minor items fixed) + curl + screenshots. NOT deployed.
 - **Part 1 whoFor** — Create Patient Portal now asks "Who are you creating this account for?" → Myself (existing flow unchanged) / Someone I help care for.

@@ -1,7 +1,9 @@
 import { useNavigate } from "react-router-dom";
+import { useState, useEffect } from "react";
 import { useCounters } from "./hooks";
 import { useAuth } from "../context/AuthContext";
-import { Pill, ClipboardCheck, Scan, Droplet, MessageSquare, Calendar, Send, UserCheck, UserPlus, UserSearch, CalendarDays, Users, Receipt, Stethoscope } from "lucide-react";
+import { api } from "../lib/api";
+import { Pill, ClipboardCheck, Scan, Droplet, MessageSquare, Calendar, Send, UserCheck, UserPlus, UserSearch, CalendarDays, Users, Receipt, Stethoscope, Contact, X } from "lucide-react";
 
 const STAFF = [
     { key: "rx", label: "Rx", to: "/internal/rx", icon: Pill },
@@ -50,6 +52,38 @@ function Counter({ item, value, onClick }) {
     );
 }
 
+// Lightweight, dismissible nudge — NEVER blocks any workflow. Shows only when a
+// physician/admin has no professional profile yet and hasn't dismissed it.
+function ProfileReminder() {
+    const nav = useNavigate();
+    const { user } = useAuth();
+    const canHave = user?.role === "physician" || user?.role === "admin";
+    const dismissKey = `vien.profileReminderDismissed.${user?.id || ""}`;
+    const [show, setShow] = useState(false);
+    useEffect(() => {
+        if (!canHave) return;
+        if (localStorage.getItem(dismissKey) === "1") return;
+        let active = true;
+        api.get("/professionals/me")
+            .then(({ data }) => { if (active && !data.profile) setShow(true); })
+            .catch(() => {});
+        return () => { active = false; };
+    }, [canHave, dismissKey]);
+    if (!show) return null;
+    const dismiss = () => { localStorage.setItem(dismissKey, "1"); setShow(false); };
+    return (
+        <div data-testid="profile-reminder" className="mb-4 flex items-center gap-3 rounded-sm border border-slate-200 bg-slate-50 px-4 py-2.5">
+            <Contact className="w-4 h-4 text-visita-greenDark shrink-0" />
+            <span className="text-sm text-slate-600">Complete your professional profile <span className="text-slate-400">(optional)</span></span>
+            <button data-testid="profile-reminder-cta" onClick={() => nav("/internal/professionals")}
+                className="ml-auto text-sm font-semibold text-visita-greenDark hover:underline shrink-0">Set it up</button>
+            <button data-testid="profile-reminder-dismiss" onClick={dismiss} className="text-slate-400 hover:text-slate-600 shrink-0" aria-label="Dismiss">
+                <X className="w-4 h-4" />
+            </button>
+        </div>
+    );
+}
+
 export default function Hub() {
     const nav = useNavigate();
     const { user } = useAuth();
@@ -67,6 +101,8 @@ export default function Hub() {
                     <p className="text-sm text-slate-500">Live work queues — click a counter to open its queue.</p>
                 </div>
             </div>
+
+            <ProfileReminder />
 
             <div className="grid grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-3">
                 {items.map((it) => (

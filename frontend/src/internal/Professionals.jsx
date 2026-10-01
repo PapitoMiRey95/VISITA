@@ -24,11 +24,31 @@ export default function Professionals() {
     const [selfProfile, setSelfProfile] = useState(undefined); // undefined=loading, null=none
     const [selfEditing, setSelfEditing] = useState(false);
     const [managingEditors, setManagingEditors] = useState(null);
+    const [myPractice, setMyPractice] = useState(null);
 
     const loadSelf = useCallback(() => {
         if (!canSelfEdit) return;
         api.get("/professionals/me").then(({ data }) => setSelfProfile(data.profile)).catch(() => setSelfProfile(null));
     }, [canSelfEdit]);
+
+    // Prefill source for a NEW profile only (editable suggestions; never synced back).
+    useEffect(() => {
+        if (!canSelfEdit) return;
+        api.get("/internal/my-practice").then(({ data }) => setMyPractice(data)).catch(() => setMyPractice(null));
+    }, [canSelfEdit]);
+
+    const buildPrefill = useCallback(() => {
+        const raw = (user?.name || "").replace(/^\s*(dr\.?|doctor)\s+/i, "").trim();
+        const parts = raw.split(/\s+/).filter(Boolean);
+        const surname = parts.length > 1 ? parts[parts.length - 1] : (parts[0] || "");
+        const first_name = parts.length > 1 ? parts.slice(0, -1).join(" ") : "";
+        const mp = myPractice || {};
+        return {
+            first_name, surname,
+            public_phone: mp.clinic_phone || "",
+            public_address: { street: mp.clinic_address || "", unit: "", city: "", province: "Ontario", postal_code: "", country: "Canada" },
+        };
+    }, [user, myPractice]);
 
     const load = useCallback(async () => {
         setLoading(true);
@@ -135,6 +155,7 @@ export default function Professionals() {
 
             {selfEditing && tax && (
                 <ProfessionalEditor tax={tax} selfMode initial={selfProfile || null}
+                    prefill={selfProfile ? null : buildPrefill()}
                     onClose={() => setSelfEditing(false)}
                     onSaved={() => { setSelfEditing(false); loadSelf(); load(); }} />
             )}

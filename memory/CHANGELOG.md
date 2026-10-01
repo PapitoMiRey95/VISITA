@@ -1,5 +1,16 @@
 # VIen EMR — Changelog
 
+## 2026-06 — Professional Profile SIMPLIFICATION (PREVIEW ONLY)
+Lightweight descriptive layer; core VIen (users→practices→patients→relationships→workflows) stays fully independent. Frontend-only + one backend doc comment. No schema change, no patient-care/RBAC/isolation change. Self-verified (UI screenshots + curl).
+
+- **`ProfessionalEditor.jsx` split into Basics + collapsible "Optional professional details"**: Basics (always visible) = First name, Surname, Primary Specialty (single select over all specialties — "Family Medicine" selectable directly, no Sphere/Area needed), Credentials, Professional phone/fax/email, clinic/practice address. Optional (collapsed by default, `prof-optional-toggle`) = Second name, Sphere→Area, Registration #, Areas of Practice (97), Languages, Practice Type, Ontario model, Sex, Professorship, Accepting-patients. No fields deleted; progressive disclosure only.
+- **Registration # hard block REMOVED**: previously forced when a taxonomy Area had `required:true`. Now always optional; shows a soft amber hint "Registration number recommended for this professional area." No backend requirement added.
+- **Prefill on NEW profile only** (`buildPrefill` in `Professionals.jsx` via existing `GET /internal/my-practice`): suggests first/surname (from user name, honorific stripped) + professional phone + clinic address from the assigned practice. EDITABLE; never synced back; an EXISTING profile is never overwritten (prefill passed only when `selfProfile` is null).
+- **Physician Hub dismissible reminder** (`Hub.jsx` `ProfileReminder`): neutral slate styling, shown only to physician/admin with no profile, "Complete your professional profile (optional)" + Set-it-up / dismiss (dismissal stored per-user in localStorage). No modal, no gate, no completion %.
+- **Backend doc comment** (server.py PROFESSIONALS section): records the architecture boundary — core VIen independent of profiles, `vien_professional_*` = optional metadata, legacy Access tables = reference/future Referral Directory ONLY, no Access-ID reconciliation. Only `surname` required to save (unchanged).
+- Preserved: `/professionals/me`, self/admin editing, editor grants, linked_user_id, audit history, organization affiliations, public contact fields, directory list/view, all taxonomy collections, existing saved profiles. Verified: physician with NO profile uses all patient-care workflows. NOT deployed.
+
+
 ## 2026-06 — Quick win: per-practice Registration QR (PREVIEW ONLY)
 Effortless onboarding — each active practice gets a QR pointing at its own `/register/{slug}`. Reuses the Stage A slug/context model; NO new registration system. Self-verified (backend curl + UI screenshots, all 6 checkpoints).
 

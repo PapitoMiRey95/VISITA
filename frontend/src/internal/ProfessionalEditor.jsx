@@ -165,13 +165,22 @@ const normalizeInitial = (initial) => {
     return i;
 };
 
-export default function ProfessionalEditor({ tax, initial, onClose, onSaved, selfMode }) {
-    const [form, setForm] = useState(() => normalizeInitial(initial));
+// New profiles seed from `prefill` (user/practice) as EDITABLE suggestions.
+// An existing profile is NEVER overwritten by prefill.
+const seedForm = (initial, prefill) => {
+    if (initial && initial.id) return normalizeInitial(initial);
+    const base = { ...EMPTY, ...(prefill || {}) };
+    base.public_address = { ...EMPTY_ADDRESS, ...(prefill?.public_address || {}) };
+    return base;
+};
+
+export default function ProfessionalEditor({ tax, initial, prefill, onClose, onSaved, selfMode }) {
+    const [form, setForm] = useState(() => seedForm(initial, prefill));
     const [aop, setAop] = useState([]);
     const [saving, setSaving] = useState(false);
-    const [regError, setRegError] = useState(false);
     const [confirmLeave, setConfirmLeave] = useState(false);
-    const baseline = useRef(JSON.stringify(normalizeInitial(initial)));
+    const [showOptional, setShowOptional] = useState(false);
+    const baseline = useRef(JSON.stringify(seedForm(initial, prefill)));
     const upd = (k, v) => setForm((f) => ({ ...f, [k]: v }));
     const updAddr = (k, v) => setForm((f) => ({ ...f, public_address: { ...f.public_address, [k]: v } }));
 
@@ -188,9 +197,8 @@ export default function ProfessionalEditor({ tax, initial, onClose, onSaved, sel
     const attemptClose = () => { if (dirty) setConfirmLeave(true); else onClose(); };
 
     const areas = useMemo(() => tax.areas.filter((a) => !form.sphere_id || a.sphere_id === form.sphere_id), [tax.areas, form.sphere_id]);
-    const specialties = useMemo(() => tax.specialties.filter((s) => !form.area_id || s.area_id === form.area_id), [tax.specialties, form.area_id]);
     const selArea = tax.areas.find((a) => a.id === form.area_id);
-    const requiresReg = !!(selArea && selArea.required);
+    const recommendReg = !!(selArea && selArea.required);
 
     // Load Areas of Practice whenever the specialty changes (only some specialties have a list).
     useEffect(() => {
@@ -201,11 +209,6 @@ export default function ProfessionalEditor({ tax, initial, onClose, onSaved, sel
 
     const save = async () => {
         if (!form.surname.trim()) { toast.error("Surname is required."); return; }
-        if (requiresReg && !(form.registration_number || "").trim()) {
-            setRegError(true);
-            toast.error("A College / Professional Registration Number is required for this Professional Area."); return;
-        }
-        setRegError(false);
         setSaving(true);
         try {
             const payload = { ...form };
@@ -225,80 +228,29 @@ export default function ProfessionalEditor({ tax, initial, onClose, onSaved, sel
                     <button onClick={attemptClose} className="text-slate-400 hover:text-slate-700" data-testid="prof-editor-close"><X className="w-5 h-5" /></button>
                 </div>
                 <div className="p-5 space-y-4">
+                    {/* ---------- SECTION A — BASICS (always visible) ---------- */}
                     <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-                        <Field label="Surname *"><Input data-testid="prof-surname" value={form.surname} onChange={(e) => upd("surname", e.target.value)} /></Field>
                         <Field label="First name"><Input data-testid="prof-first-name" value={form.first_name || ""} onChange={(e) => upd("first_name", e.target.value)} /></Field>
-                        <Field label="Second name"><Input data-testid="prof-second-name" value={form.second_name || ""} onChange={(e) => upd("second_name", e.target.value)} /></Field>
-                    </div>
-
-                    <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-                        <DepSelect label="Sphere" testid="prof-sphere" options={tax.spheres} value={form.sphere_id}
-                            getLabel={(o) => o.name}
-                            onChange={(v) => setForm((f) => ({ ...f, sphere_id: v, area_id: "", specialty_id: "" }))} />
-                        <DepSelect label="Professional Area" testid="prof-area" options={areas} value={form.area_id} disabled={!form.sphere_id}
-                            getLabel={(o) => o.name}
-                            onChange={(v) => setForm((f) => ({ ...f, area_id: v, specialty_id: "" }))} />
-                        <DepSelect label="Specialty" testid="prof-specialty" options={specialties} value={form.specialty_id} disabled={!form.area_id}
-                            getLabel={(o) => o.name}
+                        <Field label="Surname *"><Input data-testid="prof-surname" value={form.surname} onChange={(e) => upd("surname", e.target.value)} /></Field>
+                        <DepSelect label="Primary Specialty" testid="prof-specialty" options={tax.specialties} value={form.specialty_id}
+                            getLabel={(o) => o.name} placeholder="e.g. Family Medicine"
                             onChange={(v) => upd("specialty_id", v)} />
                     </div>
-
-                    {requiresReg && (
-                        <Field label="College / Professional Registration Number *">
-                            <Input data-testid="prof-registration" className={regError && !(form.registration_number || "").trim() ? "border-red-500" : ""} value={form.registration_number || ""} onChange={(e) => upd("registration_number", e.target.value)} placeholder="Required for this Professional Area" />
-                            {regError && !(form.registration_number || "").trim() && <p className="text-xs text-red-600 mt-1" data-testid="prof-registration-error">Registration number is required for this Professional Area.</p>}
-                        </Field>
-                    )}
-
-                    {aop.length > 0 && (
-                        <MultiSelect label={`Areas of Practice (${aop.length} available)`} testid="prof-aop" options={aop} grouped
-                            values={form.areas_of_practice_ids} onChange={(v) => upd("areas_of_practice_ids", v)}
-                            getLabel={(o) => o.name} placeholder="Search areas of practice…" />
-                    )}
 
                     <MultiSelect label="Credentials" testid="prof-credentials" options={tax.credentials}
                         values={form.credential_ids} onChange={(v) => upd("credential_ids", v)}
                         getLabel={(o) => o.name} getSub={(o) => o.description}
                         placeholder="Search credentials…" />
 
-                    <MultiSelect label="Languages" testid="prof-languages" options={tax.languages}
-                        values={form.language_ids} onChange={(v) => upd("language_ids", v)}
-                        getLabel={(o) => o.name} placeholder="Search languages…" />
-
-                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                        <MultiSelect label="Practice Type" testid="prof-practice-type" options={tax.practice_types}
-                            values={form.practice_type_ids} onChange={(v) => upd("practice_type_ids", v)}
-                            getLabel={(o) => o.name} placeholder="Search practice types…" />
-                        <MultiSelect label="Ontario Primary Care Model" testid="prof-care-model" options={tax.primary_care_models}
-                            values={form.primary_care_model_ids} onChange={(v) => upd("primary_care_model_ids", v)}
-                            getLabel={(o) => o.name} placeholder="Search models…" />
-                    </div>
-
-                    <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-                        <Field label="Sex">
-                            <select data-testid="prof-sex" className="w-full rounded-md border border-slate-300 px-3 py-2 text-sm bg-white" value={form.sex || ""} onChange={(e) => upd("sex", e.target.value)}>
-                                <option value="">—</option><option>Female</option><option>Male</option><option>Other</option>
-                            </select>
-                        </Field>
-                        <Field label="Professorship"><Input data-testid="prof-professorship" value={form.professorship || ""} onChange={(e) => upd("professorship", e.target.value)} /></Field>
-                        <Field label="Accepting patients">
-                            <select data-testid="prof-accepting" className="w-full rounded-md border border-slate-300 px-3 py-2 text-sm bg-white"
-                                value={form.accepting_patients == null ? "" : form.accepting_patients ? "yes" : "no"}
-                                onChange={(e) => upd("accepting_patients", e.target.value === "" ? null : e.target.value === "yes")}>
-                                <option value="">—</option><option value="yes">Yes</option><option value="no">No</option>
-                            </select>
-                        </Field>
-                    </div>
-
                     <div className="rounded-md border border-slate-200 bg-slate-50/60 p-3 space-y-3" data-testid="prof-public-contact">
                         <div>
-                            <div className="text-xs font-semibold uppercase tracking-wide text-slate-600">Public professional contact</div>
-                            <p className="text-xs text-slate-500">Optional. Shown to VIen internal users in the directory. Separate from your login/account details — nothing is copied automatically.</p>
+                            <div className="text-xs font-semibold uppercase tracking-wide text-slate-600">Professional / clinic contact</div>
+                            <p className="text-xs text-slate-500">Shown to VIen internal users in the directory. Suggestions from your clinic are editable and are never synced back.</p>
                         </div>
                         <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-                            <Field label="Public phone"><Input data-testid="prof-public-phone" value={form.public_phone || ""} onChange={(e) => upd("public_phone", e.target.value)} placeholder="416-555-0100" /></Field>
-                            <Field label="Public fax"><Input data-testid="prof-public-fax" value={form.public_fax || ""} onChange={(e) => upd("public_fax", e.target.value)} placeholder="416-555-0101" /></Field>
-                            <Field label="Public email"><Input data-testid="prof-public-email" type="email" value={form.public_email || ""} onChange={(e) => upd("public_email", e.target.value)} placeholder="clinic@example.com" /></Field>
+                            <Field label="Professional phone"><Input data-testid="prof-public-phone" value={form.public_phone || ""} onChange={(e) => upd("public_phone", e.target.value)} placeholder="416-555-0100" /></Field>
+                            <Field label="Fax"><Input data-testid="prof-public-fax" value={form.public_fax || ""} onChange={(e) => upd("public_fax", e.target.value)} placeholder="416-555-0101" /></Field>
+                            <Field label="Professional email"><Input data-testid="prof-public-email" type="email" value={form.public_email || ""} onChange={(e) => upd("public_email", e.target.value)} placeholder="clinic@example.com" /></Field>
                         </div>
                         <div className="grid grid-cols-1 sm:grid-cols-6 gap-3">
                             <div className="sm:col-span-4"><Field label="Clinic / practice street address"><Input data-testid="prof-addr-street" value={form.public_address.street || ""} onChange={(e) => updAddr("street", e.target.value)} /></Field></div>
@@ -309,6 +261,72 @@ export default function ProfessionalEditor({ tax, initial, onClose, onSaved, sel
                             <Field label="Country"><Input data-testid="prof-addr-country" value={form.public_address.country || ""} onChange={(e) => updAddr("country", e.target.value)} /></Field>
                         </div>
                     </div>
+
+                    {/* ---------- OPTIONAL PROFESSIONAL DETAILS (collapsed) ---------- */}
+                    <div className="border-t border-slate-200 pt-3">
+                        <button type="button" data-testid="prof-optional-toggle" onClick={() => setShowOptional((v) => !v)}
+                            className="flex items-center gap-2 text-sm font-semibold text-slate-700 hover:text-visita-greenDark">
+                            <ChevronDown className={`w-4 h-4 transition-transform ${showOptional ? "" : "-rotate-90"}`} />
+                            Optional professional details
+                            <span className="text-xs font-normal text-slate-400">— taxonomy, languages, affiliations (not required)</span>
+                        </button>
+                    </div>
+
+                    {showOptional && (
+                    <div className="space-y-4 pt-1" data-testid="prof-optional-section">
+                        <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                            <Field label="Second name"><Input data-testid="prof-second-name" value={form.second_name || ""} onChange={(e) => upd("second_name", e.target.value)} /></Field>
+                            <DepSelect label="Sphere" testid="prof-sphere" options={tax.spheres} value={form.sphere_id}
+                                getLabel={(o) => o.name}
+                                onChange={(v) => setForm((f) => ({ ...f, sphere_id: v, area_id: "", specialty_id: "" }))} />
+                            <DepSelect label="Professional Area" testid="prof-area" options={areas} value={form.area_id} disabled={!form.sphere_id}
+                                getLabel={(o) => o.name}
+                                onChange={(v) => setForm((f) => ({ ...f, area_id: v, specialty_id: "" }))} />
+                        </div>
+
+                        <Field label="College / Professional Registration Number">
+                            <Input data-testid="prof-registration" value={form.registration_number || ""} onChange={(e) => upd("registration_number", e.target.value)} placeholder="Optional" />
+                            {recommendReg && (
+                                <p className="text-xs text-amber-600 mt-1" data-testid="prof-registration-hint">Registration number recommended for this professional area.</p>
+                            )}
+                        </Field>
+
+                        {aop.length > 0 && (
+                            <MultiSelect label={`Areas of Practice (${aop.length} available)`} testid="prof-aop" options={aop} grouped
+                                values={form.areas_of_practice_ids} onChange={(v) => upd("areas_of_practice_ids", v)}
+                                getLabel={(o) => o.name} placeholder="Search areas of practice…" />
+                        )}
+
+                        <MultiSelect label="Languages" testid="prof-languages" options={tax.languages}
+                            values={form.language_ids} onChange={(v) => upd("language_ids", v)}
+                            getLabel={(o) => o.name} placeholder="Search languages…" />
+
+                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                            <MultiSelect label="Practice Type" testid="prof-practice-type" options={tax.practice_types}
+                                values={form.practice_type_ids} onChange={(v) => upd("practice_type_ids", v)}
+                                getLabel={(o) => o.name} placeholder="Search practice types…" />
+                            <MultiSelect label="Ontario Primary Care Model" testid="prof-care-model" options={tax.primary_care_models}
+                                values={form.primary_care_model_ids} onChange={(v) => upd("primary_care_model_ids", v)}
+                                getLabel={(o) => o.name} placeholder="Search models…" />
+                        </div>
+
+                        <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                            <Field label="Sex">
+                                <select data-testid="prof-sex" className="w-full rounded-md border border-slate-300 px-3 py-2 text-sm bg-white" value={form.sex || ""} onChange={(e) => upd("sex", e.target.value)}>
+                                    <option value="">—</option><option>Female</option><option>Male</option><option>Other</option>
+                                </select>
+                            </Field>
+                            <Field label="Professorship"><Input data-testid="prof-professorship" value={form.professorship || ""} onChange={(e) => upd("professorship", e.target.value)} /></Field>
+                            <Field label="Accepting patients">
+                                <select data-testid="prof-accepting" className="w-full rounded-md border border-slate-300 px-3 py-2 text-sm bg-white"
+                                    value={form.accepting_patients == null ? "" : form.accepting_patients ? "yes" : "no"}
+                                    onChange={(e) => upd("accepting_patients", e.target.value === "" ? null : e.target.value === "yes")}>
+                                    <option value="">—</option><option value="yes">Yes</option><option value="no">No</option>
+                                </select>
+                            </Field>
+                        </div>
+                    </div>
+                    )}
                 </div>
                 <div className="flex justify-end gap-2 px-5 py-3 border-t border-slate-200 bg-slate-50">
                     <Button variant="outline" onClick={attemptClose} data-testid="prof-editor-cancel">Cancel</Button>

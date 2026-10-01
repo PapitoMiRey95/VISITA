@@ -5603,9 +5603,23 @@ async def admin_reset_pharmacy_temp_password(body: ResetPharmacyPwBody, user: di
 # ============= PROFESSIONALS — Dr. Aguayo's Professional Construct (Phase 1) =============
 # ONE shared Professional Profile model + Directory (search/view). System ACCESS stays
 # SEPARATE from professional identity (optional users.professional_id link, added later).
-# Taxonomy (Sphere/Area/Specialty/Credentials/Languages/Practice Type) is NOT seeded here
-# — it will be imported from the authoritative Access source tables. New collections only;
-# existing providers / organizations / users are never modified.
+#
+# ARCHITECTURE BOUNDARY (do not violate):
+#   * CORE VIen (users -> practices -> patients -> patient-provider relationships ->
+#     patient-care workflows) is INDEPENDENT of Professional Profiles. A physician can
+#     use every patient-care workflow with NO professional profile. Nothing here gates
+#     login, practice access, patient visibility, applications, verifications, appointments,
+#     Rx, imaging, bloodwork, referrals, patient updates/documents, registration QR, or
+#     practice isolation. Those are controlled by practice/RBAC ONLY.
+#   * The modern `vien_professional_*` taxonomy is OPTIONAL enrichment metadata. Core VIen
+#     must never depend on it being populated/available.
+#   * LEGACY ACCESS professional tables are REFERENCE / FUTURE REFERRAL DIRECTORY ONLY.
+#     They must NOT control physician authentication, physician onboarding, practice
+#     ownership, patient ownership, patient permissions, or modern Professional Profile
+#     identity. Do NOT attempt Access-ID reconciliation into the modern profile system.
+#
+# Only `surname` is required to save a profile; every other field is optional.
+# New collections only; existing providers / organizations / users are never modified.
 PROF_VIEW_ROLES = ("admin", "physician", "staff", "pharmacy")
 PROF_EDIT_ROLES = ("admin",)  # architected so physician/staff can be enabled later w/o rework
 

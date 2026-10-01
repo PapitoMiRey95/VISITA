@@ -1,0 +1,50 @@
+{
+  "summary": "Stage B practice-isolation verification. Created synthetic Practice B (slug + registration_code + staff user + seeded prescription/imaging/bloodwork/message/appointment/referral/verification-patient/application rows all stamped practice_id=B), then verified cross-practice visibility across every internal queue, cross-practice single-record access, registration stamping, and default dr-aguayo no-regression. Result: 42/44 pass. One HIGH-priority leak confirmed: GET /api/internal/counters does not apply pscope — all count_documents calls run unfiltered so counters show totals across all practices. Everything else (lists for rx/imaging/bloodwork/messages/appointments/referrals/verifications/applications and single-record PATCH 404s) correctly scopes to the caller's practice. All synthetic data cleaned up in teardown.",
+  "backend_issues": {
+    "critical": [
+      {
+        "endpoint": "GET /api/internal/counters",
+        "issue": "Does NOT apply pscope(user). All db.*.count_documents() calls (rx, referrals, imaging, bloodwork, messages, appointments, tasks, verifications, applications) run across ALL practices for both staff/admin role and physician role (server.py lines ~2678-2694). Confirmed empirically: Practice-A admin reported rx=15, but Practice-A-only count is 11 (DB total=13 incl. one seeded Practice-B rx). Practice-B staff reported rx=15 instead of 1. Leaks aggregate counts/record existence across practices.",
+        "priority": "HIGH"
+      }
+    ],
+    "minor": [
+      {
+        "endpoint": "GET /api/internal/referrals/history",
+        "issue": "No pscope — faxed referral history is cross-practice (server.py ~3512-3516). Not tested dynamically (no seed), but visible from code review."
+      },
+      {
+        "endpoint": "GET /api/internal/verifications/history",
+        "issue": "No pscope — recently verified/rejected patients visible cross-practice (server.py ~3720-3734)."
+      },
+      {
+        "endpoint": "GET /api/internal/directory",
+        "issue": "Patient directory lookup is not practice-scoped (server.py ~3738-3753). May be intentional for shared directory, but worth confirming given isolation goals."
+      }
+    ]
+  },
+  "frontend_issues": {"ui_bugs": [], "integration_issues": [], "design_issues": []},
+  "test_report_links": [
+    "/app/backend/tests/test_practice_isolation.py",
+    "/app/test_reports/pytest/stageb_results.xml"
+  ],
+  "action_items": [
+    "FIX HIGH: Apply pscope(user) to every count_documents() call inside GET /internal/counters (both the physician branch at ~2678-2685 and the staff/admin branch at ~2686-2694). Each counter should include {**pscope(user), ...existing filter}.",
+    "FIX MEDIUM: Add pscope to /internal/referrals/history and /internal/verifications/history query filters.",
+    "REVIEW: Decide whether /internal/directory should be practice-scoped; if yes, add pscope + 404 on cross-practice get_directory(id)."
+  ],
+  "critical_code_review_comments": [
+    "pscope()/assert_practice() helpers are a clean pattern but their application is inconsistent — counters endpoint missed entirely despite listing all affected collections.",
+    "server.py is ~6181 lines — well past the 700-line maintainability threshold. Isolation logic for each queue is duplicated. Consider a shared get_scoped_list(coll, user, ...) helper to prevent further pscope omissions.",
+    "assert_practice correctly returns 404 (not 403) — good anti-enumeration posture. Verified by cross-practice PATCH on rx/imaging/bloodwork/messages.",
+    "Registration endpoints correctly stamp practice_id and reject explicit-but-unknown slug/code with 400 (verified). Default fallback to dr-aguayo works."
+  ],
+  "updated_files": ["/app/backend/tests/test_practice_isolation.py"],
+  "success_rate": {"backend": "95% (42/44)", "frontend": "N/A — backend-only run"},
+  "test_credentials": "Used credentials from /app/memory/test_credentials.md (admin kevinrodriguez9528@gmail.com, staff staff@visita.demo, physician PAGUAYO/Newman2013_!, patient maria.lopez@demo.com). All worked.",
+  "seed_data_creation": "Synthetic Practice B (random slug test-stageb-<uuid8>, random code TSTB<4chars>) + synthetic practice-B staff user + 1 record per internal queue (rx/imaging/bloodwork/message/appointment/referral/pending-patient/application), all tagged _test_tag='TEST_STAGEB'. Teardown removes every TEST_STAGEB-tagged doc and the synthetic practice. Real dr-aguayo practice, real users, and demo data were NEVER modified or deleted.",
+  "retest_needed": true,
+  "should_main_agent_self_test": true,
+  "context_for_next_testing_agent": "Test file /app/backend/tests/test_practice_isolation.py is reusable regression. After E1 fixes counters pscope, re-run just `pytest backend/tests/test_practice_isolation.py::TestCounters` to confirm. The fixture `practice_b` seeds a full set of practice-B records; use it to test additional endpoints too. Note: email domain MUST be @example.com (not @test.local) because Pydantic EmailStr rejects reserved TLDs.",
+  "rca of the issue": "Root cause of counters leak: when Stage B scoping was retrofitted, pscope() was added to all list endpoints but the /internal/counters endpoint — which also hits the same collections via count_documents() — was overlooked. Reproduction: 1) seed any record in a non-default practice; 2) call GET /api/internal/counters with any staff/admin/physician token; 3) observe that the returned counter includes the foreign-practice record. Mitigation: merge pscope(user) into every count_documents filter in counters(), e.g. `rx = await db.prescription_requests.count_documents({**pscope(user), 'internal_status': {'$in': RX_ACTIVE}})`."
+}

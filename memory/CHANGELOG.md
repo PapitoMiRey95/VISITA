@@ -1,5 +1,15 @@
 # VIen EMR — Changelog
 
+## 2026-06 — Stage B verification pass + isolation leak fixes (PREVIEW ONLY)
+Independent verification (testing_agent iteration_62, 42/44) found cross-practice leaks that were NOT covered when pscope() was retrofitted. Fixed + re-verified (regression test_practice_isolation.py now 44/44).
+
+- **HIGH — `GET /api/internal/counters`**: every `count_documents()` (physician + staff/admin branches) now merges `pscope(user)` so counters reflect ONLY the caller's practice (previously counted across all practices). Verified: seeding a foreign-practice rx no longer bumps the admin rx counter.
+- **`GET /api/internal/referrals/history`** and **`GET /api/internal/verifications/history`**: added `pscope(user)` — faxed-referral and verified/rejected-patient history are now practice-scoped.
+- **`internal_messages` (tasks/intercom) now carries `practice_id`**: stamped at all 4 insert points (create_task, private-request notify, private-request patient reply, invoice payment notify) and the `/internal/tasks` list + tasks/doctor_tasks counters now scope by it. Backfilled 56 existing internal_messages to the default `dr-aguayo` practice. Added `internal_messages` to `migrate_practice_backfill.py` WORKFLOW_COLLECTIONS (idempotent for other envs).
+- **`GET /api/internal/directory`** intentionally LEFT unscoped — it is the canonical global patient directory; per-practice relationship state is Stage C's job (patient_provider_relationships).
+- Regression test `backend/tests/test_practice_isolation.py` (seeds a synthetic Practice B, asserts list/counter/single-record 404 isolation, cleans up) corrected to mirror server `db.RX_ACTIVE`. Result: 44/44 pass. No Production changes.
+
+
 ## 2026-10-01 — Stage A tweak: New Patient Application fields (PREVIEW ONLY)
 Applies to the New Patient Application (apply) form only; existing-patient registration unchanged. Verified via curl (fields stored, coverage derived) + UI render.
 

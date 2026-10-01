@@ -1633,6 +1633,7 @@ def serialize_private(pr: dict) -> dict:
 async def _notify_physician_new_private(pr: dict):
     await db.internal_messages.insert_one({
         "id": str(uuid.uuid4()), "ref_number": await next_ref("TSK"),
+        "practice_id": pr.get("practice_id"),
         "sender_name": "System", "sender_user_id": None,
         "recipient_role": "physician", "patient_id": pr.get("patient_id"),
         "patient_name": pr.get("patient_name"),
@@ -1750,6 +1751,7 @@ async def private_patient_message(rid: str, body: PrivateMessageBody, user: dict
     await db.private_requests.update_one({"id": rid}, {"$push": {"thread": msg}, "$set": {"updated_at": now_iso()}})
     await db.internal_messages.insert_one({
         "id": str(uuid.uuid4()), "ref_number": await next_ref("TSK"), "sender_name": pr.get("patient_name"),
+        "practice_id": pr.get("practice_id"),
         "recipient_role": "physician", "patient_id": pr.get("patient_id"), "patient_name": pr.get("patient_name"),
         "message": f"Patient replied on private request {pr['ref_number']}.", "status": "pending",
         "created_at": now_iso(), "updated_at": now_iso(), "source": "private_request", "private_request_id": rid,
@@ -2025,6 +2027,7 @@ async def _create_invoice(patient: dict, *, service_description, amount, payment
 async def _notify_clinic_payment_submitted(inv: dict):
     await db.internal_messages.insert_one({
         "id": str(uuid.uuid4()), "ref_number": await next_ref("TSK"),
+        "practice_id": inv.get("practice_id"),
         "sender_name": inv.get("patient_name"), "sender_user_id": None,
         "recipient_role": "staff", "patient_id": inv.get("patient_id"), "patient_name": inv.get("patient_name"),
         "message": f"Payment proof submitted for invoice {inv['invoice_number']} — pending verification.",
@@ -2675,23 +2678,24 @@ async def mark_notes_read(user: dict = Depends(get_current_user)):
 # ----------------------------- Internal counters -----------------------------
 @api.get("/internal/counters")
 async def counters(user: dict = Depends(require_roles(*CLINIC_ROLES))):
+    ps = pscope(user)
     if user["role"] == "physician":
-        rx = await db.prescription_requests.count_documents({"internal_status": "waiting_physician"})
-        img = await db.imaging_requests.count_documents({"internal_status": "waiting_physician"})
-        pmsg = await db.patient_messages.count_documents({"status": "waiting_physician"})
-        dmsg = await db.internal_messages.count_documents({"recipient_role": "physician", "status": {"$ne": "completed"}})
-        bld = await db.bloodwork_requests.count_documents({"internal_status": "waiting_physician"})
-        apps = await db.patient_applications.count_documents({"internal_status": {"$in": APP_ACTIVE}})
+        rx = await db.prescription_requests.count_documents({**ps, "internal_status": "waiting_physician"})
+        img = await db.imaging_requests.count_documents({**ps, "internal_status": "waiting_physician"})
+        pmsg = await db.patient_messages.count_documents({**ps, "status": "waiting_physician"})
+        dmsg = await db.internal_messages.count_documents({**ps, "recipient_role": "physician", "status": {"$ne": "completed"}})
+        bld = await db.bloodwork_requests.count_documents({**ps, "internal_status": "waiting_physician"})
+        apps = await db.patient_applications.count_documents({**ps, "internal_status": {"$in": APP_ACTIVE}})
         return {"role": "physician", "counters": {"rx": rx, "imaging": img, "bloodwork": bld, "messages": pmsg, "doctor_tasks": dmsg, "applications": apps}}
-    rx = await db.prescription_requests.count_documents({"internal_status": {"$in": RX_ACTIVE}})
-    referrals = await db.referrals.count_documents({"ready_to_fax": True, "faxed": False})
-    img = await db.imaging_requests.count_documents({"internal_status": {"$in": IMG_ACTIVE}})
-    bld = await db.bloodwork_requests.count_documents({"internal_status": {"$in": BLD_ACTIVE}})
-    msgs = await db.patient_messages.count_documents({"status": {"$in": MSG_ACTIVE}})
-    appts = await db.appointment_requests.count_documents({"status": "requested"})
-    tasks = await db.internal_messages.count_documents({"recipient_role": "staff", "status": {"$ne": "completed"}})
-    pending_verif = await db.patients.count_documents({"verification_status": "pending", "active_status": True})
-    apps = await db.patient_applications.count_documents({"internal_status": {"$in": APP_ACTIVE}})
+    rx = await db.prescription_requests.count_documents({**ps, "internal_status": {"$in": RX_ACTIVE}})
+    referrals = await db.referrals.count_documents({**ps, "ready_to_fax": True, "faxed": False})
+    img = await db.imaging_requests.count_documents({**ps, "internal_status": {"$in": IMG_ACTIVE}})
+    bld = await db.bloodwork_requests.count_documents({**ps, "internal_status": {"$in": BLD_ACTIVE}})
+    msgs = await db.patient_messages.count_documents({**ps, "status": {"$in": MSG_ACTIVE}})
+    appts = await db.appointment_requests.count_documents({**ps, "status": "requested"})
+    tasks = await db.internal_messages.count_documents({**ps, "recipient_role": "staff", "status": {"$ne": "completed"}})
+    pending_verif = await db.patients.count_documents({**ps, "verification_status": "pending", "active_status": True})
+    apps = await db.patient_applications.count_documents({**ps, "internal_status": {"$in": APP_ACTIVE}})
     return {"role": user["role"], "counters": {
         "rx": rx, "referrals": referrals, "imaging": img, "bloodwork": bld, "messages": msgs,
         "appointments": appts, "doctor_tasks": tasks, "verifications": pending_verif, "applications": apps,
@@ -3464,7 +3468,7 @@ async def link_appointment_patient(item_id: str, body: LinkPatientBody,
 # ----------------------------- Internal tasks / intercom -----------------------------
 @api.get("/internal/tasks")
 async def tasks_queue(user: dict = Depends(require_roles(*CLINIC_ROLES))):
-    query = {"recipient_role": "physician"} if user["role"] == "physician" else {"recipient_role": "staff"}
+    query = {**pscope(user), "recipient_role": "physician"} if user["role"] == "physician" else {**pscope(user), "recipient_role": "staff"}
     return await db.internal_messages.find(query, {"_id": 0}).sort("created_at", -1).to_list(500)
 
 
@@ -3473,6 +3477,7 @@ async def create_task(body: TaskBody, user: dict = Depends(require_roles(*CLINIC
     ref = await next_ref("TSK")
     doc = {
         "id": str(uuid.uuid4()), "ref_number": ref, "patient_id": body.patient_id, "patient_name": body.patient_name,
+        "practice_id": user.get("practice_id"),
         "sender_user_id": user["id"], "sender_name": user["name"], "sender_role": user["role"],
         "recipient_role": body.recipient_role,
         "direction": "task_for_staff" if body.recipient_role == "staff" else "message_for_doctor",
@@ -3511,7 +3516,7 @@ async def referrals_queue(user: dict = Depends(require_roles(*CLINIC_ROLES))):
 
 @api.get("/internal/referrals/history")
 async def referrals_history(q: Optional[str] = None, user: dict = Depends(require_roles(*CLINIC_ROLES))):
-    query = {"faxed": True}
+    query = {**pscope(user), "faxed": True}
     query.update(_search_filter(q, ["patient_name", "specialty", "specialist_name", "ref_number"]))
     return await db.referrals.find(query, {"_id": 0}).sort("faxed_at", -1).to_list(500)
 
@@ -3721,7 +3726,7 @@ async def verifications(user: dict = Depends(require_roles(*CLINIC_ROLES))):
 async def verifications_history(user: dict = Depends(require_roles(*CLINIC_ROLES))):
     """Recently verified/rejected patient registrations — read-only history."""
     docs = await db.patients.find(
-        {"verification_status": {"$in": ["verified", "rejected"]}, "verified_at": {"$exists": True, "$ne": None}}
+        {**pscope(user), "verification_status": {"$in": ["verified", "rejected"]}, "verified_at": {"$exists": True, "$ne": None}}
     ).sort("verified_at", -1).limit(100).to_list(100)
     return [{
         "id": p["id"], "first_name": p["first_name"], "last_name": p["last_name"],

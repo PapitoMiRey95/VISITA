@@ -35,6 +35,7 @@ WORKFLOW_COLLECTIONS = [
     "referrals",
     "patient_updates",
     "patient_messages",
+    "internal_messages",
     "private_requests",
     "invoices",
 ]

@@ -29,6 +29,19 @@ const NP_REASONS = [
     { value: "Other", k: "other" },
 ];
 
+// Patient-facing "current status in Canada" — administrative info only, never used
+// to auto-block an application. Values sent to the backend remain English.
+const STATUS_OPTIONS = [
+    { value: "Canadian citizen", k: "citizen" },
+    { value: "Permanent resident", k: "pr" },
+    { value: "Work permit", k: "work" },
+    { value: "Study permit", k: "study" },
+    { value: "Visitor", k: "visitor" },
+    { value: "Refugee / protected person", k: "refugee" },
+    { value: "Other", k: "other" },
+    { value: "Unsure / Prefer not to say", k: "unsure" },
+];
+
 export default function Register() {
     const { register } = useAuth();
     const nav = useNavigate();
@@ -57,7 +70,7 @@ export default function Register() {
         health_card_number: "", health_card_version: "", health_card_issue_date: "", health_card_expiry_date: "",
         province: "", country: "Canada", extra_info: "",
         address: "", unit: "", city: "", postal_code: "", patient_message: "", join_reason: "",
-        has_ohip: null, had_family_doctor: null, reason_other: "",
+        has_ohip: null, had_family_doctor: null, reason_other: "", status_in_canada: "",
     });
 
     const resolveContext = useCallback(async () => {
@@ -138,6 +151,7 @@ export default function Register() {
                 address: form.address || null, unit: form.unit || null, city: form.city || null,
                 province: form.province || null, postal_code: form.postal_code || null, country: form.country || null,
                 has_ohip: form.has_ohip, had_family_doctor: form.had_family_doctor,
+                status_in_canada: form.has_ohip === false ? (form.status_in_canada || null) : null,
                 join_reason: form.had_family_doctor ? (form.join_reason || null) : null,
                 reason_other: (form.had_family_doctor && form.join_reason === "Other") ? (form.reason_other || null) : null,
                 patient_message: form.patient_message.trim() || null, preferred_language: i18n.language, ...practiceCtx,
@@ -334,9 +348,24 @@ export default function Register() {
                         </div>
 
                         <Field label={t("auth:register.newPatient.ohipQ")} testid="np-ohip">
-                            <YesNo value={form.has_ohip} onChange={(v) => setForm({ ...form, has_ohip: v })}
+                            <YesNo value={form.has_ohip} onChange={(v) => setForm({ ...form, has_ohip: v, status_in_canada: v === false ? form.status_in_canada : "" })}
                                 yes={t("auth:register.newPatient.coverageYes")} no={t("auth:register.newPatient.coverageNo")} testid="np-ohip" />
                         </Field>
+
+                        {form.has_ohip === false && (
+                            <Field label={t("auth:register.newPatient.statusQ")} testid="np-status">
+                                <Select value={form.status_in_canada} onValueChange={(v) => setForm({ ...form, status_in_canada: v })}>
+                                    <SelectTrigger data-testid="np-status-trigger" className="w-full">
+                                        <SelectValue placeholder={t("auth:register.newPatient.statusPlaceholder")} />
+                                    </SelectTrigger>
+                                    <SelectContent>
+                                        {STATUS_OPTIONS.map((s) => (
+                                            <SelectItem key={s.value} value={s.value}>{t(`auth:register.newPatient.statusOptions.${s.k}`)}</SelectItem>
+                                        ))}
+                                    </SelectContent>
+                                </Select>
+                            </Field>
+                        )}
 
                         <Field label={t("auth:register.newPatient.hadDoctorQ")} testid="np-had-doctor">
                             <YesNo value={form.had_family_doctor} onChange={(v) => setForm({ ...form, had_family_doctor: v, join_reason: v ? form.join_reason : "", reason_other: v ? form.reason_other : "" })}

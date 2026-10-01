@@ -486,6 +486,7 @@ class NewPatientRequestBody(BaseModel):
     had_family_doctor: Optional[bool] = None
     join_reason: Optional[str] = None
     reason_other: Optional[str] = None
+    status_in_canada: Optional[str] = None
     patient_message: Optional[str] = None
     preferred_language: str = "en"
     practice_slug: Optional[str] = None
@@ -864,6 +865,7 @@ async def new_patient_request(body: NewPatientRequestBody):
         "coverage": "OHIP" if body.has_ohip else ("PRIVATE_UNINSURED" if body.has_ohip is False else None),
         "had_family_doctor": body.had_family_doctor,
         "join_reason": body.join_reason, "reason_other": body.reason_other,
+        "status_in_canada": body.status_in_canada,
         "patient_message": body.patient_message, "preferred_language": body.preferred_language or "en",
         "directory_match": None, "matched_directory_id": None,
         "practice_id": practice["id"], "practice_slug": practice.get("slug"),

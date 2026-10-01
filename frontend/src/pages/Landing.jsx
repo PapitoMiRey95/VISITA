@@ -1,9 +1,12 @@
+import { useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { useTranslation } from "react-i18next";
-import { LogIn, UserPlus, UserRound, ArrowRight, Stethoscope, Building2 } from "lucide-react";
+import { toast } from "sonner";
+import { LogIn, UserRound, Stethoscope, Building2, Search, ChevronLeft, ChevronRight, ArrowRight, Loader2 } from "lucide-react";
 import { Button } from "../components/ui/button";
+import { Input } from "../components/ui/input";
 import { Logo } from "../components/Logo";
-import { LanguageChooser } from "../components/LanguageChooser";
+import { api, formatErr } from "../lib/api";
 import { setAppLanguage } from "../i18n";
 
 const BG = "https://customer-assets-4nw71qhi.emergentagent.net/job_visita-admin/artifacts/5zizgajz_ChatGPT%20Image%20Sep%2024%2C%202026%2C%2003_43_19%20PM.png";
@@ -13,37 +16,29 @@ export default function Landing() {
     const nav = useNavigate();
     const { t, i18n } = useTranslation(["common", "auth"]);
     const cur = i18n.language?.startsWith("es") ? "es" : "en";
+    const [mode, setMode] = useState("home"); // home | roles
 
     return (
         <div className="relative min-h-screen w-full overflow-hidden font-plex">
-            <LanguageChooser />
             <div className="absolute inset-0 bg-cover bg-center lg:hidden" style={{ backgroundImage: `url("${BG_MOBILE}")` }} aria-hidden />
             <div className="absolute inset-0 bg-cover bg-center hidden lg:block" style={{ backgroundImage: `url("${BG}")` }} aria-hidden />
             <div className="absolute inset-0 bg-gradient-to-r from-[#060b16]/96 via-[#0a1524]/86 to-[#0a1524]/60" aria-hidden />
             <div className="absolute inset-0 visita-scanlines" aria-hidden />
 
-            {/* Language selector — EN/ES active and switchable; FR reserved (Coming soon) */}
+            {/* Language selector — EN/ES active; FR reserved */}
             <div data-testid="lang-selector"
                 className="absolute top-4 right-4 z-20 flex items-center gap-0.5 rounded-full border border-white/10 bg-[#0b1524]/70 backdrop-blur px-1 py-0.5">
-                <button type="button" data-testid="lang-en" onClick={() => setAppLanguage("en")}
-                    aria-current={cur === "en"}
-                    className={`px-2 py-0.5 text-[11px] font-semibold rounded-full tracking-wide transition-colors ${cur === "en" ? "bg-cyan-500/20 text-cyan-200" : "text-slate-300 hover:text-cyan-200"}`}>
-                    EN
-                </button>
-                <button type="button" data-testid="lang-es" onClick={() => setAppLanguage("es")}
-                    aria-current={cur === "es"}
-                    className={`px-2 py-0.5 text-[11px] font-semibold rounded-full tracking-wide transition-colors ${cur === "es" ? "bg-cyan-500/20 text-cyan-200" : "text-slate-300 hover:text-cyan-200"}`}>
-                    ES
-                </button>
+                <button type="button" data-testid="lang-en" onClick={() => setAppLanguage("en")} aria-current={cur === "en"}
+                    className={`px-2 py-0.5 text-[11px] font-semibold rounded-full tracking-wide transition-colors ${cur === "en" ? "bg-cyan-500/20 text-cyan-200" : "text-slate-300 hover:text-cyan-200"}`}>EN</button>
+                <button type="button" data-testid="lang-es" onClick={() => setAppLanguage("es")} aria-current={cur === "es"}
+                    className={`px-2 py-0.5 text-[11px] font-semibold rounded-full tracking-wide transition-colors ${cur === "es" ? "bg-cyan-500/20 text-cyan-200" : "text-slate-300 hover:text-cyan-200"}`}>ES</button>
                 <span data-testid="lang-fr" aria-disabled="true" title={t("common:language.comingSoon")}
-                    className="px-2 py-0.5 text-[11px] font-semibold rounded-full tracking-wide text-slate-600 cursor-not-allowed select-none">
-                    FR
-                </span>
+                    className="px-2 py-0.5 text-[11px] font-semibold rounded-full tracking-wide text-slate-600 cursor-not-allowed select-none">FR</span>
                 <span className="pl-1 pr-1.5 text-[9px] uppercase tracking-widest text-slate-500 inline">{t("common:language.comingSoon")}</span>
             </div>
 
             <div className="relative z-10 min-h-screen flex flex-col lg:flex-row lg:items-center lg:justify-between px-6 py-12 lg:px-16 gap-10">
-                {/* Branding */}
+                {/* Branding — unchanged identity */}
                 <div className="w-full max-w-2xl lg:max-w-3xl text-center rounded-2xl border border-white/10 bg-gradient-to-br from-[rgba(8,20,35,0.72)] to-[rgba(8,20,35,0.55)] backdrop-blur-md px-8 py-10 lg:px-12 lg:py-14 shadow-[0_20px_60px_-15px_rgba(0,0,0,0.7)]">
                     <Logo variant="dark" iconClass="h-20 w-20 lg:h-28 lg:w-28 drop-shadow-[0_0_30px_rgba(23,179,196,0.35)]"
                         textClass="text-4xl sm:text-5xl lg:text-6xl" className="justify-center" />
@@ -52,71 +47,128 @@ export default function Landing() {
                     <div className="mt-6 h-px w-40 mx-auto bg-gradient-to-r from-cyan-400/50 to-transparent" />
                 </div>
 
-                {/* Access groups */}
-                <div className="w-full max-w-md space-y-4">
-                    {/* Patients — primary */}
-                    <div data-testid="pathway-patients"
-                        className="rounded-md border border-cyan-400/25 bg-[#0b1524]/80 backdrop-blur-xl p-6 shadow-[0_20px_60px_-15px_rgba(0,0,0,0.8)]">
-                        <div className="flex items-center gap-2.5 mb-1">
-                            <span className="flex h-9 w-9 items-center justify-center rounded-md bg-cyan-500/15 border border-cyan-400/30">
-                                <UserRound className="w-5 h-5 text-cyan-300" />
-                            </span>
-                            <h2 className="text-xl font-bold text-slate-100 tracking-tight">{t("auth:landing.patients.title")}</h2>
-                        </div>
-                        <p className="text-sm text-white leading-relaxed mb-4">{t("auth:landing.patients.desc")}</p>
-                        <div className="grid grid-cols-2 gap-3">
-                            <Button data-testid="patient-signin" onClick={() => nav("/signin")}
-                                className="bg-cyan-500 hover:bg-cyan-400 text-[#04121f] font-bold h-11">
-                                <LogIn className="w-4 h-4 mr-1.5" /> {t("common:actions.signIn")}
-                            </Button>
-                            <Button data-testid="patient-register" onClick={() => nav("/register")}
-                                variant="outline" className="h-11 border-cyan-400/40 bg-transparent text-cyan-200 hover:bg-cyan-500/10 hover:text-cyan-100 font-semibold">
-                                <UserPlus className="w-4 h-4 mr-1.5" /> {t("common:actions.register")}
-                            </Button>
-                        </div>
-                        <button data-testid="patient-new-request" onClick={() => nav("/register?new=1")}
-                            className="mt-4 inline-flex items-center gap-1.5 text-sm font-semibold text-slate-300 hover:text-cyan-200 transition-colors">
-                            {t("auth:landing.patients.newRequest")} <ArrowRight className="w-4 h-4" />
-                        </button>
+                {/* Single entry panel */}
+                <div className="w-full max-w-md">
+                    <div className="rounded-2xl border border-cyan-400/25 bg-[#0b1524]/85 backdrop-blur-xl p-6 shadow-[0_20px_60px_-15px_rgba(0,0,0,0.85)]">
+                        {mode === "home" ? (
+                            <HomePanel nav={nav} t={t} onSignIn={() => setMode("roles")} />
+                        ) : (
+                            <RolePanel nav={nav} t={t} onBack={() => setMode("home")} />
+                        )}
                     </div>
-
-                    {/* Clinic Team + Partners — secondary, equal cards */}
-                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                        <div data-testid="pathway-clinic"
-                            className="flex flex-col rounded-md border border-white/10 bg-[#0b1524]/60 backdrop-blur-md p-5">
-                            <span className="flex h-9 w-9 items-center justify-center rounded-md bg-white/5 border border-white/10 mb-2">
-                                <Stethoscope className="w-5 h-5 text-slate-200" />
-                            </span>
-                            <h3 className="text-sm font-bold text-slate-100 tracking-tight">{t("auth:landing.clinic.title")}</h3>
-                            <p className="text-[11px] uppercase tracking-widest text-white mt-0.5 mb-4">{t("auth:landing.clinic.roles")}</p>
-                            <Button data-testid="clinic-login" onClick={() => nav("/signin?internal=1")}
-                                variant="outline" className="mt-auto h-10 border-white/15 bg-transparent text-slate-100 hover:bg-white/10 font-semibold">
-                                {t("auth:landing.clinic.login")}
-                            </Button>
-                        </div>
-
-                        <div data-testid="pathway-partners"
-                            className="flex flex-col rounded-md border border-white/10 bg-[#0b1524]/60 backdrop-blur-md p-5">
-                            <span className="flex h-9 w-9 items-center justify-center rounded-md bg-white/5 border border-white/10 mb-2">
-                                <Building2 className="w-5 h-5 text-slate-200" />
-                            </span>
-                            <h3 className="text-sm font-bold text-slate-100 tracking-tight">{t("auth:landing.partners.title")}</h3>
-                            <p className="text-[11px] uppercase tracking-widest text-white mt-0.5 mb-4">{t("auth:landing.partners.roles")}</p>
-                            <div className="mt-auto grid grid-cols-1 gap-2">
-                                <Button data-testid="partner-login" onClick={() => nav("/signin?partner=1")}
-                                    variant="outline" className="h-10 border-white/15 bg-transparent text-slate-100 hover:bg-white/10 font-semibold">
-                                    {t("auth:landing.partners.signIn")}
-                                </Button>
-                                <Button data-testid="partner-register" onClick={() => nav("/partners/register")}
-                                    className="h-10 bg-cyan-500 hover:bg-cyan-400 text-[#04121f] font-bold">
-                                    <UserPlus className="w-4 h-4 mr-1.5" /> {t("auth:landing.partners.register")}
-                                </Button>
-                            </div>
-                        </div>
-                    </div>
-
-                    <p className="text-[11px] leading-relaxed text-slate-300 rounded-2xl border border-white/10 bg-gradient-to-br from-[rgba(8,20,35,0.72)] to-[rgba(8,20,35,0.55)] backdrop-blur-md px-4 py-3 shadow-[0_20px_60px_-15px_rgba(0,0,0,0.7)]">{t("common:emergencyNotice")}</p>
+                    <p className="mt-4 text-[11px] leading-relaxed text-slate-300 rounded-2xl border border-white/10 bg-gradient-to-br from-[rgba(8,20,35,0.72)] to-[rgba(8,20,35,0.55)] backdrop-blur-md px-4 py-3 shadow-[0_20px_60px_-15px_rgba(0,0,0,0.7)]">{t("common:emergencyNotice")}</p>
                 </div>
+            </div>
+        </div>
+    );
+}
+
+function HomePanel({ nav, t, onSignIn }) {
+    const [q, setQ] = useState("");
+    const [results, setResults] = useState(null);
+    const [busy, setBusy] = useState(false);
+
+    const search = async () => {
+        if (!q.trim()) return;
+        setBusy(true);
+        try {
+            const { data } = await api.get("/practices", { params: { q: q.trim() } });
+            setResults(data);
+        } catch (e) { toast.error(formatErr(e)); } finally { setBusy(false); }
+    };
+
+    return (
+        <div className="space-y-5" data-testid="landing-home">
+            {/* Search — primary */}
+            <div>
+                <label className="text-[11px] uppercase tracking-widest text-cyan-200/80 font-semibold">{t("auth:landing2.searchHint")}</label>
+                <div className="flex gap-2 mt-2">
+                    <div className="relative flex-1">
+                        <Search className="w-4 h-4 text-slate-400 absolute left-3 top-3.5" />
+                        <Input data-testid="landing-search-input" value={q} onChange={(e) => setQ(e.target.value)}
+                            onKeyDown={(e) => e.key === "Enter" && search()}
+                            placeholder={t("auth:landing2.searchPlaceholder")}
+                            className="pl-9 h-11 bg-[#0f1e30] border-white/10 text-slate-100 placeholder:text-slate-500 focus-visible:ring-cyan-400/60" />
+                    </div>
+                    <Button data-testid="landing-search-btn" disabled={busy} onClick={search}
+                        className="h-11 bg-cyan-500 hover:bg-cyan-400 text-[#04121f] font-bold">
+                        {busy ? <Loader2 className="w-4 h-4 animate-spin" /> : t("auth:landing2.searchBtn")}
+                    </Button>
+                </div>
+                {results && results.length === 0 && (
+                    <p className="text-sm text-slate-400 mt-3" data-testid="landing-search-none">{t("auth:landing2.searchNone")}</p>
+                )}
+                {results && results.length > 0 && (
+                    <div className="mt-3 space-y-2 max-h-64 overflow-auto pr-1">
+                        {results.map((p) => (
+                            <button key={p.id} data-testid={`landing-result-${p.slug}`} onClick={() => nav(`/register/${p.slug}`)}
+                                className="w-full text-left flex items-center gap-3 rounded-xl border border-white/10 bg-[#0f1e30] hover:border-cyan-400/40 p-3 transition">
+                                <span className="flex h-9 w-9 items-center justify-center rounded-lg bg-cyan-500/15 border border-cyan-400/30 flex-shrink-0">
+                                    <Stethoscope className="w-4 h-4 text-cyan-300" />
+                                </span>
+                                <span className="flex-1 min-w-0">
+                                    <span className="block font-bold text-slate-100 truncate">{p.physician_name}</span>
+                                    {p.clinic_name && <span className="block text-xs text-slate-400 truncate">{p.clinic_name}</span>}
+                                </span>
+                                <span className="text-xs font-semibold text-cyan-300 flex items-center gap-0.5 flex-shrink-0">{t("auth:landing2.viewClinic")} <ChevronRight className="w-4 h-4" /></span>
+                            </button>
+                        ))}
+                    </div>
+                )}
+            </div>
+
+            <div className="h-px bg-white/10" />
+
+            {/* Sign in — secondary */}
+            <Button data-testid="landing-signin" onClick={onSignIn}
+                className="w-full h-11 bg-cyan-500 hover:bg-cyan-400 text-[#04121f] font-bold">
+                <LogIn className="w-4 h-4 mr-1.5" /> {t("auth:landing2.signIn")}
+            </Button>
+
+            {/* Current patient → create portal */}
+            <div className="flex items-center justify-between gap-3 text-sm">
+                <span className="text-slate-300">{t("auth:landing2.createPortalPrompt")}</span>
+                <button data-testid="landing-create-portal" onClick={() => nav("/register")}
+                    className="font-bold text-cyan-300 hover:text-cyan-200 inline-flex items-center gap-1">
+                    {t("auth:landing2.createPortal")} <ArrowRight className="w-4 h-4" />
+                </button>
+            </div>
+
+            {/* Not a patient → apply for care */}
+            <div className="flex items-center justify-between gap-3 text-sm border-t border-white/10 pt-4">
+                <span className="text-slate-400">{t("auth:landing2.applyPrompt")}</span>
+                <button data-testid="landing-apply-care" onClick={() => nav("/register?new=1")}
+                    className="font-bold text-slate-200 hover:text-cyan-200 inline-flex items-center gap-1">
+                    {t("auth:landing2.applyForCare")} <ArrowRight className="w-4 h-4" />
+                </button>
+            </div>
+        </div>
+    );
+}
+
+function RolePanel({ nav, t, onBack }) {
+    const roles = [
+        { key: "patient", icon: UserRound, label: t("auth:landing2.rolePatient"), go: () => nav("/signin"), testid: "role-patient" },
+        { key: "clinic", icon: Stethoscope, label: t("auth:landing2.roleClinic"), go: () => nav("/signin?internal=1"), testid: "role-clinic" },
+        { key: "partner", icon: Building2, label: t("auth:landing2.rolePartner"), go: () => nav("/signin?partner=1"), testid: "role-partner" },
+    ];
+    return (
+        <div className="space-y-4" data-testid="landing-roles">
+            <button onClick={onBack} data-testid="landing-role-back" className="flex items-center gap-1 text-slate-400 hover:text-slate-200 text-sm">
+                <ChevronLeft className="w-4 h-4" /> {t("auth:landing2.back")}
+            </button>
+            <h2 className="text-xl font-bold text-slate-100">{t("auth:landing2.roleQ")}</h2>
+            <div className="space-y-2.5">
+                {roles.map((r) => (
+                    <button key={r.key} data-testid={r.testid} onClick={r.go}
+                        className="w-full flex items-center gap-3 rounded-xl border border-white/10 bg-[#0f1e30] hover:border-cyan-400/40 p-4 transition active:scale-[0.99]">
+                        <span className="flex h-10 w-10 items-center justify-center rounded-lg bg-cyan-500/15 border border-cyan-400/30 flex-shrink-0">
+                            <r.icon className="w-5 h-5 text-cyan-300" />
+                        </span>
+                        <span className="flex-1 text-left font-bold text-slate-100">{r.label}</span>
+                        <ChevronRight className="w-5 h-5 text-slate-500" />
+                    </button>
+                ))}
             </div>
         </div>
     );

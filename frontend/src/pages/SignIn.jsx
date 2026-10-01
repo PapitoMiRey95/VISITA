@@ -166,6 +166,13 @@ export default function SignIn() {
                                 <Link to="/register" data-testid="go-register" className="text-cyan-300 font-semibold hover:underline">{t("auth:signin.registerLink")}</Link>
                             </p>
                         )}
+
+                        {!internal && !partner && (
+                            <p className="text-xs text-center text-slate-500 mt-3">
+                                {t("auth:signin.applyPrompt")}{" "}
+                                <Link to="/register?new=1" data-testid="go-apply-care" className="text-slate-300 font-semibold hover:text-cyan-200 hover:underline">{t("auth:signin.applyLink")}</Link>
+                            </p>
+                        )}
                     </form>
                 </div>
             </div>

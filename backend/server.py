@@ -902,6 +902,18 @@ async def login(body: LoginBody):
         raise HTTPException(status_code=401, detail="Invalid credentials. Please check your email/username and password.")
     if not user.get("active", True):
         raise HTTPException(status_code=403, detail="This account has been disabled. Contact the clinic.")
+    # One-time temp passwords expire: block login once expired so the user must get a new one.
+    exp = user.get("temp_password_expires_at")
+    if user.get("must_change_password") and exp:
+        try:
+            if datetime.fromisoformat(exp) < datetime.now(timezone.utc):
+                raise HTTPException(status_code=403,
+                                    detail="Your temporary password has expired. Please contact the clinic for a new one.")
+        except HTTPException:
+            raise
+        except Exception:
+            pass
+    await db.users.update_one({"_id": user["_id"]}, {"$set": {"last_login_at": now_iso()}})
     token = authlib.create_access_token(str(user["_id"]), user.get("email") or user.get("username"), user["role"])
     return {"token": token, "user": serialize_user(user)}
 
@@ -3062,7 +3074,8 @@ async def counters(user: dict = Depends(require_roles(*CLINIC_ROLES))):
         dmsg = await db.internal_messages.count_documents({**ps, "recipient_role": "physician", "status": {"$ne": "completed"}})
         bld = await db.bloodwork_requests.count_documents({**ps, "internal_status": "waiting_physician"})
         apps = await db.patient_applications.count_documents({**ps, "internal_status": {"$in": APP_ACTIVE}})
-        return {"role": "physician", "counters": {"rx": rx, "imaging": img, "bloodwork": bld, "messages": pmsg, "doctor_tasks": dmsg, "applications": apps}}
+        par = await db.portal_access_requests.count_documents({**ps, "status": "PENDING"})
+        return {"role": "physician", "counters": {"rx": rx, "imaging": img, "bloodwork": bld, "messages": pmsg, "doctor_tasks": dmsg, "applications": apps, "portal_access": par}}
     rx = await db.prescription_requests.count_documents({**ps, "internal_status": {"$in": RX_ACTIVE}})
     referrals = await db.referrals.count_documents({**ps, "ready_to_fax": True, "faxed": False})
     img = await db.imaging_requests.count_documents({**ps, "internal_status": {"$in": IMG_ACTIVE}})
@@ -3072,9 +3085,11 @@ async def counters(user: dict = Depends(require_roles(*CLINIC_ROLES))):
     tasks = await db.internal_messages.count_documents({**ps, "recipient_role": "staff", "status": {"$ne": "completed"}})
     pending_verif = await db.patients.count_documents({**ps, "verification_status": "pending", "active_status": True})
     apps = await db.patient_applications.count_documents({**ps, "internal_status": {"$in": APP_ACTIVE}})
+    par = await db.portal_access_requests.count_documents({**ps, "status": "PENDING"})
     return {"role": user["role"], "counters": {
         "rx": rx, "referrals": referrals, "imaging": img, "bloodwork": bld, "messages": msgs,
         "appointments": appts, "doctor_tasks": tasks, "verifications": pending_verif, "applications": apps,
+        "portal_access": par,
     }}
 
 
@@ -5959,6 +5974,399 @@ async def internal_patient_prescriptions(patient_ref: str, user: dict = Depends(
         pub["medications"] = annotated
         out.append(pub)
     return out
+
+
+# ============================================================================
+# PHASE B — Staff/Admin Patient Portal Account Management
+#   Manage a patient's PORTAL LOGIN only (users doc). Never touches the clinical
+#   patient record, PIN, directory, or history. Practice-scoped and audited.
+#   Current passwords are never shown; temp passwords are one-time + expiring.
+# ============================================================================
+ACCOUNT_MGMT_ROLES = ("admin", "staff")
+TEMP_PASSWORD_TTL_HOURS = 72
+
+
+async def _get_scoped_patient(patient_id: str, user: dict) -> dict:
+    p = await db.patients.find_one({"id": patient_id})
+    if not p:
+        raise HTTPException(status_code=404, detail="Patient not found.")
+    assert_practice(p, user)
+    return p
+
+
+async def _portal_user_for_patient(patient_id: str):
+    return await db.users.find_one({"patient_id": patient_id})
+
+
+def _portal_account_status(u: dict) -> str:
+    if not u.get("active", True):
+        return "Disabled"
+    if u.get("pending_activation"):
+        return "Pending activation"
+    if u.get("must_change_password"):
+        return "Must change password"
+    return "Active"
+
+
+def _portal_account_public(u: dict) -> dict:
+    return {
+        "has_account": True,
+        "user_id": str(u["_id"]),
+        "login_email": u.get("email"),
+        "name": u.get("name"),
+        "role": u.get("role"),
+        "status": _portal_account_status(u),
+        "email_verified": bool(u.get("email_verified")),
+        "active": u.get("active", True),
+        "disabled": not u.get("active", True),
+        "must_change_password": bool(u.get("must_change_password")),
+        "pending_activation": bool(u.get("pending_activation")),
+        "locked": bool(u.get("locked", False)),
+        "last_login_at": u.get("last_login_at"),
+        "temp_password_expires_at": u.get("temp_password_expires_at"),
+    }
+
+
+async def _issue_activation_email(uid: str, email: str, first_name: str, lang: str = "en"):
+    """(Re)issue a single-use 72h set-password activation link and email it."""
+    token = secrets.token_urlsafe(32)
+    await db.account_activations.update_one({"user_id": uid}, {"$set": {
+        "user_id": uid, "token_hash": authlib.hash_password(token),
+        "expires_at": (datetime.now(timezone.utc) + timedelta(hours=72)).isoformat(),
+        "used": False, "created_at": now_iso(),
+    }}, upsert=True)
+    portal_url = (os.environ.get("APP_BASE_URL") or notify_svc.PORTAL_URL or "").strip().rstrip("/")
+    if email and portal_url and portal_url.startswith("https://"):
+        activate_url = f"{portal_url}/activate?uid={uid}&token={token}"
+        await email_service.send_email(
+            to=email,
+            subject=email_service.subject("account_activation", lang),
+            html=email_service.account_activation_html(first_name or "there", activate_url, lang=lang))
+        return True
+    return False
+
+
+async def _patient_lang(u: dict) -> str:
+    if u.get("patient_id"):
+        pat = await db.patients.find_one({"id": u["patient_id"]}, {"preferred_language": 1})
+        return email_service.norm_lang((pat or {}).get("preferred_language"))
+    return "en"
+
+
+@api.get("/internal/patients/{patient_id}/portal-account")
+async def get_portal_account(patient_id: str, user: dict = Depends(require_roles(*ACCOUNT_MGMT_ROLES))):
+    await _get_scoped_patient(patient_id, user)
+    u = await _portal_user_for_patient(patient_id)
+    if not u:
+        return {"has_account": False, "patient_id": patient_id}
+    return _portal_account_public(u)
+
+
+@api.post("/internal/patients/{patient_id}/portal-account/send-reset")
+async def portal_account_send_reset(patient_id: str, user: dict = Depends(require_roles(*ACCOUNT_MGMT_ROLES))):
+    await _get_scoped_patient(patient_id, user)
+    u = await _portal_user_for_patient(patient_id)
+    if not u or not u.get("email"):
+        raise HTTPException(status_code=400, detail="This patient has no portal login email.")
+    code = f"{secrets.randbelow(1000000):06d}"
+    lang = await _patient_lang(u)
+    await db.password_resets.update_one({"user_id": str(u["_id"])}, {"$set": {
+        "user_id": str(u["_id"]), "code_hash": authlib.hash_password(code),
+        "expires_at": (datetime.now(timezone.utc) + timedelta(minutes=15)).isoformat(),
+        "attempts": 0, "created_at": now_iso(),
+    }}, upsert=True)
+    try:
+        await email_service.send_email(to=u["email"], subject=email_service.subject("reset_code", lang),
+                                       html=email_service.reset_code_html(u.get("name"), code, lang=lang))
+    except Exception:
+        raise HTTPException(status_code=502, detail="We couldn't send the email right now. Please try again shortly.")
+    await audit("staff_send_password_reset", "user", str(u["_id"]), user, meta={"patient_id": patient_id})
+    return {"ok": True, "sent_to": u["email"]}
+
+
+@api.post("/internal/patients/{patient_id}/portal-account/resend-verification")
+async def portal_account_resend_verification(patient_id: str, user: dict = Depends(require_roles(*ACCOUNT_MGMT_ROLES))):
+    await _get_scoped_patient(patient_id, user)
+    u = await _portal_user_for_patient(patient_id)
+    if not u or not u.get("email"):
+        raise HTTPException(status_code=400, detail="This patient has no portal login email.")
+    if not u.get("pending_activation"):
+        raise HTTPException(status_code=400, detail="This account is already activated. No verification link is needed.")
+    lang = await _patient_lang(u)
+    first = (u.get("name") or "").split(" ")[0]
+    try:
+        sent = await _issue_activation_email(str(u["_id"]), u["email"], first, lang)
+    except Exception:
+        raise HTTPException(status_code=502, detail="We couldn't send the email right now. Please try again shortly.")
+    if not sent:
+        raise HTTPException(status_code=502, detail="Activation link could not be generated (email not configured).")
+    await audit("staff_resend_activation", "user", str(u["_id"]), user, meta={"patient_id": patient_id})
+    return {"ok": True, "sent_to": u["email"]}
+
+
+@api.post("/internal/patients/{patient_id}/portal-account/temp-password")
+async def portal_account_temp_password(patient_id: str, user: dict = Depends(require_roles(*ACCOUNT_MGMT_ROLES))):
+    await _get_scoped_patient(patient_id, user)
+    u = await _portal_user_for_patient(patient_id)
+    if not u:
+        raise HTTPException(status_code=404, detail="This patient has no portal account.")
+    temp = _gen_temp_password()
+    expires = (datetime.now(timezone.utc) + timedelta(hours=TEMP_PASSWORD_TTL_HOURS)).isoformat()
+    await db.users.update_one({"_id": u["_id"]}, {"$set": {
+        "password_hash": authlib.hash_password(temp),
+        "must_change_password": True,
+        "temp_password_expires_at": expires,
+        "pending_activation": False,
+        "password_rotated_at": now_iso(),
+    }})
+    await audit("staff_generate_temp_password", "user", str(u["_id"]), user, meta={"patient_id": patient_id})
+    return {"ok": True, "temp_password": temp, "expires_at": expires,
+            "must_change_password": True, "login_email": u.get("email")}
+
+
+@api.post("/internal/patients/{patient_id}/portal-account/force-password-change")
+async def portal_account_force_change(patient_id: str, user: dict = Depends(require_roles(*ACCOUNT_MGMT_ROLES))):
+    await _get_scoped_patient(patient_id, user)
+    u = await _portal_user_for_patient(patient_id)
+    if not u:
+        raise HTTPException(status_code=404, detail="This patient has no portal account.")
+    await db.users.update_one({"_id": u["_id"]}, {"$set": {"must_change_password": True, "updated_at": now_iso()}})
+    await audit("staff_force_password_change", "user", str(u["_id"]), user, meta={"patient_id": patient_id})
+    return {"ok": True, "must_change_password": True}
+
+
+class StaffEmailChangeBody(BaseModel):
+    new_email: EmailStr
+
+
+@api.post("/internal/patients/{patient_id}/portal-account/email")
+async def portal_account_change_email(patient_id: str, body: StaffEmailChangeBody,
+                                      user: dict = Depends(require_roles(*ACCOUNT_MGMT_ROLES))):
+    p = await _get_scoped_patient(patient_id, user)
+    u = await _portal_user_for_patient(patient_id)
+    if not u:
+        raise HTTPException(status_code=404, detail="This patient has no portal account.")
+    new_email = body.new_email.lower().strip()
+    old_email = u.get("email")
+    if new_email == (old_email or "").lower():
+        raise HTTPException(status_code=400, detail="That is already this patient's login email.")
+    clash_u = await db.users.find_one({"email": new_email, "_id": {"$ne": u["_id"]}})
+    clash_p = await db.patients.find_one({"email": new_email, "id": {"$ne": patient_id}})
+    if clash_u or clash_p:
+        raise HTTPException(status_code=409, detail="Another account already uses that email address.")
+    await db.users.update_one({"_id": u["_id"]}, {"$set": {
+        "email": new_email, "email_verified": False, "updated_at": now_iso()}})
+    await db.patients.update_one({"id": patient_id}, {"$set": {"email": new_email, "updated_at": now_iso()}})
+    await audit("staff_change_login_email", "user", str(u["_id"]), user,
+                meta={"patient_id": patient_id, "old_email": old_email, "new_email": new_email})
+    return {"ok": True, "login_email": new_email, "email_verified": False}
+
+
+@api.post("/internal/patients/{patient_id}/portal-account/disable")
+async def portal_account_disable(patient_id: str, user: dict = Depends(require_roles(*ACCOUNT_MGMT_ROLES))):
+    await _get_scoped_patient(patient_id, user)
+    u = await _portal_user_for_patient(patient_id)
+    if not u:
+        raise HTTPException(status_code=404, detail="This patient has no portal account.")
+    # Disable LOGIN only — patient record, PIN, directory link and history are untouched.
+    await db.users.update_one({"_id": u["_id"]}, {"$set": {"active": False, "updated_at": now_iso()}})
+    await audit("staff_disable_portal_access", "user", str(u["_id"]), user, meta={"patient_id": patient_id})
+    return {"ok": True, "active": False}
+
+
+@api.post("/internal/patients/{patient_id}/portal-account/enable")
+async def portal_account_enable(patient_id: str, user: dict = Depends(require_roles(*ACCOUNT_MGMT_ROLES))):
+    await _get_scoped_patient(patient_id, user)
+    u = await _portal_user_for_patient(patient_id)
+    if not u:
+        raise HTTPException(status_code=404, detail="This patient has no portal account.")
+    await db.users.update_one({"_id": u["_id"]}, {"$set": {"active": True, "updated_at": now_iso()}})
+    await audit("staff_enable_portal_access", "user", str(u["_id"]), user, meta={"patient_id": patient_id})
+    return {"ok": True, "active": True}
+
+
+# ============================================================================
+# PHYSICIAN — Patient Medical Record (read) + Medication Management (write)
+#   Physician-only, practice-scoped. Reads only data that already exists in VIen.
+#   Medication writes reuse the authoritative patient_medications / medication_catalog
+#   / physician_rx_memory architecture. Discontinue != delete; history is preserved.
+# ============================================================================
+MED_RECORD_ROLES = ("admin", "physician")
+
+
+def _med_public(d: dict) -> dict:
+    d = {k: v for k, v in d.items() if k != "_id"}
+    d["strength_display"] = _med_strength_display(d)
+    return d
+
+
+@api.get("/internal/patients/{patient_id}/medical-record")
+async def patient_medical_record(patient_id: str, user: dict = Depends(require_roles(*MED_RECORD_ROLES))):
+    p = await _get_scoped_patient(patient_id, user)
+    summary = _portal_patient_snapshot(p)
+    appts = await db.appointment_requests.find(
+        {"patient_id": patient_id}, {"_id": 0}).sort("created_at", -1).to_list(100)
+    encounters = [{
+        "id": a.get("id"), "ref_number": a.get("ref_number"),
+        "status": a.get("status"), "reason": a.get("reason"),
+        "label": a.get("label") or a.get("display"),
+        "date": a.get("confirmed_date") or a.get("requested_date") or a.get("date"),
+        "time": a.get("confirmed_time") or a.get("requested_time") or a.get("time"),
+        "source_type": a.get("source_type"), "created_at": a.get("created_at"),
+    } for a in appts]
+    meds_active = await db.patient_medications.find(
+        {"patient_id": patient_id, "active": True}, {"_id": 0}).sort("last_prescribed_at", -1).to_list(200)
+    meds_discontinued = await db.patient_medications.find(
+        {"patient_id": patient_id, "active": False}, {"_id": 0}).sort("updated_at", -1).to_list(200)
+    try:
+        documents = await attach_mod.list_shared_for_patient(db, patient_id)
+    except Exception:
+        documents = []
+    return {
+        "patient_id": patient_id,
+        "summary": summary,
+        "encounters": encounters,
+        "medications": {
+            "active": [_med_public(m) for m in meds_active],
+            "discontinued": [_med_public(m) for m in meds_discontinued],
+        },
+        "documents": documents,
+    }
+
+
+_MED_FIELDS = ("drug", "action", "strength", "unit", "form", "attributes", "sig", "quantity",
+               "quantity_unit", "route", "duration_value", "duration_unit", "concentration",
+               "prn_reason", "eye", "ear", "interval", "site", "device", "brand", "generic",
+               "din", "manufacturer", "additional_instructions", "note", "months", "refills")
+
+
+class MedWriteBody(BaseModel):
+    drug: Optional[str] = None
+    action: Optional[str] = None
+    strength: Optional[str] = None
+    unit: Optional[str] = None
+    form: Optional[str] = None
+    attributes: Optional[List[str]] = None
+    sig: Optional[str] = None
+    quantity: Optional[str] = None
+    quantity_unit: Optional[str] = None
+    route: Optional[str] = None
+    duration_value: Optional[str] = None
+    duration_unit: Optional[str] = None
+    concentration: Optional[str] = None
+    prn_reason: Optional[str] = None
+    eye: Optional[str] = None
+    ear: Optional[str] = None
+    interval: Optional[str] = None
+    site: Optional[str] = None
+    device: Optional[str] = None
+    brand: Optional[str] = None
+    generic: Optional[str] = None
+    din: Optional[str] = None
+    manufacturer: Optional[str] = None
+    additional_instructions: Optional[str] = None
+    note: Optional[str] = None
+    months: Optional[int] = None
+    refills: Optional[int] = None
+
+
+class MedActionBody(MedWriteBody):
+    action_type: str  # continue | edit | discontinue
+
+
+async def _remember_med_catalog(m: dict):
+    now = now_iso()
+    ckey = "|".join([(m.get("drug") or "").lower().strip(), (m.get("strength") or "").lower().strip(),
+                     (m.get("form") or "").lower().strip()])
+    await db.medication_catalog.update_one({"catalog_key": ckey}, {
+        "$setOnInsert": {"id": str(uuid.uuid4()), "catalog_key": ckey, "drug": m.get("drug"),
+                         "strength": m.get("strength"), "unit": m.get("unit"),
+                         "form": m.get("form"), "attributes": m.get("attributes") or [],
+                         "created_at": now},
+        "$set": {"updated_at": now}}, upsert=True)
+
+
+@api.post("/internal/patients/{patient_id}/medications")
+async def physician_add_medication(patient_id: str, body: MedWriteBody,
+                                   user: dict = Depends(require_roles(*MED_RECORD_ROLES))):
+    """Physician adds an authoritative medication to the patient's active list."""
+    await _get_scoped_patient(patient_id, user)
+    if not (body.drug or "").strip():
+        raise HTTPException(status_code=400, detail="A medication name is required.")
+    now = now_iso()
+    m = {k: getattr(body, k) for k in _MED_FIELDS}
+    m["attributes"] = m.get("attributes") or []
+    key = _regimen_key(patient_id, m)
+    event = {"action": "added", "at": now, "by": user["name"], "by_role": user["role"]}
+    existing = await db.patient_medications.find_one({"regimen_key": key})
+    if existing:
+        await db.patient_medications.update_one({"regimen_key": key}, {
+            "$set": {**{k: m[k] for k in _MED_FIELDS}, "active": True, "source": "physician_manual",
+                     "last_prescribed_at": now, "discontinued_at": None, "updated_at": now},
+            "$push": {"history": event}})
+        med_id = existing["id"]
+    else:
+        med_id = str(uuid.uuid4())
+        await db.patient_medications.insert_one({
+            "id": med_id, "regimen_key": key, "patient_id": patient_id,
+            **{k: m[k] for k in _MED_FIELDS},
+            "source": "physician_manual", "active": True,
+            "last_prescribed_at": now, "last_tx_id": None,
+            "history": [event], "created_at": now, "updated_at": now})
+    await _remember_med_catalog(m)
+    await _remember_physician_rx(user["id"], [m])
+    await audit("medication_added", "patient_medication", med_id, user,
+                meta={"patient_id": patient_id, "drug": m.get("drug")})
+    fresh = await db.patient_medications.find_one({"id": med_id}, {"_id": 0})
+    return _med_public(fresh)
+
+
+@api.patch("/internal/patients/{patient_id}/medications/{med_id}")
+async def physician_update_medication(patient_id: str, med_id: str, body: MedActionBody,
+                                      user: dict = Depends(require_roles(*MED_RECORD_ROLES))):
+    """Continue / Edit / Discontinue an existing medication. History is preserved;
+    discontinue sets active=False (never deletes)."""
+    await _get_scoped_patient(patient_id, user)
+    med = await db.patient_medications.find_one({"id": med_id, "patient_id": patient_id})
+    if not med:
+        raise HTTPException(status_code=404, detail="Medication not found for this patient.")
+    now = now_iso()
+    act = (body.action_type or "").strip()
+    if act == "discontinue":
+        event = {"action": "discontinued", "at": now, "by": user["name"], "by_role": user["role"],
+                 "note": (body.note or None)}
+        await db.patient_medications.update_one({"id": med_id}, {
+            "$set": {"active": False, "discontinued_at": now, "discontinued_by": user["name"], "updated_at": now},
+            "$push": {"history": event}})
+        await audit("medication_discontinued", "patient_medication", med_id, user,
+                    meta={"patient_id": patient_id, "drug": med.get("drug")})
+    elif act == "continue":
+        event = {"action": "continued", "at": now, "by": user["name"], "by_role": user["role"]}
+        await db.patient_medications.update_one({"id": med_id}, {
+            "$set": {"active": True, "discontinued_at": None, "last_prescribed_at": now, "updated_at": now},
+            "$push": {"history": event}})
+        await audit("medication_continued", "patient_medication", med_id, user,
+                    meta={"patient_id": patient_id, "drug": med.get("drug")})
+    elif act == "edit":
+        provided = {k: getattr(body, k) for k in _MED_FIELDS if getattr(body, k) is not None}
+        if not provided:
+            raise HTTPException(status_code=400, detail="No changes were provided.")
+        previous = {k: med.get(k) for k in provided}
+        event = {"action": "edited", "at": now, "by": user["name"], "by_role": user["role"],
+                 "previous": previous, "new": provided}
+        await db.patient_medications.update_one({"id": med_id}, {
+            "$set": {**provided, "active": True, "updated_at": now},
+            "$push": {"history": event}})
+        merged = {**med, **provided}
+        await _remember_med_catalog(merged)
+        await _remember_physician_rx(user["id"], [merged])
+        await audit("medication_edited", "patient_medication", med_id, user,
+                    meta={"patient_id": patient_id, "drug": merged.get("drug"), "changed": list(provided.keys())})
+    else:
+        raise HTTPException(status_code=400, detail="Unknown medication action.")
+    fresh = await db.patient_medications.find_one({"id": med_id}, {"_id": 0})
+    return _med_public(fresh)
+
 
 
 @api.get("/internal/rx/suggest")

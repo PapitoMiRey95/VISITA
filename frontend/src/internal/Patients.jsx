@@ -10,6 +10,8 @@ import { Label } from "../components/ui/label";
 import { Button } from "../components/ui/button";
 import { HealthCardNumberInput } from "../components/HealthCardNumberInput";
 import FamilyAccess from "./FamilyAccess";
+import PortalAccountPanel from "./PortalAccountPanel";
+import MedicalRecord from "./MedicalRecord";
 
 const HC_BADGE = {
     VALID: "bg-emerald-100 text-emerald-700",
@@ -351,6 +353,12 @@ export default function Patients() {
                     </>
                     )}
                     <FamilyAccess patient={selected} />
+                    {!editing && selected.patient_id && ["admin", "staff"].includes(user?.role) && (
+                        <PortalAccountPanel patientId={selected.patient_id} />
+                    )}
+                    {!editing && selected.patient_id && ["admin", "physician"].includes(user?.role) && (
+                        <MedicalRecord patientId={selected.patient_id} />
+                    )}
                 </div>
             )}
         </div>

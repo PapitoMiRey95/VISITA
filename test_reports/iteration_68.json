@@ -1,0 +1,55 @@
+{
+  "summary": "Phase A — portal access requests (public intake + staff review) tested end-to-end. Backend 11/12 pass (1 expected skip for robert.helper.qa credential mismatch). Frontend: whoFor branching, caregiver public submit flow (register-whofor -> caregiver-request-form -> caregiver-done), password show/hide + match gating on account form, staff queue at /internal/portal-access-requests, approve dialog with patient search + one-time temp-password display, and decline flow — all verified in real UI against preview URL.",
+  "backend_issues": {
+    "critical": [],
+    "minor": [
+      {"endpoint": "/api/auth/login", "issue": "Documented password 'Patient2026!' for seeded caregiver robert.helper.qa@demo.com rejected (401). User exists with role=caregiver, patient_id=null, must_change_password=true — but the stored hash does NOT match 'Patient2026!' (likely still a one-time temp password that was never reset). Main agent should reset this seed account to the documented password OR update the credential in /app/memory/test_credentials.md."}
+    ]
+  },
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [],
+    "design_issues": [
+      {"screen": "Approve dialog (/internal/portal-access-requests ApproveDialog)", "issues": ["Initial auto-search query is `${last_name} ${first_name}` (e.g. 'Nguyen Linda') which returns 0 results from GET /api/internal/patients (search doesn't match combined last+first). Staff must manually re-type a single name to get hits. Suggest searching last_name or first_name separately, or splitting the query into tokens on the server/client."]}
+    ]
+  },
+  "verified_flows": [
+    "Backend POST /api/portal-access-requests validates email/relationship/basis/practice; creates PENDING record in portal_access_requests with linked_patient_id=null, resulting_delegate_id=null, no patient_portal_delegates grant",
+    "Backend GET /api/internal/portal-access-requests lists requests scoped to practice, admin can view all",
+    "Backend POST .../approve creates ACTIVE patient_portal_delegates grant with exactly {APPOINTMENTS, RX_REQUESTS, DOCUMENTS, REQUEST_STATUS}; freshly created caregiver has role=caregiver, patient_id=null, must_change_password=true, and can log in with returned one-time temp_password; GET /api/portal/my-delegations returns managed patient; second approve attempt returns 409",
+    "Backend POST .../approve with non-existent patient_id returns 404 (cross-practice guard via assert_practice)",
+    "Backend POST .../decline sets DECLINED, no grant created; second decline returns 409",
+    "Backend: existing caregiver maria.lopez@demo.com still returns Linda in /api/portal/my-delegations (no regression)",
+    "Backend: authorization guard — freshly created caregiver cannot GET /api/portal/managed/{other_pid}/summary (returns 404)",
+    "Frontend /register/dr-aguayo shows register-whofor with whofor-myself + whofor-caregiver",
+    "Frontend myself path: whofor-myself -> patient-yes -> ohip-yes/no -> register-current-form (preserved)",
+    "Frontend reg-password + reg-confirm-password with show/hide toggles work; mismatch shows pw-mismatch + disables reg-submit; match shows pw-match + enables reg-submit",
+    "Frontend caregiver flow: whofor-caregiver -> caregiver-request-form; full submit (names, DobPicker, email, phone, cg-relationship-trigger=Son, cg-basis-trigger='The patient has asked me to help') -> caregiver-done confirmation shown",
+    "Frontend staff queue: admin login, nav Portal Access -> /internal/portal-access-requests lists pending access-request-<id> cards with requester/patient-being-helped/relationship/basis/date/status",
+    "Frontend approve dialog: approve-<id> opens approve-dialog, approve-patient-search + approve-patient-search-btn (single-word e.g. 'Linda' returns a match), approve-pick-<patientId>, approve-confirm -> temp-password displayed (16 chars for fresh caregiver) + temp-done closes",
+    "Frontend decline: decline-<id> fires POST .../decline and shows 'Request declined.' toast; card moves to Reviewed section"
+  ],
+  "test_report_links": [
+    "/app/backend/tests/test_portal_access_requests.py",
+    "/app/test_reports/pytest/par_results.xml"
+  ],
+  "action_items": [
+    "LOW: Fix the pre-filled auto-search query in ApproveDialog to split last+first into tokens or hit the API twice — currently 'Lastname Firstname' always returns 'No matches', forcing staff to retype.",
+    "LOW: Reset robert.helper.qa@demo.com password to 'Patient2026!' (or clear must_change_password + set hash) so the documented regression credential actually works, OR correct the credential in /app/memory/test_credentials.md.",
+    "INFO: Phase A spec compliance is confirmed — approve never auto-links by name (staff must explicitly pick the patient), plaintext temp password is shown exactly once and not persisted beyond the hashed user record."
+  ],
+  "critical_code_review_comments": [
+    "PortalAccessRequests.jsx ApproveDialog initial search uses `${last_name} ${first_name}` which the backend GET /api/internal/patients doesn't match (returns 0). Either tokenize on the client or improve the server search.",
+    "backend/server.py: `requester_user_id` is stored as `str(existing_user['_id'])` (ObjectId as string). This works but is inconsistent with the project's practice of using uuid 'id' fields on users. Non-blocking.",
+    "backend/server.py approve endpoint doesn't currently check that the referenced patient belongs to the SAME practice as the access request — it only checks assert_practice(patient, user) against the acting staff's practice. Across practices admins would still be blocked by assert_practice(req, user); OK for now."
+  ],
+  "updated_files": [
+    "/app/backend/tests/test_portal_access_requests.py (new)"
+  ],
+  "success_rate": {"backend": "11/12 (91.7%, 1 skip)", "frontend": "100% of Phase A flows verified"},
+  "test_credentials": "Admin kevinrodriguez9528@gmail.com / VisitaAdmin2026! OK; maria.lopez@demo.com / Patient2026! OK; robert.helper.qa@demo.com / Patient2026! FAILS (401) — stored hash doesn't match documented password.",
+  "seed_data_creation": "Several portal_access_requests created with email prefix qa.caregiver.* (both APPROVED and DECLINED) during testing. Each APPROVED one also created a caregiver-only user (role=caregiver, patient_id=null) + an active patient_portal_delegates grant for Linda Nguyen. These are safe to leave or clean up by email prefix.",
+  "retest_needed": false,
+  "main_agent_can_self_test": true,
+  "context_for_next_testing_agent": "Phase A E2E is green. The ApproveDialog pre-fills the search with 'Lastname Firstname' which returns 0 — Playwright tests must clear and retype a single token (e.g. 'Linda'). RELATIONSHIP select options are English literal values ('Son'); AUTHORIZATION BASIS select shows friendly labels mapped to backend values — e.g. the option 'The patient has asked me to help' maps to backend 'Patient consent'. cg-patient-dob is a DobPicker popover (data-testid cg-patient-dob-trigger / -year-YYYY / -month-N / -day-D / -confirm-btn), NOT a plain input. Phase B (patient email change + staff portal-account management) is explicitly out of scope. One ongoing issue to flag: robert.helper.qa@demo.com password drift."
+}

@@ -100,7 +100,7 @@ function RequestCard({ r, onApprove, onDecline, reviewed }) {
 }
 
 function ApproveDialog({ req, onClose, onDone }) {
-    const [q, setQ] = useState(`${req.patient_last_name} ${req.patient_first_name}`.trim());
+    const [q, setQ] = useState((req.patient_last_name || req.patient_first_name || "").trim());
     const [results, setResults] = useState([]);
     const [picked, setPicked] = useState(null);
     const [busy, setBusy] = useState(false);

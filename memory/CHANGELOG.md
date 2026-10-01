@@ -1,5 +1,15 @@
 # VIen EMR — Changelog
 
+## 2026-06 — Caregiver public signup + clinic review + password UX (Phase A, PREVIEW ONLY)
+Verified: testing_agent iteration_68 (backend 11/12, frontend 100%; both minor items fixed) + curl + screenshots. NOT deployed.
+- **Part 1 whoFor** — Create Patient Portal now asks "Who are you creating this account for?" → Myself (existing flow unchanged) / Someone I help care for.
+- **Part 1 caregiver intake** — new public `POST /api/portal-access-requests` stores an intake record in NEW collection `portal_access_requests` (status PENDING). It NEVER creates a delegate grant and NEVER auto-links a patient. Collects person-being-helped (name/DOB/optional HC), requester (name/email/phone), relationship, authorization basis, note. Notes an existing VIen user by email without creating anything.
+- **Part 2 clinic review** — staff page /internal/portal-access-requests ("Portal Access" nav): list pending/reviewed; Approve (staff picks the matching patient — no name auto-link) creates/activates the existing `patient_portal_delegates` grant with the four v1 perms, reusing an existing VIen user by email or creating a caregiver-only user (temp password, must_change_password, no chart/PIN; shown once); Decline leaves no access. assert_practice blocks cross-practice approval.
+- **Part 3 password UX** — account creation now has Password + Confirm password, each with a show/hide eye, inline match/mismatch feedback, and Create Account disabled until they match (min 6).
+- Caregiver v1 permissions + audit (acted_by delegate / on_behalf_of patient) unchanged. i18n EN/ES/FR added.
+- Phase B (patient self email-change + staff portal-account management + reset/temp surfaces) NOT started yet.
+
+
 ## 2026-06 — Landing search emphasis (Google-style) (PREVIEW ONLY, visual)
 - Landing search is now the dominant control: standalone centered pill (w-full max-w-[760px], h-14 mobile / h-16 desktop), left search icon, Search button integrated on the right, readable placeholder. Removed the uppercase "FIND YOUR CLINIC…" label. Sign in + Create Patient Portal + Apply for care moved into a compact card below; emergency notice below that. Pure Landing.jsx CSS/structure change — search backend, routing, auth, role filter, portal/apply, QR, i18n all unchanged. Verified desktop (search 760×64, results render) + no horizontal overflow; testids unchanged (iteration_67 flows preserved). Not deployed.
 

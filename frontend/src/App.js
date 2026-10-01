@@ -66,6 +66,7 @@ function App() {
                     <Route path="/login" element={<Landing />} />
                     <Route path="/signin" element={<SignIn />} />
                     <Route path="/register" element={<Register />} />
+                    <Route path="/register/:practiceSlug" element={<Register />} />
                     <Route path="/partners/register" element={<PartnerRegister />} />
                     <Route path="/change-password" element={<ChangePassword />} />
                     <Route path="/forgot-password" element={<ForgotPassword />} />

@@ -145,6 +145,9 @@ class RegisterBody(BaseModel):
     postal_code: Optional[str] = None
     extra_info: Optional[str] = None
     preferred_language: str = "en"
+    practice_slug: Optional[str] = None
+    practice_code: Optional[str] = None
+    practice_id: Optional[str] = None
 
 
 class LoginBody(BaseModel):
@@ -332,6 +335,9 @@ class ReturnRequestBody(BaseModel):
     postal_code: Optional[str] = None
     patient_message: Optional[str] = None
     preferred_language: str = "en"
+    practice_slug: Optional[str] = None
+    practice_code: Optional[str] = None
+    practice_id: Optional[str] = None
 
 
 class NewPatientRequestBody(BaseModel):
@@ -345,6 +351,9 @@ class NewPatientRequestBody(BaseModel):
     country: Optional[str] = None
     patient_message: Optional[str] = None
     preferred_language: str = "en"
+    practice_slug: Optional[str] = None
+    practice_code: Optional[str] = None
+    practice_id: Optional[str] = None
 
 
 class ApplicationUpdateBody(BaseModel):
@@ -478,6 +487,82 @@ def validate_hc_dates(issue_str, expiry_str, dob_str):
             raise HTTPException(status_code=400, detail="Health Card expiry day and month must match the date of birth.")
 
 
+# ----------------------------- Practices (care-ownership context) -----------------------------
+# A "practice" is the physician/clinic context a registration belongs to. It is the
+# minimal care-ownership tenant for the patient workflow (distinct from the referral
+# `organizations`/`providers` registry). The slug is a routing identifier only — NOT
+# a security credential. Scoping/queue isolation is layered on in Stage B.
+DEFAULT_PRACTICE_SLUG = "dr-aguayo"
+
+
+def _public_practice(p: dict) -> dict:
+    return {
+        "id": p["id"], "slug": p.get("slug"),
+        "physician_name": p.get("physician_name"), "clinic_name": p.get("clinic_name"),
+        "clinic_phone": p.get("clinic_phone"), "clinic_address": p.get("clinic_address"),
+    }
+
+
+async def resolve_practice(practice_id: Optional[str] = None, slug: Optional[str] = None,
+                           code: Optional[str] = None, allow_default: bool = True) -> Optional[dict]:
+    """Resolve the registration practice context. Priority: explicit id > slug > code.
+    When nothing is supplied and allow_default is set, fall back to the single active
+    practice (keeps the current single-practice behavior unchanged). An explicitly
+    supplied-but-unknown id/slug/code resolves to None so callers can reject it."""
+    if practice_id:
+        return await db.practices.find_one({"id": practice_id, "active": True}, {"_id": 0})
+    if slug:
+        return await db.practices.find_one({"slug": slug.strip().lower(), "active": True}, {"_id": 0})
+    if code:
+        return await db.practices.find_one({"registration_code": code.strip().upper(), "active": True}, {"_id": 0})
+    if allow_default:
+        actives = await db.practices.find({"active": True}, {"_id": 0}).to_list(2)
+        if len(actives) == 1:
+            return actives[0]
+        return await db.practices.find_one({"slug": DEFAULT_PRACTICE_SLUG, "active": True}, {"_id": 0})
+    return None
+
+
+async def resolve_practice_for_registration(body) -> dict:
+    """Resolve + require a practice for a registration/application submission. Raises
+    400 if an explicit slug/code/id was provided but did not match any active practice."""
+    explicit = bool(getattr(body, "practice_id", None) or getattr(body, "practice_slug", None)
+                    or getattr(body, "practice_code", None))
+    p = await resolve_practice(getattr(body, "practice_id", None), getattr(body, "practice_slug", None),
+                               getattr(body, "practice_code", None), allow_default=not explicit)
+    if not p:
+        raise HTTPException(status_code=400,
+                            detail="We couldn't identify your clinic. Please use the link from your clinic or enter a valid registration code.")
+    return p
+
+
+@api.get("/practices")
+async def list_practices(q: Optional[str] = None):
+    """Public, minimal clinic lookup for the generic registration fallback. No secrets."""
+    query = {"active": True}
+    if q:
+        query["$or"] = [{"physician_name": {"$regex": q, "$options": "i"}},
+                        {"clinic_name": {"$regex": q, "$options": "i"}}]
+    docs = await db.practices.find(query).sort("physician_name", 1).to_list(50)
+    return [_public_practice(p) for p in docs]
+
+
+@api.get("/practices/by-code/{code}")
+async def practice_by_code(code: str):
+    p = await resolve_practice(code=code, allow_default=False)
+    if not p:
+        raise HTTPException(status_code=404, detail="That registration code was not recognized.")
+    return _public_practice(p)
+
+
+@api.get("/practices/{slug}")
+async def practice_by_slug(slug: str):
+    p = await resolve_practice(slug=slug, allow_default=False)
+    if not p:
+        raise HTTPException(status_code=404, detail="Clinic not found.")
+    return _public_practice(p)
+
+
 @api.post("/auth/register")
 async def register(body: RegisterBody):
     validate_dob_age(body.date_of_birth)
@@ -529,6 +614,7 @@ async def register(body: RegisterBody):
                 detail="It looks like you may already have a portal account. Please sign in or use Forgot Password, or contact the clinic.")
 
     review_queue = match["outcome"]
+    practice = await resolve_practice_for_registration(body)
     patient_id = str(uuid.uuid4())
     patient = {
         "id": patient_id, "visita_patient_id": None,
@@ -544,6 +630,7 @@ async def register(body: RegisterBody):
         "portal_status": "PENDING_VERIFICATION",
         "review_queue": review_queue, "directory_match": match,
         "matched_directory_id": match.get("matched_id"),
+        "practice_id": practice["id"], "practice_slug": practice.get("slug"),
         "preferred_language": email_service.norm_lang(body.preferred_language),
         "active_status": True, "is_demo": False, "created_at": now_iso(), "updated_at": now_iso(),
     }
@@ -568,6 +655,7 @@ async def register(body: RegisterBody):
 @api.post("/applications/return-request")
 async def return_request(body: ReturnRequestBody):
     validate_dob_age(body.date_of_birth)
+    practice = await resolve_practice_for_registration(body)
     match = await directory_mod.match_registration(
         db, body.first_name, body.last_name, body.date_of_birth, body.health_card_number)
     ref = await next_ref("APP")
@@ -579,6 +667,7 @@ async def return_request(body: ReturnRequestBody):
         "city": body.city, "province": body.province, "postal_code": body.postal_code,
         "patient_message": body.patient_message, "preferred_language": body.preferred_language or "en",
         "directory_match": match, "matched_directory_id": match.get("matched_id"),
+        "practice_id": practice["id"], "practice_slug": practice.get("slug"),
         "internal_status": "REQUEST_RECEIVED", "internal_notes": [],
         "accepted_by": None, "accepted_at": None, "previous_status": None, "new_status": None,
         "history": [{"status": "REQUEST_RECEIVED", "at": now_iso(), "by": "patient"}],
@@ -596,6 +685,7 @@ async def return_request(body: ReturnRequestBody):
 @api.post("/applications/new-patient")
 async def new_patient_request(body: NewPatientRequestBody):
     validate_dob_age(body.date_of_birth)
+    practice = await resolve_practice_for_registration(body)
     ref = await next_ref("APP")
     doc = {
         "id": str(uuid.uuid4()), "ref_number": ref, "application_type": "new_patient",
@@ -605,6 +695,7 @@ async def new_patient_request(body: NewPatientRequestBody):
         "city": body.city, "province": body.province, "country": body.country,
         "patient_message": body.patient_message, "preferred_language": body.preferred_language or "en",
         "directory_match": None, "matched_directory_id": None,
+        "practice_id": practice["id"], "practice_slug": practice.get("slug"),
         "internal_status": "REQUEST_RECEIVED", "internal_notes": [],
         "accepted_by": None, "accepted_at": None, "previous_status": None, "new_status": None,
         "history": [{"status": "REQUEST_RECEIVED", "at": now_iso(), "by": "patient"}],

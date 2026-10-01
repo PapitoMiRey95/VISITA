@@ -1,8 +1,8 @@
-import { useState } from "react";
-import { useNavigate, Link, useSearchParams } from "react-router-dom";
+import { useState, useEffect, useCallback } from "react";
+import { useNavigate, Link, useSearchParams, useParams } from "react-router-dom";
 import { useTranslation } from "react-i18next";
 import { toast } from "sonner";
-import { ChevronLeft, Loader2, Clock } from "lucide-react";
+import { ChevronLeft, Loader2, Clock, Stethoscope, Search } from "lucide-react";
 import { useAuth } from "../context/AuthContext";
 import { api, formatErr } from "../lib/api";
 import { DobPicker } from "../components/DobPicker";
@@ -17,7 +17,6 @@ import { Select, SelectTrigger, SelectValue, SelectContent, SelectItem } from ".
 import { Logo } from "../components/Logo";
 import { normalizeSurnameInput } from "../lib/name";
 
-const TYPE_KEYS = ["ohip", "private", "tourist", "none"];
 // Reason values are sent to the backend and MUST remain in English.
 const NP_REASONS = [
     { value: "I don't have a family doctor", k: "noFamilyDoctor" },
@@ -32,21 +31,24 @@ export default function Register() {
     const nav = useNavigate();
     const { t, i18n } = useTranslation(["auth", "common"]);
     const [params] = useSearchParams();
+    const { practiceSlug } = useParams();
     const isNew = params.get("new") === "1";
-    // Standard system prose: Spanish sessions use the localized i18n text; English
-    // keeps the (possibly clinic-customized) server template.
     const sysMsg = (obj) => {
         if (!obj) return "";
         if (obj.code && (i18n.language || "en").startsWith("es")) return t(`auth:sys.${obj.code}`, { defaultValue: obj.message || "" });
         return obj.message || "";
     };
-    // steps: 1=choose, 2=current form, 99=new-patient form, "former"=neutral notice,
-    //        "reestablish"=return form, "done"=confirmation
-    const [step, setStep] = useState(isNew ? 99 : 1);
-    const [type, setType] = useState(isNew ? "none" : null);
+
+    // Resolved practice context (physician/clinic). The slug is a routing identifier
+    // only. If VIen already knows the practice from the link, we never ask again.
+    const [practice, setPractice] = useState(null);
+    // steps: "resolving" | "findClinic" | 1=patient? | "coverage" | 2=current form |
+    //        99=new-patient form | "former" | "reestablish" | "done"
+    const [step, setStep] = useState("resolving");
+    const [type, setType] = useState(null);
     const [busy, setBusy] = useState(false);
-    const [former, setFormer] = useState(null); // { message, prefill }
-    const [confirm, setConfirm] = useState(null); // { message, ref_number }
+    const [former, setFormer] = useState(null);
+    const [confirm, setConfirm] = useState(null);
     const [form, setForm] = useState({
         first_name: "", last_name: "", second_name: "", second_last_name: "",
         date_of_birth: "", phone: "", email: "", password: "",
@@ -54,27 +56,36 @@ export default function Register() {
         province: "", country: "Canada", extra_info: "",
         address: "", unit: "", city: "", postal_code: "", patient_message: "", join_reason: "",
     });
+
+    const resolveContext = useCallback(async () => {
+        const slug = practiceSlug || params.get("practice");
+        const code = params.get("code");
+        try {
+            if (slug) {
+                const { data } = await api.get(`/practices/${encodeURIComponent(slug)}`);
+                setPractice(data); setStep(isNew ? 99 : 1); return;
+            }
+            if (code) {
+                const { data } = await api.get(`/practices/by-code/${encodeURIComponent(code)}`);
+                setPractice(data); setStep(isNew ? 99 : 1); return;
+            }
+        } catch (e) { /* fall through to generic lookup */ }
+        setStep("findClinic");
+    }, [practiceSlug, params, isNew]);
+
+    useEffect(() => { resolveContext(); }, [resolveContext]);
+
     const set = (k) => (e) => setForm({ ...form, [k]: e.target.value });
-    // Changing the DOB re-derives any already-chosen expiry (keeps its year,
-    // recomputes month/day from the new DOB) so the expiry is never stale.
     const setDob = (v) => setForm((f) => {
         let expiry = f.health_card_expiry_date;
-        if (expiry) {
-            const exYear = Number(String(expiry).split("-")[0]);
-            expiry = deriveExpiryISO(v, exYear);
-        }
+        if (expiry) { const exYear = Number(String(expiry).split("-")[0]); expiry = deriveExpiryISO(v, exYear); }
         return { ...f, date_of_birth: v, health_card_expiry_date: expiry };
     });
     const setHcDate = (k) => (v) => setForm((f) => ({ ...f, [k]: v }));
-    // Surname fields auto-uppercase live while preserving accents/apostrophes/hyphens.
     const setSurname = (k) => (e) => setForm({ ...form, [k]: normalizeSurnameInput(e.target.value) });
     const joinName = (a, b) => [a, b].map((s) => (s || "").replace(/\s+/g, " ").trim()).filter(Boolean).join(" ");
     const optional = t("common:status.optional");
-
-    const choose = (tp) => {
-        setType(tp);
-        setStep(tp === "none" ? 99 : 2);
-    };
+    const practiceCtx = practice ? { practice_id: practice.id, practice_slug: practice.slug } : {};
 
     const submit = async (e) => {
         e.preventDefault();
@@ -93,7 +104,7 @@ export default function Register() {
         try {
             const first_name = joinName(form.first_name, form.second_name);
             const last_name = joinName(form.last_name, form.second_last_name);
-            const res = await register({ ...form, first_name, last_name, patient_type: type, preferred_language: i18n.language });
+            const res = await register({ ...form, first_name, last_name, patient_type: type, preferred_language: i18n.language, ...practiceCtx });
             if (res?.former_detected) {
                 setFormer({ message: res.message, code: res.message_code, prefill: res.prefill || {} });
                 setForm((f) => ({ ...f, ...(res.prefill || {}) }));
@@ -102,11 +113,7 @@ export default function Register() {
             }
             toast.success(t("auth:register.accountCreated"));
             nav("/portal", { replace: true });
-        } catch (err) {
-            toast.error(formatErr(err));
-        } finally {
-            setBusy(false);
-        }
+        } catch (err) { toast.error(formatErr(err)); } finally { setBusy(false); }
     };
 
     const submitReestablish = async (e) => {
@@ -118,15 +125,11 @@ export default function Register() {
                 health_card_number: form.health_card_number || null, phone: form.phone, email: form.email,
                 address: form.address || null, city: form.city || null, province: form.province || null,
                 postal_code: form.postal_code || null, patient_message: form.patient_message || null,
-                preferred_language: i18n.language,
+                preferred_language: i18n.language, ...practiceCtx,
             });
             setConfirm({ message: data.message, code: data.message_code, ref_number: data.ref_number });
             setStep("done");
-        } catch (err) {
-            toast.error(formatErr(err));
-        } finally {
-            setBusy(false);
-        }
+        } catch (err) { toast.error(formatErr(err)); } finally { setBusy(false); }
     };
 
     const submitNewPatient = async (e) => {
@@ -140,50 +143,59 @@ export default function Register() {
                 first_name: first, last_name: last, date_of_birth: form.date_of_birth,
                 phone: form.phone, email: form.email, city: form.city || null,
                 province: form.province || null, country: form.country || null,
-                patient_message: message || null,
-                preferred_language: i18n.language,
+                patient_message: message || null, preferred_language: i18n.language, ...practiceCtx,
             });
             setConfirm({ message: data.message, code: data.message_code, ref_number: data.ref_number });
             setStep("done");
-        } catch (err) {
-            toast.error(formatErr(err));
-        } finally {
-            setBusy(false);
-        }
+        } catch (err) { toast.error(formatErr(err)); } finally { setBusy(false); }
     };
 
     return (
         <div className="min-h-screen bg-portal-blue/5 font-nunito flex flex-col items-center px-4 py-8">
             <div className="w-full max-w-md">
-                <button
-                    type="button"
-                    data-testid="register-back-btn"
-                    onClick={() => nav(-1)}
-                    className="inline-flex items-center gap-1 text-sm text-slate-600 hover:text-portal-blueDark font-semibold mb-4 transition-colors"
-                >
-                    <ChevronLeft className="h-4 w-4" />
-                    {t("common:actions.back")}
+                <button type="button" data-testid="register-back-btn" onClick={() => nav(-1)}
+                    className="inline-flex items-center gap-1 text-sm text-slate-600 hover:text-portal-blueDark font-semibold mb-4 transition-colors">
+                    <ChevronLeft className="h-4 w-4" /> {t("common:actions.back")}
                 </button>
                 <div className="flex items-center gap-2 mb-6">
                     <Logo variant="light" iconClass="h-9 w-9" textClass="text-xl" />
                 </div>
 
+                {practice && [1, "coverage", 2, 99].includes(step) && (
+                    <div data-testid="practice-banner" className="bg-white rounded-2xl border border-portal-blue/30 p-4 shadow-sm mb-4 flex items-center gap-3">
+                        <div className="w-10 h-10 rounded-full bg-portal-blue/10 flex items-center justify-center flex-shrink-0">
+                            <Stethoscope className="w-5 h-5 text-portal-blueDark" />
+                        </div>
+                        <div className="min-w-0">
+                            <div className="text-xs text-slate-500 font-semibold">{t("auth:register.ctx.banner")}</div>
+                            <div className="font-bold text-slate-900 truncate" data-testid="practice-physician">{practice.physician_name}</div>
+                            {practice.clinic_name && <div className="text-sm text-slate-500 truncate">{practice.clinic_name}</div>}
+                        </div>
+                    </div>
+                )}
+
+                {step === "resolving" && (
+                    <div className="text-center py-16 text-slate-400" data-testid="register-resolving">
+                        <Loader2 className="w-6 h-6 animate-spin mx-auto mb-2" /> {t("auth:register.ctx.resolving")}
+                    </div>
+                )}
+
+                {step === "findClinic" && (
+                    <FindClinic onResolved={(p) => { setPractice(p); setStep(isNew ? 99 : 1); }} />
+                )}
+
                 {step === 1 && (
-                    <div className="animate-fade-in">
-                        <h1 className="text-2xl font-bold text-slate-900 mb-1">{t("auth:register.welcome")}</h1>
-                        <p className="text-slate-600 mb-5">{t("auth:register.currentPatientQ")}</p>
-                        <div className="space-y-3">
-                            {TYPE_KEYS.map((k) => (
-                                <button
-                                    key={k}
-                                    data-testid={`reg-type-${k}`}
-                                    onClick={() => choose(k)}
-                                    className="w-full text-left bg-white rounded-2xl border border-slate-200 p-5 shadow-sm hover:border-portal-blue hover:shadow transition active:scale-[0.99]"
-                                >
-                                    <div className="font-bold text-slate-900">{t(`auth:register.types.${k}.title`)}</div>
-                                    <div className="text-sm text-slate-500">{t(`auth:register.types.${k}.desc`)}</div>
-                                </button>
-                            ))}
+                    <div className="animate-fade-in" data-testid="register-patient-q">
+                        <h1 className="text-2xl font-bold text-slate-900 mb-5">{t("auth:register.ctx.atClinicQ")}</h1>
+                        <div className="grid grid-cols-2 gap-3">
+                            <button data-testid="patient-yes" onClick={() => setStep("coverage")}
+                                className="bg-white rounded-2xl border border-slate-200 p-6 shadow-sm hover:border-portal-blue hover:shadow transition active:scale-[0.99] font-bold text-lg text-slate-900">
+                                {t("auth:register.ctx.yes")}
+                            </button>
+                            <button data-testid="patient-no" onClick={() => { setType("none"); setStep(99); }}
+                                className="bg-white rounded-2xl border border-slate-200 p-6 shadow-sm hover:border-portal-blue hover:shadow transition active:scale-[0.99] font-bold text-lg text-slate-900">
+                                {t("auth:register.ctx.no")}
+                            </button>
                         </div>
                         <p className="text-center text-sm text-slate-600 mt-6">
                             {t("auth:register.alreadyRegistered")}{" "}
@@ -192,9 +204,28 @@ export default function Register() {
                     </div>
                 )}
 
+                {step === "coverage" && (
+                    <div className="animate-fade-in" data-testid="register-coverage-q">
+                        <button type="button" onClick={() => setStep(1)} className="flex items-center text-slate-500 text-sm mb-3">
+                            <ChevronLeft className="w-4 h-4" /> {t("common:actions.back")}
+                        </button>
+                        <h1 className="text-2xl font-bold text-slate-900 mb-5">{t("auth:register.ctx.ohipQ")}</h1>
+                        <div className="space-y-3">
+                            <button data-testid="ohip-yes" onClick={() => { setType("ohip"); setStep(2); }}
+                                className="w-full text-left bg-white rounded-2xl border border-slate-200 p-5 shadow-sm hover:border-portal-blue hover:shadow transition active:scale-[0.99] font-bold text-slate-900">
+                                {t("auth:register.ctx.ohipYes")}
+                            </button>
+                            <button data-testid="ohip-no" onClick={() => { setType("private"); setStep(2); }}
+                                className="w-full text-left bg-white rounded-2xl border border-slate-200 p-5 shadow-sm hover:border-portal-blue hover:shadow transition active:scale-[0.99] font-bold text-slate-900">
+                                {t("auth:register.ctx.ohipNo")}
+                            </button>
+                        </div>
+                    </div>
+                )}
+
                 {step === 2 && (
                     <form onSubmit={submit} data-testid="register-current-form" className="bg-white rounded-2xl border border-slate-200 p-6 shadow-sm animate-fade-in space-y-4">
-                        <button type="button" onClick={() => setStep(1)} className="flex items-center text-slate-500 text-sm">
+                        <button type="button" onClick={() => setStep("coverage")} className="flex items-center text-slate-500 text-sm">
                             <ChevronLeft className="w-4 h-4" /> {t("common:actions.back")}
                         </button>
                         <h2 className="text-xl font-bold text-slate-900">{t("auth:register.createAccount")}</h2>
@@ -250,7 +281,7 @@ export default function Register() {
                         <Field label={t("auth:register.phone")} testid="reg-phone"><Input required value={form.phone} onChange={set("phone")} placeholder="(416) 555-0000" /></Field>
                         <Field label={t("auth:register.email")} testid="reg-email"><Input type="email" required value={form.email} onChange={set("email")} /></Field>
                         <Field label={t("auth:register.password")} testid="reg-password"><Input type="password" required minLength={6} value={form.password} onChange={set("password")} /></Field>
-                        {(type === "private" || type === "tourist") && (
+                        {type === "private" && (
                             <Field label={t("auth:register.extraInfoOptional")} testid="reg-extra"><Input value={form.extra_info} onChange={set("extra_info")} /></Field>
                         )}
 
@@ -319,10 +350,8 @@ export default function Register() {
                         <button type="button" onClick={() => (isNew ? nav("/login") : setStep(1))} className="flex items-center text-slate-500 text-sm">
                             <ChevronLeft className="w-4 h-4" /> {t("common:actions.back")}
                         </button>
-                        <h2 className="text-xl font-bold text-slate-900">{t("auth:register.newPatient.title")}</h2>
-                        <p className="text-slate-600 text-sm leading-relaxed">
-                            {t("auth:register.newPatient.intro")}
-                        </p>
+                        <h2 className="text-xl font-bold text-slate-900">{t("auth:register.ctx.applyQ")}</h2>
+                        <p className="text-slate-600 text-sm leading-relaxed">{t("auth:register.ctx.applyNote")}</p>
 
                         <div className="grid grid-cols-2 gap-3">
                             <Field label={t("auth:register.firstName")} testid="np-first"><Input required value={form.first_name} onChange={set("first_name")} /></Field>
@@ -355,7 +384,7 @@ export default function Register() {
 
                         <Button data-testid="new-patient-submit" type="submit" disabled={busy}
                             className="w-full bg-portal-blue hover:bg-portal-blueDark text-white text-base h-12 rounded-xl">
-                            {busy ? <Loader2 className="w-4 h-4 animate-spin" /> : t("auth:register.newPatient.submit")}
+                            {busy ? <Loader2 className="w-4 h-4 animate-spin" /> : t("auth:register.ctx.applyBtn")}
                         </Button>
                     </form>
                 )}
@@ -374,6 +403,72 @@ export default function Register() {
                             className="w-full bg-portal-blue hover:bg-portal-blueDark text-white h-11 rounded-xl">
                             {t("auth:register.done.done")}
                         </Button>
+                    </div>
+                )}
+            </div>
+        </div>
+    );
+}
+
+function FindClinic({ onResolved }) {
+    const { t } = useTranslation(["auth", "common"]);
+    const [code, setCode] = useState("");
+    const [q, setQ] = useState("");
+    const [results, setResults] = useState(null);
+    const [busy, setBusy] = useState(false);
+
+    const submitCode = async () => {
+        if (!code.trim()) return;
+        setBusy(true);
+        try {
+            const { data } = await api.get(`/practices/by-code/${encodeURIComponent(code.trim())}`);
+            onResolved(data);
+        } catch (e) { toast.error(t("auth:register.ctx.find.badCode")); } finally { setBusy(false); }
+    };
+    const search = async () => {
+        if (!q.trim()) return;
+        setBusy(true);
+        try {
+            const { data } = await api.get("/practices", { params: { q: q.trim() } });
+            setResults(data);
+        } catch (e) { toast.error(formatErr(e)); } finally { setBusy(false); }
+    };
+
+    return (
+        <div className="bg-white rounded-2xl border border-slate-200 p-6 shadow-sm animate-fade-in space-y-4" data-testid="find-clinic">
+            <h2 className="text-xl font-bold text-slate-900">{t("auth:register.ctx.find.title")}</h2>
+            <p className="text-sm text-slate-500">{t("auth:register.ctx.find.sub")}</p>
+
+            <div>
+                <Label className="text-sm font-semibold text-slate-700">{t("auth:register.ctx.find.codeQ")}</Label>
+                <div className="flex gap-2 mt-1">
+                    <Input data-testid="find-code-input" value={code} onChange={(e) => setCode(e.target.value.toUpperCase())}
+                        onKeyDown={(e) => e.key === "Enter" && submitCode()} placeholder={t("auth:register.ctx.find.codeLabel")} />
+                    <Button data-testid="find-code-btn" disabled={busy} onClick={submitCode}
+                        className="bg-portal-blue hover:bg-portal-blueDark text-white">{t("auth:register.ctx.find.codeBtn")}</Button>
+                </div>
+            </div>
+
+            <div className="pt-2 border-t border-slate-100">
+                <Label className="text-sm font-semibold text-slate-700">{t("auth:register.ctx.find.searchLabel")}</Label>
+                <div className="flex gap-2 mt-1">
+                    <div className="relative flex-1">
+                        <Search className="w-4 h-4 text-slate-400 absolute left-2 top-3" />
+                        <Input data-testid="find-search-input" value={q} onChange={(e) => setQ(e.target.value)}
+                            onKeyDown={(e) => e.key === "Enter" && search()} className="pl-8" />
+                    </div>
+                    <Button data-testid="find-search-btn" variant="outline" disabled={busy} onClick={search}>{t("auth:register.ctx.find.searchBtn")}</Button>
+                </div>
+                {results && results.length === 0 && <p className="text-sm text-slate-400 mt-2">{t("auth:register.ctx.find.none")}</p>}
+                {results && results.length > 0 && (
+                    <div className="mt-2 space-y-2">
+                        {results.map((p) => (
+                            <button key={p.id} data-testid={`find-pick-${p.slug}`} onClick={() => onResolved(p)}
+                                className="w-full text-left bg-slate-50 rounded-xl border border-slate-200 p-3 hover:border-portal-blue transition">
+                                <div className="font-bold text-slate-900">{p.physician_name}</div>
+                                {p.clinic_name && <div className="text-sm text-slate-500">{p.clinic_name}</div>}
+                            </button>
+                        ))}
                     </div>
                 )}
             </div>

@@ -1,5 +1,16 @@
 # VIen EMR — Changelog
 
+## 2026-10-01 — Multi-physician Registration Stage A (PREVIEW ONLY, not deployed)
+Care-ownership context model + simplified registration UX. Verified via curl (practice endpoints, context stamping, 404/400, idempotent migration, generic default) and UI smoke (slug route banner, Yes/No → OHIP, No → application, generic Find-your-clinic).
+
+- **New `practices` collection** = care-ownership context: `{id, slug, registration_code, physician_user_id, physician_name, clinic_name, clinic_phone, clinic_address, active, is_default}`. Distinct from the referral `organizations`/`providers` registry (NOT reused for care ownership).
+- **`practice_id` scope field** added to new patients/applications; `RegisterBody`/`ReturnRequestBody`/`NewPatientRequestBody` accept optional `practice_slug`/`practice_code`/`practice_id`.
+- **Public resolution endpoints**: `GET /api/practices/{slug}`, `GET /api/practices/by-code/{code}`, `GET /api/practices?q=` (no secrets; registration_code never returned). `resolve_practice_for_registration` rejects an explicit-but-unknown context (400) and falls back to the single active practice when none supplied (existing `/register` behavior unchanged).
+- **Explicit idempotent migration** `backend/migrate_practice_backfill.py` (`--dry-run` supported, NOT run at startup): created default `dr-aguayo` practice and stamped `practice_id` on 251 existing records across 12 workflow collections. Re-run = 0 changes.
+- **Registration UX** (`Register.jsx`, route `/register/:practiceSlug`): link/QR auto-resolves practice → banner "You're registering with Dr. X" → "Are you already a patient at this clinic?" Yes/No → (Yes) "Do you have OHIP?" Yes/No → verify form; (No) → application. Generic `/register` → "Find your clinic" (code or search) fallback. Coverage (OHIP/No-OHIP→private) decoupled from status; tourist removed as a top-level path.
+
+Files: `backend/server.py`, `backend/migrate_practice_backfill.py`; `frontend/src/pages/Register.jsx`, `frontend/src/App.js`, `locales/{en,es}/auth.json`. Stage B (server-side queue isolation) and Stage C (patient_provider_relationships) NOT yet built.
+
 ## 2026-10-01 — Patient Identity Linking + Secure Document Delivery (PREVIEW ONLY, not deployed)
 Verified end-to-end: backend via curl (all 16 checkpoints), frontend via testing_agent iteration_61 (11/11, 100%, no bugs).
 

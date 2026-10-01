@@ -1,5 +1,15 @@
 # VIen EMR — Changelog
 
+## 2026-10-01 — Stage A tweak: New Patient Application fields (PREVIEW ONLY)
+Applies to the New Patient Application (apply) form only; existing-patient registration unchanged. Verified via curl (fields stored, coverage derived) + UI render.
+
+- **Full home address** added to the application: street, unit (optional), city, province, postal code, country (required except unit).
+- **Coverage**: single "Do you have OHIP?" Yes/No → stored as `coverage` = `OHIP` / `PRIVATE_UNINSURED` (No). No Tourist/Visitor/Private choice shown to the patient.
+- **Previous family doctor**: "Have you had a family doctor before?" Yes/No (`had_family_doctor`). If Yes → "Why are you looking for a new family doctor?" dropdown (retired / moved-relocated / moved area / clinic closed / no longer a patient / relationship ended / closer to home / Other); Other → optional free-text (`reason_other`).
+- Backend `NewPatientRequestBody` + `/applications/new-patient` store the new fields; `_serialize_application` exposes them to internal staff. New-flow `YesNo` toggle component added. EN/ES i18n added.
+
+Files: `backend/server.py`; `frontend/src/pages/Register.jsx`, `locales/{en,es}/auth.json`. Not deployed.
+
 ## 2026-10-01 — Stage A correction: removed former-patient / re-establish-care routing (PREVIEW ONLY)
 Registration now keys off the CURRENT relationship with the resolved practice only. Verified via curl (FORMER→application, ACTIVE→verification, UNMATCHED→manual verification) + UI smoke.
 

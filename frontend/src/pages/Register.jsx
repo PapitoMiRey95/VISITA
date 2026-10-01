@@ -19,11 +19,14 @@ import { normalizeSurnameInput } from "../lib/name";
 
 // Reason values are sent to the backend and MUST remain in English.
 const NP_REASONS = [
-    { value: "I don't have a family doctor", k: "noFamilyDoctor" },
-    { value: "My doctor is retiring", k: "doctorRetiring" },
-    { value: "My doctor moved away", k: "doctorMoved" },
-    { value: "I am new to the city", k: "newToCity" },
-    { value: "Doctor–patient relationship ended", k: "relationshipEnded" },
+    { value: "Previous doctor retired", k: "retired" },
+    { value: "Previous doctor moved / relocated", k: "relocated" },
+    { value: "I moved to a new area", k: "movedArea" },
+    { value: "Previous clinic closed", k: "clinicClosed" },
+    { value: "No longer a patient at previous clinic", k: "noLongerPatient" },
+    { value: "Relationship with previous doctor ended", k: "relationshipEnded" },
+    { value: "Looking for a doctor closer to home", k: "closerToHome" },
+    { value: "Other", k: "other" },
 ];
 
 export default function Register() {
@@ -54,6 +57,7 @@ export default function Register() {
         health_card_number: "", health_card_version: "", health_card_issue_date: "", health_card_expiry_date: "",
         province: "", country: "Canada", extra_info: "",
         address: "", unit: "", city: "", postal_code: "", patient_message: "", join_reason: "",
+        has_ohip: null, had_family_doctor: null, reason_other: "",
     });
 
     const resolveContext = useCallback(async () => {
@@ -118,16 +122,25 @@ export default function Register() {
 
     const submitNewPatient = async (e) => {
         e.preventDefault();
+        if (!form.address?.trim() || !form.city?.trim() || !form.province?.trim() || !form.postal_code?.trim() || !form.country?.trim()) {
+            toast.error(t("auth:register.errAddress")); return;
+        }
+        if (form.has_ohip === null || form.had_family_doctor === null) {
+            toast.error(t("auth:register.newPatient.answerRequired")); return;
+        }
         setBusy(true);
         try {
             const first = joinName(form.first_name, form.second_name);
             const last = joinName(form.last_name, form.second_last_name);
-            const message = [form.join_reason, form.patient_message.trim()].filter(Boolean).join(" — ");
             const { data } = await api.post("/applications/new-patient", {
                 first_name: first, last_name: last, date_of_birth: form.date_of_birth,
-                phone: form.phone, email: form.email, city: form.city || null,
-                province: form.province || null, country: form.country || null,
-                patient_message: message || null, preferred_language: i18n.language, ...practiceCtx,
+                phone: form.phone, email: form.email,
+                address: form.address || null, unit: form.unit || null, city: form.city || null,
+                province: form.province || null, postal_code: form.postal_code || null, country: form.country || null,
+                has_ohip: form.has_ohip, had_family_doctor: form.had_family_doctor,
+                join_reason: form.had_family_doctor ? (form.join_reason || null) : null,
+                reason_other: (form.had_family_doctor && form.join_reason === "Other") ? (form.reason_other || null) : null,
+                patient_message: form.patient_message.trim() || null, preferred_language: i18n.language, ...practiceCtx,
             });
             setConfirm({ message: data.message, code: data.message_code, ref_number: data.ref_number });
             setStep("done");
@@ -299,22 +312,57 @@ export default function Register() {
                         <Field label={t("auth:register.dob")} testid="np-dob"><DobPicker value={form.date_of_birth} onChange={setDob} testid="np-dob" /></Field>
                         <Field label={t("auth:register.phone")} testid="np-phone"><Input required value={form.phone} onChange={set("phone")} /></Field>
                         <Field label={t("auth:register.email")} testid="np-email"><Input type="email" required value={form.email} onChange={set("email")} /></Field>
-                        <div className="grid grid-cols-2 gap-3">
-                            <Field label={t("auth:register.newPatient.city")} testid="np-city"><Input value={form.city} onChange={set("city")} /></Field>
-                            <Field label={t("auth:register.newPatient.province")} testid="np-province"><Input value={form.province} onChange={set("province")} /></Field>
+
+                        <div className="pt-1">
+                            <div className="text-sm font-semibold text-slate-700 mb-2">{t("auth:register.addressSection")}</div>
+                            <div className="space-y-3">
+                                <div className="grid grid-cols-3 gap-3">
+                                    <div className="col-span-2">
+                                        <Field label={t("auth:register.addressStreet")} testid="np-address"><Input required value={form.address} onChange={set("address")} placeholder="123 Main St" /></Field>
+                                    </div>
+                                    <Field label={t("auth:register.addressUnit")} testid="np-unit"><Input value={form.unit} onChange={set("unit")} placeholder={optional} /></Field>
+                                </div>
+                                <div className="grid grid-cols-2 gap-3">
+                                    <Field label={t("auth:register.addressCity")} testid="np-city"><Input required value={form.city} onChange={set("city")} /></Field>
+                                    <Field label={t("auth:register.addressProvince")} testid="np-province"><Input required value={form.province} onChange={set("province")} /></Field>
+                                </div>
+                                <div className="grid grid-cols-2 gap-3">
+                                    <Field label={t("auth:register.addressPostal")} testid="np-postal"><Input required value={form.postal_code} onChange={set("postal_code")} /></Field>
+                                    <Field label={t("auth:register.addressCountry")} testid="np-country"><Input required value={form.country} onChange={set("country")} /></Field>
+                                </div>
+                            </div>
                         </div>
-                        <Field label={t("auth:register.newPatient.reasonLabel")} testid="np-reason">
-                            <Select value={form.join_reason} onValueChange={(v) => setForm({ ...form, join_reason: v })}>
-                                <SelectTrigger data-testid="np-reason-trigger" className="w-full">
-                                    <SelectValue placeholder={t("auth:register.newPatient.reasonPlaceholder")} />
-                                </SelectTrigger>
-                                <SelectContent>
-                                    {NP_REASONS.map((r) => (
-                                        <SelectItem key={r.value} value={r.value}>{t(`auth:register.newPatient.reasons.${r.k}`)}</SelectItem>
-                                    ))}
-                                </SelectContent>
-                            </Select>
+
+                        <Field label={t("auth:register.newPatient.ohipQ")} testid="np-ohip">
+                            <YesNo value={form.has_ohip} onChange={(v) => setForm({ ...form, has_ohip: v })}
+                                yes={t("auth:register.newPatient.coverageYes")} no={t("auth:register.newPatient.coverageNo")} testid="np-ohip" />
                         </Field>
+
+                        <Field label={t("auth:register.newPatient.hadDoctorQ")} testid="np-had-doctor">
+                            <YesNo value={form.had_family_doctor} onChange={(v) => setForm({ ...form, had_family_doctor: v, join_reason: v ? form.join_reason : "", reason_other: v ? form.reason_other : "" })}
+                                yes={t("auth:register.newPatient.coverageYes")} no={t("auth:register.newPatient.coverageNo")} testid="np-had-doctor" />
+                        </Field>
+
+                        {form.had_family_doctor === true && (
+                            <Field label={t("auth:register.newPatient.whyNewDoctor")} testid="np-reason">
+                                <Select value={form.join_reason} onValueChange={(v) => setForm({ ...form, join_reason: v })}>
+                                    <SelectTrigger data-testid="np-reason-trigger" className="w-full">
+                                        <SelectValue placeholder={t("auth:register.newPatient.reasonPlaceholder")} />
+                                    </SelectTrigger>
+                                    <SelectContent>
+                                        {NP_REASONS.map((r) => (
+                                            <SelectItem key={r.value} value={r.value}>{t(`auth:register.newPatient.reasons2.${r.k}`)}</SelectItem>
+                                        ))}
+                                    </SelectContent>
+                                </Select>
+                            </Field>
+                        )}
+                        {form.had_family_doctor === true && form.join_reason === "Other" && (
+                            <Field label={t("auth:register.newPatient.reasonOtherLabel")} testid="np-reason-other">
+                                <Input value={form.reason_other} onChange={set("reason_other")} placeholder={optional} />
+                            </Field>
+                        )}
+
                         <Field label={t("auth:register.newPatient.additionalMessageOptional")} testid="np-message"><Input value={form.patient_message} onChange={set("patient_message")} placeholder={t("auth:register.newPatient.messagePlaceholder")} /></Field>
 
                         <Button data-testid="new-patient-submit" type="submit" disabled={busy}
@@ -407,6 +455,18 @@ function FindClinic({ onResolved }) {
                     </div>
                 )}
             </div>
+        </div>
+    );
+}
+
+function YesNo({ value, onChange, yes, no, testid }) {
+    const base = "flex-1 rounded-xl border p-3 font-bold text-slate-900 transition active:scale-[0.99]";
+    return (
+        <div className="flex gap-3">
+            <button type="button" data-testid={`${testid}-yes`} onClick={() => onChange(true)}
+                className={`${base} ${value === true ? "border-portal-blue bg-portal-blue/5" : "border-slate-200 bg-white hover:border-portal-blue"}`}>{yes}</button>
+            <button type="button" data-testid={`${testid}-no`} onClick={() => onChange(false)}
+                className={`${base} ${value === false ? "border-portal-blue bg-portal-blue/5" : "border-slate-200 bg-white hover:border-portal-blue"}`}>{no}</button>
         </div>
     );
 }

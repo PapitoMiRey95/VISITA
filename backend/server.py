@@ -346,9 +346,16 @@ class NewPatientRequestBody(BaseModel):
     date_of_birth: str
     phone: str
     email: EmailStr
+    address: Optional[str] = None
+    unit: Optional[str] = None
     city: Optional[str] = None
     province: Optional[str] = None
+    postal_code: Optional[str] = None
     country: Optional[str] = None
+    has_ohip: Optional[bool] = None
+    had_family_doctor: Optional[bool] = None
+    join_reason: Optional[str] = None
+    reason_other: Optional[str] = None
     patient_message: Optional[str] = None
     preferred_language: str = "en"
     practice_slug: Optional[str] = None
@@ -695,8 +702,12 @@ async def new_patient_request(body: NewPatientRequestBody):
         "id": str(uuid.uuid4()), "ref_number": ref, "application_type": "new_patient",
         "first_name": body.first_name.strip(), "last_name": body.last_name.strip(),
         "date_of_birth": body.date_of_birth, "health_card_number": None,
-        "phone": body.phone, "email": body.email.lower(), "address": None,
-        "city": body.city, "province": body.province, "country": body.country,
+        "phone": body.phone, "email": body.email.lower(),
+        "address": body.address, "unit": body.unit,
+        "city": body.city, "province": body.province, "postal_code": body.postal_code, "country": body.country,
+        "coverage": "OHIP" if body.has_ohip else ("PRIVATE_UNINSURED" if body.has_ohip is False else None),
+        "had_family_doctor": body.had_family_doctor,
+        "join_reason": body.join_reason, "reason_other": body.reason_other,
         "patient_message": body.patient_message, "preferred_language": body.preferred_language or "en",
         "directory_match": None, "matched_directory_id": None,
         "practice_id": practice["id"], "practice_slug": practice.get("slug"),
@@ -4038,8 +4049,10 @@ def _serialize_application(a: dict) -> dict:
         "id": a["id"], "ref_number": a.get("ref_number"), "application_type": a.get("application_type"),
         "first_name": a.get("first_name"), "last_name": a.get("last_name"),
         "date_of_birth": a.get("date_of_birth"), "phone": a.get("phone"), "email": a.get("email"),
-        "address": a.get("address"), "city": a.get("city"), "province": a.get("province"),
+        "address": a.get("address"), "unit": a.get("unit"), "city": a.get("city"), "province": a.get("province"),
         "postal_code": a.get("postal_code"), "country": a.get("country"),
+        "coverage": a.get("coverage"), "had_family_doctor": a.get("had_family_doctor"),
+        "join_reason": a.get("join_reason"), "reason_other": a.get("reason_other"),
         "health_card_masked": mask_hcn(a.get("health_card_number")),
         "patient_message": a.get("patient_message"), "preferred_language": a.get("preferred_language"),
         "internal_status": a.get("internal_status"),

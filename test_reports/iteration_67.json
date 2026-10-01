@@ -1,0 +1,33 @@
+{
+  "summary": "Fast frontend-only regression after Landing.jsx CSS-only refactor (centered single column: hero on top, interaction card directly below). All critical landing + auth smoke flows pass. No visual or functional regression vs iteration_66.",
+  "backend_issues": {"critical": [], "minor": []},
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [],
+    "design_issues": []
+  },
+  "verified_flows": [
+    "Landing /login renders single centered column at 1440px: hero (max-w-2xl) and card (max-w-md) both horizontally centered at x=720 (viewport center); no left/right split",
+    "All required data-testids present and visible on /login: landing-home, landing-search-input, landing-search-btn, landing-signin, landing-create-portal, landing-apply-care",
+    "Search 'Aguayo' -> landing-result-dr-aguayo visible; click navigates to /register/dr-aguayo",
+    "landing-signin opens landing-roles with role-patient, role-clinic, role-partner; landing-role-back returns to landing-home; role-patient -> /signin",
+    "/signin shows google-signin-button; login with maria.lopez@demo.com / Patient2026! via login-email/login-password/login-submit lands on /portal",
+    "landing-create-portal -> /register (FindClinic search-only, no find-code-input testid present)",
+    "landing-apply-care -> /register?new=1",
+    "Mobile viewport 390x844: content stacks naturally and remains readable/tappable (confirmed via screenshot)"
+  ],
+  "notes": [
+    "OHIP=No -> np-status reveal was not reachable in this run because /register?new=1 opens FindClinic first (clinic selection prerequisite). This is pre-existing behavior, not touched by this layout-only change, and was previously verified in iteration_66.",
+    "Initial automated 'not-stacked' bbox check was a false negative: the `.max-w-md` CSS selector also matched the tagline paragraph INSIDE the hero. Screenshots clearly confirm hero is above card (vertically stacked, both centered)."
+  ],
+  "test_report_links": [],
+  "action_items": [],
+  "critical_code_review_comments": [],
+  "updated_files": [],
+  "success_rate": {"backend": "N/A (skipped per request)", "frontend": "100% (all 7 required flows pass)"},
+  "test_credentials": "Patient: maria.lopez@demo.com / Patient2026! — works",
+  "seed_data_creation": "None",
+  "retest_needed": false,
+  "main_agent_can_self_test": true,
+  "context_for_next_testing_agent": "Landing layout is now a single centered column (flex flex-col items-center): hero max-w-2xl on top, interaction card max-w-md directly below, emergency notice below card. HomePanel/RolePanel internals unchanged. If writing stacking checks, do NOT select by `.max-w-md` alone (matches tagline inside hero); use `[data-testid=\"landing-home\"]`'s closest `.max-w-md` wrapper instead."
+}

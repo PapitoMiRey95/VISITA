@@ -62,6 +62,7 @@ def serialize_user(u: dict) -> dict:
         "pharmacy_id": u.get("pharmacy_id"),
         "pharmacy_name": u.get("pharmacy_name"),
         "organization_id": u.get("organization_id"),
+        "practice_id": u.get("practice_id"),
     }
 
 
@@ -2697,6 +2698,18 @@ async def counters(user: dict = Depends(require_roles(*CLINIC_ROLES))):
     }}
 
 
+def pscope(user: dict) -> dict:
+    """Mongo filter fragment that limits a query to the caller's practice."""
+    return {"practice_id": user.get("practice_id")}
+
+
+def assert_practice(doc, user):
+    """Block cross-practice access on a fetched record. Uses 404 so record
+    existence is not leaked across practices."""
+    if doc is not None and doc.get("practice_id") != user.get("practice_id"):
+        raise HTTPException(status_code=404, detail="Not found.")
+
+
 def _search_filter(q: Optional[str], fields):
     if not q:
         return {}
@@ -2708,6 +2721,7 @@ async def _update_request(coll, entity, item_id, body: UpdateBody, user, status_
     doc = await coll.find_one({"id": item_id})
     if not doc:
         raise HTTPException(status_code=404, detail="Not found")
+    assert_practice(doc, user)
     old = doc.get(status_field)
     if old == "voided" and body.action != "void":
         raise HTTPException(status_code=409, detail="This request is archived (voided) and is read-only.")
@@ -2772,7 +2786,7 @@ async def _update_request(coll, entity, item_id, body: UpdateBody, user, status_
 # ----------------------------- Prescriptions -----------------------------
 @api.get("/internal/prescriptions")
 async def rx_queue(q: Optional[str] = None, status: Optional[str] = None, user: dict = Depends(require_roles(*CLINIC_ROLES))):
-    query = {}
+    query = dict(pscope(user))
     if user["role"] == "physician":
         query["internal_status"] = "waiting_physician"
     elif status:
@@ -2923,7 +2937,7 @@ async def create_pharmacy_rx(body: PharmacyRxBody, user: dict = Depends(require_
 # ----------------------------- Imaging -----------------------------
 @api.get("/internal/imaging")
 async def img_queue(q: Optional[str] = None, status: Optional[str] = None, user: dict = Depends(require_roles(*CLINIC_ROLES))):
-    query = {}
+    query = dict(pscope(user))
     if user["role"] == "physician":
         query["internal_status"] = "waiting_physician"
     elif status:
@@ -2941,7 +2955,7 @@ async def img_update(item_id: str, body: UpdateBody, user: dict = Depends(requir
 # ----------------------------- Bloodwork -----------------------------
 @api.get("/internal/bloodwork")
 async def bld_queue(q: Optional[str] = None, status: Optional[str] = None, user: dict = Depends(require_roles(*CLINIC_ROLES))):
-    query = {}
+    query = dict(pscope(user))
     if user["role"] == "physician":
         query["internal_status"] = "waiting_physician"
     elif status:
@@ -3035,7 +3049,7 @@ async def book_appointment(body: BookApptBody, user: dict = Depends(require_role
 # ----------------------------- Messages -----------------------------
 @api.get("/internal/messages")
 async def msg_queue(q: Optional[str] = None, status: Optional[str] = None, user: dict = Depends(require_roles(*CLINIC_ROLES))):
-    query = {}
+    query = dict(pscope(user))
     if user["role"] == "physician":
         query["status"] = "waiting_physician"
     elif status:
@@ -3047,6 +3061,7 @@ async def msg_queue(q: Optional[str] = None, status: Optional[str] = None, user:
 @api.patch("/internal/messages/{item_id}")
 async def msg_update(item_id: str, body: UpdateBody, user: dict = Depends(require_roles(*CLINIC_ROLES))):
     doc = await db.patient_messages.find_one({"id": item_id})
+    assert_practice(doc, user)
     if not doc:
         raise HTTPException(status_code=404, detail="Not found")
     updates = {"updated_at": now_iso()}
@@ -3078,7 +3093,7 @@ async def msg_update(item_id: str, body: UpdateBody, user: dict = Depends(requir
 # ----------------------------- Appointments -----------------------------
 @api.get("/internal/appointments")
 async def appt_queue(q: Optional[str] = None, status: Optional[str] = None, user: dict = Depends(require_roles(*CLINIC_ROLES))):
-    query = {}
+    query = dict(pscope(user))
     if status:
         query["status"] = status
     query.update(_search_filter(q, ["patient_name", "reason", "ref_number"]))
@@ -3107,7 +3122,7 @@ def _last_history_at(a: dict, status: str):
 async def appt_followups(user: dict = Depends(require_roles("staff", "admin"))):
     """Follow-up lists: patients flagged no-show, and patients the clinic asked
     to reschedule (offered alternate times, or actively rescheduled by staff)."""
-    ns = await db.appointment_requests.find({"status": "no_show"}, {"_id": 0}).sort("completed_at", -1).to_list(500)
+    ns = await db.appointment_requests.find({**pscope(user), "status": "no_show"}, {"_id": 0}).sort("completed_at", -1).to_list(500)
     no_shows = []
     for a in ns:
         inv = await db.invoices.find_one(
@@ -3120,7 +3135,7 @@ async def appt_followups(user: dict = Depends(require_roles("staff", "admin"))):
                                  "status": inv["status"], "amount": inv["amount"]} if inv else None),
         })
 
-    rs = await db.appointment_requests.find({"$or": [
+    rs = await db.appointment_requests.find({**pscope(user), "$or": [
         {"status": "alternatives_offered"},
         {"rescheduled_by": {"$exists": True, "$nin": [None, "patient"]}},
     ]}, {"_id": 0}).sort("updated_at", -1).to_list(500)
@@ -3146,6 +3161,7 @@ async def issue_no_show_invoice(item_id: str, user: dict = Depends(require_roles
     a = await db.appointment_requests.find_one({"id": item_id})
     if not a:
         raise HTTPException(status_code=404, detail="Appointment not found.")
+    assert_practice(a, user)
     if a.get("status") != "no_show":
         raise HTTPException(status_code=400, detail="This appointment is not marked as a no-show.")
     if not a.get("patient_id"):
@@ -3490,7 +3506,7 @@ async def update_task(item_id: str, body: UpdateBody, user: dict = Depends(requi
 # ----------------------------- Referral Ready-to-Fax -----------------------------
 @api.get("/internal/referrals")
 async def referrals_queue(user: dict = Depends(require_roles(*CLINIC_ROLES))):
-    return await db.referrals.find({"ready_to_fax": True, "faxed": False}, {"_id": 0}).sort("created_at", -1).to_list(500)
+    return await db.referrals.find({**pscope(user), "ready_to_fax": True, "faxed": False}, {"_id": 0}).sort("created_at", -1).to_list(500)
 
 
 @api.get("/internal/referrals/history")
@@ -3686,7 +3702,7 @@ async def create_document_request(body: DocumentRequestBody, p: dict = Depends(r
 # ----------------------------- Patient verification -----------------------------
 @api.get("/internal/verifications")
 async def verifications(user: dict = Depends(require_roles(*CLINIC_ROLES))):
-    pending = await db.patients.find({"verification_status": "pending", "active_status": True}).sort("created_at", -1).to_list(500)
+    pending = await db.patients.find({**pscope(user), "verification_status": "pending", "active_status": True}).sort("created_at", -1).to_list(500)
     out = []
     for p in pending:
         out.append({
@@ -4077,6 +4093,7 @@ async def applications_queue(type: Optional[str] = None, status: Optional[str] =
         query["internal_status"] = {"$in": APP_ACTIVE}
     elif status:
         query["internal_status"] = status
+    query.update(pscope(user))
     docs = await db.patient_applications.find(query).sort("created_at", -1).to_list(500)
     return [_serialize_application(a) for a in docs]
 

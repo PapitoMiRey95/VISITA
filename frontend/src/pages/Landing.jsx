@@ -39,11 +39,10 @@ export default function Landing() {
 
             <div className="relative z-10 min-h-screen flex flex-col items-center px-5 py-16 lg:py-20 gap-8">
                 {/* Branding — centered hero (unchanged identity) */}
-                <div className="w-full max-w-2xl text-center rounded-2xl border border-white/10 bg-gradient-to-br from-[rgba(8,20,35,0.7)] to-[rgba(8,20,35,0.48)] backdrop-blur-md px-8 py-8 lg:px-12 lg:py-10 shadow-[0_20px_60px_-15px_rgba(0,0,0,0.7)]">
+                <div className="w-full max-w-2xl text-center px-8 py-8 lg:px-12 lg:py-10">
                     <Logo variant="dark" iconClass="h-16 w-16 lg:h-24 lg:w-24 drop-shadow-[0_0_30px_rgba(23,179,196,0.35)]"
                         textClass="text-3xl sm:text-4xl lg:text-5xl" className="justify-center" />
                     <p className="mt-3 text-base lg:text-lg text-slate-100 font-semibold tracking-wide">{t("common:practice")}</p>
-                    <p className="mt-1.5 max-w-md mx-auto text-sm text-slate-300 leading-relaxed">{t("common:tagline")}</p>
                 </div>
 
                 {mode === "home" ? (

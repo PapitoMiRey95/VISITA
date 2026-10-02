@@ -4751,6 +4751,30 @@ async def _search_patients_merged(qn: str, limit: int = 40, include_pin: bool = 
     return results[:limit]
 
 
+async def _attach_portal_access(results: list) -> list:
+    """Annotate each merged search result with a practice-safe `portal_access`
+    flag derived from EXISTING patient/user linkage — informational only:
+      "active" = an active, claimed patient portal login exists
+      "none"   = directory-only, or an unclaimed/minimal portal record with no login
+    No blocking, no side effects."""
+    pids = {r.get("patient_id") for r in results if r.get("patient_id")}
+    claimed, unclaimed = set(), set()
+    if pids:
+        async for p in db.patients.find(
+                {"id": {"$in": list(pids)}}, {"_id": 0, "id": 1, "is_unclaimed": 1}):
+            if p.get("is_unclaimed"):
+                unclaimed.add(p["id"])
+        async for u in db.users.find(
+                {"patient_id": {"$in": list(pids)}, "role": "patient", "active": True},
+                {"_id": 0, "patient_id": 1}):
+            if u.get("patient_id"):
+                claimed.add(u["patient_id"])
+    for r in results:
+        pid = r.get("patient_id")
+        r["portal_access"] = "active" if (pid and pid in claimed and pid not in unclaimed) else "none"
+    return results
+
+
 @api.get("/internal/patient-lookup")
 async def internal_patient_lookup(q: str, include_pin: bool = True, user: dict = Depends(require_roles(*CLINIC_ROLES))):
     """Read-only GENERAL internal patient search across active portal accounts
@@ -4762,7 +4786,7 @@ async def internal_patient_lookup(q: str, include_pin: bool = True, user: dict =
     qn = (q or "").strip()
     if len(qn) < 2:
         return []
-    return await _search_patients_merged(qn, limit=40, include_pin=include_pin)
+    return await _attach_portal_access(await _search_patients_merged(qn, limit=40, include_pin=include_pin))
 
 
 @api.get("/internal/patient-lookup/pin")
@@ -4791,7 +4815,7 @@ async def internal_patient_lookup_pin(pin: str, user: dict = Depends(require_rol
         if d["id"] in seen_dir:
             continue
         results.append(_directory_snapshot(d)); seen_dir.add(d["id"])
-    return results
+    return await _attach_portal_access(results)
 
 
 @api.post("/internal/verifications/{patient_id}")

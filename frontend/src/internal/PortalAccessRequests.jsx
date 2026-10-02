@@ -167,7 +167,7 @@ function ApproveDialog({ req, onClose, onDone }) {
 
     return (
         <div className="fixed inset-0 z-50 bg-black/40 flex items-center justify-center p-4" data-testid="approve-dialog">
-            <div className="bg-white rounded-2xl p-6 w-full max-w-lg max-h-[85vh] overflow-auto">
+            <div className="bg-white rounded-2xl p-8 w-full max-w-2xl max-h-[90vh] overflow-auto">
                 {temp ? (
                     <div className="text-center">
                         <ShieldCheck className="w-10 h-10 text-emerald-500 mx-auto mb-2" />

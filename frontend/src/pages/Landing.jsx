@@ -155,7 +155,7 @@ function RolePanel({ nav, t, onBack }) {
     ];
     return (
         <div className="space-y-4" data-testid="landing-roles">
-            <button onClick={onBack} data-testid="landing-role-back" className="flex items-center gap-1 text-slate-400 hover:text-slate-200 text-sm">
+            <button onClick={onBack} data-testid="landing-role-back" className="flex items-center gap-1 text-red-400 hover:text-red-300 font-semibold text-sm">
                 <ChevronLeft className="w-4 h-4" /> {t("auth:landing2.back")}
             </button>
             <h2 className="text-xl font-bold text-slate-100">{t("auth:landing2.roleQ")}</h2>

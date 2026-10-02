@@ -190,6 +190,7 @@ function ApproveDialog({ req, onClose, onDone }) {
                             </div>
                             <Button data-testid="approve-patient-search-btn" onClick={search} variant="outline" disabled={searching}>Search</Button>
                         </div>
+                        <p className="mt-1.5 text-xs text-slate-400" data-testid="approve-search-pin-hint">Tip: enter a numeric <span className="font-semibold text-slate-500">VISITA PIN</span> for an exact match, or type a name.</p>
                         <div className="mt-3 space-y-2 max-h-48 overflow-auto" data-testid="approve-results">
                             {results.map((p) => {
                                 const noPortal = !p.patient_id;

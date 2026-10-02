@@ -58,7 +58,12 @@
     "download": "Descargar",
     "reviewedBy": "Revisado por",
     "questionsTitle": "¿Tiene preguntas sobre un resultado?",
-    "requestAppointment": "Solicitar una cita"
+    "requestAppointment": "Solicitar una cita",
+    "requestAccess": "Solicitar acceso al informe",
+    "accessRequested": "Solicitud de acceso enviada a su médico.",
+    "accessRequestedBadge": "Acceso solicitado",
+    "reviewedPendingTitle": "Resultados revisados (aún no disponibles)",
+    "reviewedPendingNote": "Su médico revisó este resultado pero no ha liberado el informe. Puede solicitar acceso."
   },
   "account": {
     "myInformation": "Mi información",

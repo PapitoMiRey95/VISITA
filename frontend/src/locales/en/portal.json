@@ -58,7 +58,12 @@
     "download": "Download",
     "reviewedBy": "Reviewed by",
     "questionsTitle": "Have questions about a result?",
-    "requestAppointment": "Request an Appointment"
+    "requestAppointment": "Request an Appointment",
+    "requestAccess": "Request access to report",
+    "accessRequested": "Access request sent to your physician.",
+    "accessRequestedBadge": "Access requested",
+    "reviewedPendingTitle": "Reviewed results (not yet released)",
+    "reviewedPendingNote": "Your physician has reviewed this result but has not released the report. You can request access."
   },
   "account": {
     "myInformation": "My Information",

@@ -2,7 +2,7 @@ import { Outlet, NavLink, useNavigate } from "react-router-dom";
 import { useState, useRef, useCallback } from "react";
 import {
     ClipboardList, Pill, Calendar, Scan, Droplet, MessageSquare, ClipboardCheck,
-    Send, UserCheck, UserPlus, CalendarDays, Settings as SettingsIcon, LogOut, UserSearch, Menu, Building2, Stethoscope, Users, Receipt, AlertTriangle, Truck, Contact, QrCode, ShieldCheck,
+    Send, UserCheck, UserPlus, CalendarDays, Settings as SettingsIcon, LogOut, UserSearch, Menu, Building2, Stethoscope, Users, Receipt, AlertTriangle, Truck, Contact, QrCode, ShieldCheck, Microscope,
 } from "lucide-react";
 import { useAuth } from "../context/AuthContext";
 import { useCounters } from "./hooks";
@@ -51,8 +51,7 @@ export default function InternalLayout() {
               { to: "/internal/patients", icon: UserSearch, label: "Patients", key: null },
               { to: "/internal/rx", icon: Pill, label: "Rx", key: "rx" },
               { to: "/internal/send-rx", icon: Truck, label: "Send Rx to Pharmacy", key: null },
-              { to: "/internal/imaging", icon: Scan, label: "Imaging", key: "imaging" },
-              { to: "/internal/bloodwork", icon: Droplet, label: "Bloodwork", key: "bloodwork" },
+              { to: "/internal/exams", icon: Microscope, label: "Results to Review", key: "results_review" },
               { to: "/internal/messages", icon: MessageSquare, label: "Messages", key: "messages" },
               { to: "/internal/applications", icon: UserPlus, label: "Applications", key: "applications" },
               { to: "/internal/portal-access-requests", icon: ShieldCheck, label: "Portal Access", key: "portal_access" },
@@ -73,8 +72,7 @@ export default function InternalLayout() {
               { to: "/internal/rx", icon: Pill, label: "Rx", key: "rx" },
               { to: "/internal/send-rx", icon: Truck, label: "Send Rx to Pharmacy", key: null },
               { to: "/internal/referrals", icon: ClipboardCheck, label: "Referrals", key: "referrals" },
-              { to: "/internal/imaging", icon: Scan, label: "Imaging", key: "imaging" },
-              { to: "/internal/bloodwork", icon: Droplet, label: "Bloodwork", key: "bloodwork" },
+              { to: "/internal/exams", icon: Microscope, label: "Exams & Results", key: "exams" },
               { to: "/internal/messages", icon: MessageSquare, label: "Messages", key: "messages" },
               { to: "/internal/appointments", icon: Calendar, label: "Appointments", key: "appointments" },
               { to: "/internal/private-requests", icon: Users, label: "Private Requests", key: null },

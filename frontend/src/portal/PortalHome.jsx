@@ -12,8 +12,6 @@ const TILES = [
     { to: "/portal/appointments", icon: Calendar, tkey: "home.tiles.appointments", color: "text-portal-blue", testid: "tile-appointments" },
     { to: "/portal/prescriptions", icon: Pill, tkey: "home.tiles.prescriptions", color: "text-emerald-500", testid: "tile-prescriptions" },
     { to: "/portal/documents", icon: FileText, tkey: "home.tiles.documents", color: "text-cyan-600", testid: "tile-documents" },
-    { to: "/portal/bloodwork", icon: Droplet, tkey: "home.tiles.bloodwork", color: "text-rose-500", testid: "tile-bloodwork" },
-    { to: "/portal/imaging", icon: Scan, tkey: "home.tiles.imaging", color: "text-sky-500", testid: "tile-imaging" },
     { to: "/portal/referrals", icon: FileHeart, tkey: "home.tiles.referrals", color: "text-violet-500", testid: "tile-referrals" },
     { to: "/portal/messages", icon: MessageSquare, tkey: "home.tiles.messages", color: "text-amber-500", testid: "tile-messages" },
     { to: "/portal/requests", icon: ClipboardList, tkey: "home.tiles.requests", color: "text-slate-500", testid: "tile-requests" },

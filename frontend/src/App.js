@@ -1,4 +1,4 @@
-import { BrowserRouter, Routes, Route } from "react-router-dom";
+import { BrowserRouter, Routes, Route, Navigate } from "react-router-dom";
 import { Toaster } from "sonner";
 import { AuthProvider } from "./context/AuthContext";
 import { RoleRoute, HomeRedirect } from "./components/RoleRoute";
@@ -17,8 +17,6 @@ import PortalAppointments from "./portal/PortalAppointments";
 import PortalPrescriptions from "./portal/PortalPrescriptions";
 import PortalReferrals from "./portal/PortalReferrals";
 import PortalMessages from "./portal/PortalMessages";
-import PortalImaging from "./portal/PortalImaging";
-import PortalBloodwork from "./portal/PortalBloodwork";
 import PortalMyRequests from "./portal/PortalMyRequests";
 import PortalDocuments from "./portal/PortalDocuments";
 import PortalInvoices from "./portal/PortalInvoices";
@@ -34,8 +32,7 @@ import SendPrescription from "./internal/SendPrescription";
 import Professionals from "./internal/Professionals";
 import AppointmentQueue from "./internal/AppointmentQueue";
 import Calendar from "./internal/Calendar";
-import ImagingQueue from "./internal/ImagingQueue";
-import BloodworkQueue from "./internal/BloodworkQueue";
+import ExamsResults from "./internal/ExamsResults";
 import MessageQueue from "./internal/MessageQueue";
 import TaskQueue from "./internal/TaskQueue";
 import Referrals from "./internal/Referrals";
@@ -91,8 +88,8 @@ function App() {
                         <Route path="prescriptions" element={<PortalPrescriptions />} />
                         <Route path="referrals" element={<PortalReferrals />} />
                         <Route path="messages" element={<PortalMessages />} />
-                        <Route path="imaging" element={<PortalImaging />} />
-                        <Route path="bloodwork" element={<PortalBloodwork />} />
+                        <Route path="imaging" element={<Navigate to="/portal/appointments" replace />} />
+                        <Route path="bloodwork" element={<Navigate to="/portal/appointments" replace />} />
                         <Route path="requests" element={<PortalMyRequests />} />
                         <Route path="documents" element={<PortalDocuments />} />
                         <Route path="invoices" element={<PortalInvoices />} />
@@ -116,8 +113,9 @@ function App() {
                         <Route path="private-requests" element={<PrivateRequests />} />
                         <Route path="billing" element={<Billing />} />
                         <Route path="calendar" element={<Calendar />} />
-                        <Route path="imaging" element={<ImagingQueue />} />
-                        <Route path="bloodwork" element={<BloodworkQueue />} />
+                        <Route path="exams" element={<ExamsResults />} />
+                        <Route path="imaging" element={<Navigate to="/internal/exams" replace />} />
+                        <Route path="bloodwork" element={<Navigate to="/internal/exams" replace />} />
                         <Route path="messages" element={<MessageQueue />} />
                         <Route path="tasks" element={<TaskQueue />} />
                         <Route path="referrals" element={<Referrals />} />

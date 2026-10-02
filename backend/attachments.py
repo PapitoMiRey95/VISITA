@@ -36,6 +36,7 @@ ENTITY_COLLECTIONS = {
     "imaging": "imaging_requests",
     "bloodwork": "bloodwork_requests",
     "message": "patient_messages",
+    "exam_result": "exam_results",
 }
 
 
@@ -148,6 +149,7 @@ PATIENT_DOC_LABELS = {
     "imaging": "Imaging",
     "bloodwork": "Bloodwork",
     "message": "Message",
+    "exam_result": "Result",
 }
 
 

@@ -11,7 +11,6 @@ const ROUTES = [
     { key: "Prescription", to: "/portal/prescriptions" },
     { key: "New Referral", to: "/portal/referrals" },
     { key: "Referral Status", to: "/portal/referrals" },
-    { key: "X-Ray / Ultrasound", to: "/portal/imaging" },
 ];
 
 export default function PortalMessages() {

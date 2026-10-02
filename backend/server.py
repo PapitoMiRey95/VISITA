@@ -2942,6 +2942,15 @@ async def portal_overview(user: dict = Depends(get_current_user)):
         "updates": await db.patient_updates.find(
             {"patient_id": pid, "read": {"$ne": True}}, {"_id": 0}).sort("created_at", -1).to_list(50),
         "documents": await attach_mod.list_shared_for_patient(db, pid),
+        "pending_results": [
+            {"id": r["id"], "type_label": r.get("subtype") or r.get("category_label") or "Result",
+             "category_label": r.get("category_label"), "subtype": r.get("subtype"),
+             "reviewed_at": r.get("reviewed_at"), "reviewed_by": r.get("reviewed_by"),
+             "access_requested": bool(r.get("access_requested"))}
+            for r in await db.exam_results.find(
+                {"patient_id": pid, "status": "REVIEWED", "shared_with_patient": {"$ne": True}},
+                {"_id": 0}).sort("reviewed_at", -1).to_list(100)
+        ],
         "billing": {"open": inv_open, "total": inv_total},
     }
 
@@ -3075,7 +3084,9 @@ async def counters(user: dict = Depends(require_roles(*CLINIC_ROLES))):
         bld = await db.bloodwork_requests.count_documents({**ps, "internal_status": "waiting_physician"})
         apps = await db.patient_applications.count_documents({**ps, "internal_status": {"$in": APP_ACTIVE}})
         par = await db.portal_access_requests.count_documents({**ps, "status": "PENDING"})
-        return {"role": "physician", "counters": {"rx": rx, "imaging": img, "bloodwork": bld, "messages": pmsg, "doctor_tasks": dmsg, "applications": apps, "portal_access": par}}
+        results_review = await db.exam_results.count_documents({**ps, "status": "READY_FOR_PHYSICIAN"})
+        result_access = await db.exam_results.count_documents({**ps, "status": "REVIEWED", "shared_with_patient": False, "access_requested": True})
+        return {"role": "physician", "counters": {"rx": rx, "imaging": img, "bloodwork": bld, "messages": pmsg, "doctor_tasks": dmsg, "applications": apps, "portal_access": par, "results_review": results_review, "result_access": result_access}}
     rx = await db.prescription_requests.count_documents({**ps, "internal_status": {"$in": RX_ACTIVE}})
     referrals = await db.referrals.count_documents({**ps, "ready_to_fax": True, "faxed": False})
     img = await db.imaging_requests.count_documents({**ps, "internal_status": {"$in": IMG_ACTIVE}})
@@ -3086,10 +3097,11 @@ async def counters(user: dict = Depends(require_roles(*CLINIC_ROLES))):
     pending_verif = await db.patients.count_documents({**ps, "verification_status": "pending", "active_status": True})
     apps = await db.patient_applications.count_documents({**ps, "internal_status": {"$in": APP_ACTIVE}})
     par = await db.portal_access_requests.count_documents({**ps, "status": "PENDING"})
+    exams = await db.exam_results.count_documents({**ps, "status": {"$in": ["NEEDS_PATIENT_MATCH", "RECEIVED"]}})
     return {"role": user["role"], "counters": {
         "rx": rx, "referrals": referrals, "imaging": img, "bloodwork": bld, "messages": msgs,
         "appointments": appts, "doctor_tasks": tasks, "verifications": pending_verif, "applications": apps,
-        "portal_access": par,
+        "portal_access": par, "exams": exams,
     }}
 
 
@@ -3363,6 +3375,318 @@ async def bld_queue(q: Optional[str] = None, status: Optional[str] = None, user:
 async def bld_update(item_id: str, body: UpdateBody, user: dict = Depends(require_roles(*CLINIC_ROLES))):
     return await _update_request(db.bloodwork_requests, "bloodwork", item_id, body, user,
                                  "internal_status", "Your bloodwork request has been updated.")
+
+
+# ============================================================================
+# CENTRALIZED EXAMS & RESULTS
+#   ONE module for all diagnostic exams/results (lab, imaging, cardiac, etc.).
+#   - Requests tab aggregates existing imaging_requests + bloodwork_requests
+#     (auto-classified) read-only — NO destructive migration.
+#   - exam_results = lightweight record for incoming results (reuses attachments
+#     / object storage / taxonomy / secure patient download).
+#   Workflow status: RECEIVED -> READY_FOR_PHYSICIAN -> REVIEWED (+ NEEDS_PATIENT_MATCH).
+#   Sharing (shared_with_patient) and notification (patient_notified) are SEPARATE
+#   flags — release is never a linear workflow step and defaults OFF.
+# ============================================================================
+EXAM_CATEGORIES = {
+    "LABORATORY": "Laboratory",
+    "DIAGNOSTIC_IMAGING": "Diagnostic Imaging",
+    "CARDIAC_TESTS": "Cardiac Tests",
+    "PULMONARY_SLEEP": "Pulmonary / Sleep",
+    "PATHOLOGY_CYTOLOGY": "Pathology / Cytology",
+    "SCREENING": "Screening",
+    "OTHER_REPORTS": "Other Reports",
+}
+EXAM_RESULT_ROLES = ("admin", "physician")  # review / sign / release
+
+
+def _classify_imaging(doc: dict):
+    it = (doc.get("imaging_type") or "").lower().replace("-", " ").strip()
+    if "ultra" in it:
+        sub = "Ultrasound"
+    elif "x" in it and "ray" in it or it == "xray":
+        sub = "X-Ray"
+    elif it:
+        sub = (doc.get("imaging_type") or "").strip().title()
+    else:
+        sub = "Imaging"
+    return "DIAGNOSTIC_IMAGING", sub
+
+
+def _classify_bloodwork(doc: dict):
+    return "LABORATORY", "Bloodwork"
+
+
+@api.get("/internal/exams/requests")
+async def exams_requests(q: Optional[str] = None, category: Optional[str] = None,
+                         user: dict = Depends(require_roles(*CLINIC_ROLES))):
+    """Centralized, read-only view of existing patient-originated imaging/bloodwork
+    requests (history preserved). Auto-classified; no redundant taxonomy prompts."""
+    ps = pscope(user)
+    rows = []
+    if category in (None, "", "DIAGNOSTIC_IMAGING"):
+        imf = {**ps, **_search_filter(q, ["patient_name", "body_part", "ref_number", "imaging_type"])}
+        for d in await db.imaging_requests.find(imf, {"_id": 0}).sort("created_at", -1).to_list(500):
+            cat, sub = _classify_imaging(d)
+            rows.append({"id": d["id"], "source_type": "imaging", "ref_number": d.get("ref_number"),
+                         "patient_id": d.get("patient_id"), "patient_name": d.get("patient_name"),
+                         "category": cat, "category_label": EXAM_CATEGORIES[cat], "subtype": sub,
+                         "detail": d.get("body_part") or d.get("imaging_type"), "reason": d.get("reason"),
+                         "status": d.get("internal_status"), "created_at": d.get("created_at")})
+    if category in (None, "", "LABORATORY"):
+        blf = {**ps, **_search_filter(q, ["patient_name", "reason", "ref_number"])}
+        for d in await db.bloodwork_requests.find(blf, {"_id": 0}).sort("created_at", -1).to_list(500):
+            cat, sub = _classify_bloodwork(d)
+            rows.append({"id": d["id"], "source_type": "bloodwork", "ref_number": d.get("ref_number"),
+                         "patient_id": d.get("patient_id"), "patient_name": d.get("patient_name"),
+                         "category": cat, "category_label": EXAM_CATEGORIES[cat], "subtype": sub,
+                         "detail": d.get("reason"), "reason": d.get("reason"),
+                         "status": d.get("internal_status"), "created_at": d.get("created_at")})
+    rows.sort(key=lambda r: r.get("created_at") or "", reverse=True)
+    return rows
+
+
+async def _exam_result_public(r: dict) -> dict:
+    r = {k: v for k, v in r.items() if k != "_id"}
+    if r.get("attachment_id"):
+        att = await db.attachments.find_one({"id": r["attachment_id"]}, {"original_filename": 1, "content_type": 1})
+        r["attachment_filename"] = (att or {}).get("original_filename")
+    r["type_label"] = r.get("subtype") or r.get("category_label") or "Result"
+    return r
+
+
+class ExamResultCreate(BaseModel):
+    patient_id: Optional[str] = None
+    category: Optional[str] = None
+    subtype: Optional[str] = None
+    source_type: Optional[str] = None
+    source_request_id: Optional[str] = None
+    body_part: Optional[str] = None
+    reason: Optional[str] = None
+    note: Optional[str] = None
+
+
+@api.post("/internal/exams/results")
+async def create_exam_result(body: ExamResultCreate, user: dict = Depends(require_roles(*CLINIC_ROLES))):
+    """Staff/Admin records an incoming result. If linked to an existing request,
+    patient + category/subtype are inherited (no redundant questions). With no
+    confident patient, it lands in NEEDS_PATIENT_MATCH."""
+    now = now_iso()
+    category, subtype = body.category, body.subtype
+    source_ref, body_part, reason = None, body.body_part, body.reason
+    patient_id = body.patient_id
+    if body.source_request_id and body.source_type in ("imaging", "bloodwork"):
+        coll = db.imaging_requests if body.source_type == "imaging" else db.bloodwork_requests
+        src = await coll.find_one({"id": body.source_request_id})
+        if src:
+            assert_practice(src, user)
+            patient_id = patient_id or src.get("patient_id")
+            source_ref = src.get("ref_number")
+            if body.source_type == "imaging":
+                category, subtype = _classify_imaging(src)
+                body_part = body_part or src.get("body_part")
+            else:
+                category, subtype = _classify_bloodwork(src)
+            reason = reason or src.get("reason")
+    practice_id = user.get("practice_id")
+    patient_name = None
+    if patient_id:
+        patient = await db.patients.find_one({"id": patient_id})
+        if not patient:
+            raise HTTPException(status_code=404, detail="Patient not found.")
+        assert_practice(patient, user)
+        patient_name = f"{patient['last_name']}, {patient['first_name']}"
+        practice_id = patient.get("practice_id")
+    status = "RECEIVED" if patient_id else "NEEDS_PATIENT_MATCH"
+    doc = {
+        "id": str(uuid.uuid4()), "ref_number": await next_ref("EXR"), "practice_id": practice_id,
+        "patient_id": patient_id, "patient_name": patient_name,
+        "category": category, "category_label": EXAM_CATEGORIES.get(category, category), "subtype": subtype,
+        "source_type": body.source_type or "manual", "source_request_id": body.source_request_id,
+        "source_ref": source_ref, "body_part": body_part, "reason": reason, "note": body.note,
+        "status": status, "attachment_id": None,
+        "reviewed_by": None, "reviewed_by_id": None, "reviewed_at": None, "signed_at": None,
+        "patient_notified": False, "shared_with_patient": False,
+        "access_requested": False, "access_requested_at": None,
+        "created_by": user.get("name"), "created_by_id": user.get("id"),
+        "created_at": now, "updated_at": now,
+    }
+    await db.exam_results.insert_one({**doc})
+    await audit("create", "exam_result", doc["id"], user, new_status=status,
+                meta={"category": category, "subtype": subtype, "source": body.source_type})
+    return await _exam_result_public(doc)
+
+
+@api.post("/internal/exams/results/{rid}/attachment")
+async def upload_exam_result_attachment(rid: str, file: UploadFile = File(...),
+                                        user: dict = Depends(require_roles(*CLINIC_ROLES))):
+    r = await db.exam_results.find_one({"id": rid})
+    if not r:
+        raise HTTPException(status_code=404, detail="Result not found.")
+    assert_practice(r, user)
+    att = await attach_mod.store_attachment(db, file, "exam_result", rid, user)
+    await db.exam_results.update_one({"id": rid}, {"$set": {"attachment_id": att["id"], "updated_at": now_iso()}})
+    return att
+
+
+@api.get("/internal/exams/results")
+async def list_exam_results(status: Optional[str] = None, category: Optional[str] = None,
+                            q: Optional[str] = None, user: dict = Depends(require_roles(*CLINIC_ROLES))):
+    query = dict(pscope(user))
+    if status:
+        query["status"] = status
+    if category:
+        query["category"] = category
+    query.update(_search_filter(q, ["patient_name", "ref_number", "subtype", "category_label", "source_ref"]))
+    rows = await db.exam_results.find(query, {"_id": 0}).sort("created_at", -1).to_list(500)
+    return [await _exam_result_public(r) for r in rows]
+
+
+class ExamMatchBody(BaseModel):
+    patient_id: str
+
+
+@api.post("/internal/exams/results/{rid}/match")
+async def match_exam_result(rid: str, body: ExamMatchBody, user: dict = Depends(require_roles(*CLINIC_ROLES))):
+    r = await db.exam_results.find_one({"id": rid})
+    if not r:
+        raise HTTPException(status_code=404, detail="Result not found.")
+    assert_practice(r, user)
+    patient = await db.patients.find_one({"id": body.patient_id})
+    if not patient:
+        raise HTTPException(status_code=404, detail="Patient not found.")
+    assert_practice(patient, user)
+    await db.exam_results.update_one({"id": rid}, {"$set": {
+        "patient_id": patient["id"], "patient_name": f"{patient['last_name']}, {patient['first_name']}",
+        "practice_id": patient.get("practice_id"), "status": "RECEIVED", "updated_at": now_iso()}})
+    await audit("match_patient", "exam_result", rid, user, meta={"patient_id": patient["id"]})
+    return await _exam_result_public(await db.exam_results.find_one({"id": rid}))
+
+
+@api.post("/internal/exams/results/{rid}/send-to-physician")
+async def send_exam_result_to_physician(rid: str, user: dict = Depends(require_roles(*CLINIC_ROLES))):
+    r = await db.exam_results.find_one({"id": rid})
+    if not r:
+        raise HTTPException(status_code=404, detail="Result not found.")
+    assert_practice(r, user)
+    if not r.get("patient_id"):
+        raise HTTPException(status_code=400, detail="Match a patient before sending to the physician.")
+    if not r.get("attachment_id"):
+        raise HTTPException(status_code=400, detail="Attach the result PDF before sending to the physician.")
+    await db.exam_results.update_one({"id": rid}, {"$set": {"status": "READY_FOR_PHYSICIAN", "updated_at": now_iso()}})
+    await audit("send_to_physician", "exam_result", rid, user, new_status="READY_FOR_PHYSICIAN")
+    return await _exam_result_public(await db.exam_results.find_one({"id": rid}))
+
+
+@api.get("/internal/exams/results/{rid}/pdf")
+async def view_exam_result_pdf(rid: str, user: dict = Depends(require_roles(*CLINIC_ROLES))):
+    r = await db.exam_results.find_one({"id": rid})
+    if not r:
+        raise HTTPException(status_code=404, detail="Result not found.")
+    assert_practice(r, user)
+    if not r.get("attachment_id"):
+        raise HTTPException(status_code=404, detail="No file attached.")
+    return await attach_mod.serve_attachment(db, r["attachment_id"])
+
+
+class ExamReviewBody(BaseModel):
+    notify: bool = True
+    release: bool = False
+
+
+async def _notify_result_reviewed(patient_id: str):
+    msg = "Your results have been reviewed by your physician. If you would like to discuss them, you can request an appointment."
+    await db.patient_updates.insert_one({
+        "id": str(uuid.uuid4()), "patient_id": patient_id, "type": "result_reviewed",
+        "title": "Your results have been reviewed", "body": msg, "read": False, "created_at": now_iso()})
+    await notify_patient(patient_id, "Your results have been reviewed", msg)
+    p = await db.patients.find_one({"id": patient_id}, {"_id": 0})
+    if p and p.get("email"):
+        lang = email_service.norm_lang(p.get("preferred_language"))
+        html = email_service.document_available_html(p.get("first_name") or "", notify_svc.PORTAL_URL, lang=lang)
+        await notify_svc._send_email(db, patient_id, p["email"],
+                                     email_service.subject("document_available", lang), html)
+
+
+@api.post("/internal/exams/results/{rid}/review")
+async def review_exam_result(rid: str, body: ExamReviewBody, user: dict = Depends(require_roles(*EXAM_RESULT_ROLES))):
+    """Physician SIGN & COMPLETE. Records the signature and sets REVIEWED. Notify
+    and PDF release are independent toggles; release defaults OFF."""
+    r = await db.exam_results.find_one({"id": rid})
+    if not r:
+        raise HTTPException(status_code=404, detail="Result not found.")
+    assert_practice(r, user)
+    if not r.get("patient_id"):
+        raise HTTPException(status_code=400, detail="This result is not linked to a patient.")
+    now = now_iso()
+    updates = {"status": "REVIEWED", "reviewed_by": user.get("name"), "reviewed_by_id": user.get("id"),
+               "reviewed_at": now, "signed_at": now, "patient_notified": bool(body.notify), "updated_at": now}
+    if body.release and r.get("attachment_id"):
+        await attach_mod.mark_shared(db, r["attachment_id"], user,
+                                     result_category=r.get("category_label"),
+                                     result_subtype=r.get("subtype"), reviewed_by=user.get("name"))
+        updates["shared_with_patient"] = True
+    await db.exam_results.update_one({"id": rid}, {"$set": updates})
+    if body.notify:
+        await _notify_result_reviewed(r["patient_id"])
+    await audit("sign_and_complete", "exam_result", rid, user, new_status="REVIEWED",
+                meta={"notified": bool(body.notify), "released": bool(updates.get("shared_with_patient"))})
+    return await _exam_result_public(await db.exam_results.find_one({"id": rid}))
+
+
+@api.post("/internal/exams/results/{rid}/release")
+async def release_exam_result(rid: str, user: dict = Depends(require_roles(*EXAM_RESULT_ROLES))):
+    r = await db.exam_results.find_one({"id": rid})
+    if not r:
+        raise HTTPException(status_code=404, detail="Result not found.")
+    assert_practice(r, user)
+    if r.get("status") != "REVIEWED":
+        raise HTTPException(status_code=400, detail="Only a reviewed result can be released.")
+    if not r.get("attachment_id"):
+        raise HTTPException(status_code=400, detail="No file to release.")
+    await attach_mod.mark_shared(db, r["attachment_id"], user, result_category=r.get("category_label"),
+                                 result_subtype=r.get("subtype"), reviewed_by=r.get("reviewed_by") or user.get("name"))
+    await db.exam_results.update_one({"id": rid}, {"$set": {
+        "shared_with_patient": True, "access_requested": False, "updated_at": now_iso()}})
+    await _notify_result_reviewed(r["patient_id"])
+    await audit("release", "exam_result", rid, user, meta={"from_access_request": bool(r.get("access_requested"))})
+    return await _exam_result_public(await db.exam_results.find_one({"id": rid}))
+
+
+@api.post("/internal/exams/results/{rid}/keep-internal")
+async def keep_exam_result_internal(rid: str, user: dict = Depends(require_roles(*EXAM_RESULT_ROLES))):
+    r = await db.exam_results.find_one({"id": rid})
+    if not r:
+        raise HTTPException(status_code=404, detail="Result not found.")
+    assert_practice(r, user)
+    await db.exam_results.update_one({"id": rid}, {"$set": {"access_requested": False, "updated_at": now_iso()}})
+    await audit("keep_internal", "exam_result", rid, user)
+    return await _exam_result_public(await db.exam_results.find_one({"id": rid}))
+
+
+@api.post("/portal/results/{rid}/request-access")
+async def patient_request_result_access(rid: str, ctx: PortalCtx = Depends(portal_access(delegates_mod.DOCUMENTS))):
+    """Patient requests the physician to RELEASE an existing reviewed PDF. This NEVER
+    creates a new exam/imaging/bloodwork request."""
+    pid = ctx.patient["id"]
+    r = await db.exam_results.find_one({"id": rid, "patient_id": pid})
+    if not r:
+        raise HTTPException(status_code=404, detail="Result not found.")
+    if r.get("status") != "REVIEWED" or r.get("shared_with_patient"):
+        raise HTTPException(status_code=400, detail="This result is not available to request.")
+    await db.exam_results.update_one({"id": rid}, {"$set": {
+        "access_requested": True, "access_requested_at": now_iso(), "updated_at": now_iso()}})
+    await db.internal_messages.insert_one({
+        "id": str(uuid.uuid4()), "ref_number": await next_ref("TSK"), "practice_id": r.get("practice_id"),
+        "recipient_role": "physician", "status": "open", "type": "result_access_request",
+        "subject": f"Patient requests access to {r.get('subtype') or r.get('category_label') or 'a result'}",
+        "body": f"{r.get('patient_name') or 'A patient'} has requested access to their reviewed result ({r.get('ref_number')}).",
+        "patient_id": pid, "source_type": "exam_result", "source_id": rid,
+        "created_at": now_iso(), "updated_at": now_iso()})
+    await audit("request_access", "exam_result", rid, ctx.audit_actor(), meta=ctx.audit_meta({}))
+    return {"ok": True, "access_requested": True}
+
+
 
 
 # ----------------------------- Book appointment from a request -----------------------------

@@ -57,14 +57,14 @@ export default function Landing() {
                                     <LogIn className="w-4 h-4 mr-1.5" /> {t("auth:landing2.signIn")}
                                 </Button>
                                 <div className="flex items-center justify-between gap-3 text-sm">
-                                    <span className="text-slate-300">{t("auth:landing2.createPortalPrompt")}</span>
+                                    <span className="text-white font-medium [text-shadow:0_1px_4px_rgba(0,0,0,0.9)] sm:[text-shadow:none] sm:text-slate-300 sm:font-normal">{t("auth:landing2.createPortalPrompt")}</span>
                                     <button data-testid="landing-create-portal" onClick={() => nav("/register")}
                                         className="font-bold text-cyan-300 hover:text-cyan-200 inline-flex items-center gap-1">
                                         {t("auth:landing2.createPortal")} <ArrowRight className="w-4 h-4" />
                                     </button>
                                 </div>
                                 <div className="flex items-center justify-between gap-3 text-sm border-t border-white/10 pt-4">
-                                    <span className="text-slate-400">{t("auth:landing2.applyPrompt")}</span>
+                                    <span className="text-white font-medium [text-shadow:0_1px_4px_rgba(0,0,0,0.9)] sm:[text-shadow:none] sm:text-slate-400 sm:font-normal">{t("auth:landing2.applyPrompt")}</span>
                                     <button data-testid="landing-apply-care" onClick={() => nav("/register?new=1")}
                                         className="font-bold text-slate-200 hover:text-cyan-200 inline-flex items-center gap-1">
                                         {t("auth:landing2.applyForCare")} <ArrowRight className="w-4 h-4" />

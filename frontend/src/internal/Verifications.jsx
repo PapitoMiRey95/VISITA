@@ -1,7 +1,7 @@
 import { useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { toast } from "sonner";
-import { UserCheck, UserX, History, Link2, ShieldCheck, Search, GitMerge, Building2 } from "lucide-react";
+import { UserCheck, UserX, History, Link2, ShieldCheck, Search, GitMerge, Building2, GitCompare } from "lucide-react";
 import { api, formatErr } from "../lib/api";
 import { useInvalidate } from "./hooks";
 import { useAuth } from "../context/AuthContext";
@@ -10,6 +10,7 @@ import { Input } from "../components/ui/input";
 import { Label } from "../components/ui/label";
 import { formatDate, formatDateTime } from "../lib/date";
 import { formatLastFirst } from "../lib/name";
+import MatchComparison from "./MatchComparison";
 
 const TYPE = { ohip: "OHIP", private: "Private / Uninsured", tourist: "Tourist / Visitor", uninsured: "Private / Uninsured" };
 
@@ -190,8 +191,19 @@ export default function Verifications() {
     const canDecide = ["staff", "admin"].includes(user?.role);
     const [tab, setTab] = useState("pending");
     const [visitaIds, setVisitaIds] = useState({});
+    const [cmp, setCmp] = useState({ key: null, data: null, loading: false });
     const list = useQuery({ queryKey: ["queue", "/internal/verifications"], queryFn: async () => (await api.get("/internal/verifications")).data });
     const items = list.data || [];
+
+    const compare = async (patientId, candidateId) => {
+        const key = `${patientId}:${candidateId}`;
+        if (cmp.key === key) { setCmp({ key: null, data: null, loading: false }); return; }
+        setCmp({ key, data: null, loading: true });
+        try {
+            const { data } = await api.get(`/internal/verifications/${patientId}/compare`, { params: { candidate_id: candidateId } });
+            setCmp({ key, data, loading: false });
+        } catch (e) { toast.error(formatErr(e)); setCmp({ key: null, data: null, loading: false }); }
+    };
 
     const decide = async (id, decision) => {
         try {
@@ -248,11 +260,20 @@ export default function Verifications() {
                                             Suggested VISITA record{(p.directory_match.candidates.length > 1) ? "s" : ""} · {p.directory_match.strength} match
                                         </div>
                                         {p.directory_match.candidates.map((c) => (
-                                            <div key={c.id} data-testid="verification-candidate" className="text-xs text-slate-600 bg-emerald-50 rounded-sm px-2 py-1 mb-1">
-                                                {formatLastFirst(c.last_name, c.first_name)} · DOB {formatDate(c.date_of_birth)} · HC {c.health_card_masked || "—"}
-                                                {c.visita_patient_id ? ` · VISITA #${c.visita_patient_id}` : ""} · {c.city || ""} {c.province || ""}
+                                            <div key={c.id} data-testid="verification-candidate" className="text-xs text-slate-600 bg-emerald-50 rounded-sm px-2 py-1 mb-1 flex items-center justify-between gap-2">
+                                                <span>
+                                                    {formatLastFirst(c.last_name, c.first_name)} · DOB {formatDate(c.date_of_birth)} · HC {c.health_card_masked || "—"}
+                                                    {c.visita_patient_id ? ` · VISITA #${c.visita_patient_id}` : ""} · {c.city || ""} {c.province || ""}
+                                                </span>
+                                                <button type="button" data-testid={`verif-compare-${c.id}`} onClick={() => compare(p.id, c.id)}
+                                                    className="shrink-0 inline-flex items-center gap-1 text-visita-greenDark font-semibold hover:underline">
+                                                    <GitCompare className="w-3.5 h-3.5" /> {cmp.key === `${p.id}:${c.id}` ? "Hide" : "Compare"}
+                                                </button>
                                             </div>
                                         ))}
+                                        {cmp.key && cmp.key.startsWith(`${p.id}:`) && (
+                                            <MatchComparison cmp={cmp.data} loading={cmp.loading} />
+                                        )}
                                     </div>
                                 )}
                             </div>

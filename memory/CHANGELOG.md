@@ -1,5 +1,11 @@
 # VIen EMR — Changelog
 
+## 2026-10-02 — Reuse patient match comparison in Verifications (PREVIEW ONLY, NOT DEPLOYED)
+- Backend: extracted shared `_match_fields_payload(submitted, canonical)` helper (Name/DOB/OHIP/Version/Issue/Expiry; OHIP compared on digits, returned masked). Portal Access compare now calls it; NEW `GET /api/internal/verifications/{patient_id}/compare?candidate_id=` reuses it (candidate resolved from patient_directory or patients). Practice-scoped, no auto-verify/link.
+- Frontend: extracted shared `internal/MatchComparison.jsx` (green/red highlight, N/6 score, masked OHIP) now imported by BOTH PortalAccessRequests and Verifications. Verifications pending items gain a per-candidate "Compare" toggle. No duplicate matching logic/component.
+- Verified: endpoint returns correct structure/match booleans with masked OHIP; widget already visually confirmed in Portal Access; compile clean; Verifications renders cleanly.
+
+
 ## 2026-10-02 — Portal Access review: patient match comparison (PREVIEW ONLY, NOT DEPLOYED)
 Self-verified (curl + DB + UI). No auto-approve/auto-link; staff must pick a patient + click Approve (unchanged).
 - NEW backend GET /api/internal/portal-access-requests/{req_id}/compare?patient_id= returns a field-by-field match (Name, DOB, OHIP number, Version code, Issue date, Expiry date) between the caregiver-submitted patient info and a candidate canonical patient. OHIP compared server-side on normalized digits; both sides returned MASKED (•••• ••• NNN) — the full canonical number is never sent to the client. Practice-scoped.

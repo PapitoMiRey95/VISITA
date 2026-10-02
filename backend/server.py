@@ -5312,12 +5312,41 @@ def _mask_hcn_display(v: str) -> str:
     return ("•••• ••• " + d[-3:]) if len(d) >= 3 else d
 
 
+def _match_fields_payload(sub: dict, can: dict) -> dict:
+    """Shared patient-match comparison used by Portal Access AND Verifications.
+    Inputs carry: name, dob, hcn, version, issue, expiry. OHIP compared on digits
+    and returned MASKED only (full canonical number never leaves the server)."""
+    def eq(a, b):
+        return bool(a) and bool(b) and str(a).strip().lower() == str(b).strip().lower()
+    submitted = {
+        "name": sub.get("name"), "dob": sub.get("dob"),
+        "ohip_display": _mask_hcn_display(sub.get("hcn")),
+        "version": (sub.get("version") or "").upper() or None,
+        "issue": sub.get("issue"), "expiry": sub.get("expiry"),
+    }
+    canonical = {
+        "name": can.get("name"), "dob": can.get("dob"),
+        "ohip_display": _mask_hcn_display(can.get("hcn")),
+        "version": (can.get("version") or "").upper() or None,
+        "issue": can.get("issue"), "expiry": can.get("expiry"),
+    }
+    sub_num, can_num = _norm_hcn(sub.get("hcn")), _norm_hcn(can.get("hcn"))
+    match = {
+        "name": eq(submitted["name"], canonical["name"]),
+        "dob": eq(submitted["dob"], canonical["dob"]),
+        "ohip": bool(sub_num) and sub_num == can_num,
+        "version": eq(submitted["version"], canonical["version"]),
+        "issue": eq(submitted["issue"], canonical["issue"]),
+        "expiry": eq(submitted["expiry"], canonical["expiry"]),
+    }
+    return {"submitted": submitted, "canonical": canonical, "match": match}
+
+
 @api.get("/internal/portal-access-requests/{req_id}/compare")
 async def compare_portal_access_request(req_id: str, patient_id: str,
                                          user: dict = Depends(require_roles(*CLINIC_ROLES))):
-    """Side-by-side match helper for the review screen: caregiver-submitted patient
-    info vs a candidate canonical patient. OHIP numbers are compared server-side and
-    returned masked (never the full canonical number). Does NOT link or approve."""
+    """Side-by-side match helper for the Portal Access review: caregiver-submitted
+    patient info vs a candidate canonical patient. Does NOT link or approve."""
     req = await db[ACCESS_REQ_COLL].find_one({"id": req_id})
     if not req:
         raise HTTPException(status_code=404, detail="Request not found.")
@@ -5326,36 +5355,47 @@ async def compare_portal_access_request(req_id: str, patient_id: str,
     if not p:
         raise HTTPException(status_code=404, detail="Patient not found.")
     assert_practice(p, user)
+    return _match_fields_payload(
+        {"name": f"{req.get('patient_first_name', '')} {req.get('patient_last_name', '')}".strip(),
+         "dob": req.get("patient_date_of_birth"), "hcn": req.get("patient_health_card_number"),
+         "version": req.get("patient_health_card_version"),
+         "issue": req.get("patient_health_card_issue_date"), "expiry": req.get("patient_health_card_expiry_date")},
+        {"name": f"{p.get('first_name', '')} {p.get('last_name', '')}".strip(),
+         "dob": p.get("date_of_birth"), "hcn": p.get("health_card_number"),
+         "version": p.get("health_card_version"),
+         "issue": p.get("health_card_issue_date"), "expiry": p.get("health_card_expiry_date")})
 
-    def eq(a, b):
-        return bool(a) and bool(b) and str(a).strip().lower() == str(b).strip().lower()
 
-    sub = {
-        "name": f"{req.get('patient_first_name', '')} {req.get('patient_last_name', '')}".strip(),
-        "dob": req.get("patient_date_of_birth"),
-        "ohip_display": _mask_hcn_display(req.get("patient_health_card_number")),
-        "version": (req.get("patient_health_card_version") or "").upper() or None,
-        "issue": req.get("patient_health_card_issue_date"),
-        "expiry": req.get("patient_health_card_expiry_date"),
-    }
-    can = {
-        "name": f"{p.get('first_name', '')} {p.get('last_name', '')}".strip(),
-        "dob": p.get("date_of_birth"),
-        "ohip_display": _mask_hcn_display(p.get("health_card_number")),
-        "version": (p.get("health_card_version") or "").upper() or None,
-        "issue": p.get("health_card_issue_date"),
-        "expiry": p.get("health_card_expiry_date"),
-    }
-    sub_num, can_num = _norm_hcn(req.get("patient_health_card_number")), _norm_hcn(p.get("health_card_number"))
-    match = {
-        "name": eq(sub["name"], can["name"]),
-        "dob": eq(sub["dob"], can["dob"]),
-        "ohip": bool(sub_num) and sub_num == can_num,
-        "version": eq(sub["version"], can["version"]),
-        "issue": eq(sub["issue"], can["issue"]),
-        "expiry": eq(sub["expiry"], can["expiry"]),
-    }
-    return {"submitted": sub, "canonical": can, "match": match}
+@api.get("/internal/verifications/{patient_id}/compare")
+async def compare_verification_candidate(patient_id: str, candidate_id: str,
+                                          user: dict = Depends(require_roles(*CLINIC_ROLES))):
+    """Side-by-side match for the Verifications queue: the pending portal registration
+    vs a canonical candidate (directory record or existing patient). Does NOT verify/link."""
+    p = await db.patients.find_one({"id": patient_id})
+    if not p:
+        raise HTTPException(status_code=404, detail="Patient not found.")
+    assert_practice(p, user)
+    can = await db.patient_directory.find_one({"id": candidate_id})
+    if can:
+        can_fields = {"name": f"{can.get('first_name', '')} {can.get('last_name', '')}".strip(),
+                      "dob": can.get("date_of_birth"), "hcn": can.get("health_card_number"),
+                      "version": can.get("health_card_version_code") or can.get("health_card_version"),
+                      "issue": can.get("health_card_issue_date"), "expiry": can.get("health_card_expiry_date")}
+    else:
+        cp = await db.patients.find_one({"id": candidate_id})
+        if not cp:
+            raise HTTPException(status_code=404, detail="Candidate not found.")
+        assert_practice(cp, user)
+        can_fields = {"name": f"{cp.get('first_name', '')} {cp.get('last_name', '')}".strip(),
+                      "dob": cp.get("date_of_birth"), "hcn": cp.get("health_card_number"),
+                      "version": cp.get("health_card_version"),
+                      "issue": cp.get("health_card_issue_date"), "expiry": cp.get("health_card_expiry_date")}
+    return _match_fields_payload(
+        {"name": f"{p.get('first_name', '')} {p.get('last_name', '')}".strip(),
+         "dob": p.get("date_of_birth"), "hcn": p.get("health_card_number"),
+         "version": p.get("health_card_version"),
+         "issue": p.get("health_card_issue_date"), "expiry": p.get("health_card_expiry_date")},
+        can_fields)
 
 
 @api.post("/internal/portal-access-requests/{req_id}/approve")

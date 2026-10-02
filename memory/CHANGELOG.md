@@ -1,5 +1,14 @@
 # VIen EMR — Changelog
 
+## 2026-06 — Caregiver access bridge for directory-only ACTIVE patients (PREVIEW ONLY, NOT DEPLOYED)
+- Problem: staff could not approve caregiver (portal access) requests for a valid ACTIVE clinic patient that had no portal account (e.g. Carlos Chazi / PIN 152). Old behavior returned 409 and the Approve button was disabled.
+- Backend (`server.py`): new helper `_ensure_portal_patient_for_directory(d, req, user)`. On APPROVE for a directory-only ACTIVE patient it (1) reuses an existing linked portal patient, else (2) creates a MINIMAL UNCLAIMED portal patient anchored to the canonical directory identity: preserves existing VISITA PIN, canonical demographics, `matched_directory_id`/`canonical_directory_id`, practice-scoped, `verification_status=verified`, `portal_status=UNCLAIMED`, `is_unclaimed=true`, `has_login=false`, email=None, NO users doc, NO password, no fabricated data. Sets `patient_directory.linked_patient_id`, claims the PIN in `visita_pins`, anchors the Stage-C relationship, audits `unclaimed_portal_patient_created`. Then creates/activates the `patient_portal_delegates` grant as before. Removed the 409 for valid ACTIVE directory-only patients.
+- Registration claim: `POST /api/auth/register` now detects an UNCLAIMED bridge record linked to the matched ACTIVE directory record and CLAIMS it (attaches the new patient login to the SAME patient_id, preserving PIN/history/active delegate grants) instead of blocking with 409 or creating a duplicate.
+- Frontend (`PortalAccessRequests.jsx`): Approve enabled for directory-only picks (`disabled={!picked || busy}`); amber "needs portal record" blocker replaced with an informational note explaining a no-login portal record will be created.
+- Still enforced: explicit staff patient selection, MatchComparison review, explicit Approve & grant, practice scoping, audit trail.
+- Verified end-to-end via API in Preview (Carlos Chazi / PIN 152): approve created the unclaimed record + grant (no user account), later self-registration claimed the same record (no duplicate, PIN + grant preserved). All test artifacts cleaned from Preview DB afterward.
+
+
 ## 2026-06 — Verifications: auto-expand single candidate (PREVIEW ONLY, NOT DEPLOYED)
 - Frontend-only (Verifications.jsx). On the Pending tab, when a verification has EXACTLY ONE suggested VISITA candidate, the shared MatchComparison widget auto-expands on load (read-only), still collapsible via Hide/Compare toggle. Multiple candidates keep the existing manual per-candidate Compare behavior.
 - `cmp` single-state refactored to a `cmps` map keyed by `patientId:candidateId`; `useEffect` + `autoLoaded` ref auto-loads single-candidate compares once. Reuses existing MatchComparison component and `GET /api/internal/verifications/{patient_id}/compare` endpoint. NO backend changes, NO auto-approve, NO auto-link, NO change to matching/ranking/linking logic.

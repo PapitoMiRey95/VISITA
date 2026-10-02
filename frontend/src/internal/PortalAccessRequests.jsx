@@ -213,14 +213,14 @@ function ApproveDialog({ req, onClose, onDone }) {
                             <MatchComparison cmp={cmp} loading={cmpLoading} />
                         )}
                         {picked && !picked.patient_id && (
-                            <p className="mt-2 text-xs text-amber-700 bg-amber-50 border border-amber-200 rounded-lg px-3 py-2" data-testid="no-portal-hint">
-                                This patient has no Patient Portal record yet. Caregiver access can only be granted once the patient has a portal record.
+                            <p className="mt-2 text-xs text-slate-600 bg-slate-50 border border-slate-200 rounded-lg px-3 py-2" data-testid="no-portal-hint">
+                                This is an active clinic patient without a portal login. Approving will create a secure portal record linked to their existing VISITA identity (PIN {picked.visita_patient_id || "—"}) so you can grant caregiver access. The patient won't receive a login and isn't required to register.
                             </p>
                         )}
 
                         <div className="flex justify-end gap-2 mt-5">
                             <Button variant="outline" onClick={onClose}>Cancel</Button>
-                            <Button data-testid="approve-confirm" disabled={!picked || !picked.patient_id || busy} onClick={approve} className="bg-emerald-600 hover:bg-emerald-700 text-white">
+                            <Button data-testid="approve-confirm" disabled={!picked || busy} onClick={approve} className="bg-emerald-600 hover:bg-emerald-700 text-white">
                                 {busy ? <Loader2 className="w-4 h-4 animate-spin" /> : "Approve & grant access"}
                             </Button>
                         </div>

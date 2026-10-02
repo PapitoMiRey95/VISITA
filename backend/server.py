@@ -761,10 +761,45 @@ async def register(body: RegisterBody):
             },
         }
 
-    # Duplicate-account guard: an ACTIVE directory record already linked to a portal patient
+    # Duplicate-account guard: an ACTIVE directory record already linked to a portal patient.
     if match.get("outcome") == directory_mod.ACTIVE_MATCH and match.get("matched_id"):
         d = await db.patient_directory.find_one({"id": match["matched_id"]})
-        if d and d.get("linked_patient_id"):
+        linked_pid = d.get("linked_patient_id") if d else None
+        if linked_pid:
+            linked = await db.patients.find_one({"id": linked_pid})
+            # If the linked record is an UNCLAIMED bridge record (created so a caregiver
+            # could be granted access) and has no login yet, let the real patient CLAIM
+            # it now — preserving the PIN, history and delegate grants — instead of
+            # blocking registration or creating a duplicate patient.
+            is_unclaimed = linked and (linked.get("is_unclaimed") or linked.get("has_login") is False) \
+                and not await db.users.find_one({"patient_id": linked_pid})
+            if is_unclaimed:
+                res = await db.users.insert_one({
+                    "email": email, "password_hash": authlib.hash_password(body.password),
+                    "name": f"{body.first_name} {body.last_name}".strip(), "role": "patient",
+                    "patient_id": linked_pid, "active": True, "created_at": now_iso(),
+                })
+                uid = str(res.inserted_id)
+                await db.patients.update_one({"id": linked_pid}, {"$set": {
+                    "email": email, "phone": identity_mod.normalize_phone(body.phone),
+                    "health_card_number": hc_num, "health_card_version": hc_ver,
+                    "health_card_issue_date": body.health_card_issue_date or linked.get("health_card_issue_date"),
+                    "health_card_expiry_date": body.health_card_expiry_date or linked.get("health_card_expiry_date"),
+                    "sex": (body.sex or linked.get("sex")),
+                    "address": body.address or linked.get("address"), "unit": body.unit or linked.get("unit"),
+                    "city": body.city or linked.get("city"), "postal_code": body.postal_code or linked.get("postal_code"),
+                    "province": body.province or linked.get("province"), "country": body.country or linked.get("country"),
+                    "patient_type": body.patient_type, "preferred_language": email_service.norm_lang(body.preferred_language),
+                    "portal_status": "ACTIVE", "verification_status": "verified",
+                    "is_unclaimed": False, "has_login": True,
+                    "claimed_at": now_iso(), "updated_at": now_iso(),
+                }})
+                await audit("claim_unclaimed_portal_patient", "patient", linked_pid,
+                            {"id": uid, "name": body.first_name, "role": "patient"},
+                            meta={"directory_id": d["id"], "email": email})
+                token = authlib.create_access_token(uid, email, "patient")
+                user = await db.users.find_one({"_id": res.inserted_id})
+                return {"token": token, "user": serialize_user(user)}
             raise HTTPException(
                 status_code=409,
                 detail="It looks like you may already have a portal account. Please sign in or use Forgot Password, or contact the clinic.")
@@ -5428,6 +5463,77 @@ async def compare_verification_candidate(patient_id: str, candidate_id: str,
         can_fields)
 
 
+async def _ensure_portal_patient_for_directory(d: dict, req: dict, user: dict) -> dict:
+    """Safe bridge for caregiver approval on a directory-only ACTIVE patient.
+    Returns an existing linked portal patient if present, otherwise creates a
+    minimal UNCLAIMED portal patient record anchored to the canonical directory
+    identity (existing VISITA PIN + canonical demographics, NO login email,
+    NO password, NO user account, no fabricated data). The patient never
+    receives credentials and is never required to log in. If that patient later
+    registers for their own portal, this record is claimed/linked (PIN, history
+    and delegate grants preserved) rather than duplicated."""
+    # 1) Reuse an existing portal patient already linked to this identity.
+    if d.get("linked_patient_id"):
+        p = await db.patients.find_one({"id": d["linked_patient_id"]})
+        if p:
+            return p
+    existing = await db.patients.find_one({"matched_directory_id": d["id"], "active_status": True})
+    if existing:
+        await db.patient_directory.update_one(
+            {"id": d["id"], "linked_patient_id": {"$in": [None, ""]}},
+            {"$set": {"linked_patient_id": existing["id"], "updated_at": now_iso()}})
+        return existing
+
+    # 2) Only bridge a confirmed ACTIVE clinic patient.
+    if str(d.get("patient_status") or "").upper() != directory_mod.ACTIVE:
+        raise HTTPException(status_code=409,
+                            detail="Caregiver access can only be bridged for an active clinic patient.")
+
+    patient_id = str(uuid.uuid4())
+    pin = d.get("visita_patient_id")
+    practice_id = d.get("practice_id") or req.get("practice_id") or user.get("practice_id")
+    now = now_iso()
+    patient = {
+        "id": patient_id, "visita_patient_id": pin,
+        "first_name": d.get("first_name"), "last_name": d.get("last_name"),
+        "date_of_birth": d.get("date_of_birth"),
+        "health_card_number": d.get("health_card_number"),
+        "health_card_version": d.get("health_card_version_code") or d.get("health_card_version"),
+        "health_card_issue_date": d.get("health_card_issue_date"),
+        "health_card_expiry_date": d.get("health_card_expiry_date"),
+        "phone": d.get("cell_phone") or d.get("home_phone"),
+        "home_phone": d.get("home_phone"),
+        "email": None,  # UNCLAIMED — no login email, no credentials
+        "address": d.get("address"), "unit": d.get("unit"),
+        "city": d.get("city"), "province": d.get("province"),
+        "postal_code": d.get("postal_code"), "country": d.get("country"),
+        "patient_type": d.get("patient_type"),
+        "verification_status": "verified", "portal_status": "UNCLAIMED",
+        "matched_directory_id": d["id"], "canonical_directory_id": d["id"],
+        "identity_linked": True, "identity_linked_by": user.get("name"), "identity_linked_at": now,
+        "practice_id": practice_id,
+        "is_unclaimed": True, "has_login": False,
+        "active_status": True, "is_demo": False,
+        "created_via": "caregiver_access_bridge",
+        "created_at": now, "updated_at": now,
+    }
+    await db.patients.insert_one({**patient})
+    await db.patient_directory.update_one({"id": d["id"]}, {"$set": {
+        "linked_patient_id": patient_id, "updated_at": now}})
+    if pin:
+        await db.visita_pins.update_one({"_id": pin}, {"$set": {
+            "patient_id": patient_id, "created_at": now}}, upsert=True)
+    await audit("unclaimed_portal_patient_created", "patient", patient_id, user,
+                meta={"directory_id": d["id"], "visita_patient_id": pin, "via": "caregiver_access_bridge"})
+    # Stage C — anchor the practice relationship to the canonical identity.
+    if practice_id:
+        await rel_mod.upsert_relationship(
+            db, practice_id=practice_id, status=rel_mod.ACTIVE,
+            directory_id=d["id"], patient_id=patient_id,
+            visita_patient_id=pin, by=user.get("name"), source="caregiver_access_bridge")
+    return await db.patients.find_one({"id": patient_id})
+
+
 @api.post("/internal/portal-access-requests/{req_id}/approve")
 async def approve_portal_access_request(req_id: str, body: ApproveAccessRequestBody,
                                         user: dict = Depends(require_roles(*CLINIC_ROLES))):
@@ -5440,9 +5546,14 @@ async def approve_portal_access_request(req_id: str, body: ApproveAccessRequestB
 
     patient = await db.patients.find_one({"id": body.patient_id})
     if not patient:
-        if await db.patient_directory.find_one({"id": body.patient_id}, {"_id": 1}):
-            raise HTTPException(status_code=409, detail="This patient has no Patient Portal record yet. Caregiver access can only be granted to a patient with a portal record.")
-        raise HTTPException(status_code=404, detail="Select a valid patient to link.")
+        d = await db.patient_directory.find_one({"id": body.patient_id})
+        if not d:
+            raise HTTPException(status_code=404, detail="Select a valid patient to link.")
+        # Safe bridge: an ACTIVE directory-only patient (no portal account yet) gets
+        # a minimal UNCLAIMED portal record so caregiver access can be granted without
+        # forcing the patient to register or receive any login.
+        patient = await _ensure_portal_patient_for_directory(d, req, user)
+        body.patient_id = patient["id"]
     assert_practice(patient, user)
 
     relationship = body.relationship or req.get("relationship")

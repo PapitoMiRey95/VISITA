@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect, useRef } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { toast } from "sonner";
 import { UserCheck, UserX, History, Link2, ShieldCheck, Search, GitMerge, Building2, GitCompare } from "lucide-react";
@@ -191,19 +191,39 @@ export default function Verifications() {
     const canDecide = ["staff", "admin"].includes(user?.role);
     const [tab, setTab] = useState("pending");
     const [visitaIds, setVisitaIds] = useState({});
-    const [cmp, setCmp] = useState({ key: null, data: null, loading: false });
+    const [cmps, setCmps] = useState({});
+    const autoLoaded = useRef(new Set());
     const list = useQuery({ queryKey: ["queue", "/internal/verifications"], queryFn: async () => (await api.get("/internal/verifications")).data });
     const items = list.data || [];
 
-    const compare = async (patientId, candidateId) => {
+    const loadCompare = async (patientId, candidateId) => {
         const key = `${patientId}:${candidateId}`;
-        if (cmp.key === key) { setCmp({ key: null, data: null, loading: false }); return; }
-        setCmp({ key, data: null, loading: true });
+        setCmps((prev) => ({ ...prev, [key]: { data: prev[key]?.data || null, loading: true } }));
         try {
             const { data } = await api.get(`/internal/verifications/${patientId}/compare`, { params: { candidate_id: candidateId } });
-            setCmp({ key, data, loading: false });
-        } catch (e) { toast.error(formatErr(e)); setCmp({ key: null, data: null, loading: false }); }
+            setCmps((prev) => ({ ...prev, [key]: { data, loading: false } }));
+        } catch (e) { toast.error(formatErr(e)); setCmps((prev) => { const n = { ...prev }; delete n[key]; return n; }); }
     };
+
+    const compare = (patientId, candidateId) => {
+        const key = `${patientId}:${candidateId}`;
+        if (cmps[key]) { setCmps((prev) => { const n = { ...prev }; delete n[key]; return n; }); return; }
+        loadCompare(patientId, candidateId);
+    };
+
+    // Auto-expand the comparison when a verification has exactly ONE candidate (read-only, still collapsible).
+    useEffect(() => {
+        items.forEach((p) => {
+            const cands = p.directory_match?.candidates || [];
+            if (cands.length === 1) {
+                const key = `${p.id}:${cands[0].id}`;
+                if (!autoLoaded.current.has(key)) {
+                    autoLoaded.current.add(key);
+                    loadCompare(p.id, cands[0].id);
+                }
+            }
+        });
+    }, [items]);
 
     const decide = async (id, decision) => {
         try {
@@ -259,21 +279,26 @@ export default function Verifications() {
                                         <div className="text-xs uppercase tracking-wide text-slate-400 mb-1">
                                             Suggested VISITA record{(p.directory_match.candidates.length > 1) ? "s" : ""} · {p.directory_match.strength} match
                                         </div>
-                                        {p.directory_match.candidates.map((c) => (
-                                            <div key={c.id} data-testid="verification-candidate" className="text-xs text-slate-600 bg-emerald-50 rounded-sm px-2 py-1 mb-1 flex items-center justify-between gap-2">
-                                                <span>
-                                                    {formatLastFirst(c.last_name, c.first_name)} · DOB {formatDate(c.date_of_birth)} · HC {c.health_card_masked || "—"}
-                                                    {c.visita_patient_id ? ` · VISITA #${c.visita_patient_id}` : ""} · {c.city || ""} {c.province || ""}
-                                                </span>
-                                                <button type="button" data-testid={`verif-compare-${c.id}`} onClick={() => compare(p.id, c.id)}
-                                                    className="shrink-0 inline-flex items-center gap-1 text-visita-greenDark font-semibold hover:underline">
-                                                    <GitCompare className="w-3.5 h-3.5" /> {cmp.key === `${p.id}:${c.id}` ? "Hide" : "Compare"}
-                                                </button>
-                                            </div>
-                                        ))}
-                                        {cmp.key && cmp.key.startsWith(`${p.id}:`) && (
-                                            <MatchComparison cmp={cmp.data} loading={cmp.loading} />
-                                        )}
+                                        {p.directory_match.candidates.map((c) => {
+                                            const key = `${p.id}:${c.id}`;
+                                            const entry = cmps[key];
+                                            const open = !!entry;
+                                            return (
+                                                <div key={c.id}>
+                                                    <div data-testid="verification-candidate" className="text-xs text-slate-600 bg-emerald-50 rounded-sm px-2 py-1 mb-1 flex items-center justify-between gap-2">
+                                                        <span>
+                                                            {formatLastFirst(c.last_name, c.first_name)} · DOB {formatDate(c.date_of_birth)} · HC {c.health_card_masked || "—"}
+                                                            {c.visita_patient_id ? ` · VISITA #${c.visita_patient_id}` : ""} · {c.city || ""} {c.province || ""}
+                                                        </span>
+                                                        <button type="button" data-testid={`verif-compare-${c.id}`} onClick={() => compare(p.id, c.id)}
+                                                            className="shrink-0 inline-flex items-center gap-1 text-visita-greenDark font-semibold hover:underline">
+                                                            <GitCompare className="w-3.5 h-3.5" /> {open ? "Hide" : "Compare"}
+                                                        </button>
+                                                    </div>
+                                                    {open && <MatchComparison cmp={entry.data} loading={entry.loading} />}
+                                                </div>
+                                            );
+                                        })}
                                     </div>
                                 )}
                             </div>

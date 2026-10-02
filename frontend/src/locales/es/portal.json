@@ -33,7 +33,7 @@
     "tiles": {
       "appointments": "Solicitar una cita",
       "prescriptions": "Solicitar receta",
-      "documents": "Documentos y resultados",
+      "documents": "Resultados e informes",
       "bloodwork": "Solicitar análisis de sangre",
       "imaging": "Radiografía / Ultrasonido",
       "referrals": "Estado de referencia",
@@ -49,13 +49,16 @@
     }
   },
   "documents": {
-    "title": "Documentos y resultados",
-    "subtitle": "Documentos que la clínica ha compartido con usted.",
-    "empty": "Todavía no se ha compartido ningún documento con usted. Cuando la clínica publique un documento, aparecerá aquí.",
-    "document": "Documento",
+    "title": "Resultados e informes",
+    "subtitle": "Resultados e informes que su médico ha revisado y puesto a su disposición.",
+    "empty": "Actualmente no hay resultados ni informes disponibles para ver.",
+    "document": "Informe",
     "sharedOn": "Compartido el",
     "view": "Ver",
-    "download": "Descargar"
+    "download": "Descargar",
+    "reviewedBy": "Revisado por",
+    "questionsTitle": "¿Tiene preguntas sobre un resultado?",
+    "requestAppointment": "Solicitar una cita"
   },
   "account": {
     "myInformation": "Mi información",

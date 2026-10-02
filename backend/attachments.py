@@ -67,6 +67,10 @@ def _public(doc: dict) -> dict:
         "shared_with_patient": bool(doc.get("shared_with_patient")),
         "shared_by": doc.get("shared_by"),
         "shared_at": doc.get("shared_at"),
+        "result_category": doc.get("result_category"),
+        "result_subtype": doc.get("result_subtype"),
+        "reviewed_by": doc.get("reviewed_by"),
+        "reviewed_at": doc.get("reviewed_at"),
     }
 
 
@@ -147,9 +151,12 @@ PATIENT_DOC_LABELS = {
 }
 
 
-async def mark_shared(db, att_id: str, user: dict):
+async def mark_shared(db, att_id: str, user: dict, result_category: str = None,
+                      result_subtype: str = None, reviewed_by: str = None):
     """Release ONE internal attachment to the patient. Idempotent. Returns
-    (attachment_doc, parent_record). Never exposes anything beyond this doc."""
+    (attachment_doc, parent_record). Never exposes anything beyond this doc.
+    Stores the physician-reviewed result classification (category/subtype) and the
+    reviewing physician's name so the patient Results & Reports can label it."""
     doc = await db.attachments.find_one({"id": att_id, "is_deleted": {"$ne": True}})
     if not doc:
         raise HTTPException(status_code=404, detail="Attachment not found.")
@@ -160,13 +167,21 @@ async def mark_shared(db, att_id: str, user: dict):
     patient_id = parent.get("patient_id")
     if not patient_id:
         raise HTTPException(status_code=400, detail="This record has no linked patient to share with.")
-    if not doc.get("shared_with_patient"):
-        await db.attachments.update_one({"id": att_id}, {"$set": {
-            "shared_with_patient": True, "shared_at": now_iso(),
-            "shared_by": user.get("name"), "shared_by_id": user.get("id"),
-            "patient_id": patient_id}})
+    update = {
+        "shared_with_patient": True, "shared_at": now_iso(),
+        "shared_by": user.get("name"), "shared_by_id": user.get("id"),
+        "patient_id": patient_id,
+        "reviewed_by": reviewed_by or user.get("name"),
+        "reviewed_at": doc.get("reviewed_at") or now_iso(),
+    }
+    if result_category:
+        update["result_category"] = result_category
+    if result_subtype:
+        update["result_subtype"] = result_subtype
+    await db.attachments.update_one({"id": att_id}, {"$set": update})
     await audit("attachment_shared", doc.get("entity_type"), doc.get("entity_id"), user,
-                meta={"attachment_id": att_id, "patient_id": patient_id})
+                meta={"attachment_id": att_id, "patient_id": patient_id,
+                      "result_category": result_category, "result_subtype": result_subtype})
     fresh = await db.attachments.find_one({"id": att_id})
     return fresh, parent
 
@@ -181,6 +196,9 @@ async def list_shared_for_patient(db, patient_id: str) -> list:
     for d in docs:
         coll = ENTITY_COLLECTIONS.get(d.get("entity_type"))
         parent = await db[coll].find_one({"id": d["entity_id"]}) if coll else None
+        subtype = d.get("result_subtype")
+        category = d.get("result_category")
+        type_label = subtype or category or PATIENT_DOC_LABELS.get(d.get("entity_type"), "Document")
         out.append({
             "id": d["id"],
             "original_filename": d.get("original_filename"),
@@ -188,6 +206,11 @@ async def list_shared_for_patient(db, patient_id: str) -> list:
             "size": d.get("size"),
             "entity_type": d.get("entity_type"),
             "service_label": PATIENT_DOC_LABELS.get(d.get("entity_type"), "Document"),
+            "result_category": category,
+            "result_subtype": subtype,
+            "type_label": type_label,
+            "reviewed_by": d.get("reviewed_by"),
+            "reviewed_at": d.get("reviewed_at") or d.get("shared_at"),
             "related_ref": (parent or {}).get("ref_number"),
             "shared_at": d.get("shared_at"),
         })

@@ -33,7 +33,7 @@
     "tiles": {
       "appointments": "Request an Appointment",
       "prescriptions": "Prescription Request",
-      "documents": "Documents & Results",
+      "documents": "Results & Reports",
       "bloodwork": "Bloodwork Request",
       "imaging": "X-Ray / Ultrasound",
       "referrals": "Referral Status",
@@ -49,13 +49,16 @@
     }
   },
   "documents": {
-    "title": "Documents & Results",
-    "subtitle": "Documents the clinic has released to you.",
-    "empty": "No documents have been shared with you yet. When the clinic releases a document, it will appear here.",
-    "document": "Document",
+    "title": "Results & Reports",
+    "subtitle": "Results and reports your physician has reviewed and released to you.",
+    "empty": "No results or reports are currently available to view.",
+    "document": "Report",
     "sharedOn": "Shared on",
     "view": "View",
-    "download": "Download"
+    "download": "Download",
+    "reviewedBy": "Reviewed by",
+    "questionsTitle": "Have questions about a result?",
+    "requestAppointment": "Request an Appointment"
   },
   "account": {
     "myInformation": "My Information",

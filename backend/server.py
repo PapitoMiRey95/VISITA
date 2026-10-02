@@ -4005,39 +4005,51 @@ async def delete_attachment(att_id: str, user: dict = Depends(require_roles(*CLI
 
 class ShareAttachmentBody(BaseModel):
     complete: bool = True
+    result_category: Optional[str] = None
+    result_subtype: Optional[str] = None
+    reviewed_by: Optional[str] = None
+    notify: bool = True
 
 
 @api.post("/internal/attachments/{att_id}/share")
 async def share_attachment(att_id: str, body: ShareAttachmentBody,
                            user: dict = Depends(require_roles(*CLINIC_ROLES))):
     """Explicitly release ONE internal attachment to the patient and (optionally)
-    complete the source request. Creates a reusable patient update event, an
-    in-portal notification and a GENERIC (no-PHI) email. Never emails the file."""
-    att, parent = await attach_mod.mark_shared(db, att_id, user)
+    complete the source request. Records the physician-reviewed result
+    classification + reviewing physician, creates a patient update event, and
+    (if notify) an in-portal notification and a GENERIC (no-PHI, no normal/abnormal)
+    email. Never emails the file."""
+    att, parent = await attach_mod.mark_shared(
+        db, att_id, user,
+        result_category=body.result_category,
+        result_subtype=body.result_subtype,
+        reviewed_by=body.reviewed_by)
     patient_id = att["patient_id"]
     entity_type = att["entity_type"]
+    type_label = att.get("result_subtype") or att.get("result_category") or "result"
     update_id = str(uuid.uuid4())
     await db.patient_updates.insert_one({
         "id": update_id, "patient_id": patient_id, "type": "document_shared",
         "source_type": entity_type, "source_id": att["entity_id"], "attachment_id": att_id,
-        "title": "A new document is available",
-        "body": "A document from your imaging request is now available.",
+        "title": "Your results have been reviewed",
+        "body": "Your results have been reviewed by your physician. If you would like to discuss the results, you can request an appointment.",
         "read": False, "created_at": now_iso(),
     })
-    await notify_patient(patient_id, "New document available",
-                         "A new document is available in your Patient Portal. Sign in to view or download it.")
-    p = await db.patients.find_one({"id": patient_id}, {"_id": 0})
-    if p and p.get("email"):
-        lang = email_service.norm_lang(p.get("preferred_language"))
-        html = email_service.document_available_html(p.get("first_name") or "", notify_svc.PORTAL_URL, lang=lang)
-        await notify_svc._send_email(db, patient_id, p["email"],
-                                     email_service.subject("document_available", lang), html)
+    if body.notify:
+        await notify_patient(patient_id, "Your results have been reviewed",
+                             "Your results have been reviewed by your physician. If you would like to discuss the results, you can request an appointment.")
+        p = await db.patients.find_one({"id": patient_id}, {"_id": 0})
+        if p and p.get("email"):
+            lang = email_service.norm_lang(p.get("preferred_language"))
+            html = email_service.document_available_html(p.get("first_name") or "", notify_svc.PORTAL_URL, lang=lang)
+            await notify_svc._send_email(db, patient_id, p["email"],
+                                         email_service.subject("document_available", lang), html)
     if body.complete and entity_type == "imaging":
         await db.imaging_requests.update_one({"id": att["entity_id"]}, {"$set": {
             "internal_status": "completed", "completed_at": now_iso(), "updated_at": now_iso()}})
         await audit("complete", "imaging", att["entity_id"], user, new_status="completed",
                     meta={"via": "share_with_patient", "attachment_id": att_id})
-    return {"ok": True, "shared": True, "update_id": update_id}
+    return {"ok": True, "shared": True, "update_id": update_id, "type_label": type_label}
 
 
 # ----------------------------- Patient documents & updates (portal) -----------------------------

@@ -1,5 +1,11 @@
 # VIen EMR — Changelog
 
+## 2026-10-02 — Portal Access review: patient match comparison (PREVIEW ONLY, NOT DEPLOYED)
+Self-verified (curl + DB + UI). No auto-approve/auto-link; staff must pick a patient + click Approve (unchanged).
+- NEW backend GET /api/internal/portal-access-requests/{req_id}/compare?patient_id= returns a field-by-field match (Name, DOB, OHIP number, Version code, Issue date, Expiry date) between the caregiver-submitted patient info and a candidate canonical patient. OHIP compared server-side on normalized digits; both sides returned MASKED (•••• ••• NNN) — the full canonical number is never sent to the client. Practice-scoped.
+- Frontend (PortalAccessRequests.jsx ApproveDialog): when staff pick a candidate, a compact side-by-side "Patient match check" table renders (LEFT submitted / RIGHT canonical) with green=match (✓) and red=differ (✗), plus an X/N score. Caregiver/password/approval architecture unchanged.
+
+
 ## 2026-10-02 — Caregiver signup form refinement (PREVIEW ONLY, NOT DEPLOYED)
 Self-verified E2E (curl + DB + UI). Approval architecture unchanged (PENDING portal_access_requests → staff approve → patient_portal_delegates).
 - Person being helped: OHIP now REQUIRED, reusing the normal patient-registration components/validation (HealthCardNumberInput + Version Code + IssueDatePicker + ExpiryPicker). Backend PortalAccessRequestBody now requires patient_health_card_number and carries version/issue/expiry; stored on the request for staff matching.

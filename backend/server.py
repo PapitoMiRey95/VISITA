@@ -5301,6 +5301,63 @@ async def list_portal_access_requests(status: Optional[str] = None,
     return reqs
 
 
+def _norm_hcn(v: str) -> str:
+    return re.sub(r"\D", "", v or "")
+
+
+def _mask_hcn_display(v: str) -> str:
+    d = _norm_hcn(v)
+    if not d:
+        return None
+    return ("•••• ••• " + d[-3:]) if len(d) >= 3 else d
+
+
+@api.get("/internal/portal-access-requests/{req_id}/compare")
+async def compare_portal_access_request(req_id: str, patient_id: str,
+                                         user: dict = Depends(require_roles(*CLINIC_ROLES))):
+    """Side-by-side match helper for the review screen: caregiver-submitted patient
+    info vs a candidate canonical patient. OHIP numbers are compared server-side and
+    returned masked (never the full canonical number). Does NOT link or approve."""
+    req = await db[ACCESS_REQ_COLL].find_one({"id": req_id})
+    if not req:
+        raise HTTPException(status_code=404, detail="Request not found.")
+    assert_practice(req, user)
+    p = await db.patients.find_one({"id": patient_id})
+    if not p:
+        raise HTTPException(status_code=404, detail="Patient not found.")
+    assert_practice(p, user)
+
+    def eq(a, b):
+        return bool(a) and bool(b) and str(a).strip().lower() == str(b).strip().lower()
+
+    sub = {
+        "name": f"{req.get('patient_first_name', '')} {req.get('patient_last_name', '')}".strip(),
+        "dob": req.get("patient_date_of_birth"),
+        "ohip_display": _mask_hcn_display(req.get("patient_health_card_number")),
+        "version": (req.get("patient_health_card_version") or "").upper() or None,
+        "issue": req.get("patient_health_card_issue_date"),
+        "expiry": req.get("patient_health_card_expiry_date"),
+    }
+    can = {
+        "name": f"{p.get('first_name', '')} {p.get('last_name', '')}".strip(),
+        "dob": p.get("date_of_birth"),
+        "ohip_display": _mask_hcn_display(p.get("health_card_number")),
+        "version": (p.get("health_card_version") or "").upper() or None,
+        "issue": p.get("health_card_issue_date"),
+        "expiry": p.get("health_card_expiry_date"),
+    }
+    sub_num, can_num = _norm_hcn(req.get("patient_health_card_number")), _norm_hcn(p.get("health_card_number"))
+    match = {
+        "name": eq(sub["name"], can["name"]),
+        "dob": eq(sub["dob"], can["dob"]),
+        "ohip": bool(sub_num) and sub_num == can_num,
+        "version": eq(sub["version"], can["version"]),
+        "issue": eq(sub["issue"], can["issue"]),
+        "expiry": eq(sub["expiry"], can["expiry"]),
+    }
+    return {"submitted": sub, "canonical": can, "match": match}
+
+
 @api.post("/internal/portal-access-requests/{req_id}/approve")
 async def approve_portal_access_request(req_id: str, body: ApproveAccessRequestBody,
                                         user: dict = Depends(require_roles(*CLINIC_ROLES))):

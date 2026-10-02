@@ -42,7 +42,6 @@ export default function Landing() {
                 <div className="w-full max-w-2xl text-center px-8 py-8 lg:px-12 lg:py-10">
                     <Logo variant="dark" iconClass="h-16 w-16 lg:h-24 lg:w-24 drop-shadow-[0_0_30px_rgba(23,179,196,0.35)]"
                         textClass="text-3xl sm:text-4xl lg:text-5xl" className="justify-center" />
-                    <p className="mt-3 text-base lg:text-lg text-slate-100 font-semibold tracking-wide">{t("common:practice")}</p>
                 </div>
 
                 {mode === "home" ? (

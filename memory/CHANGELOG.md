@@ -1,5 +1,11 @@
 # VIen EMR — Changelog
 
+## 2026-06 — Verifications: auto-expand single candidate (PREVIEW ONLY, NOT DEPLOYED)
+- Frontend-only (Verifications.jsx). On the Pending tab, when a verification has EXACTLY ONE suggested VISITA candidate, the shared MatchComparison widget auto-expands on load (read-only), still collapsible via Hide/Compare toggle. Multiple candidates keep the existing manual per-candidate Compare behavior.
+- `cmp` single-state refactored to a `cmps` map keyed by `patientId:candidateId`; `useEffect` + `autoLoaded` ref auto-loads single-candidate compares once. Reuses existing MatchComparison component and `GET /api/internal/verifications/{patient_id}/compare` endpoint. NO backend changes, NO auto-approve, NO auto-link, NO change to matching/ranking/linking logic.
+- Verified via frontend testing agent (iteration_72): auto-expand, Hide/re-Compare toggle, and no auto-approve/link all pass. Awaiting user review before any PRODUCTION GO.
+
+
 ## 2026-10-02 — Reuse patient match comparison in Verifications (PREVIEW ONLY, NOT DEPLOYED)
 - Backend: extracted shared `_match_fields_payload(submitted, canonical)` helper (Name/DOB/OHIP/Version/Issue/Expiry; OHIP compared on digits, returned masked). Portal Access compare now calls it; NEW `GET /api/internal/verifications/{patient_id}/compare?candidate_id=` reuses it (candidate resolved from patient_directory or patients). Practice-scoped, no auto-verify/link.
 - Frontend: extracted shared `internal/MatchComparison.jsx` (green/red highlight, N/6 score, masked OHIP) now imported by BOTH PortalAccessRequests and Verifications. Verifications pending items gain a per-candidate "Compare" toggle. No duplicate matching logic/component.

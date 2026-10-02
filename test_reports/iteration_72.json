@@ -1,0 +1,32 @@
+{
+  "summary": "Frontend-only test of the Patient Verifications 'Pending' tab auto-expand behavior for single-candidate pending verifications. Logged in as admin kevinrodriguez9528@gmail.com and verified: (1) auto-expand of MatchComparison on load for a verification with exactly ONE candidate; (2) toggle Hide collapses and the Compare toggle re-expands the widget; (3) no auto-approve/auto-link occurs — the patient remains in the pending queue after render. No pending multi-candidate verification data exists in preview DB, so multi-candidate UI path could not be exercised in-browser; code review in Verifications.jsx confirms auto-expand is strictly gated on `cands.length === 1` and multi-candidate rows still render independent per-candidate Compare toggles.",
+  "backend_issues": { "critical": [], "minor": [] },
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [],
+    "design_issues": []
+  },
+  "test_report_links": [],
+  "action_items": [],
+  "critical_code_review_comments": [
+    "Verifications.jsx: `useEffect` depends on `items` (array reference changes each refetch) and uses an `autoLoaded` ref to dedupe single-candidate loads. If a user explicitly Hides an auto-expanded match and then the list is refetched (invalidate() after Verify/Reject on a different row), the ref prevents re-auto-expand of the already-dismissed row — this is the intended UX. However, since `autoLoaded` persists for the component's lifetime, if the SAME patient_id appears again after being rejected and resubmitted the auto-expand will not re-run until navigation away and back. Minor edge case, acceptable for v1.",
+    "Verifications.jsx: `loadCompare` always re-fetches on toggle Compare->Hide->Compare; could cache the last response per key to avoid duplicate GET /compare calls, but not critical.",
+    "No backend changes made (as required by UI-only change)."
+  ],
+  "updated_files": [],
+  "success_rate": { "backend": "n/a (not tested)", "frontend": "100% on tested paths" },
+  "test_credentials": "Admin kevinrodriguez9528@gmail.com / VisitaAdmin2026! (per /app/memory/test_credentials.md).",
+  "seed_data_creation": "Registered one pending ACTIVE_MATCH patient via POST /api/auth/register to create a single-candidate scenario (preview DB had zero pending verifications with candidates). Payload matched directory record Alejandro ROMERO CUAHUEY (DOB 1958-04-22, HCN 0000000111). Resulting pending patient_id=977ca75a-70bd-48ae-89eb-51e92bff46df, email=test_single_1790919269@example.com (TEST_-prefixed). Left in pending queue so main agent / future tests can reuse; safe to Reject afterwards.",
+  "retest_needed": false,
+  "should_main_agent_self_test": false,
+  "context_for_next_testing_agent": "Verifications 'Pending' tab auto-expand for single-candidate works correctly in preview. Seeded single-candidate pending patient (ROMERO CUAHUEY, Alejandro, test_single_1790919269@example.com) is still pending — reuse it or clean up via Reject. Multi-candidate (AMBIGUOUS_MATCH) requires 2+ ACTIVE directory records sharing HCN or (first,last,dob); preview directory does not currently have such duplicates. If multi-candidate UI testing is needed, insert a second ACTIVE patient_directory doc with same norm_hcn OR same norm_first/norm_last/norm_dob as an existing record, then register a patient matching it.",
+  "verification_evidence": {
+    "pending_single_candidate_patient_id": "977ca75a-70bd-48ae-89eb-51e92bff46df",
+    "match_comparison_auto_expanded": true,
+    "toggle_text_initial": "Hide",
+    "after_hide_click": { "button_text": "Compare", "match_comparison_count": 0 },
+    "after_compare_reclick": { "button_text": "Hide", "match_comparison_count": 1 },
+    "still_pending_after_render": true,
+    "no_auto_approve_or_auto_link": true
+  }
+}

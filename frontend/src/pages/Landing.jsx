@@ -59,7 +59,7 @@ export default function Landing() {
                                 <div className="flex items-center justify-between gap-3 text-sm">
                                     <span className="text-white font-medium [text-shadow:0_1px_4px_rgba(0,0,0,0.9)] sm:[text-shadow:none] sm:text-slate-300 sm:font-normal">{t("auth:landing2.createPortalPrompt")}</span>
                                     <button data-testid="landing-create-portal" onClick={() => nav("/register")}
-                                        className="font-bold text-cyan-300 hover:text-cyan-200 inline-flex items-center gap-1">
+                                        className="font-black text-black bg-cyan-400 hover:bg-cyan-300 rounded-full px-3.5 py-1.5 inline-flex items-center gap-1 shadow-[0_2px_10px_-2px_rgba(34,211,238,0.6)] transition-colors">
                                         {t("auth:landing2.createPortal")} <ArrowRight className="w-4 h-4" />
                                     </button>
                                 </div>

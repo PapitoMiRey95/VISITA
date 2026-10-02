@@ -4656,17 +4656,19 @@ _CLOSED_STATUS_RE = re.compile(r"^\s*(former[_\s-]?closed|closed?|closez)\s*$", 
 _ACTIVE_DIR_FILTER = {"patient_status": {"$not": _CLOSED_STATUS_RE}}
 
 
-async def _search_patients_merged(qn: str, limit: int = 40, include_pin: bool = True):
+async def _search_patients_merged(qn: str, limit: int = 40, include_pin: bool = True, practice_id: Optional[str] = None):
     """Unified internal patient search: VERIFIED portal patient accounts PLUS
     existing patient_directory records. Verified portal patients are surfaced
     first (so they're never crowded out by many directory matches). Deduped so a
-    portal account linked to a directory record appears only once."""
+    portal account linked to a directory record appears only once.
+    practice_id (optional) restricts portal accounts to that practice."""
     results, seen_dir, seen_pid = [], set(), set()
 
     # 1) Verified portal patients first.
-    portal = await db.patients.find({
-        "verification_status": "verified", "active_status": True, "$or": _portal_search_ors(qn, include_pin),
-    }).limit(limit).to_list(limit)
+    pq = {"verification_status": "verified", "active_status": True, "$or": _portal_search_ors(qn, include_pin)}
+    if practice_id:
+        pq["practice_id"] = practice_id
+    portal = await db.patients.find(pq).limit(limit).to_list(limit)
     for p in portal:
         mdir = p.get("matched_directory_id")
         if mdir:
@@ -5342,28 +5344,56 @@ def _match_fields_payload(sub: dict, can: dict) -> dict:
     return {"submitted": submitted, "canonical": canonical, "match": match}
 
 
+@api.get("/internal/portal-access-requests/candidates")
+async def portal_access_candidates(q: str, user: dict = Depends(require_roles(*CLINIC_ROLES))):
+    """Candidate patients for the Portal Access approval dialog: the same merged
+    search as the Patients module (verified portal accounts, scoped to the caller's
+    practice, PLUS active directory records incl. patients with no portal account).
+    An all-digit query is treated as an exact VISITA PIN first. Search only — no link."""
+    qn = (q or "").strip()
+    if len(qn) < 2:
+        return []
+    out = []
+    if qn.isdigit():
+        out = await internal_patient_lookup_pin(qn, user)
+    seen = {r["id"] for r in out}
+    for r in await _search_patients_merged(qn, limit=40, include_pin=True, practice_id=user.get("practice_id")):
+        if r["id"] not in seen:
+            out.append(r); seen.add(r["id"])
+    return out[:40]
+
+
 @api.get("/internal/portal-access-requests/{req_id}/compare")
 async def compare_portal_access_request(req_id: str, patient_id: str,
                                          user: dict = Depends(require_roles(*CLINIC_ROLES))):
     """Side-by-side match helper for the Portal Access review: caregiver-submitted
-    patient info vs a candidate canonical patient. Does NOT link or approve."""
+    patient info vs a candidate canonical patient (portal account OR directory
+    record). Does NOT link or approve."""
     req = await db[ACCESS_REQ_COLL].find_one({"id": req_id})
     if not req:
         raise HTTPException(status_code=404, detail="Request not found.")
     assert_practice(req, user)
     p = await db.patients.find_one({"id": patient_id})
-    if not p:
-        raise HTTPException(status_code=404, detail="Patient not found.")
-    assert_practice(p, user)
+    if p:
+        assert_practice(p, user)
+        can = {"name": f"{p.get('first_name', '')} {p.get('last_name', '')}".strip(),
+               "dob": p.get("date_of_birth"), "hcn": p.get("health_card_number"),
+               "version": p.get("health_card_version"),
+               "issue": p.get("health_card_issue_date"), "expiry": p.get("health_card_expiry_date")}
+    else:
+        d = await db.patient_directory.find_one({"id": patient_id})
+        if not d:
+            raise HTTPException(status_code=404, detail="Patient not found.")
+        can = {"name": f"{d.get('first_name', '')} {d.get('last_name', '')}".strip(),
+               "dob": d.get("date_of_birth"), "hcn": d.get("health_card_number"),
+               "version": d.get("health_card_version_code") or d.get("health_card_version"),
+               "issue": d.get("health_card_issue_date"), "expiry": d.get("health_card_expiry_date")}
     return _match_fields_payload(
         {"name": f"{req.get('patient_first_name', '')} {req.get('patient_last_name', '')}".strip(),
          "dob": req.get("patient_date_of_birth"), "hcn": req.get("patient_health_card_number"),
          "version": req.get("patient_health_card_version"),
          "issue": req.get("patient_health_card_issue_date"), "expiry": req.get("patient_health_card_expiry_date")},
-        {"name": f"{p.get('first_name', '')} {p.get('last_name', '')}".strip(),
-         "dob": p.get("date_of_birth"), "hcn": p.get("health_card_number"),
-         "version": p.get("health_card_version"),
-         "issue": p.get("health_card_issue_date"), "expiry": p.get("health_card_expiry_date")})
+        can)
 
 
 @api.get("/internal/verifications/{patient_id}/compare")
@@ -5410,6 +5440,8 @@ async def approve_portal_access_request(req_id: str, body: ApproveAccessRequestB
 
     patient = await db.patients.find_one({"id": body.patient_id})
     if not patient:
+        if await db.patient_directory.find_one({"id": body.patient_id}, {"_id": 1}):
+            raise HTTPException(status_code=409, detail="This patient has no Patient Portal record yet. Caregiver access can only be granted to a patient with a portal record.")
         raise HTTPException(status_code=404, detail="Select a valid patient to link.")
     assert_practice(patient, user)
 

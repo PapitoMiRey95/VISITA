@@ -100,22 +100,49 @@ function RequestCard({ r, onApprove, onDecline, reviewed }) {
     );
 }
 
+const MONTHS = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
+function fmtDob(d) {
+    const m = /^(\d{4})-(\d{2})-(\d{2})/.exec(d || "");
+    return m ? `${m[1]} ${MONTHS[+m[2] - 1]} - ${m[3]}` : (d || "—");
+}
+
 function ApproveDialog({ req, onClose, onDone }) {
-    const [q, setQ] = useState((req.patient_last_name || req.patient_first_name || "").trim());
+    const fullName = `${req.patient_first_name || ""} ${req.patient_last_name || ""}`.trim();
+    const [q, setQ] = useState(fullName || (req.patient_last_name || "").trim());
     const [results, setResults] = useState([]);
+    const [searching, setSearching] = useState(false);
     const [picked, setPicked] = useState(null);
     const [cmp, setCmp] = useState(null);
     const [cmpLoading, setCmpLoading] = useState(false);
     const [busy, setBusy] = useState(false);
     const [temp, setTemp] = useState(null);
 
-    const search = async () => {
-        try {
-            const { data } = await api.get("/internal/patients", { params: { q } });
-            setResults(data);
-        } catch (e) { toast.error(formatErr(e)); }
+    const runSearch = async (term) => {
+        const { data } = await api.get("/internal/portal-access-requests/candidates", { params: { q: term } });
+        return data;
     };
-    useEffect(() => { search(); /* eslint-disable-next-line */ }, []);
+    const search = async () => {
+        setSearching(true); setPicked(null);
+        try { setResults(await runSearch(q)); }
+        catch (e) { toast.error(formatErr(e)); }
+        finally { setSearching(false); }
+    };
+    useEffect(() => {
+        // Prefill with the submitted name; fall back to last name if nothing matches.
+        (async () => {
+            setSearching(true);
+            try {
+                let data = fullName ? await runSearch(fullName) : [];
+                if (data.length === 0 && req.patient_last_name) {
+                    setQ(req.patient_last_name.trim());
+                    data = await runSearch(req.patient_last_name.trim());
+                }
+                setResults(data);
+            } catch (e) { toast.error(formatErr(e)); }
+            finally { setSearching(false); }
+        })();
+        // eslint-disable-next-line
+    }, []);
 
     useEffect(() => {
         if (!picked) { setCmp(null); return; }
@@ -159,28 +186,41 @@ function ApproveDialog({ req, onClose, onDone }) {
                         <div className="flex gap-2">
                             <div className="relative flex-1">
                                 <Search className="w-4 h-4 text-slate-400 absolute left-2 top-3" />
-                                <Input data-testid="approve-patient-search" value={q} onChange={(e) => setQ(e.target.value)} onKeyDown={(e) => e.key === "Enter" && search()} className="pl-8" />
+                                <Input data-testid="approve-patient-search" value={q} onChange={(e) => setQ(e.target.value)} onKeyDown={(e) => e.key === "Enter" && search()} className="pl-8" placeholder="Name, last name first name, or VISITA PIN" />
                             </div>
-                            <Button data-testid="approve-patient-search-btn" onClick={search} variant="outline">Search</Button>
+                            <Button data-testid="approve-patient-search-btn" onClick={search} variant="outline" disabled={searching}>Search</Button>
                         </div>
-                        <div className="mt-3 space-y-2 max-h-40 overflow-auto">
-                            {results.map((p) => (
-                                <button key={p.id} data-testid={`approve-pick-${p.id}`} onClick={() => setPicked(p)}
-                                    className={`w-full text-left rounded-xl border p-3 transition ${picked?.id === p.id ? "border-portal-blue bg-portal-blue/5" : "border-slate-200 hover:border-slate-300"}`}>
-                                    <div className="font-bold text-slate-900">{p.last_name}, {p.first_name}</div>
-                                    <div className="text-xs text-slate-500">DOB {p.date_of_birth} {p.visita_patient_id ? `· ${p.visita_patient_id}` : ""}</div>
-                                </button>
-                            ))}
-                            {results.length === 0 && <p className="text-sm text-slate-400">No matches.</p>}
+                        <div className="mt-3 space-y-2 max-h-48 overflow-auto" data-testid="approve-results">
+                            {results.map((p) => {
+                                const noPortal = !p.patient_id;
+                                return (
+                                    <button key={p.id} data-testid={`approve-pick-${p.id}`} onClick={() => setPicked(p)}
+                                        className={`w-full text-left rounded-xl border p-3 transition ${picked?.id === p.id ? "border-portal-blue bg-portal-blue/5" : "border-slate-200 hover:border-slate-300"}`}>
+                                        <div className="flex items-center justify-between gap-2">
+                                            <div className="font-bold text-slate-900">{(p.last_name || "").toUpperCase()}, {p.first_name}</div>
+                                            {noPortal && <span className="text-[10px] font-bold uppercase tracking-wide px-1.5 py-0.5 rounded bg-slate-100 text-slate-500 flex-shrink-0" data-testid={`no-portal-${p.id}`}>No portal account</span>}
+                                        </div>
+                                        <div className="text-xs text-slate-500">DOB: {fmtDob(p.date_of_birth)}</div>
+                                        <div className="text-xs text-slate-500">PIN: {p.visita_patient_id || "—"}</div>
+                                    </button>
+                                );
+                            })}
+                            {searching && <p className="text-sm text-slate-400">Searching…</p>}
+                            {!searching && results.length === 0 && <p className="text-sm text-slate-400" data-testid="approve-no-matches">No matches.</p>}
                         </div>
 
                         {picked && (
                             <MatchComparison cmp={cmp} loading={cmpLoading} />
                         )}
+                        {picked && !picked.patient_id && (
+                            <p className="mt-2 text-xs text-amber-700 bg-amber-50 border border-amber-200 rounded-lg px-3 py-2" data-testid="no-portal-hint">
+                                This patient has no Patient Portal record yet. Caregiver access can only be granted once the patient has a portal record.
+                            </p>
+                        )}
 
                         <div className="flex justify-end gap-2 mt-5">
                             <Button variant="outline" onClick={onClose}>Cancel</Button>
-                            <Button data-testid="approve-confirm" disabled={!picked || busy} onClick={approve} className="bg-emerald-600 hover:bg-emerald-700 text-white">
+                            <Button data-testid="approve-confirm" disabled={!picked || !picked.patient_id || busy} onClick={approve} className="bg-emerald-600 hover:bg-emerald-700 text-white">
                                 {busy ? <Loader2 className="w-4 h-4 animate-spin" /> : "Approve & grant access"}
                             </Button>
                         </div>

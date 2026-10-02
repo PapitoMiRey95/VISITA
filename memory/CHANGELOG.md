@@ -288,3 +288,8 @@ no-appt state = maria.lopez@demo.com. All 15 user verification points pass. NOT 
 ## HOTFIX PROD — Portal Access blank page (2026-10-02)
 - Root cause: commit 9df6527 (MatchComparison extraction) removed `Check, X` from the lucide-react import in PortalAccessRequests.jsx while RequestCard still rendered them on PENDING cards → ReferenceError "Check is not defined" → blank page whenever ≥1 PENDING request exists (Prod had 1).
 - Fix: restored import; added "—"/Unknown fallbacks for optional request fields and null-safe match/submitted/canonical in MatchComparison. Frontend only. Deployed (bundle main.d0097762.js) and LIVE verified.
+
+## PREVIEW ONLY — Portal Access approval patient search fix (2026-10-02, NOT deployed)
+- Root cause: ApproveDialog used GET /internal/patients (portal `patients` collection only, single-field regex). Directory-only patients (e.g. Carlos Jorge CHAZI, PIN 152, ACTIVE, no portal account) never appeared; full-name queries also failed.
+- Fix: new GET /api/internal/portal-access-requests/candidates?q= (merged search = practice-scoped verified portal accounts + active directory records; exact PIN first for digit queries; first/last/full/last+first via token clause). Compare endpoint now accepts directory candidates. Approve on a directory-only candidate returns 409 with clear message; UI disables Approve + shows hint. Dialog prefills full submitted name (falls back to last name), shows "LAST, First / DOB: YYYY Mon - DD / PIN: n" + "No portal account" badge.
+- OPEN DECISION: directory-only patients (Carlos Chazi) cannot be approved until a portal record exists — needs product decision (create portal record on approve vs. separate flow).

@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { toast } from "sonner";
-import { ShieldCheck, Search, Loader2, Copy } from "lucide-react";
+import { ShieldCheck, Search, Check, X, Loader2, Copy } from "lucide-react";
 import { api, formatErr } from "../lib/api";
 import { Button } from "../components/ui/button";
 import { Input } from "../components/ui/input";
@@ -78,13 +78,13 @@ function RequestCard({ r, onApprove, onDecline, reviewed }) {
         <div className="bg-white rounded-2xl border border-slate-200 p-4 shadow-sm" data-testid={`access-request-${r.id}`}>
             <div className="flex items-start justify-between gap-3">
                 <div className="min-w-0">
-                    <div className="font-bold text-slate-900">{r.requester_name} <span className="text-slate-400 font-normal">· {r.ref_number}</span></div>
-                    <div className="text-sm text-slate-600">Wants to help: <span className="font-semibold">{r.patient_first_name} {r.patient_last_name}</span> (DOB {r.patient_date_of_birth})</div>
-                    <div className="text-sm text-slate-500 mt-0.5">{r.relationship} · {r.authorization_basis}</div>
-                    <div className="text-xs text-slate-400 mt-0.5">{r.requester_email} · {r.requester_phone}</div>
+                    <div className="font-bold text-slate-900">{r.requester_name || "Unknown"} <span className="text-slate-400 font-normal">· {r.ref_number || "—"}</span></div>
+                    <div className="text-sm text-slate-600">Wants to help: <span className="font-semibold">{r.patient_first_name} {r.patient_last_name}</span> (DOB {r.patient_date_of_birth || "—"})</div>
+                    <div className="text-sm text-slate-500 mt-0.5">{r.relationship || "—"} · {r.authorization_basis || "—"}</div>
+                    <div className="text-xs text-slate-400 mt-0.5">{r.requester_email || "—"} · {r.requester_phone || "—"}</div>
                     {r.note && <div className="text-xs text-slate-500 mt-1 italic">“{r.note}”</div>}
                 </div>
-                <span className={`px-2 py-0.5 rounded-full text-xs font-bold flex-shrink-0 ${STATUS_STYLE[r.status]}`}>{r.status}</span>
+                <span className={`px-2 py-0.5 rounded-full text-xs font-bold flex-shrink-0 ${STATUS_STYLE[r.status] || "bg-slate-100 text-slate-500"}`}>{r.status || "UNKNOWN"}</span>
             </div>
             {!reviewed && (
                 <div className="flex gap-2 mt-3">

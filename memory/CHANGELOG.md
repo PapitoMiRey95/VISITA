@@ -284,3 +284,7 @@ no-appt state = maria.lopez@demo.com. All 15 user verification points pass. NOT 
 ## PRODUCTION DEPLOY — Landing CTA Visual Refinement (2026-10-02)
 - Deployed to https://visitaemr.com: Sign in (Space Grotesk, uppercase, 0.18em tracking, cyan glow, hover arrow), Create Patient Portal + Apply for care (black 900 text on cyan-700). Also included earlier Preview-verified Verifications auto-expand single candidate.
 - LIVE verified: computed styles correct, hover arrow works, Apply->/register?new=1, Portal->/register, Sign in->/login role panel; desktop/mobile OK, no regressions.
+
+## HOTFIX PROD — Portal Access blank page (2026-10-02)
+- Root cause: commit 9df6527 (MatchComparison extraction) removed `Check, X` from the lucide-react import in PortalAccessRequests.jsx while RequestCard still rendered them on PENDING cards → ReferenceError "Check is not defined" → blank page whenever ≥1 PENDING request exists (Prod had 1).
+- Fix: restored import; added "—"/Unknown fallbacks for optional request fields and null-safe match/submitted/canonical in MatchComparison. Frontend only. Deployed (bundle main.d0097762.js) and LIVE verified.

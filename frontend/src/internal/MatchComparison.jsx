@@ -13,7 +13,8 @@ export const CMP_ROWS = [
 export default function MatchComparison({ cmp, loading }) {
     if (loading && !cmp) return <div className="mt-3 text-sm text-slate-400" data-testid="match-comparison-loading">Comparing…</div>;
     if (!cmp) return null;
-    const matches = CMP_ROWS.filter((r) => cmp.match[r.key]).length;
+    const match = cmp.match || {}, submitted = cmp.submitted || {}, canonical = cmp.canonical || {};
+    const matches = CMP_ROWS.filter((r) => match[r.key]).length;
     return (
         <div className="mt-3 border border-slate-200 rounded-xl overflow-hidden" data-testid="match-comparison">
             <div className="flex items-center justify-between px-3 py-2 bg-slate-50 border-b border-slate-200">
@@ -25,16 +26,16 @@ export default function MatchComparison({ cmp, loading }) {
                 <div className="px-3 py-1.5 font-semibold text-slate-500 bg-slate-50/50 border-l border-slate-100">Submitted</div>
                 <div className="px-3 py-1.5 font-semibold text-slate-500 bg-slate-50/50 border-l border-slate-100">Canonical</div>
                 {CMP_ROWS.map((r) => {
-                    const ok = cmp.match[r.key];
+                    const ok = match[r.key];
                     const f = r.field || r.key;
                     return (
                         <div key={r.key} className="contents" data-testid={`cmp-row-${r.key}`}>
                             <div className="px-3 py-1.5 text-slate-500 border-t border-slate-100">{r.label}</div>
                             <div className={`px-3 py-1.5 border-t border-l border-slate-100 ${ok ? "bg-emerald-50 text-emerald-800" : "bg-rose-50 text-rose-800"}`}>
-                                {cmp.submitted[f] || "—"}
+                                {submitted[f] || "—"}
                             </div>
                             <div className={`px-3 py-1.5 border-t border-l border-slate-100 flex items-center justify-between gap-1 ${ok ? "bg-emerald-50 text-emerald-800" : "bg-rose-50 text-rose-800"}`}>
-                                <span>{cmp.canonical[f] || "—"}</span>
+                                <span>{canonical[f] || "—"}</span>
                                 {ok ? <Check className="w-3.5 h-3.5 text-emerald-600 flex-shrink-0" /> : <X className="w-3.5 h-3.5 text-rose-500 flex-shrink-0" />}
                             </div>
                         </div>

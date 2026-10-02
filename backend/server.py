@@ -3387,6 +3387,7 @@ async def create_pharmacy_rx(body: PharmacyRxBody, user: dict = Depends(require_
     doc = {
         "id": str(uuid.uuid4()), "ref_number": ref,
         "source": "pharmacy",
+        "practice_id": user.get("practice_id"),
         "patient_id": rx_patient_id,
         "directory_id": rx_directory_id, "visita_patient_id": rx_vid,
         "patient_name": patient_name,
@@ -6113,6 +6114,25 @@ async def pharmacy_patient(directory_id: str, user: dict = Depends(require_roles
     return _pharmacy_patient_identity(d)
 
 
+async def _practice_for_directory(d: dict) -> Optional[str]:
+    """Resolve the clinic/practice a directory patient belongs to, so a
+    pharmacy-origin Rx request lands in the right practice's shared queue.
+    Pharmacies are global (no practice), so the practice comes from the patient."""
+    if d.get("practice_id"):
+        return d["practice_id"]
+    if d.get("linked_patient_id"):
+        p = await db.patients.find_one({"id": d["linked_patient_id"]}, {"_id": 0, "practice_id": 1})
+        if p and p.get("practice_id"):
+            return p["practice_id"]
+    for r in await rel_mod.relationships_for_directory(db, d["id"]):
+        if r.get("status") == rel_mod.ACTIVE and r.get("practice_id"):
+            return r["practice_id"]
+    if await db.practices.count_documents({}) == 1:
+        one = await db.practices.find_one({}, {"_id": 0, "id": 1})
+        return one["id"] if one else None
+    return None
+
+
 @api.post("/pharmacy/rx")
 async def pharmacy_create_rx(
     directory_id: str = Form(...),
@@ -6170,6 +6190,7 @@ async def pharmacy_create_rx(
         "id": str(uuid.uuid4()), "ref_number": ref,
         "source": "pharmacy",
         "provenance": "PHARMACY_REQUEST",
+        "practice_id": await _practice_for_directory(d),
         "patient_id": d.get("linked_patient_id") or d["id"],
         "directory_id": d["id"], "visita_patient_id": d.get("visita_patient_id"),
         "patient_name": patient_name,

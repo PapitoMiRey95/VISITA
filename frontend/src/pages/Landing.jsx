@@ -53,20 +53,22 @@ export default function Landing() {
                         <div className="w-full max-w-md">
                             <div className="space-y-4 p-0 sm:rounded-2xl sm:border sm:border-white/10 sm:bg-[#0b1524]/80 sm:backdrop-blur-xl sm:p-5 sm:shadow-[0_20px_60px_-15px_rgba(0,0,0,0.85)]">
                                 <Button data-testid="landing-signin" onClick={() => setMode("roles")}
-                                    className="w-full h-12 bg-cyan-500 hover:bg-cyan-400 text-[#04121f] font-black text-base tracking-wide rounded-xl shadow-[0_0_24px_-2px_rgba(34,211,238,0.75)] hover:shadow-[0_0_32px_0_rgba(34,211,238,0.9)] transition-all">
-                                    <LogIn className="w-5 h-5 mr-2" /> {t("auth:landing2.signIn")}
+                                    style={{ fontFamily: "'Space Grotesk', sans-serif" }}
+                                    className="group w-full h-12 bg-cyan-500 hover:bg-cyan-400 text-[#04121f] font-bold text-base uppercase tracking-[0.18em] rounded-xl shadow-[0_0_24px_-2px_rgba(34,211,238,0.75)] hover:shadow-[0_0_34px_0_rgba(34,211,238,0.95)] transition-all">
+                                    <LogIn className="w-5 h-5 mr-2.5 transition-transform group-hover:-translate-x-0.5" /> {t("auth:landing2.signIn")}
+                                    <ArrowRight className="w-5 h-5 ml-2 opacity-0 -translate-x-2 transition-all group-hover:opacity-100 group-hover:translate-x-0" />
                                 </Button>
                                 <div className="flex items-center justify-between gap-3 text-sm">
                                     <span className="text-white font-medium [text-shadow:0_1px_4px_rgba(0,0,0,0.9)] sm:[text-shadow:none] sm:text-slate-300 sm:font-normal">{t("auth:landing2.createPortalPrompt")}</span>
                                     <button data-testid="landing-create-portal" onClick={() => nav("/register")}
-                                        className="font-black text-white bg-cyan-700 hover:bg-cyan-600 rounded-full px-3.5 py-1.5 inline-flex items-center gap-1 shadow-[0_2px_10px_-2px_rgba(14,116,144,0.6)] transition-colors">
+                                        className="font-black text-black bg-cyan-700 hover:bg-cyan-600 rounded-full px-3.5 py-1.5 inline-flex items-center gap-1 shadow-[0_2px_10px_-2px_rgba(14,116,144,0.6)] transition-colors">
                                         {t("auth:landing2.createPortal")} <ArrowRight className="w-4 h-4" />
                                     </button>
                                 </div>
                                 <div className="flex items-center justify-between gap-3 text-sm border-t border-white/10 pt-4">
                                     <span className="text-white font-medium [text-shadow:0_1px_4px_rgba(0,0,0,0.9)] sm:[text-shadow:none] sm:text-slate-400 sm:font-normal">{t("auth:landing2.applyPrompt")}</span>
                                     <button data-testid="landing-apply-care" onClick={() => nav("/register?new=1")}
-                                        className="font-black text-white bg-cyan-700 hover:bg-cyan-600 rounded-full px-3.5 py-1.5 inline-flex items-center gap-1 shadow-[0_2px_10px_-2px_rgba(14,116,144,0.6)] transition-colors">
+                                        className="font-black text-black bg-cyan-700 hover:bg-cyan-600 rounded-full px-3.5 py-1.5 inline-flex items-center gap-1 shadow-[0_2px_10px_-2px_rgba(14,116,144,0.6)] transition-colors">
                                         {t("auth:landing2.applyForCare")} <ArrowRight className="w-4 h-4" />
                                     </button>
                                 </div>

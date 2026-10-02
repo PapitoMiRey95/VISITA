@@ -577,25 +577,41 @@ const CG_BASES = [
 
 function CaregiverRequestForm({ practice, t, onBack, onDone }) {
     const [f, setF] = useState({
-        patient_first_name: "", patient_last_name: "", patient_date_of_birth: "", patient_health_card_number: "",
+        patient_first_name: "", patient_last_name: "", patient_date_of_birth: "",
+        patient_health_card_number: "", patient_health_card_version: "",
+        patient_health_card_issue_date: "", patient_health_card_expiry_date: "",
         first_name: "", last_name: "", email: "", phone: "",
         relationship: "", authorization_basis: "", note: "",
+        password: "", confirm_password: "",
     });
     const [busy, setBusy] = useState(false);
     const set = (k) => (e) => setF({ ...f, [k]: e.target.value });
+    const setHc = (k) => (v) => setF((prev) => ({ ...prev, [k]: v }));
+    const pwValid = f.password.length >= 6 && f.password === f.confirm_password;
 
     const submit = async (e) => {
         e.preventDefault();
+        const num = (f.patient_health_card_number || "").replace(/\D/g, "");
+        if (num.length < 10) { toast.error(t("auth:register.caregiver.errHcNumber")); return; }
+        if (!(f.patient_health_card_version || "").trim()) { toast.error(t("auth:register.caregiver.errHcVersion")); return; }
+        if (!f.patient_health_card_issue_date) { toast.error(t("auth:register.errIssueDate")); return; }
+        if (!f.patient_health_card_expiry_date) { toast.error(t("auth:register.errExpiryDate")); return; }
         if (!f.relationship) { toast.error(t("auth:register.caregiver.errRelationship")); return; }
         if (!f.authorization_basis) { toast.error(t("auth:register.caregiver.errBasis")); return; }
+        if (f.password.length < 6) { toast.error(t("auth:register.errPwShort")); return; }
+        if (f.password !== f.confirm_password) { toast.error(t("auth:register.errPwMismatch")); return; }
         setBusy(true);
         try {
             await api.post("/portal-access-requests", {
                 practice_slug: practice?.slug, practice_id: practice?.id,
                 patient_first_name: f.patient_first_name, patient_last_name: f.patient_last_name,
                 patient_date_of_birth: f.patient_date_of_birth,
-                patient_health_card_number: f.patient_health_card_number || null,
+                patient_health_card_number: f.patient_health_card_number,
+                patient_health_card_version: f.patient_health_card_version || null,
+                patient_health_card_issue_date: f.patient_health_card_issue_date || null,
+                patient_health_card_expiry_date: f.patient_health_card_expiry_date || null,
                 first_name: f.first_name, last_name: f.last_name, email: f.email, phone: f.phone,
+                password: f.password,
                 relationship: f.relationship, authorization_basis: f.authorization_basis,
                 note: f.note || null,
             });
@@ -619,7 +635,20 @@ function CaregiverRequestForm({ practice, t, onBack, onDone }) {
                 <Field label={t("auth:register.firstLastName")} testid="cg-patient-last"><Input required value={f.patient_last_name} onChange={set("patient_last_name")} /></Field>
             </div>
             <Field label={t("auth:register.dob")} testid="cg-patient-dob"><DobPicker value={f.patient_date_of_birth} onChange={(v) => setF({ ...f, patient_date_of_birth: v })} testid="cg-patient-dob" /></Field>
-            <Field label={t("auth:register.caregiver.hcOptional")} testid="cg-patient-hc"><Input value={f.patient_health_card_number} onChange={set("patient_health_card_number")} placeholder={t("common:status.optional")} /></Field>
+            <div className="grid grid-cols-3 gap-3">
+                <div className="col-span-2">
+                    <Field label={t("auth:register.hcNumberLabel")} testid="cg-patient-hcn">
+                        <HealthCardNumberInput required value={f.patient_health_card_number} onChange={setHc("patient_health_card_number")} placeholder="1234 567 890" />
+                    </Field>
+                </div>
+                <Field label={t("auth:register.versionCode")} testid="cg-patient-hcv">
+                    <Input required value={f.patient_health_card_version} onChange={(e) => setF({ ...f, patient_health_card_version: e.target.value.toUpperCase() })} placeholder="XX" maxLength={2} />
+                </Field>
+            </div>
+            <div className="grid grid-cols-2 gap-3">
+                <Field label={t("auth:register.issueDate")} testid="cg-patient-hc-issue"><IssueDatePicker value={f.patient_health_card_issue_date} onChange={setHc("patient_health_card_issue_date")} testid="cg-patient-hc-issue" /></Field>
+                <Field label={t("auth:register.expiryDate")} testid="cg-patient-hc-expiry"><ExpiryPicker value={f.patient_health_card_expiry_date} onChange={setHc("patient_health_card_expiry_date")} dob={f.patient_date_of_birth} testid="cg-patient-hc-expiry" /></Field>
+            </div>
 
             <div className="text-sm font-semibold text-slate-700 pt-1">{t("auth:register.caregiver.yourSection")}</div>
             <div className="grid grid-cols-2 gap-3">
@@ -647,7 +676,24 @@ function CaregiverRequestForm({ practice, t, onBack, onDone }) {
             </Field>
             <Field label={t("auth:register.caregiver.noteOptional")} testid="cg-note"><Input value={f.note} onChange={set("note")} placeholder={t("common:status.optional")} /></Field>
 
-            <Button data-testid="cg-submit" type="submit" disabled={busy}
+            <div className="border-t border-slate-100 pt-3">
+                <p className="text-xs text-slate-500 mb-2">{t("auth:register.caregiver.passwordHelp")}</p>
+                <div>
+                    <Label className="text-sm font-semibold text-slate-700">{t("auth:register.password")}</Label>
+                    <PasswordInput testid="cg-password" value={f.password} onChange={(v) => setF({ ...f, password: v })} minLength={6} required />
+                </div>
+                <div className="mt-3">
+                    <Label className="text-sm font-semibold text-slate-700">{t("auth:register.confirmPassword")}</Label>
+                    <PasswordInput testid="cg-confirm-password" value={f.confirm_password} onChange={(v) => setF({ ...f, confirm_password: v })} minLength={6} required />
+                    {f.confirm_password.length > 0 && (
+                        f.password === f.confirm_password
+                            ? <p className="text-xs text-emerald-600 font-semibold mt-1" data-testid="cg-pw-match">{t("auth:register.pwMatch")}</p>
+                            : <p className="text-xs text-rose-600 font-semibold mt-1" data-testid="cg-pw-mismatch">{t("auth:register.pwMismatch")}</p>
+                    )}
+                </div>
+            </div>
+
+            <Button data-testid="cg-submit" type="submit" disabled={busy || !pwValid}
                 className="w-full bg-portal-blue hover:bg-portal-blueDark text-white text-base h-12 rounded-xl">
                 {busy ? <Loader2 className="w-4 h-4 animate-spin" /> : t("auth:register.caregiver.submitBtn")}
             </Button>

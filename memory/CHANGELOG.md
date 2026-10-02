@@ -1,5 +1,14 @@
 # VIen EMR — Changelog
 
+## 2026-10-02 — Caregiver signup form refinement (PREVIEW ONLY, NOT DEPLOYED)
+Self-verified E2E (curl + DB + UI). Approval architecture unchanged (PENDING portal_access_requests → staff approve → patient_portal_delegates).
+- Person being helped: OHIP now REQUIRED, reusing the normal patient-registration components/validation (HealthCardNumberInput + Version Code + IssueDatePicker + ExpiryPicker). Backend PortalAccessRequestBody now requires patient_health_card_number and carries version/issue/expiry; stored on the request for staff matching.
+- Heading "Your information" → "Caregiver Information" (EN/ES/FR).
+- Caregiver now sets THEIR OWN password at signup (Password + Confirm, eye show/hide, live match feedback, Submit disabled until valid+matching, min 6). Backend hashes it (bcrypt via authlib) and stores ONLY the hash on the pending request (never plaintext; excluded from the staff list projection); on approval the caregiver user is created with that hash (active, must_change_password=false, email_verified=false) and the stored hash is $unset. Decline also clears it. If the email is an existing VIen user, no password is stored (reused). Verified: caregiver logs in with their chosen password; no temp password issued.
+- Submit button label → "Submit Access Request".
+- Integration_expert consulted before auth changes (bcrypt hash-at-submit, apply-at-approval pattern confirmed).
+
+
 ## 2026-10-02 — Centralized Exams & Results module (PREVIEW ONLY, NOT DEPLOYED)
 Tested testing_agent iteration_71: 100% pass (all 33 verification points), no bugs, security confirmed, test data cleaned.
 REMOVED/DEPRECATED:

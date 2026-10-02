@@ -5201,12 +5201,16 @@ class PortalAccessRequestBody(BaseModel):
     patient_first_name: str
     patient_last_name: str
     patient_date_of_birth: str
-    patient_health_card_number: Optional[str] = None
-    # Requester (the caregiver — uses their OWN account)
+    patient_health_card_number: str
+    patient_health_card_version: Optional[str] = None
+    patient_health_card_issue_date: Optional[str] = None
+    patient_health_card_expiry_date: Optional[str] = None
+    # Requester (the caregiver — uses their OWN account + chosen password)
     first_name: str
     last_name: str
     email: str
     phone: str
+    password: str
     relationship: str
     authorization_basis: str
     note: Optional[str] = None
@@ -5237,6 +5241,10 @@ async def create_portal_access_request(body: PortalAccessRequestBody):
     email = (body.email or "").strip().lower()
     if "@" not in email:
         raise HTTPException(status_code=400, detail="A valid email is required.")
+    if not (body.patient_health_card_number or "").strip():
+        raise HTTPException(status_code=400, detail="The health card (OHIP) number of the person you are helping is required.")
+    if len(body.password or "") < 6:
+        raise HTTPException(status_code=400, detail="Your password must be at least 6 characters.")
     if body.relationship not in delegates_mod.RELATIONSHIPS:
         raise HTTPException(status_code=400, detail="Please select a relationship.")
     if body.authorization_basis not in delegates_mod.CONSENT_TYPES:
@@ -5255,10 +5263,15 @@ async def create_portal_access_request(body: PortalAccessRequestBody):
         "patient_last_name": body.patient_last_name.strip(),
         "patient_date_of_birth": body.patient_date_of_birth,
         "patient_health_card_number": (body.patient_health_card_number or "").strip() or None,
+        "patient_health_card_version": (body.patient_health_card_version or "").strip().upper() or None,
+        "patient_health_card_issue_date": body.patient_health_card_issue_date or None,
+        "patient_health_card_expiry_date": body.patient_health_card_expiry_date or None,
         "requester_user_id": str(existing_user["_id"]) if existing_user else None,
         "requester_name": f"{body.first_name.strip()} {body.last_name.strip()}".strip(),
         "requester_first_name": body.first_name.strip(), "requester_last_name": body.last_name.strip(),
         "requester_email": email, "requester_phone": identity_mod.normalize_phone(body.phone),
+        # Caregiver's OWN chosen password — stored hashed only, cleared once the account is created.
+        "requester_password_hash": None if existing_user else authlib.hash_password(body.password),
         "relationship": body.relationship,
         "authorization_basis": body.authorization_basis,
         "note": (body.note or "").strip() or None,
@@ -5284,7 +5297,7 @@ async def list_portal_access_requests(status: Optional[str] = None,
     q = {**pscope(user)}
     if status:
         q["status"] = status.upper()
-    reqs = await db[ACCESS_REQ_COLL].find(q, {"_id": 0}).sort("created_at", -1).to_list(200)
+    reqs = await db[ACCESS_REQ_COLL].find(q, {"_id": 0, "requester_password_hash": 0}).sort("created_at", -1).to_list(200)
     return reqs
 
 
@@ -5322,10 +5335,22 @@ async def approve_portal_access_request(req_id: str, body: ApproveAccessRequestB
     if not du:
         du = await db.users.find_one({"email": req["requester_email"]})
     if not du:
-        created = await create_caregiver(
-            CaregiverCreateBody(name=req["requester_name"], email=req["requester_email"]), user)
-        temp_pw = created.get("temp_password")
-        du = await db.users.find_one({"_id": ObjectId(created["user_id"])})
+        if req.get("requester_password_hash"):
+            # Caregiver chose their OWN password at signup — create the account with it.
+            uid = (await db.users.insert_one({
+                "email": req["requester_email"], "password_hash": req["requester_password_hash"],
+                "name": req["requester_name"], "role": "caregiver",
+                "active": True, "must_change_password": False, "email_verified": False,
+                "patient_id": None, "created_at": now_iso(), "updated_at": now_iso(),
+            })).inserted_id
+            await audit("create_caregiver_account", "user", str(uid), user,
+                        meta={"email": req["requester_email"], "self_set_password": True})
+            du = await db.users.find_one({"_id": uid})
+        else:
+            created = await create_caregiver(
+                CaregiverCreateBody(name=req["requester_name"], email=req["requester_email"]), user)
+            temp_pw = created.get("temp_password")
+            du = await db.users.find_one({"_id": ObjectId(created["user_id"])})
     if not du:
         raise HTTPException(status_code=500, detail="Could not resolve the caregiver account.")
     delegate_user_id = str(du["_id"])
@@ -5361,7 +5386,8 @@ async def approve_portal_access_request(req_id: str, body: ApproveAccessRequestB
         "status": "APPROVED", "linked_patient_id": body.patient_id, "resulting_delegate_id": grant_id,
         "reviewed_by": user["id"], "reviewed_at": now, "review_note": (body.review_note or "").strip() or None,
         "updated_at": now,
-    }, "$push": {"history": {"status": "APPROVED", "at": now, "by": user.get("name")}}})
+    }, "$unset": {"requester_password_hash": ""},
+        "$push": {"history": {"status": "APPROVED", "at": now, "by": user.get("name")}}})
     await audit("portal_access_approved", "portal_access_request", req_id, user,
                 new_status="APPROVED", meta={"patient_id": body.patient_id, "grant_id": grant_id})
 
@@ -5385,7 +5411,8 @@ async def decline_portal_access_request(req_id: str, body: DeclineAccessRequestB
     await db[ACCESS_REQ_COLL].update_one({"id": req_id}, {"$set": {
         "status": "DECLINED", "reviewed_by": user["id"], "reviewed_at": now,
         "review_note": (body.review_note or "").strip() or None, "updated_at": now,
-    }, "$push": {"history": {"status": "DECLINED", "at": now, "by": user.get("name")}}})
+    }, "$unset": {"requester_password_hash": ""},
+        "$push": {"history": {"status": "DECLINED", "at": now, "by": user.get("name")}}})
     await audit("portal_access_declined", "portal_access_request", req_id, user, new_status="DECLINED")
     return {"ok": True}
 

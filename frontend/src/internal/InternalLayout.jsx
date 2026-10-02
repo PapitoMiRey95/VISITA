@@ -1,7 +1,7 @@
 import { Outlet, NavLink, useNavigate } from "react-router-dom";
 import { useState, useRef, useCallback } from "react";
 import {
-    ClipboardList, Pill, Calendar, Scan, Droplet, MessageSquare, ClipboardCheck,
+    ClipboardList, Pill, Calendar, MessageSquare, ClipboardCheck,
     Send, UserCheck, UserPlus, CalendarDays, Settings as SettingsIcon, LogOut, UserSearch, Menu, Building2, Stethoscope, Users, Receipt, AlertTriangle, Truck, Contact, QrCode, ShieldCheck, Microscope,
 } from "lucide-react";
 import { useAuth } from "../context/AuthContext";

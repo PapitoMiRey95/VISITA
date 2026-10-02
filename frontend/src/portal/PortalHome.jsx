@@ -2,7 +2,7 @@ import { useNavigate } from "react-router-dom";
 import { useState, useEffect } from "react";
 import { useTranslation } from "react-i18next";
 import { toast } from "sonner";
-import { Calendar, Pill, FileHeart, MessageSquare, ClipboardList, Scan, Droplet, ChevronRight, User, Users, CalendarClock, FlaskConical, FileText, BellRing } from "lucide-react";
+import { Calendar, Pill, FileHeart, MessageSquare, ClipboardList, ChevronRight, User, Users, CalendarClock, FlaskConical, FileText, BellRing } from "lucide-react";
 import { api, formatErr } from "../lib/api";
 import { EmergencyNotice } from "../components/EmergencyNotice";
 import { usePortal, PendingBanner, Card, StatusPill } from "./shared";

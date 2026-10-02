@@ -1,0 +1,26 @@
+{
+  "summary": "Full UI + API E2E across admin, physician PAGUAYO, and patient Maria for the new 'Exams & Results' consolidation module. All 13 feature requirements verified. Admin sidebar shows 'Exams & Results' only (no Imaging/Bloodwork); physician sidebar shows 'Results to Review'. /internal/imaging and /internal/bloodwork redirect to /internal/exams (200→exams page). All 5 tabs (requests, RECEIVED, READY_FOR_PHYSICIAN, REVIEWED, NEEDS_PATIENT_MATCH) and all 8 filter pills (All+7 categories) are present and functional. Requests tab aggregates existing imaging_requests (3) + bloodwork_requests (2) with correct auto-classification (Imaging filter → 3 DIAGNOSTIC_IMAGING rows; Laboratory filter → 2 LABORATORY rows). Add Result flow verified both ways: (a) no patient → NEEDS_PATIENT_MATCH tab, match via exam-match-btn + patient search → RECEIVED; (b) with patient + Save&Send → READY_FOR_PHYSICIAN. 'Send to Physician' button is correctly absent from NEEDS_PATIENT_MATCH rows and present in RECEIVED (moves item to READY_FOR_PHYSICIAN on click). Physician default tab = READY_FOR_PHYSICIAN; review-modal defaults verified (review-notify = ON, review-release = OFF). review-view-pdf opened PDF popup; closing it alone changed nothing. Sign & Complete (notify ON, release OFF) moved item to REVIEWED with exam-internal-badge (Lock icon) and no exam-released-badge, confirming notify-only review path. Patient Maria portal: /portal/imaging and /portal/bloodwork both redirect to /portal/appointments; /portal/documents shows the 'Reviewed results (not yet released)' section with a working request-access-{id} button that flips to 'Access requested' (and did NOT create any new imaging/bloodwork/exam request — verified in DB). Admin REVIEWED tab then showed exam-access-requested badge + exam-release-btn; clicking Release moved to exam-released-badge. Maria then saw the X-Ray document in Results & Reports with 'Reviewed by Dr. Pablo Aguayo', date, and working View+Download buttons. SECURITY: GET /api/portal/documents/{att_id}/download = 200 for Maria (owner) after release and 404 for Linda (cross-patient). Counters: admin.exams correctly counts NEEDS_PATIENT_MATCH+RECEIVED; physician.results_review counts READY_FOR_PHYSICIAN; physician.result_access counts REVIEWED+access_requested+not shared. No regression to rx/referrals/imaging/bloodwork/messages/appointments counters. CLEANUP COMPLETED: 2 test exam_results deleted, 2 attachments deleted, 1 result_access_request internal_message cleared; Maria has 0 exam docs, 3 seeded meds preserved, 3 existing imaging_requests + 2 bloodwork_requests preserved.",
+  "backend_issues": {"critical": [], "minor": []},
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [],
+    "design_issues": []
+  },
+  "test_report_links": [
+    "/app/backend/tests/test_results_release_phase_c.py (previous iteration)"
+  ],
+  "action_items": [],
+  "critical_code_review_comments": [
+    "Server-side download gate (shared_with_patient AND patient ownership) correctly enforced — Maria 200 / Linda 404 confirmed.",
+    "Patient request-access correctly updates a flag only; does NOT create any new imaging_request/bloodwork_request/exam_result — verified in DB after flow.",
+    "/internal/imaging and /internal/bloodwork redirects are client-side Navigate; old /api/internal/imaging and /api/internal/bloodwork backend endpoints still exist and still serve admin (good for backward compatibility of counters)."
+  ],
+  "updated_files": [],
+  "success_rate": {"backend": "100%", "frontend": "100%"},
+  "test_credentials": "Admin kevinrodriguez9528@gmail.com / VisitaAdmin2026!, Physician PAGUAYO / Newman2013_!, Patient maria.lopez@demo.com / Patient2026!, Patient linda.nguyen@demo.com / Patient2026! — all logged in cleanly via POST /api/auth/login.",
+  "seed_data_creation": "Created 2 exam_results (1 unmatched→matched to Maria→sent; 1 Save&Send for Maria X-Ray) + 2 attachments (test PDF) during flow; ALL deleted after testing. 1 result_access_request internal_message also cleared. Maria/Linda demo data unchanged (meds, imaging/bloodwork requests, docs count all back to pre-test state).",
+  "retest_needed": false,
+  "main_agent_can_self_test": true,
+  "context_for_next_testing_agent": "Add Result modal selectors: add-result-category uses category.value (e.g. LABORATORY, DIAGNOSTIC_IMAGING) from RESULT_TAXONOMY; subtype values are literal strings from taxonomy ('Bloodwork','X-Ray',...). Filter pill data-testid for All is 'exam-filter-all'. Default tabs: physician→READY_FOR_PHYSICIAN; staff/admin→requests. 'Send to Physician' button only renders in RECEIVED rows (not NEEDS). Patient 'Request access' button data-testid pattern: request-access-{exam_result_id}. After release, download attachment id uses 'att_<hex>' pattern via /api/portal/documents/{id}/download.",
+  "rca of the issue": "No bugs. All 13 features working end-to-end as spec'd. The exam-filter-'All' data-testid is 'exam-filter-all' (JSX uses `${f.value || \"all\"}`), not 'exam-filter-' — minor doc-level note."
+}

@@ -1,5 +1,24 @@
 # VIen EMR — Changelog
 
+## 2026-10-02 — Centralized Exams & Results module (PREVIEW ONLY, NOT DEPLOYED)
+Tested testing_agent iteration_71: 100% pass (all 33 verification points), no bugs, security confirmed, test data cleaned.
+REMOVED/DEPRECATED:
+- Patient-facing exam request pages: /portal/imaging & /portal/bloodwork now redirect to /portal/appointments; Home imaging/bloodwork tiles removed; Help/Messages imaging routing removed (patients request CARE, not tests).
+- Internal Imaging & Bloodwork sidebar silos removed; /internal/imaging & /internal/bloodwork redirect to /internal/exams. Old ImagingQueue/BloodworkQueue + PortalImaging/PortalBloodwork files remain unrouted (no destructive deletion). Old /api/internal/imaging & /bloodwork endpoints kept for back-compat.
+CENTRALIZED WORKFLOW (ONE module 'Exams & Results'):
+- Tabs: Requests, Results Received, Ready for Physician, Reviewed, Needs Patient Match. Filters: All/Laboratory/Imaging/Cardiac/Pulmonary-Sleep/Pathology-Cytology/Screening/Other.
+- Requests tab AGGREGATES existing imaging_requests + bloodwork_requests, auto-classified (X-Ray→Diagnostic Imaging/X-Ray; bloodwork→Laboratory/Bloodwork). No migration; history preserved.
+- Add Result (staff/admin): find patient → category/subtype → upload PDF → RECEIVED (or NEEDS_PATIENT_MATCH if no patient) → Match → Send to Physician → READY_FOR_PHYSICIAN.
+- Physician Review: View PDF (closing does nothing) + Sign & Complete with SEPARATE notify (default ON) + release (default OFF) flags → REVIEWED. Release-later + Keep-Internal on Reviewed tab.
+- Patient: reviewed-unreleased results show in Results & Reports as 'Reviewed results (not yet released)' with 'Request access to report' (flag only — never creates a new exam/imaging/bloodwork request). Released PDFs show with type/date/reviewed-by + View/Download.
+COLLECTIONS/ENDPOINTS:
+- NEW collection exam_results {status: RECEIVED→READY_FOR_PHYSICIAN→REVIEWED (+NEEDS_PATIENT_MATCH); patient_notified, shared_with_patient separate flags; reviewed_by/at, signed_at, access_requested}.
+- NEW endpoints under /api/internal/exams/* (requests, results CRUD, match, send-to-physician, pdf, review, release, keep-internal) + POST /api/portal/results/{id}/request-access.
+- REUSED: attachments/object storage (entity_type 'exam_result'), result taxonomy, secure patient download gate (shared+ownership), patient_updates, generic no-PHI notification.
+- counters: staff 'exams' (NEEDS_PATIENT_MATCH+RECEIVED); physician 'results_review' (READY_FOR_PHYSICIAN) + 'result_access'. Practice-scoped.
+COMPATIBILITY: no destructive migration; old data intact; old routes redirect; old endpoints retained.
+
+
 ## 2026-10-02 — Results & Reports (push-based release) redesign (PREVIEW ONLY, NOT DEPLOYED)
 Tested by testing_agent iteration_70: 5/5 backend + all UI scenarios PASS. No issues. Security gate confirmed (cross-patient 404). Test data cleaned up.
 - REMOVED old patient "Results / Document Request" UI (copy_result/copy_imaging/copy_other) from PortalMessages.jsx. Backend POST /api/portal/document-requests kept (unreferenced, legacy).

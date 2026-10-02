@@ -5,6 +5,7 @@ import { useTranslation } from "react-i18next";
 import { Loader2, KeyRound } from "lucide-react";
 import { useAuth } from "../context/AuthContext";
 import { api, formatErr } from "../lib/api";
+import { homePath } from "../components/RoleRoute";
 import { Button } from "../components/ui/button";
 import { Input } from "../components/ui/input";
 import { Label } from "../components/ui/label";
@@ -32,7 +33,7 @@ export default function ChangePassword() {
             await api.post("/auth/change-password", { current_password: cur, new_password: pw });
             await refreshMe();
             toast.success(t("portal:changePassword.success"));
-            nav(user.role === "patient" ? "/portal" : user.role === "pharmacy" ? "/pharmacy" : "/internal", { replace: true });
+            nav(homePath(user.role), { replace: true });
         } catch (err) {
             toast.error(formatErr(err));
         } finally {

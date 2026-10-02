@@ -20,8 +20,9 @@ export function RoleRoute({ roles, children }) {
     return children;
 }
 
-function homePath(role) {
+export function homePath(role) {
     if (role === "patient") return "/portal";
+    if (role === "caregiver") return "/portal/people";
     if (role === "pharmacy") return "/pharmacy";
     if (role === "partner") return "/partner";
     return "/internal";

@@ -22,10 +22,12 @@ export function formatLastFirst(lastName, firstName) {
 }
 
 // Format from a patient-like object; falls back to full_name when parts are missing.
+// Includes optional middle_name / second_last_name when present (supplemental
+// identity fields); legacy records without them are unaffected.
 export function formatPatientName(p) {
     if (!p) return "—";
-    const last = (p.last_name || "").trim().toUpperCase();
-    const first = titleCaseName(p.first_name || "");
+    const last = [p.last_name, p.second_last_name].map((s) => (s || "").trim()).filter(Boolean).join(" ").toUpperCase();
+    const first = titleCaseName([p.first_name, p.middle_name].map((s) => (s || "").trim()).filter(Boolean).join(" "));
     if (last && first) return `${last}, ${first}`;
     return last || first || p.full_name || "—";
 }

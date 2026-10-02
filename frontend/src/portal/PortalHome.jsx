@@ -1,9 +1,10 @@
-import { useNavigate } from "react-router-dom";
+import { useNavigate, Navigate } from "react-router-dom";
 import { useState, useEffect } from "react";
 import { useTranslation } from "react-i18next";
 import { toast } from "sonner";
 import { Calendar, Pill, FileHeart, MessageSquare, ClipboardList, ChevronRight, User, Users, CalendarClock, FlaskConical, FileText, BellRing } from "lucide-react";
 import { api, formatErr } from "../lib/api";
+import { useAuth } from "../context/AuthContext";
 import { EmergencyNotice } from "../components/EmergencyNotice";
 import { usePortal, PendingBanner, Card, StatusPill } from "./shared";
 import { formatDate } from "../lib/date";
@@ -175,8 +176,12 @@ function PeopleIManageCard() {
 
 export default function PortalHome() {
     const nav = useNavigate();
+    const { user } = useAuth();
     const { t, i18n } = useTranslation(["portal"]);
     const { overview, cfg } = usePortal();
+    // Caregiver-only accounts have no own-patient chart — send them straight to
+    // their managed-people list instead of an own-patient overview.
+    if (user?.role === "caregiver") return <Navigate to="/portal/people" replace />;
     const p = overview.data?.patient;
     // Standard safety notice: use the clinic-configured template only for English
     // sessions; Spanish sessions get the localized notice (EmergencyNotice default).

@@ -5,6 +5,7 @@ import { useTranslation } from "react-i18next";
 import { Loader2, ChevronLeft, Eye, EyeOff } from "lucide-react";
 import { useAuth } from "../context/AuthContext";
 import { formatErr } from "../lib/api";
+import { homePath } from "../components/RoleRoute";
 import { Button } from "../components/ui/button";
 import { Input } from "../components/ui/input";
 import { Label } from "../components/ui/label";
@@ -44,7 +45,7 @@ export default function SignIn() {
         }
         const first = u.name?.split(" ")[0] || "";
         toast.success(u.role === "patient" ? t("auth:signin.welcomeBack", { name: first }) : `Welcome back, ${first}`);
-        nav(u.role === "patient" ? "/portal" : u.role === "pharmacy" ? "/pharmacy" : u.role === "partner" ? "/partner" : "/internal", { replace: true });
+        nav(homePath(u.role), { replace: true });
     };
 
     // Handle the return trip from Google: exchange the one-time session_id (in the

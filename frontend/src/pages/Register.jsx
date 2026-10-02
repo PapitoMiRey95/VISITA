@@ -99,7 +99,6 @@ export default function Register() {
     });
     const setHcDate = (k) => (v) => setForm((f) => ({ ...f, [k]: v }));
     const setSurname = (k) => (e) => setForm({ ...form, [k]: normalizeSurnameInput(e.target.value) });
-    const joinName = (a, b) => [a, b].map((s) => (s || "").replace(/\s+/g, " ").trim()).filter(Boolean).join(" ");
     const optional = t("common:status.optional");
     const practiceCtx = practice ? { practice_id: practice.id, practice_slug: practice.slug } : {};
 
@@ -120,9 +119,13 @@ export default function Register() {
         if (form.password !== form.confirm_password) { toast.error(t("auth:register.errPwMismatch")); return; }
         setBusy(true);
         try {
-            const first_name = joinName(form.first_name, form.second_name);
-            const last_name = joinName(form.last_name, form.second_last_name);
-            const res = await register({ ...form, first_name, last_name, patient_type: type, preferred_language: i18n.language, ...practiceCtx });
+            const res = await register({
+                ...form,
+                first_name: form.first_name.trim(), last_name: form.last_name.trim(),
+                middle_name: form.second_name?.trim() || null,
+                second_last_name: form.second_last_name?.trim() || null,
+                patient_type: type, preferred_language: i18n.language, ...practiceCtx,
+            });
             if (res?.application_required) {
                 setForm((f) => ({ ...f, ...(res.prefill || {}) }));
                 setType("none");
@@ -145,10 +148,11 @@ export default function Register() {
         }
         setBusy(true);
         try {
-            const first = joinName(form.first_name, form.second_name);
-            const last = joinName(form.last_name, form.second_last_name);
             const { data } = await api.post("/applications/new-patient", {
-                first_name: first, last_name: last, date_of_birth: form.date_of_birth,
+                first_name: form.first_name.trim(), last_name: form.last_name.trim(),
+                middle_name: form.second_name?.trim() || null,
+                second_last_name: form.second_last_name?.trim() || null,
+                date_of_birth: form.date_of_birth,
                 phone: form.phone, email: form.email,
                 address: form.address || null, unit: form.unit || null, city: form.city || null,
                 province: form.province || null, postal_code: form.postal_code || null, country: form.country || null,

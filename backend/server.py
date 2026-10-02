@@ -250,6 +250,8 @@ class RegisterBody(BaseModel):
     patient_type: str
     first_name: str
     last_name: str
+    middle_name: Optional[str] = None
+    second_last_name: Optional[str] = None
     date_of_birth: str
     sex: Optional[str] = None
     phone: str
@@ -474,6 +476,8 @@ class ReturnRequestBody(BaseModel):
 class NewPatientRequestBody(BaseModel):
     first_name: str
     last_name: str
+    middle_name: Optional[str] = None
+    second_last_name: Optional[str] = None
     date_of_birth: str
     phone: str
     email: EmailStr
@@ -720,12 +724,37 @@ async def my_practice(user: dict = Depends(require_roles(*CLINIC_ROLES))):
     }
 
 
+def _combine_name(base: str, extra: Optional[str]) -> str:
+    """Combine a base name with an optional supplemental part (middle name or
+    second last name) into a single normalized string — used for directory
+    matching and display only, never for storage of the core field."""
+    parts = [(base or "").strip(), (extra or "").strip()]
+    return " ".join(p for p in parts if p)
+
+
+def _full_display_name(first: str, middle: Optional[str], last: Optional[str],
+                       second_last: Optional[str]) -> str:
+    given = _combine_name(first, middle)
+    family = _combine_name(last, second_last)
+    return " ".join(p for p in [given, family] if p).strip()
+
+
 @api.post("/auth/register")
 async def register(body: RegisterBody):
     validate_dob_age(body.date_of_birth)
     email = body.email.lower()
     if await db.users.find_one({"email": email}):
         raise HTTPException(status_code=400, detail="An account with this email already exists.")
+
+    # Supplemental name parts (optional) — stored separately, never appended into
+    # the core first_name/last_name. For directory matching ONLY we combine them
+    # so the existing match behavior stays identical to before.
+    middle = (body.middle_name or "").strip() or None
+    second_last = (body.second_last_name or "").strip() or None
+    base_first, base_last = body.first_name.strip(), body.last_name.strip()
+    match_first = _combine_name(base_first, middle)
+    match_last = _combine_name(base_last, second_last)
+    full_name = _full_display_name(base_first, middle, base_last, second_last)
 
     # OHIP patients: Health Card number (10 digits) + Version Code (2 letters) required & normalized.
     hc_num, hc_ver = body.health_card_number, body.health_card_version
@@ -742,9 +771,10 @@ async def register(body: RegisterBody):
         raise HTTPException(status_code=400, detail="Health Card dates must be valid dates.")
     validate_hc_dates(body.health_card_issue_date, body.health_card_expiry_date, body.date_of_birth)
 
-    # Directory-assisted matching for current-patient registrations
+    # Directory-assisted matching for current-patient registrations (uses the
+    # combined names to keep the existing match behavior unchanged).
     match = await directory_mod.match_registration(
-        db, body.first_name, body.last_name, body.date_of_birth, body.health_card_number)
+        db, match_first, match_last, body.date_of_birth, body.health_card_number)
 
     # FORMER_CLOSED is historical/reference data only. It no longer grants a
     # special re-establish route: treat the person as NOT currently active and
@@ -776,12 +806,13 @@ async def register(body: RegisterBody):
             if is_unclaimed:
                 res = await db.users.insert_one({
                     "email": email, "password_hash": authlib.hash_password(body.password),
-                    "name": f"{body.first_name} {body.last_name}".strip(), "role": "patient",
+                    "name": full_name, "role": "patient",
                     "patient_id": linked_pid, "active": True, "created_at": now_iso(),
                 })
                 uid = str(res.inserted_id)
                 await db.patients.update_one({"id": linked_pid}, {"$set": {
                     "email": email, "phone": identity_mod.normalize_phone(body.phone),
+                    "middle_name": middle, "second_last_name": second_last,
                     "health_card_number": hc_num, "health_card_version": hc_ver,
                     "health_card_issue_date": body.health_card_issue_date or linked.get("health_card_issue_date"),
                     "health_card_expiry_date": body.health_card_expiry_date or linked.get("health_card_expiry_date"),
@@ -809,7 +840,8 @@ async def register(body: RegisterBody):
     patient_id = str(uuid.uuid4())
     patient = {
         "id": patient_id, "visita_patient_id": None,
-        "first_name": body.first_name.strip(), "last_name": body.last_name.strip(),
+        "first_name": base_first, "last_name": base_last,
+        "middle_name": middle, "second_last_name": second_last,
         "date_of_birth": body.date_of_birth, "health_card_number": hc_num,
         "health_card_version": hc_ver,
         "sex": (body.sex or None),
@@ -829,7 +861,7 @@ async def register(body: RegisterBody):
     await db.patients.insert_one({**patient})
     res = await db.users.insert_one({
         "email": email, "password_hash": authlib.hash_password(body.password),
-        "name": f"{body.first_name} {body.last_name}".strip(), "role": "patient",
+        "name": full_name, "role": "patient",
         "patient_id": patient_id, "active": True, "created_at": now_iso(),
     })
     uid = str(res.inserted_id)
@@ -895,6 +927,8 @@ async def new_patient_request(body: NewPatientRequestBody):
     doc = {
         "id": str(uuid.uuid4()), "ref_number": ref, "application_type": "new_patient",
         "first_name": body.first_name.strip(), "last_name": body.last_name.strip(),
+        "middle_name": (body.middle_name or "").strip() or None,
+        "second_last_name": (body.second_last_name or "").strip() or None,
         "date_of_birth": body.date_of_birth, "health_card_number": None,
         "phone": body.phone, "email": body.email.lower(),
         "address": body.address, "unit": body.unit,
@@ -4627,6 +4661,7 @@ def _portal_patient_snapshot(p: dict) -> dict:
         "patient_id": p["id"],
         "directory_id": p.get("matched_directory_id"),
         "first_name": p.get("first_name"), "last_name": p.get("last_name"),
+        "middle_name": p.get("middle_name"), "second_last_name": p.get("second_last_name"),
         "full_name": f"{p.get('last_name','')}, {p.get('first_name','')}".strip(", "),
         "visita_patient_id": p.get("visita_patient_id"),  # None -> UI shows "Not assigned"
         "date_of_birth": p.get("date_of_birth"), "age": _age_from_dob(p.get("date_of_birth")),
@@ -4669,6 +4704,8 @@ def _portal_search_ors(qn: str, include_pin: bool = True):
     ors = [
         {"first_name": {"$regex": re.escape(qn), "$options": "i"}},
         {"last_name": {"$regex": re.escape(qn), "$options": "i"}},
+        {"middle_name": {"$regex": re.escape(qn), "$options": "i"}},
+        {"second_last_name": {"$regex": re.escape(qn), "$options": "i"}},
         {"email": {"$regex": re.escape(qn), "$options": "i"}},
         {"health_card_number": {"$regex": re.escape(qn), "$options": "i"}},
         {"date_of_birth": {"$regex": re.escape(qn)}},

@@ -609,3 +609,8 @@ STATUS: complete & verified in PREVIEW. AWAITING explicit user GO before Product
 ## STATUS 2026-10-01 (PREVIEW)
 - Phase B COMPLETE in preview (NOT deployed): Staff/Admin Portal Account Management panel, Physician Medical Record view, Physician Medication Management (Add/Continue/Edit/Discontinue -> patient_medications w/ live portal "Your Medicines" sync), Portal Access nav pending-badge. Tested testing_agent iteration_69 (18/18 backend pass; UI verified).
 - Patient lookup stale-data fix + Copy patient info: DEPLOYED to Production earlier this session.
+
+## STATUS 2026-10-02 (PREVIEW)
+- Results & Reports push-based release redesign COMPLETE in preview (NOT deployed): removed patient copy-request UI; new patient Results & Reports page (type/date/reviewed-by/View/Download); internal Review & Release dialog with result taxonomy + reviewing physician + notify; generic no-PHI notification; server-side download gate (shared + patient-owned). Tested iteration_70 (5/5 backend + UI pass).
+- Also in preview (not deployed): new network-map Visita logo (public/vien-logo.png).
+- Deploying bundle in prior step: Caregiver Phase A + Phase B portal account + Physician Medical Record + Medication mgmt.

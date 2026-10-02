@@ -1,0 +1,32 @@
+{
+  "summary": "Phase C — Results & Reports push-based release flow tested end-to-end. 5/5 backend pytest cases passed covering upload→internal invisibility→404 before release→share with category/subtype/reviewer→patient visibility with correct metadata→cross-patient 404. UI tested: (a) Maria's /portal/documents shows title 'Results & Reports', empty-state message, 'Have questions about a result?' card and 'Request an Appointment' button that correctly navigates to /portal/appointments. (b) Admin opened BLD-000013, Attachments panel shows INTERNAL badge, 'Review & Release' button opens share-dialog, selected Laboratory→Bloodwork→reviewer 'Dr. Pablo Aguayo', clicked Release; dialog closed. (c) Maria then saw exactly 1 document-item on /portal/documents with type_label 'Bloodwork', 'Reviewed by Dr. Pablo Aguayo', working View and Download buttons with the correct data-testids. (d) /portal/messages no longer renders route-document-request nor the 'Request a copy' phrase. (e) Cleanup via DELETE /api/internal/attachments/{id} returned 200.",
+  "backend_issues": {"critical": [], "minor": []},
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [],
+    "design_issues": [
+      {"screen": "share-dialog", "issues": ["The 'Notify the patient' checkbox defaults to CHECKED. If product intent is opt-in notification this should default to unchecked; otherwise acceptable. Non-blocking."]}
+    ]
+  },
+  "test_report_links": [
+    "/app/backend/tests/test_results_release_phase_c.py",
+    "/app/test_reports/pytest/phase_c.xml"
+  ],
+  "action_items": [
+    "Confirm product intent for share-notify default state (currently defaults checked)."
+  ],
+  "critical_code_review_comments": [
+    "server-side gate for /api/portal/documents/{id}/download correctly enforces both shared_with_patient and patient_id ownership — confirmed by cross-patient 404 test.",
+    "Legacy POST /api/portal/document-requests still exists but is no longer referenced by the UI — safe to keep for backward compatibility; consider deprecation header."
+  ],
+  "updated_files": [
+    "/app/backend/tests/test_results_release_phase_c.py (new)"
+  ],
+  "success_rate": {"backend": "100% (5/5)", "frontend": "100% of covered scenarios"},
+  "test_credentials": "Admin kevinrodriguez9528@gmail.com / VisitaAdmin2026! and patient maria.lopez@demo.com / Patient2026! both work via POST /api/auth/login (single login endpoint for all roles).",
+  "seed_data_creation": "Test attachment uploaded to BLD-000013 and soft-deleted after the UI release flow; backend pytest fixture also uploads and deletes TEST_results.pdf per test. No residual TEST_ data remains on Maria.",
+  "retest_needed": false,
+  "main_agent_can_self_test": true,
+  "context_for_next_testing_agent": "Both /api/auth/login (bearer token in sessionStorage key 'visita_token') and attachment upload at POST /api/internal/{entity_type}/{entity_id}/attachments (NOT /internal/attachments/upload) are the correct endpoints. The internal Attachments panel renders inside the Queue detail modal — click the row (e.g. BLD-000013) to open it. share-dialog opens via attachment-share-{att_id} button and release calls POST /api/internal/attachments/{att_id}/share with {result_category, result_subtype, reviewed_by, notify}. type_label returned to patient equals subtype when provided, else category.",
+  "rca of the issue": "No bugs; feature works as designed."
+}

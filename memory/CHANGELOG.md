@@ -1,5 +1,16 @@
 # VIen EMR — Changelog
 
+## 2026-10-02 — Results & Reports (push-based release) redesign (PREVIEW ONLY, NOT DEPLOYED)
+Tested by testing_agent iteration_70: 5/5 backend + all UI scenarios PASS. No issues. Security gate confirmed (cross-patient 404). Test data cleaned up.
+- REMOVED old patient "Results / Document Request" UI (copy_result/copy_imaging/copy_other) from PortalMessages.jsx. Backend POST /api/portal/document-requests kept (unreferenced, legacy).
+- NEW patient "Results & Reports" (PortalDocuments.jsx, route /portal/documents): shows only physician-reviewed + released results. Each row: type (subtype→category), date, "Reviewed by {physician}", View, Download. Empty → "No results or reports are currently available to view." Bottom "Have questions about a result?" → Request an Appointment. Home tile relabeled "Results & Reports".
+- Reused existing Review & Release workflow (attachments). Extended:
+  - backend/attachments.py mark_shared() now stores result_category, result_subtype, reviewed_by, reviewed_at; list_shared_for_patient() returns these + type_label; serve_shared_for_patient() already gates on shared_with_patient + patient_id (SERVER-SIDE security, not UI-only).
+  - backend/server.py ShareAttachmentBody + POST /api/internal/attachments/{id}/share accept result_category/result_subtype/reviewed_by/notify; patient_update + notification use a GENERIC "Your results have been reviewed by your physician…" message (never normal/abnormal).
+- NEW internal "Review & Release" dialog (Attachments.jsx) with taxonomy (frontend/src/lib/resultTaxonomy.js: Laboratory, Diagnostic Imaging, Cardiac Tests, Pulmonary/Sleep, Pathology/Cytology, Screening, Other Reports + subtypes), reviewing physician field, and notify toggle. No second document system — reuses attachments + patient_updates + object storage.
+- i18n EN/ES updated (FR falls back to EN).
+
+
 ## 2026-10-01 — Phase B: Staff Portal Account Mgmt + Physician Medical Record + Medication Mgmt (PREVIEW ONLY, NOT DEPLOYED)
 Tested by testing_agent iteration_69: 18/18 backend PASS; UI panels render + actions verified. No blocking issues.
 - **Staff/Admin Portal Account panel** (`PortalAccountPanel.jsx`, roles admin+staff) in Patients detail. Shows status, login email, email_verified, access enabled/disabled, must_change_password, last_login_at, temp-password expiry. Actions (all audited, practice-scoped, current password never shown):

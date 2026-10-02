@@ -53,8 +53,8 @@ export default function Landing() {
                         <div className="w-full max-w-md">
                             <div className="space-y-4 p-0 sm:rounded-2xl sm:border sm:border-white/10 sm:bg-[#0b1524]/80 sm:backdrop-blur-xl sm:p-5 sm:shadow-[0_20px_60px_-15px_rgba(0,0,0,0.85)]">
                                 <Button data-testid="landing-signin" onClick={() => setMode("roles")}
-                                    className="w-full h-11 bg-cyan-500 hover:bg-cyan-400 text-[#04121f] font-bold">
-                                    <LogIn className="w-4 h-4 mr-1.5" /> {t("auth:landing2.signIn")}
+                                    className="w-full h-12 bg-cyan-500 hover:bg-cyan-400 text-[#04121f] font-black text-base tracking-wide rounded-xl shadow-[0_0_24px_-2px_rgba(34,211,238,0.75)] hover:shadow-[0_0_32px_0_rgba(34,211,238,0.9)] transition-all">
+                                    <LogIn className="w-5 h-5 mr-2" /> {t("auth:landing2.signIn")}
                                 </Button>
                                 <div className="flex items-center justify-between gap-3 text-sm">
                                     <span className="text-white font-medium [text-shadow:0_1px_4px_rgba(0,0,0,0.9)] sm:[text-shadow:none] sm:text-slate-300 sm:font-normal">{t("auth:landing2.createPortalPrompt")}</span>

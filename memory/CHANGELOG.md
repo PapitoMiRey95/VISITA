@@ -1,5 +1,19 @@
 # VIen EMR — Changelog
 
+## 2026-06 — Smart Medication Search for Prescription Requests (patient + caregiver) (PREVIEW ONLY, NOT DEPLOYED)
+### Existing infra reused
+- `medication_catalog` (generic `drug`, `catalog_key`) and `patient_medications` (physician-confirmed per patient); the shared `MedicationRefill` component (already delegate-aware via `on_behalf_of`); the existing `prescription_requests` queue/statuses (received → ...); `portal_access(RX_REQUESTS)` for caregiver authorization + audit.
+### Backend (server.py)
+- `GET /portal/medication-search?q=` (`portal_access(RX_REQUESTS)`): type-ahead from the first char. Ranking: (1) effective patient's physician-confirmed meds (prefix first, tagged source=patient), (2) catalog matches on generic/brand/aliases (prefix first). HARD max 5 enforced server-side. Patient-specific results come ONLY from the effective (own/managed) patient.
+- `POST /portal/prescription-requests` (`portal_access(RX_REQUESTS)`): creates a normal `prescription_requests` doc (status `received`, source `patient_request`) with `medication_name` preserved EXACTLY, `medication_entry_source` = CATALOG|MANUAL, `requires_medication_review` = true for MANUAL. Stamps patient_id/practice_id of the effective patient + delegate audit (acted_by/on_behalf_of). NEVER writes patient_medications or medication_catalog; never auto-approves.
+- Catalog seed `backend/seed_med_catalog.py` — idempotent/additive (upsert by `search:` key), ~64 common Family-Med meds with generic + brand + alias `search_terms`. Does not delete/overwrite existing rows.
+### Frontend
+- ONE shared `RequestDifferentMedication` inside `MedicationRefill.jsx` (used by both patient self and caregiver managed): debounced type-ahead (≤5 options, "YOUR MED" tag for the patient's own meds), "I can't find my medication" → exact free-text entry, submits to `/portal/prescription-requests` with the managed `on_behalf_of` param. Large mobile touch targets, no horizontal overflow.
+- `internal/RxQueue.jsx`: physician/staff queue + detail now show a prominent "MANUAL ENTRY — REVIEW REQUIRED" badge when `medication_entry_source==="MANUAL"`.
+### Verified in Preview (API + mobile UI)
+- Search from 1st char; "A"/"Am"/"Aml" narrow correctly; never >5; generic ("Aml") + brand ("Tylenol", "ozempic") both match; Linda's confirmed Amlodipine ranked first (source=patient). Caregiver catalog request → patient_id=managed, practice_id set, source=patient_request, entry=CATALOG, review=false. Manual "Acetominofen 500" preserved verbatim, entry=MANUAL, review=true, appears in queue with manual badge, patient=Linda. No catalog/patient_medications side-effects. Security: cross-patient → 404, caregiver without RX_REQUESTS → 403 (search + request). Patient self search returns ≤5. Existing refill/photo/pharmacy/physician Rx flows untouched. Mobile layout verified.
+
+
 ## 2026-06 — Caregiver portal reuses the real Patient Portal (effectivePatient) + Health Card pending-review (PREVIEW ONLY, NOT DEPLOYED)
 ### Architecture — reuse, not duplicate
 - Managed-patient mode is now the REAL Patient Portal scoped to the managed patient via an `X-On-Behalf-Of` header (module-level `setOnBehalfOf` in `lib/api.js` + request interceptor) that the backend `portal_access` dependency already enforces (active grant + permission + practice + verification).

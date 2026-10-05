@@ -2,7 +2,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { toast } from "sonner";
 import { useTranslation } from "react-i18next";
-import { Pill, Camera, Upload, Plane, ChevronLeft, Check } from "lucide-react";
+import { Pill, Camera, Upload, Plane, ChevronLeft, Check, Search } from "lucide-react";
 import { api, formatErr } from "../lib/api";
 import { Button } from "../components/ui/button";
 import { Input } from "../components/ui/input";
@@ -145,6 +145,8 @@ export default function MedicationRefill({ onBehalfOf = null, onSubmitted }) {
                 </button>
             </Card>
 
+            <RequestDifferentMedication params={params} onSubmitted={onSubmitted} />
+
             {/* Refill details appear once a medicine is selected */}
             {selected.size > 0 && (
                 <Card data-testid="refill-details">
@@ -283,3 +285,134 @@ const Choice = ({ active, onClick, children, testid }) => (
         {children}
     </button>
 );
+
+/**
+ * Shared Smart Medication Search for Prescription Requests — used identically by a
+ * patient (effectivePatient = self) and an authorized caregiver (effectivePatient =
+ * managed patient, via the on_behalf_of param). Type-ahead from the first character,
+ * HARD max of 5 server-enforced suggestions, generic + brand matching, patient-med
+ * prioritization, and a "can't find it" manual free-text fallback whose text is
+ * preserved EXACTLY and flagged for physician review.
+ */
+function RequestDifferentMedication({ params, onSubmitted }) {
+    const { t } = useTranslation(["requests"]);
+    const [term, setTerm] = useState("");
+    const [results, setResults] = useState([]);
+    const [open, setOpen] = useState(false);
+    const [picked, setPicked] = useState(null);
+    const [manual, setManual] = useState(false);
+    const [manualText, setManualText] = useState("");
+    const [note, setNote] = useState("");
+    const [busy, setBusy] = useState(false);
+    const tRef = useRef(null);
+
+    const runSearch = (q) => {
+        setTerm(q); setPicked(null);
+        if (tRef.current) clearTimeout(tRef.current);
+        if (!q.trim()) { setResults([]); setOpen(false); return; }
+        tRef.current = setTimeout(async () => {
+            try {
+                const { data } = await api.get("/portal/medication-search", { params: { ...(params || {}), q } });
+                setResults((data || []).slice(0, 5));
+                setOpen(true);
+            } catch { setResults([]); }
+        }, 180);
+    };
+
+    const choose = (r) => { setPicked(r); setTerm(r.label); setOpen(false); };
+
+    const reset = () => { setTerm(""); setResults([]); setPicked(null); setManual(false); setManualText(""); setNote(""); };
+
+    const submit = async () => {
+        const isManual = manual;
+        const name = isManual ? manualText.trim() : (picked?.label || "").trim();
+        if (!name) return toast.error(isManual ? t("rx.enterMedName", "Enter the medication name.") : t("rx.pickMed", "Select a medication first."));
+        setBusy(true);
+        try {
+            await api.post("/portal/prescription-requests", {
+                medication_name: name,
+                medication_entry_source: isManual ? "MANUAL" : "CATALOG",
+                drug: isManual ? null : picked?.drug,
+                brand: isManual ? null : picked?.brand,
+                patient_note: note.trim() || null,
+            }, { params });
+            toast.success(t("rx.requestSubmitted", "Prescription request submitted for physician review."));
+            reset();
+            onSubmitted && onSubmitted();
+        } catch (e) { toast.error(formatErr(e)); } finally { setBusy(false); }
+    };
+
+    const canSubmit = !busy && (manual ? manualText.trim().length > 0 : !!picked);
+
+    return (
+        <Card data-testid="request-different-medication">
+            <div className="flex items-center gap-2 mb-1">
+                <Search className="w-5 h-5 text-portal-blue" />
+                <h2 className="font-bold text-slate-800">{t("rx.requestDifferentTitle", "Request a different medication")}</h2>
+            </div>
+            <p className="text-xs text-slate-500 mb-3">{t("rx.requestDisclaimer", "Submitting this request does not mean your prescription has been approved. Your physician will review your request.")}</p>
+
+            {!manual && (
+                <div className="relative">
+                    <Label className="font-semibold text-slate-700">{t("rx.medication", "Medication")}</Label>
+                    <Input
+                        data-testid="med-search-input"
+                        className="mt-1"
+                        value={term}
+                        autoComplete="off"
+                        onChange={(e) => runSearch(e.target.value)}
+                        onFocus={() => { if (results.length) setOpen(true); }}
+                        placeholder={t("rx.medSearchPlaceholder", "Start typing a medication name…")}
+                    />
+                    {open && results.length > 0 && (
+                        <div data-testid="med-search-results" className="absolute z-30 left-0 right-0 mt-1 bg-white border border-slate-200 rounded-xl shadow-lg overflow-hidden">
+                            {results.map((r, idx) => (
+                                <button
+                                    key={`${r.label}-${idx}`}
+                                    type="button"
+                                    data-testid={`med-search-option-${idx}`}
+                                    onClick={() => choose(r)}
+                                    className="w-full text-left px-3 py-3 min-h-[48px] hover:bg-portal-blue/5 border-b border-slate-100 last:border-b-0 flex items-center justify-between gap-2"
+                                >
+                                    <span className="font-semibold text-slate-800 truncate">{r.label}</span>
+                                    {r.source === "patient" && (
+                                        <span className="text-[10px] font-bold uppercase bg-emerald-100 text-emerald-700 px-1.5 py-0.5 rounded-full flex-shrink-0">{t("rx.yourMed", "Your med")}</span>
+                                    )}
+                                </button>
+                            ))}
+                        </div>
+                    )}
+                    {picked && (
+                        <div data-testid="med-search-selected" className="mt-2 flex items-center justify-between bg-portal-blue/5 border border-portal-blue/20 rounded-lg px-3 py-2">
+                            <span className="text-sm font-semibold text-slate-800">{picked.label}</span>
+                            <button type="button" data-testid="med-search-clear" onClick={reset} className="text-xs font-semibold text-slate-500 underline">{t("rx.change", "Change")}</button>
+                        </div>
+                    )}
+                </div>
+            )}
+
+            <label className="mt-3 flex items-center gap-2 cursor-pointer select-none" data-testid="med-cant-find-toggle">
+                <input type="checkbox" checked={manual} onChange={(e) => { setManual(e.target.checked); setPicked(null); setTerm(""); setResults([]); setOpen(false); }} className="w-4 h-4" />
+                <span className="text-sm font-semibold text-slate-700">{t("rx.cantFind", "I can't find my medication")}</span>
+            </label>
+
+            {manual && (
+                <div className="mt-2" data-testid="med-manual-block">
+                    <Label className="font-semibold text-slate-700">{t("rx.medication", "Medication name")}</Label>
+                    <Input data-testid="med-manual-input" className="mt-1" value={manualText} onChange={(e) => setManualText(e.target.value)} placeholder={t("rx.manualPlaceholder", "e.g. the exact name on your bottle")} />
+                    <p className="text-xs text-slate-500 mt-1">{t("rx.manualHelper", "Enter the medication name as it appears on your bottle, package, or pharmacy label.")}</p>
+                </div>
+            )}
+
+            <div className="mt-3">
+                <Label className="font-semibold text-slate-700">{t("rx.noteLabel")}</Label>
+                <Textarea data-testid="med-request-note" className="mt-1" rows={2} value={note} onChange={(e) => setNote(e.target.value)} />
+            </div>
+
+            <Button data-testid="med-request-submit" disabled={!canSubmit} onClick={submit}
+                className="mt-3 w-full h-12 rounded-xl bg-portal-blue hover:bg-portal-blueDark text-white text-base">
+                {busy ? t("rx.submitting") : t("rx.submitRequest", "Submit request")}
+            </Button>
+        </Card>
+    );
+}

@@ -28,12 +28,21 @@ function SourceBadge({ source }) {
     );
 }
 
+function ManualReviewBadge({ item }) {
+    if (!(item?.medication_entry_source === "MANUAL" || item?.requires_medication_review)) return null;
+    return (
+        <span data-testid="manual-entry-badge" className="inline-block px-2 py-0.5 rounded-sm text-[10px] font-bold tracking-wide bg-amber-100 text-amber-800 border border-amber-300">
+            MANUAL ENTRY — REVIEW REQUIRED
+        </span>
+    );
+}
+
 const COLUMNS = [
     { header: "Source", cell: (i) => <SourceBadge source={i.source} /> },
     { header: "Ref", cell: (i) => <span className="text-slate-500">{i.ref_number}</span> },
     { header: "Patient", cell: (i) => <span className="font-semibold">{formatCombinedName(i.patient_name)}</span> },
     { header: "PIN", cell: (i) => <span className="font-mono text-slate-700" data-testid="rx-row-pin">{i.visita_patient_id || "—"}</span> },
-    { header: "Detail", cell: (i) => (i.source === "pharmacy" ? (i.pharmacy || "") : `${i.requested_months || ""} mo`) },
+    { header: "Medication", cell: (i) => (<span className="flex flex-col gap-1"><span>{i.medication_name || "—"}</span><ManualReviewBadge item={i} /></span>) },
     { header: "Status", cell: (i) => <StatusPill status={i.internal_status} /> },
 ];
 
@@ -164,6 +173,11 @@ export default function RxQueue() {
                     ) : (
                         <>
                             <KV label="Medication">{i.medication_name} {i.strength}</KV>
+                            {(i.medication_entry_source === "MANUAL" || i.requires_medication_review) && (
+                                <div data-testid="manual-entry-detail-badge" className="my-1 inline-flex items-center gap-1.5 px-2 py-1 rounded bg-amber-100 text-amber-800 border border-amber-300 text-[11px] font-bold">
+                                    ⚠ MANUAL ENTRY — REVIEW REQUIRED
+                                </div>
+                            )}
                             <KV label="Directions">{i.directions}</KV>
                             <KV label="Supply">{i.requested_months} month(s)</KV>
                             <KV label="Delivery">{i.delivery_method === "pharmacy" ? "Send to pharmacy" : "Pickup"}</KV>

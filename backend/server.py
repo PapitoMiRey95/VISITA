@@ -368,6 +368,14 @@ class RefillRequestBody(BaseModel):
     patient_note: Optional[str] = None
 
 
+class PrescriptionRequestBody(BaseModel):
+    medication_name: str                         # exactly as selected/typed
+    medication_entry_source: str = "CATALOG"     # CATALOG | MANUAL
+    drug: Optional[str] = None
+    brand: Optional[str] = None
+    patient_note: Optional[str] = None
+
+
 class ImagingBody(BaseModel):
     imaging_type: str
     body_part: str
@@ -2877,6 +2885,90 @@ async def create_rx_photo(
     await db.prescription_requests.insert_one({**doc})
     await audit("create", "prescription", doc["id"], ctx.audit_actor(), new_status="received",
                 meta=ctx.audit_meta({"source": "patient_photo", "has_attachment": True}))
+    doc.pop("_id", None)
+    return doc
+
+
+@api.get("/portal/medication-search")
+async def portal_medication_search(q: str = "", ctx: PortalCtx = Depends(portal_access(delegates_mod.RX_REQUESTS))):
+    """Smart medication typeahead for the Prescription Request flow. Searches the
+    effective patient's physician-confirmed meds first, then the shared catalog
+    (generic + brand + aliases). HARD max of 5 results, enforced server-side.
+    Patient-specific results come ONLY from the effective (own/managed) patient."""
+    term = (q or "").strip()
+    if not term:
+        return []
+    rx = re.compile(re.escape(term), re.I)
+    tl = term.lower()
+    results, seen = [], set()
+
+    def add(label, drug, brand, source, pmid=None):
+        key = (label or "").lower()
+        if not label or key in seen:
+            return
+        seen.add(key)
+        results.append({"label": label, "drug": drug, "brand": brand, "source": source, "patient_medication_id": pmid})
+
+    # 1) Effective patient's physician-confirmed medications (prefix matches first).
+    p = ctx.patient
+    pmeds = await db.patient_medications.find({"patient_id": p["id"], "active": True}, {"_id": 0}).to_list(200)
+    pm_hits = [m for m in pmeds if m.get("drug") and rx.search(m["drug"])]
+    pm_hits.sort(key=lambda m: (0 if m["drug"].lower().startswith(tl) else 1, m["drug"].lower()))
+    for m in pm_hits:
+        add(m.get("drug"), m.get("drug"), None, "patient", m.get("id"))
+        if len(results) >= 5:
+            return results[:5]
+
+    # 2) Shared catalog (generic / brand / aliases), prefix matches first.
+    cats = await db.medication_catalog.find(
+        {"$or": [{"drug": rx}, {"brand": rx}, {"search_terms": rx}]}, {"_id": 0}).to_list(300)
+
+    def cat_prefix(d):
+        return (d.get("drug") or "").lower().startswith(tl) or (d.get("brand") or "").lower().startswith(tl)
+    cats.sort(key=lambda d: (0 if cat_prefix(d) else 1, (d.get("drug") or "").lower()))
+    for d in cats:
+        label = f"{d.get('drug')} ({d.get('brand')})" if d.get("brand") else d.get("drug")
+        add(label, d.get("drug"), d.get("brand"), "catalog")
+        if len(results) >= 5:
+            return results[:5]
+    return results[:5]
+
+
+@api.post("/portal/prescription-requests")
+async def create_prescription_request(body: PrescriptionRequestBody,
+                                      ctx: PortalCtx = Depends(portal_access(delegates_mod.RX_REQUESTS))):
+    """A medication-identified Prescription Request (catalog pick or manual free-text).
+    Feeds the EXISTING prescription_requests queue (status 'received'). Manual entries
+    are flagged for physician review and NEVER touch patient_medications/medication_catalog."""
+    p = ctx.patient
+    name = (body.medication_name or "").strip()
+    if not name:
+        raise HTTPException(status_code=400, detail="Enter the medication you're requesting.")
+    manual = (body.medication_entry_source or "").upper() == "MANUAL"
+    ref = await next_ref("RX")
+    now = now_iso()
+    doc = {
+        "id": str(uuid.uuid4()), "ref_number": ref,
+        "patient_id": p["id"], "patient_name": f"{p['last_name']}, {p['first_name']}",
+        "practice_id": p.get("practice_id"),
+        "source": "patient_request",
+        "medication_name": name,  # preserved EXACTLY as selected/typed
+        "medication_entry_source": "MANUAL" if manual else "CATALOG",
+        "requires_medication_review": bool(manual),
+        "review_required": bool(manual),
+        "catalog_drug": None if manual else (body.drug or name),
+        "catalog_brand": None if manual else (body.brand or None),
+        "strength": None, "directions": None,
+        "requested_months": None, "delivery_method": "pharmacy",
+        "destination_pharmacy_label": await _refill_pharmacy_label(p),
+        "patient_note": (body.patient_note or "").strip() or None,
+        "internal_status": "received", "assigned_to": None, "internal_notes": [],
+        "history": [{"status": "received", "at": now, "by": ("delegate" if ctx.is_delegate else "patient")}],
+        "created_at": now, "updated_at": now, "completed_at": None,
+    }
+    await db.prescription_requests.insert_one({**doc})
+    await audit("create", "prescription", doc["id"], ctx.audit_actor(), new_status="received",
+                meta=ctx.audit_meta({"source": "patient_request", "entry_source": doc["medication_entry_source"]}))
     doc.pop("_id", None)
     return doc
 

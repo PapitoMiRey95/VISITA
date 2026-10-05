@@ -10,7 +10,7 @@ import { formatDate } from "../lib/date";
 export default function PortalDocuments() {
     const { t } = useTranslation(["portal"]);
     const nav = useNavigate();
-    const { overview, refetch } = usePortal();
+    const { overview, refetch, base } = usePortal();
     const p = overview.data?.patient;
     const docs = overview.data?.documents || [];
     const pending = overview.data?.pending_results || [];
@@ -118,7 +118,7 @@ export default function PortalDocuments() {
 
             <Card data-testid="results-questions-card" className="bg-slate-50 border-slate-200">
                 <p className="font-bold text-slate-800">{t("documents.questionsTitle")}</p>
-                <button data-testid="results-request-appointment" onClick={() => nav("/portal/appointments")}
+                <button data-testid="results-request-appointment" onClick={() => nav(`${base}/appointments`)}
                     className="mt-3 inline-flex items-center gap-1 px-4 py-2 rounded-xl bg-portal-blue hover:bg-portal-blueDark text-white text-sm font-bold transition active:scale-95">
                     {t("documents.requestAppointment")}
                 </button>

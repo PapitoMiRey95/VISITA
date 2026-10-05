@@ -12,9 +12,19 @@ export const clearToken = () => sessionStorage.removeItem(TOKEN_KEY);
 
 export const api = axios.create({ baseURL: API });
 
+// Managed-patient (caregiver "on behalf of") context. When set, every /portal
+// API call is scoped to the managed patient via the X-On-Behalf-Of header the
+// backend already enforces (active delegate grant + permission + practice).
+let onBehalfOf = null;
+export const setOnBehalfOf = (id) => { onBehalfOf = id || null; };
+export const getOnBehalfOf = () => onBehalfOf;
+
 api.interceptors.request.use((cfg) => {
     const t = getToken();
     if (t) cfg.headers.Authorization = `Bearer ${t}`;
+    if (onBehalfOf && typeof cfg.url === "string" && cfg.url.includes("/portal/")) {
+        cfg.headers["X-On-Behalf-Of"] = onBehalfOf;
+    }
     return cfg;
 });
 

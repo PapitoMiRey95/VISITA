@@ -22,7 +22,7 @@ import PortalDocuments from "./portal/PortalDocuments";
 import PortalInvoices from "./portal/PortalInvoices";
 import PortalAccount from "./portal/PortalAccount";
 import ManagedPeople from "./portal/ManagedPeople";
-import ManagedPortal from "./portal/ManagedPortal";
+import PortalHealthCard from "./portal/PortalHealthCard";
 
 import InternalLayout from "./internal/InternalLayout";
 import Hub from "./internal/Hub";
@@ -46,6 +46,7 @@ import PrivateRequests from "./internal/PrivateRequests";
 import Billing from "./internal/Billing";
 import RegistrationQR from "./internal/RegistrationQR";
 import PortalAccessRequests from "./internal/PortalAccessRequests";
+import HealthCardUpdates from "./internal/HealthCardUpdates";
 
 import PartnerLayout from "./partner/PartnerLayout";
 import PartnerProfile from "./partner/PartnerProfile";
@@ -83,7 +84,14 @@ function App() {
                     >
                         <Route index element={<PortalHome />} />
                         <Route path="people" element={<ManagedPeople />} />
-                        <Route path="manage/:patientId" element={<ManagedPortal />} />
+                        <Route path="manage/:patientId">
+                            <Route index element={<PortalHome />} />
+                            <Route path="appointments" element={<PortalAppointments />} />
+                            <Route path="prescriptions" element={<PortalPrescriptions />} />
+                            <Route path="documents" element={<PortalDocuments />} />
+                            <Route path="requests" element={<PortalMyRequests />} />
+                            <Route path="health-card" element={<PortalHealthCard />} />
+                        </Route>
                         <Route path="appointments" element={<PortalAppointments />} />
                         <Route path="prescriptions" element={<PortalPrescriptions />} />
                         <Route path="referrals" element={<PortalReferrals />} />
@@ -123,6 +131,7 @@ function App() {
                         <Route path="applications" element={<Applications />} />
                         <Route path="registration-qr" element={<RegistrationQR />} />
                         <Route path="portal-access-requests" element={<PortalAccessRequests />} />
+                        <Route path="health-card-updates" element={<HealthCardUpdates />} />
                         <Route path="organizations" element={<Organizations />} />
                         <Route path="providers" element={<Providers />} />
                         <Route path="professionals" element={<Professionals />} />

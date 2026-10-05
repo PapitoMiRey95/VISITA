@@ -1556,8 +1556,8 @@ async def create_appointment(body: AppointmentBody, ctx: PortalCtx = Depends(por
 
 
 @api.post("/portal/appointments/{item_id}/select")
-async def select_slot(item_id: str, body: SelectSlotBody, user: dict = Depends(get_current_user)):
-    p = await get_patient_record(user)
+async def select_slot(item_id: str, body: SelectSlotBody, ctx: PortalCtx = Depends(portal_access("APPOINTMENTS"))):
+    p = ctx.patient
     doc = await db.appointment_requests.find_one({"id": item_id, "patient_id": p["id"]})
     if not doc:
         raise HTTPException(status_code=404, detail="Not found")
@@ -1584,7 +1584,7 @@ async def select_slot(item_id: str, body: SelectSlotBody, user: dict = Depends(g
         "$push": {"history": {"status": "confirmed", "at": now_iso(), "by": "patient-selection"}},
     })
     confirmed = await db.appointment_requests.find_one({"id": item_id}, {"_id": 0})
-    await audit("patient_selected_slot", "appointment", item_id, {"id": p["id"], "name": p["first_name"], "role": "patient"}, new_status="confirmed")
+    await audit("patient_selected_slot", "appointment", item_id, ctx.audit_actor(), new_status="confirmed", meta=ctx.audit_meta())
     await notify_svc.appointment_confirmed(db, confirmed)
     return confirmed
 
@@ -1597,8 +1597,8 @@ class PatientRescheduleBody(BaseModel):
 
 
 @api.post("/portal/appointments/{item_id}/cancel")
-async def patient_cancel_appointment(item_id: str, user: dict = Depends(get_current_user)):
-    p = await get_patient_record(user)
+async def patient_cancel_appointment(item_id: str, ctx: PortalCtx = Depends(portal_access("APPOINTMENTS"))):
+    p = ctx.patient
     appt = await db.appointment_requests.find_one({"id": item_id, "patient_id": p["id"]})
     if not appt:
         raise HTTPException(status_code=404, detail="Not found")
@@ -1612,7 +1612,7 @@ async def patient_cancel_appointment(item_id: str, user: dict = Depends(get_curr
                  "completed_at": now_iso(), "updated_at": now_iso()},
         "$push": {"history": {"status": "cancelled", "at": now_iso(), "by": "patient"}}})
     await audit("patient_cancel", "appointment", item_id,
-                {"id": p["id"], "name": p["first_name"], "role": "patient"}, new_status="cancelled")
+                ctx.audit_actor(), new_status="cancelled", meta=ctx.audit_meta())
     fresh = await db.appointment_requests.find_one({"id": item_id}, {"_id": 0})
     await notify_svc.appointment_cancelled(db, fresh)
     return {"ok": True}
@@ -1620,8 +1620,8 @@ async def patient_cancel_appointment(item_id: str, user: dict = Depends(get_curr
 
 @api.post("/portal/appointments/{item_id}/reschedule")
 async def patient_reschedule_appointment(item_id: str, body: PatientRescheduleBody,
-                                         user: dict = Depends(get_current_user)):
-    p = await get_patient_record(user)
+                                         ctx: PortalCtx = Depends(portal_access("APPOINTMENTS"))):
+    p = ctx.patient
     appt = await db.appointment_requests.find_one({"id": item_id, "patient_id": p["id"]})
     if not appt:
         raise HTTPException(status_code=404, detail="Not found")
@@ -1648,7 +1648,7 @@ async def patient_reschedule_appointment(item_id: str, body: PatientRescheduleBo
                  "rescheduled_at": now_iso(), "updated_at": now_iso()},
         "$push": {"history": {"status": "rescheduled", "at": now_iso(), "by": "patient"}}})
     await audit("patient_reschedule", "appointment", item_id,
-                {"id": p["id"], "name": p["first_name"], "role": "patient"}, new_status="confirmed")
+                ctx.audit_actor(), new_status="confirmed", meta=ctx.audit_meta())
     fresh = await db.appointment_requests.find_one({"id": item_id}, {"_id": 0})
     await notify_svc.appointment_rescheduled(db, fresh)
     return {"ok": True}
@@ -2929,9 +2929,13 @@ async def create_message(body: MessageBody, p: dict = Depends(require_verified_p
 
 
 @api.get("/portal/overview")
-async def portal_overview(user: dict = Depends(get_current_user)):
-    p = await get_patient_record(user)
+async def portal_overview(ctx: PortalCtx = Depends(portal_access())):
+    p = ctx.patient
     pid = p["id"]
+    is_del = ctx.is_delegate
+    perms = set(ctx.grant.get("permissions", [])) if is_del else set()
+    def allow(perm):
+        return (not is_del) or (perm in perms)
     appts = await db.appointment_requests.find({"patient_id": pid}, {"_id": 0}).to_list(200)
     rxs = await db.prescription_requests.find({"patient_id": pid}, {"_id": 0}).to_list(200)
     imgs = await db.imaging_requests.find({"patient_id": pid}, {"_id": 0}).to_list(200)
@@ -2951,9 +2955,15 @@ async def portal_overview(user: dict = Depends(get_current_user)):
             })
         return out
 
-    requests = (pa(appts, "Appointment", APPT_PATIENT_STATUS) + pa(rxs, "Prescription", RX_PATIENT_STATUS)
-                + pa(imgs, "Imaging", IMG_PATIENT_STATUS) + pa(blds, "Bloodwork", BLD_PATIENT_STATUS)
-                + pa(msgs, "Message", MSG_PATIENT_STATUS))
+    requests = []
+    if allow("APPOINTMENTS"):
+        requests += pa(appts, "Appointment", APPT_PATIENT_STATUS)
+    if allow("RX_REQUESTS"):
+        requests += pa(rxs, "Prescription", RX_PATIENT_STATUS)
+    if allow("REQUEST_STATUS"):
+        requests += (pa(imgs, "Imaging", IMG_PATIENT_STATUS) + pa(blds, "Bloodwork", BLD_PATIENT_STATUS))
+    if not is_del:
+        requests += pa(msgs, "Message", MSG_PATIENT_STATUS)
     requests.sort(key=lambda x: x["created_at"], reverse=True)
     referrals = [{"id": r["id"], "specialty": r.get("specialty"),
                   "status": r.get("patient_visible_status"), "last_updated": r.get("updated_at")} for r in refs]
@@ -2975,9 +2985,15 @@ async def portal_overview(user: dict = Depends(get_current_user)):
         }
     has_fee = any((a.get("late_fee") or {}).get("status") == "outstanding" for a in appts)
     pending_hc = p.get("pending_health_card")
-    inv_open = await db.invoices.count_documents({"patient_id": pid, "status": {"$in": ["ISSUED", "PAYMENT_SUBMITTED"]}})
-    inv_total = await db.invoices.count_documents({"patient_id": pid, "status": {"$ne": "DRAFT"}})
+    inv_open = 0 if is_del else await db.invoices.count_documents({"patient_id": pid, "status": {"$in": ["ISSUED", "PAYMENT_SUBMITTED"]}})
+    inv_total = 0 if is_del else await db.invoices.count_documents({"patient_id": pid, "status": {"$ne": "DRAFT"}})
     return {
+        "delegate": {
+            "is_delegate": is_del,
+            "patient_name": f"{p.get('first_name','')} {p.get('last_name','')}".strip(),
+            "relationship": ctx.grant.get("relationship") if is_del else None,
+            "permissions": sorted(perms) if is_del else None,
+        },
         "patient": {"first_name": p["first_name"], "last_name": p["last_name"],
                     "patient_type": p["patient_type"], "verification_status": p["verification_status"],
                     "visita_patient_id": p.get("visita_patient_id"),
@@ -2991,31 +3007,32 @@ async def portal_overview(user: dict = Depends(get_current_user)):
                     "health_card_expiry_date": p.get("health_card_expiry_date"),
                     "health_card_status": identity_mod.health_card_status(p.get("health_card_expiry_date")),
                     "health_card_update_pending": bool(pending_hc),
-                    "has_outstanding_fee": has_fee},
+                    "pending_health_card": pending_hc,
+                    "has_outstanding_fee": (False if is_del else has_fee)},
         "requests": requests,
-        "appointments": [appt_view(a) for a in appts],
-        "prescriptions": [{"id": r["id"], "ref_number": r["ref_number"], "medication_name": r["medication_name"],
+        "appointments": [appt_view(a) for a in appts] if allow("APPOINTMENTS") else [],
+        "prescriptions": ([{"id": r["id"], "ref_number": r["ref_number"], "medication_name": r["medication_name"],
                            "strength": r.get("strength"), "status": RX_PATIENT_STATUS.get(r["internal_status"]),
                            "batch_id": r.get("batch_id"), "source": r.get("source"),
                            "supply_type": r.get("supply_type"), "requested_months": r.get("requested_months"),
                            "requested_supply_text": r.get("requested_supply_text"),
                            "destination_pharmacy_label": r.get("destination_pharmacy_label"),
-                           "created_at": r["created_at"]} for r in rxs],
-        "imaging": [{"id": i["id"], "ref_number": i["ref_number"], "imaging_type": i["imaging_type"],
+                           "created_at": r["created_at"]} for r in rxs] if allow("RX_REQUESTS") else []),
+        "imaging": ([{"id": i["id"], "ref_number": i["ref_number"], "imaging_type": i["imaging_type"],
                      "body_part": i["body_part"], "status": IMG_PATIENT_STATUS.get(i["internal_status"]),
-                     "created_at": i["created_at"]} for i in imgs],
-        "bloodwork": [{"id": b["id"], "ref_number": b["ref_number"], "reason": b.get("reason"),
+                     "created_at": i["created_at"]} for i in imgs] if allow("REQUEST_STATUS") else []),
+        "bloodwork": ([{"id": b["id"], "ref_number": b["ref_number"], "reason": b.get("reason"),
                        "status": BLD_PATIENT_STATUS.get(b["internal_status"]),
-                       "created_at": b["created_at"]} for b in blds],
-        "messages": [{"id": m["id"], "ref_number": m["ref_number"], "category": m["category"], "subject": m.get("subject"),
+                       "created_at": b["created_at"]} for b in blds] if allow("REQUEST_STATUS") else []),
+        "messages": ([{"id": m["id"], "ref_number": m["ref_number"], "category": m["category"], "subject": m.get("subject"),
                       "thread": m.get("thread", []), "status": MSG_PATIENT_STATUS.get(m["status"]),
-                      "created_at": m["created_at"]} for m in msgs],
-        "referrals": referrals,
+                      "created_at": m["created_at"]} for m in msgs] if not is_del else []),
+        "referrals": referrals if allow("REQUEST_STATUS") else [],
         "notifications": notes,
         "updates": await db.patient_updates.find(
             {"patient_id": pid, "read": {"$ne": True}}, {"_id": 0}).sort("created_at", -1).to_list(50),
-        "documents": await attach_mod.list_shared_for_patient(db, pid),
-        "pending_results": [
+        "documents": (await attach_mod.list_shared_for_patient(db, pid)) if allow("DOCUMENTS") else [],
+        "pending_results": ([
             {"id": r["id"], "type_label": r.get("subtype") or r.get("category_label") or "Result",
              "category_label": r.get("category_label"), "subtype": r.get("subtype"),
              "reviewed_at": r.get("reviewed_at"), "reviewed_by": r.get("reviewed_by"),
@@ -3023,7 +3040,7 @@ async def portal_overview(user: dict = Depends(get_current_user)):
             for r in await db.exam_results.find(
                 {"patient_id": pid, "status": "REVIEWED", "shared_with_patient": {"$ne": True}},
                 {"_id": 0}).sort("reviewed_at", -1).to_list(100)
-        ],
+        ] if allow("DOCUMENTS") else []),
         "billing": {"open": inv_open, "total": inv_total},
     }
 
@@ -3068,9 +3085,11 @@ async def portal_set_language(body: LanguageBody, user: dict = Depends(get_curre
 
 
 @api.post("/portal/profile/health-card")
-async def portal_submit_health_card(body: HealthCardUpdateBody, user: dict = Depends(get_current_user)):
-    """Patient updates their Health Card — applied INSTANTLY (no verification queue)."""
-    p = await get_patient_record(user)
+async def portal_submit_health_card(body: HealthCardUpdateBody, ctx: PortalCtx = Depends(portal_access("HEALTH_CARD_UPDATE"))):
+    """Patient's OWN update is applied INSTANTLY. A DELEGATE (caregiver with
+    HEALTH_CARD_UPDATE) submission does NOT overwrite the authoritative record —
+    it is queued as a pending update for staff review/approval."""
+    p = ctx.patient
     try:
         num, ver = identity_mod.normalize_health_card(body.health_card_number, body.health_card_version)
     except ValueError as e:
@@ -3086,11 +3105,24 @@ async def portal_submit_health_card(body: HealthCardUpdateBody, user: dict = Dep
         "health_card_issue_date": body.health_card_issue_date or None,
         "health_card_expiry_date": body.health_card_expiry_date or None,
     }
+    display = identity_mod.format_health_card(num, ver)
+    if ctx.is_delegate:
+        pending = {
+            **new_fields, "display": display,
+            "previous_display": identity_mod.format_health_card(previous["health_card_number"], previous["health_card_version"]),
+            "submitted_by_user_id": ctx.user["id"], "submitted_by_name": ctx.user.get("name"),
+            "on_behalf_of_patient_id": p["id"], "relationship": ctx.grant.get("relationship"),
+            "submitted_at": now_iso(),
+        }
+        await db.patients.update_one({"id": p["id"]}, {"$set": {"pending_health_card": pending, "updated_at": now_iso()}})
+        await audit("health_card_update_submitted", "patient", p["id"], ctx.audit_actor(),
+                    meta=ctx.audit_meta({"previous": previous, "submitted": new_fields}))
+        return {"ok": True, "pending": True, "health_card_display": display}
     await db.patients.update_one({"id": p["id"]}, {"$set": {**new_fields, "pending_health_card": None, "updated_at": now_iso()}})
     await audit("patient_health_card_update", "patient", p["id"],
                 {"id": p["id"], "name": p["first_name"], "role": "patient"},
                 meta={"previous": previous, "new": new_fields})
-    return {"ok": True, "health_card_display": identity_mod.format_health_card(num, ver)}
+    return {"ok": True, "health_card_display": display}
 
 
 SEX_OPTIONS = ["Male", "Female", "X"]
@@ -8205,25 +8237,70 @@ async def internal_edit_directory(directory_id: str, body: InternalPatientEditBo
 
 
 
+@api.get("/internal/health-card-updates")
+async def internal_list_health_card_updates(user: dict = Depends(require_roles("staff", "admin", "physician"))):
+    """Pending caregiver-submitted Health Card updates awaiting staff review (practice-scoped)."""
+    docs = await db.patients.find(
+        {**pscope(user), "pending_health_card": {"$ne": None}},
+        {"_id": 0, "id": 1, "first_name": 1, "last_name": 1, "visita_patient_id": 1,
+         "date_of_birth": 1, "pending_health_card": 1,
+         "health_card_number": 1, "health_card_version": 1,
+         "health_card_issue_date": 1, "health_card_expiry_date": 1}).to_list(200)
+    out = []
+    for p in docs:
+        pend = p.get("pending_health_card") or {}
+        out.append({
+            "patient_id": p["id"],
+            "patient_name": f"{p.get('last_name','')}, {p.get('first_name','')}".strip(", "),
+            "visita_patient_id": p.get("visita_patient_id"),
+            "date_of_birth": p.get("date_of_birth"),
+            "current": {
+                "display": identity_mod.format_health_card(p.get("health_card_number"), p.get("health_card_version")),
+                "issue_date": p.get("health_card_issue_date"), "expiry_date": p.get("health_card_expiry_date"),
+            },
+            "submitted": {
+                "display": pend.get("display"), "issue_date": pend.get("health_card_issue_date"),
+                "expiry_date": pend.get("health_card_expiry_date"),
+                "submitted_by_name": pend.get("submitted_by_name"),
+                "relationship": pend.get("relationship"), "submitted_at": pend.get("submitted_at"),
+            },
+        })
+    return out
+
+
+@api.post("/internal/patients/{patient_id}/health-card/{action}")
 async def internal_health_card_review(patient_id: str, action: str,
                                       user: dict = Depends(require_roles("staff", "admin", "physician"))):
-    """Approve or reject a patient-submitted HEALTH CARD UPDATE PENDING proposal."""
+    """Approve or reject a caregiver-submitted HEALTH CARD UPDATE pending proposal."""
     if action not in ("approve", "reject"):
         raise HTTPException(status_code=400, detail="Invalid action.")
     p = await db.patients.find_one({"id": patient_id})
     if not p:
         raise HTTPException(status_code=404, detail="Patient not found.")
+    assert_practice(p, user)
     pending = p.get("pending_health_card")
     if not pending:
         raise HTTPException(status_code=400, detail="No pending Health Card update.")
+    audit_meta = {
+        "patient_id": patient_id,
+        "acted_by": pending.get("submitted_by_name"),
+        "acted_by_user_id": pending.get("submitted_by_user_id"),
+        "on_behalf_of_patient_id": patient_id,
+        "submitted_values": pending.get("display"),
+        "submitted_at": pending.get("submitted_at"),
+        "reviewed_by": user.get("name"), "reviewed_at": now_iso(),
+    }
     if action == "reject":
         await db.patients.update_one({"id": patient_id}, {"$unset": {"pending_health_card": ""}, "$set": {"updated_at": now_iso()}})
-        await audit("health_card_update_rejected", "patient", patient_id, user, meta={"proposed": pending.get("display")})
+        await audit("health_card_update_rejected", "patient", patient_id, user,
+                    meta={**audit_meta, "decision": "declined",
+                          "old_values": identity_mod.format_health_card(p.get("health_card_number"), p.get("health_card_version"))})
         await notify_patient(patient_id, "Health Card update not approved",
                              "Your Health Card update was reviewed and not approved. Your existing record remains active. Please contact the clinic.")
         return {"ok": True, "status": "rejected"}
     change = {"field": "health_card", "previous": identity_mod.format_health_card(p.get("health_card_number"), p.get("health_card_version")),
-              "new": pending.get("display"), "changed_by": user["name"], "changed_at": now_iso()}
+              "new": pending.get("display"), "changed_by": user["name"], "changed_at": now_iso(),
+              "submitted_by": pending.get("submitted_by_name")}
     await db.patients.update_one({"id": patient_id}, {
         "$set": {"health_card_number": pending["health_card_number"], "health_card_version": pending["health_card_version"],
                  "health_card_issue_date": pending.get("health_card_issue_date"),
@@ -8231,7 +8308,8 @@ async def internal_health_card_review(patient_id: str, action: str,
         "$unset": {"pending_health_card": ""},
         "$push": {"identity_history": change},
     })
-    await audit("health_card_update_approved", "patient", patient_id, user, meta=change)
+    await audit("health_card_update_approved", "patient", patient_id, user,
+                meta={**audit_meta, "decision": "approved", "old_values": change["previous"]})
     await notify_patient(patient_id, "Health Card update approved",
                          "Your Health Card information has been verified and updated. Thank you.")
     return {"ok": True, "status": "approved"}

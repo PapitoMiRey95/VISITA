@@ -7,7 +7,9 @@
     "help": "Help",
     "requests": "Requests",
     "profile": "Profile",
-    "invoices": "Invoices"
+    "invoices": "Invoices",
+    "documents": "Results",
+    "healthCard": "Health Card"
   },
   "home": {
     "greeting": "Hello,",
@@ -222,5 +224,16 @@
     "PRIVATE_PAY": "You are registered as a private-pay patient, so this service is billed directly to you rather than through OHIP.",
     "GENERIC_OHIP": "This invoice is for a service that is not covered under your OHIP coverage.",
     "GENERIC_NONOHIP": "This invoice is for a service that is not covered by public health insurance and is billed directly to you."
+  },
+  "managed": {
+    "banner": "You are managing {{name}}'s account",
+    "return": "Return to my account",
+    "hcSubmitted": "Health Card update submitted for staff review.",
+    "hcIntro": "Submit a Health Card update for {{name}}. Changes are reviewed and approved by clinic staff before they take effect.",
+    "hcCurrent": "Current on file",
+    "hcPendingTitle": "Pending staff review",
+    "hcPendingNote": "Submitted — the clinic will review and approve before this becomes active.",
+    "hcSubmitTitle": "Submit an update",
+    "hcSubmitBtn": "Submit for review"
   }
 }

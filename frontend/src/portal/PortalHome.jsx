@@ -22,7 +22,7 @@ const TILES = [
 function NewUpdatesCard() {
     const nav = useNavigate();
     const { t } = useTranslation(["portal"]);
-    const { overview, refetch } = usePortal();
+    const { overview, refetch, base } = usePortal();
     const updates = overview.data?.updates || [];
     if (updates.length === 0) return null;
 
@@ -31,7 +31,7 @@ function NewUpdatesCard() {
             await Promise.all(updates.map((u) => api.post(`/portal/updates/${u.id}/read`).catch(() => {})));
         } catch (e) { toast.error(formatErr(e)); }
         refetch && refetch();
-        nav("/portal/documents");
+        nav(`${base}/documents`);
     };
 
     return (
@@ -62,7 +62,7 @@ const todayIso = () => {
 function UpcomingAppointment() {
     const nav = useNavigate();
     const { t } = useTranslation(["portal"]);
-    const { overview } = usePortal();
+    const { overview, base } = usePortal();
     const appts = overview.data?.appointments || [];
     const today = todayIso();
     const upcoming = appts
@@ -82,7 +82,7 @@ function UpcomingAppointment() {
                     <div className="flex-1">
                         <p className="font-bold text-slate-800">{t("home.upcoming.noneTitle")}</p>
                         <p className="text-sm text-slate-500 mt-0.5">{t("home.upcoming.nonePrompt")}</p>
-                        <button data-testid="upcoming-request-cta" onClick={() => nav("/portal/appointments")}
+                        <button data-testid="upcoming-request-cta" onClick={() => nav(`${base}/appointments`)}
                             className="mt-3 inline-flex items-center gap-1 px-4 py-2 rounded-xl bg-portal-blue hover:bg-portal-blueDark text-white text-sm font-bold transition active:scale-95">
                             {t("home.upcoming.requestCta")}
                         </button>
@@ -109,12 +109,12 @@ function UpcomingAppointment() {
                 </div>
             </div>
             <div className="mt-4 flex items-center gap-3">
-                <button data-testid="upcoming-view-btn" onClick={() => nav("/portal/appointments")}
+                <button data-testid="upcoming-view-btn" onClick={() => nav(`${base}/appointments`)}
                     className="inline-flex items-center gap-1 px-4 py-2 rounded-xl bg-white text-portal-blueDark text-sm font-bold transition active:scale-95 hover:bg-white/90">
                     {t("home.upcoming.viewAppointment")} <ChevronRight className="w-4 h-4" />
                 </button>
                 {upcoming.length > 1 && (
-                    <button data-testid="upcoming-view-all" onClick={() => nav("/portal/appointments")}
+                    <button data-testid="upcoming-view-all" onClick={() => nav(`${base}/appointments`)}
                         className="text-sm font-semibold text-white/85 underline underline-offset-2">
                         {t("home.upcoming.viewAll")}
                     </button>
@@ -127,6 +127,7 @@ function UpcomingAppointment() {
 function YourMedicinesCard() {
     const nav = useNavigate();
     const { t } = useTranslation(["portal"]);
+    const { base } = usePortal();
     const [meds, setMeds] = useState(null);
     useEffect(() => {
         api.get("/portal/medications").then(({ data }) => setMeds(data.medications || [])).catch(() => setMeds([]));
@@ -142,7 +143,7 @@ function YourMedicinesCard() {
                     <p className="font-bold text-slate-800">{t("home.medicines.title")}</p>
                     <p className="text-sm text-slate-500" data-testid="your-medicines-count">{t("home.medicines.count", { count: meds.length })}</p>
                 </div>
-                <button data-testid="your-medicines-view" onClick={() => nav("/portal/prescriptions")}
+                <button data-testid="your-medicines-view" onClick={() => nav(`${base}/prescriptions`)}
                     className="inline-flex items-center gap-1 px-4 py-2 rounded-xl bg-emerald-500 hover:bg-emerald-600 text-white text-sm font-bold transition active:scale-95">
                     {t("home.medicines.view")} <ChevronRight className="w-4 h-4" />
                 </button>
@@ -178,14 +179,45 @@ export default function PortalHome() {
     const nav = useNavigate();
     const { user } = useAuth();
     const { t, i18n } = useTranslation(["portal"]);
-    const { overview, cfg } = usePortal();
+    const { overview, cfg, base, managed, delegate, can } = usePortal();
     // Caregiver-only accounts have no own-patient chart — send them straight to
     // their managed-people list instead of an own-patient overview.
-    if (user?.role === "caregiver") return <Navigate to="/portal/people" replace />;
+    if (user?.role === "caregiver" && !managed) return <Navigate to="/portal/people" replace />;
     const p = overview.data?.patient;
-    // Standard safety notice: use the clinic-configured template only for English
-    // sessions; Spanish sessions get the localized notice (EmergencyNotice default).
     const notice = (i18n.language || "en").startsWith("es") ? undefined : cfg.data?.templates?.emergency_notice;
+
+    // Managed-patient Home: same portal shell, permission-gated quick actions.
+    if (managed) {
+        const actions = [
+            { perm: "APPOINTMENTS", to: `${base}/appointments`, icon: Calendar, color: "text-portal-blue", label: t("nav.appts", "Appointments"), testid: "mhome-appointments" },
+            { perm: "RX_REQUESTS", to: `${base}/prescriptions`, icon: Pill, color: "text-emerald-500", label: t("nav.rx", "Prescriptions"), testid: "mhome-prescriptions" },
+            { perm: "DOCUMENTS", to: `${base}/documents`, icon: FileText, color: "text-sky-500", label: t("nav.documents", "Results & Documents"), testid: "mhome-documents" },
+            { perm: "REQUEST_STATUS", to: `${base}/requests`, icon: ClipboardList, color: "text-amber-500", label: t("nav.requests", "Requests & Status"), testid: "mhome-requests" },
+            { perm: "HEALTH_CARD_UPDATE", to: `${base}/health-card`, icon: User, color: "text-indigo-500", label: t("nav.healthCard", "Health Card"), testid: "mhome-health-card" },
+        ].filter((a) => can(a.perm));
+        return (
+            <div className="space-y-5 animate-fade-in" data-testid="managed-home">
+                <div>
+                    <p className="text-slate-500 font-semibold">{t("home.greeting")}</p>
+                    <h1 className="text-3xl font-extrabold text-slate-900">{delegate?.patient_name || `${p?.first_name || ""} ${p?.last_name || ""}`}</h1>
+                </div>
+                <NewUpdatesCard />
+                {can("RX_REQUESTS") && <YourMedicinesCard />}
+                {can("APPOINTMENTS") && <UpcomingAppointment />}
+                <div className="grid grid-cols-2 gap-3">
+                    {actions.map((a) => (
+                        <button key={a.to} data-testid={a.testid} onClick={() => nav(a.to)}
+                            className="bg-white rounded-2xl border border-slate-200 shadow-sm p-5 text-left hover:shadow-md transition active:scale-95 flex flex-col gap-3">
+                            <a.icon className={`w-8 h-8 ${a.color}`} />
+                            <span className="font-bold text-slate-800 leading-tight">{a.label}</span>
+                            <ChevronRight className="w-4 h-4 text-slate-300 self-end" />
+                        </button>
+                    ))}
+                </div>
+                <EmergencyNotice text={notice} />
+            </div>
+        );
+    }
 
     return (
         <div className="space-y-5 animate-fade-in">
@@ -227,7 +259,7 @@ export default function PortalHome() {
                     <h2 className="font-bold text-slate-800">{t("home.results.title")}</h2>
                 </div>
                 <p className="text-sm text-slate-600 leading-snug">{t("home.results.body")}</p>
-                <button data-testid="results-request-appointment" onClick={() => nav("/portal/appointments")}
+                <button data-testid="results-request-appointment" onClick={() => nav(`${base}/appointments`)}
                     className="mt-3 inline-flex items-center gap-1 px-4 py-2 rounded-xl border border-portal-blue text-portal-blueDark text-sm font-bold hover:bg-portal-blue/5 transition active:scale-95">
                     {t("home.results.cta")}
                 </button>

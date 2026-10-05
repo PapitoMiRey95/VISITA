@@ -1,5 +1,23 @@
 # VIen EMR — Changelog
 
+## 2026-06 — Caregiver portal reuses the real Patient Portal (effectivePatient) + Health Card pending-review (PREVIEW ONLY, NOT DEPLOYED)
+### Architecture — reuse, not duplicate
+- Managed-patient mode is now the REAL Patient Portal scoped to the managed patient via an `X-On-Behalf-Of` header (module-level `setOnBehalfOf` in `lib/api.js` + request interceptor) that the backend `portal_access` dependency already enforces (active grant + permission + practice + verification).
+- `PortalLayout.jsx` is managed-aware (URL `/portal/manage/:patientId`): sets the header synchronously, scopes the overview query, shows the persistent banner "You are managing {name}'s account · {relationship}" + "Return to my account", and renders permission-gated bottom nav (Home/Appts/Rx/Results/Requests/Health Card). `managed` is URL-driven (not data-driven) so the caregiver guard never redirects mid-load.
+- Routes: `/portal/manage/:patientId` now nests the SAME pages — `PortalHome` (managed branch), `PortalAppointments`, `PortalPrescriptions` (+ `MedicationRefill`), `PortalDocuments`, `PortalMyRequests`, and new `PortalHealthCard`. Pages thread a `base` path from `usePortal()` for internal navigation.
+- REMOVED the duplicate simplified caregiver UI: `portal/ManagedPortal.jsx` (and its inline simplified ApptForm). `ManagedPeople` now opens the real managed portal.
+### Backend (server.py)
+- `/portal/overview` → `portal_access()`; adds a `delegate` block `{is_delegate, patient_name, relationship, permissions}` and gates every section by permission (APPOINTMENTS/RX_REQUESTS/DOCUMENTS/REQUEST_STATUS). Messages & billing always hidden for delegates. Self patients unchanged (full data).
+- Appointment `select`/`cancel`/`reschedule` → `portal_access("APPOINTMENTS")` with delegate audit (acted_by/on_behalf_of). Appointment CREATE practice_id fix remains intact.
+- Health Card: new `HEALTH_CARD_UPDATE` delegate permission (delegates.py). `POST /portal/profile/health-card` is now delegate-aware — SELF = instant authoritative write (unchanged); DELEGATE = writes `pending_health_card` only (NO authoritative overwrite) + audit. New staff endpoints `GET /internal/health-card-updates` (practice-scoped pending list) and `POST /internal/patients/{id}/health-card/{approve|reject}` (approve updates record + identity_history; reject leaves it unchanged; both audit patient_id/practice/acted_by=caregiver/on_behalf_of=patient/old+submitted/reviewed_by/decision).
+### Frontend (new)
+- `portal/PortalHealthCard.jsx` — reuses `HealthCardNumberInput` + same fields/validation; submits to pending-review; shows current + pending state. EN/ES/FR i18n added (`portal:managed.*`, `nav.documents`, `nav.healthCard`).
+- `internal/HealthCardUpdates.jsx` + nav entry — staff review queue (current vs submitted, Approve/Decline).
+- `FamilyAccess.jsx` offers the new HEALTH_CARD_UPDATE permission.
+### Verified in Preview (API + mobile UI)
+- Caregiver lands on People → opens managed portal: banner + managed Home + gated nav render. Appointments shows the SAME patient flow (reason/date/time/type/note/submit); created request carries managed patient_id + practice_id + delegate audit and appears in Staff/Admin queue. Rx shows managed meds/refill. Overview permission-gated (messages/billing hidden). Health Card submit → pending (authoritative record unchanged) → staff list shows it → Approve updates record, Decline leaves unchanged; audit records caregiver+patient+reviewer. Security: cross-patient/practice → 404; missing permission → 403. Normal patient portal unchanged (self overview full, delegate.is_delegate=false). No fabricated patient/PIN/chart.
+
+
 ## 2026-06 — Rx intake not appearing in queue — RCA + fix (PREVIEW ONLY, NOT DEPLOYED)
 - SYMPTOM: a new Rx request submitted from Admin/Staff -> Rx -> Request Intake did not appear in the Prescription Requests queue (admin or physician), while older requests did.
 - ROOT CAUSE (reproduced): the staff intake endpoint `POST /api/internal/pharmacy-rx` (`create_pharmacy_rx`) and the pharmacy-portal endpoint `POST /api/pharmacy/rx` (`pharmacy_create_rx`) inserted `prescription_requests` docs WITHOUT a `practice_id`. The internal queue `GET /api/internal/prescriptions` and `/api/internal/counters` both filter by `pscope(user)` = `{"practice_id": user.practice_id}`, so a `practice_id: None` record is silently excluded. Patient-origin inserts (`patient_refill`, `patient_photo`) already stamp `practice_id`, which is why those (and seeded demo records) appeared. Confirmed by creating a staff intake: `practice_id=None`, status `waiting_physician`, NOT present in the queue.

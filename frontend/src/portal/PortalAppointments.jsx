@@ -32,7 +32,7 @@ const REASON_OPTIONS = [
 const NOTE_MAX = 200;
 
 export default function PortalAppointments() {
-    const { overview, refetch } = usePortal();
+    const { overview, refetch, base, managed } = usePortal();
     const { t, i18n } = useTranslation(["requests", "common"]);
     const nav = useNavigate();
     const p = overview.data?.patient;
@@ -161,7 +161,7 @@ export default function PortalAppointments() {
                         <p className="font-bold mb-1">{t("requests:appointments.feeTitle")}</p>
                         {t("requests:appointments.feeBody")}
                         <div className="mt-2">
-                            <Button size="sm" variant="outline" data-testid="fee-contact-clinic" onClick={() => nav("/portal/messages")}>
+                            <Button size="sm" variant="outline" data-testid="fee-contact-clinic" onClick={() => nav(managed ? base : "/portal/messages")}>
                                 <Phone className="w-4 h-4 mr-1" /> {t("requests:appointments.contactClinic")}
                             </Button>
                         </div>
@@ -360,7 +360,7 @@ export default function PortalAppointments() {
                                         </div>
                                         {t("requests:appointments.within24Body")}
                                         <div className="mt-2">
-                                            <Button size="sm" variant="outline" data-testid={`contact-clinic-${a.id}`} onClick={() => nav("/portal/messages")}>
+                                            <Button size="sm" variant="outline" data-testid={`contact-clinic-${a.id}`} onClick={() => nav(managed ? base : "/portal/messages")}>
                                                 <Phone className="w-4 h-4 mr-1" /> {t("requests:appointments.contactClinic")}
                                             </Button>
                                         </div>

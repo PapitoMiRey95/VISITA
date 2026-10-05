@@ -11,12 +11,13 @@ import uuid
 
 COLL = "patient_portal_delegates"
 
-# The only four v1 portal capabilities a delegate can be granted.
+# v1 portal capabilities a delegate can be granted.
 APPOINTMENTS = "APPOINTMENTS"
 RX_REQUESTS = "RX_REQUESTS"
 DOCUMENTS = "DOCUMENTS"
 REQUEST_STATUS = "REQUEST_STATUS"
-PERMISSIONS = {APPOINTMENTS, RX_REQUESTS, DOCUMENTS, REQUEST_STATUS}
+HEALTH_CARD_UPDATE = "HEALTH_CARD_UPDATE"
+PERMISSIONS = {APPOINTMENTS, RX_REQUESTS, DOCUMENTS, REQUEST_STATUS, HEALTH_CARD_UPDATE}
 
 RELATIONSHIPS = ["Daughter", "Son", "Spouse / Partner", "Parent", "Caregiver",
                  "Legal / Substitute Decision Maker", "Other"]

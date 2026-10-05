@@ -8,6 +8,7 @@ import { Input } from "../components/ui/input";
 const PERM_LABEL = {
     APPOINTMENTS: "Appointments", RX_REQUESTS: "Rx requests",
     DOCUMENTS: "Documents", REQUEST_STATUS: "Request status",
+    HEALTH_CARD_UPDATE: "Health Card update",
 };
 
 export default function FamilyAccess({ patient }) {

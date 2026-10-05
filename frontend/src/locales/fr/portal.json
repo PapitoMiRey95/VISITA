@@ -1,6 +1,15 @@
 {
   "nav": {
-    "invoices": "Factures"
+    "invoices": "Factures",
+    "home": "Accueil",
+    "appts": "RDV",
+    "rx": "Ordonnances",
+    "messages": "Messages",
+    "help": "Aide",
+    "requests": "Demandes",
+    "profile": "Profil",
+    "documents": "Résultats",
+    "healthCard": "Carte santé"
   },
   "home": {
     "medicines": {
@@ -25,5 +34,16 @@
     "requestPin": "Demander mon NIP",
     "requestPinHint": "Demandez à la clinique de vous communiquer votre NIP Visita.",
     "pinRequested": "Nous avons demandé à la clinique de vous communiquer votre NIP."
+  },
+  "managed": {
+    "banner": "Vous gérez le compte de {{name}}",
+    "return": "Revenir à mon compte",
+    "hcSubmitted": "Mise à jour de la carte santé soumise pour examen par le personnel.",
+    "hcIntro": "Soumettez une mise à jour de la carte santé de {{name}}. Les modifications sont examinées et approuvées par le personnel de la clinique avant de prendre effet.",
+    "hcCurrent": "Actuellement au dossier",
+    "hcPendingTitle": "En attente d’examen",
+    "hcPendingNote": "Soumis — la clinique examinera et approuvera avant activation.",
+    "hcSubmitTitle": "Soumettre une mise à jour",
+    "hcSubmitBtn": "Soumettre pour examen"
   }
 }

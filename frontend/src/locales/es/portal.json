@@ -7,7 +7,9 @@
     "help": "Ayuda",
     "requests": "Solicitudes",
     "profile": "Perfil",
-    "invoices": "Facturas"
+    "invoices": "Facturas",
+    "documents": "Resultados",
+    "healthCard": "Tarjeta de salud"
   },
   "home": {
     "greeting": "Hola,",
@@ -222,5 +224,16 @@
     "PRIVATE_PAY": "Usted está registrado como paciente de pago privado, por lo que este servicio se le factura directamente en lugar de a través de OHIP.",
     "GENERIC_OHIP": "Esta factura es por un servicio que no está cubierto por su cobertura de OHIP.",
     "GENERIC_NONOHIP": "Esta factura es por un servicio que no está cubierto por el seguro de salud público y se le factura directamente."
+  },
+  "managed": {
+    "banner": "Estás gestionando la cuenta de {{name}}",
+    "return": "Volver a mi cuenta",
+    "hcSubmitted": "Actualización de la tarjeta de salud enviada para revisión del personal.",
+    "hcIntro": "Envía una actualización de la tarjeta de salud de {{name}}. Los cambios son revisados y aprobados por el personal de la clínica antes de aplicarse.",
+    "hcCurrent": "Registrado actualmente",
+    "hcPendingTitle": "Pendiente de revisión",
+    "hcPendingNote": "Enviado: la clínica lo revisará y aprobará antes de que sea activo.",
+    "hcSubmitTitle": "Enviar una actualización",
+    "hcSubmitBtn": "Enviar para revisión"
   }
 }

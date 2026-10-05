@@ -4,9 +4,10 @@ import MedicationRefill from "./MedicationRefill";
 
 export default function PortalPrescriptions() {
     const { t } = useTranslation(["requests"]);
-    const { overview, refetch } = usePortal();
+    const { overview, refetch, managed, base } = usePortal();
     const p = overview.data?.patient;
     const verified = p?.verification_status === "verified";
+    const obo = managed ? base.split("/").pop() : null;
     const list = overview.data?.prescriptions || [];
 
     // Group patient requests created in the same submission (shared batch_id) so
@@ -27,7 +28,7 @@ export default function PortalPrescriptions() {
             <h1 className="text-2xl font-bold text-slate-900">{t("rx.title")}</h1>
             {p && <PendingBanner status={p.verification_status} />}
 
-            {verified && <MedicationRefill onSubmitted={refetch} />}
+            {verified && <MedicationRefill onBehalfOf={obo} onSubmitted={refetch} />}
 
             <div className="space-y-3">
                 <h2 className="font-bold text-slate-700">{t("rx.listTitle")}</h2>

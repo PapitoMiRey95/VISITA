@@ -1532,16 +1532,20 @@ async def create_appointment(body: AppointmentBody, ctx: PortalCtx = Depends(por
     appt_type = body.appointment_type if body.appointment_type in ("IN_CLINIC", "TELEPHONE") else None
     doc = {
         "id": str(uuid.uuid4()), "ref_number": ref, "patient_id": p["id"],
+        "practice_id": p.get("practice_id"),
         "patient_name": f"{p['last_name']}, {p['first_name']}",
         "reason": body.reason, "patient_note": body.patient_note,
         "appointment_type": appt_type,
         "preferred_options": options,
         "preferred_date": opt1.get("date"), "preferred_time": opt1.get("label") or opt1.get("time"),
         "status": "requested", "staff_note": None,
+        "submitted_by_delegate": ctx.is_delegate,
+        "acted_by_user_id": ctx.user["id"] if ctx.is_delegate else None,
+        "on_behalf_of_patient_id": p["id"] if ctx.is_delegate else None,
         "offered_slots": [], "selected_slot": None,
         "confirmed_date": None, "confirmed_time": None, "confirmed_display": None,
         "approved_by": None, "approved_at": None, "assigned_to": None,
-        "internal_notes": [], "history": [{"status": "requested", "at": now_iso(), "by": "patient"}],
+        "internal_notes": [], "history": [{"status": "requested", "at": now_iso(), "by": ("delegate" if ctx.is_delegate else "patient")}],
         "created_at": now_iso(), "updated_at": now_iso(), "completed_at": None,
     }
     await db.appointment_requests.insert_one({**doc})

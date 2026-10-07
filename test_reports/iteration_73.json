@@ -1,0 +1,28 @@
+{
+  "summary": "Appointment slot-locking rework (PREVIEW): Comprehensive backend regression (5/5 pytest) + end-to-end frontend validation of patient portal, admin queue, and admin calendar. All critical acceptance criteria pass: slot held immediately on request, invisible to others, 409 on duplicate, EXISTING_UPCOMING guarded with ack checkbox, patient cancel releases slot, admin approve/change-time/cancel (free-slot & keep-blocked)/decline/notes actions all work, legacy 'offer' action rejected with 400, calendar week-view shows cancelled (red with cal-cancelled-badge) and requested events, cal-appt-detail shows cal-detail-cancellation + internal notes, cal-book-dialog opens from open slots.",
+  "backend_issues": { "critical": [], "minor": [] },
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [],
+    "design_issues": []
+  },
+  "test_report_links": [
+    "/app/backend/tests/test_appt_slot_lock.py",
+    "/app/test_reports/pytest/appt_slot_lock.xml"
+  ],
+  "action_items": [],
+  "critical_code_review_comments": [
+    "AppointmentQueue.jsx: for CONFIRMED appointments the Cancel testid is 'appt-cancel' (not 'appt-cancel-notify'). Spec is consistent (appt-cancel-notify is only for Requested state); documented here for next tester clarity.",
+    "/api/availability/slots ignores the `date` query parameter and always returns the full upcoming slot grid (frontend filters client-side). Not a bug per se - frontend works correctly - but the parameter is misleading."
+  ],
+  "updated_files": [
+    "/app/backend/tests/test_appt_slot_lock.py (new regression suite)"
+  ],
+  "success_rate": { "backend": "100% (5/5)", "frontend": "100% on tested flows" },
+  "test_credentials": "Verified from /app/memory/test_credentials.md",
+  "seed_data_creation": "Created several TEST_ appointment requests during testing; all were cancelled during cleanup. Admin confirmed-cancelled APT-000199 (John Smith) demonstrates keep-blocked flow in production preview.",
+  "retest_needed": false,
+  "main_agent_can_self_test": true,
+  "context_for_next_testing_agent": "Backend regression file /app/backend/tests/test_appt_slot_lock.py runs green (pytest with -o addopts=''). The patient portal uses a react-day-picker custom calendar inside [data-testid=appt-calendar]; day cells are buttons whose text is the day-of-month number (no data-date attribute). Time slots are button[data-testid^=appt-time-] - exclude [data-testid=appt-time-section]. CONFIRMED-row Cancel testid is 'appt-cancel' (not appt-cancel-notify which is Requested-only). All five admin dialog buttons (appt-approve/change-time/cancel-notify/call-patient) + offer-absent + internal-note add verified. Calendar cal-open-slot works - just close any existing cal-appt-detail dialog first.",
+  "rca of the issue": "N/A - feature set verified working end-to-end."
+}

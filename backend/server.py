@@ -576,6 +576,9 @@ def _appt_when(a: dict):
     """(date, time24) from canonical fields, falling back to legacy confirmed_* fields."""
     ds = a.get("slot_date") or a.get("confirmed_date")
     t = a.get("slot_time") or a.get("confirmed_slot_time") or avail_mod._norm_time(a.get("confirmed_time") or "")
+    if not ds and a.get("status") == "requested":
+        o = (a.get("preferred_options") or [{}])[0]
+        ds, t = o.get("date"), avail_mod._norm_time(o.get("time") or "")
     return ds, t
 
 

@@ -1,0 +1,21 @@
+{
+  "summary": "Verified OHIP registration validation (backend+frontend), /register/dr-aguayo EN|ES language switch with persistence and translated errors, HC version-code letters-only, desktop DOB modal, physician Rx compact queue (no MEDICATION column) with med-count badges and detail dialog, staff Rx queue still has MEDICATION column, admin /internal/appointments loads, and patient portal /portal/appointments loads for john.smith. 13/13 backend tests pass; all requested frontend assertions pass.",
+  "backend_issues": {"critical": [], "minor": []},
+  "frontend_issues": {"ui_bugs": [], "integration_issues": [], "design_issues": []},
+  "test_report_links": [
+    "/app/backend/tests/test_register_ohip_fields.py",
+    "/app/test_reports/pytest/register_ohip.xml"
+  ],
+  "action_items": [],
+  "critical_code_review_comments": [
+    "server.py line 844: identity_mod.valid_date is called on health_card_issue_date/expiry even for private patient_type where fields can legitimately be empty — currently fine because valid_date presumably accepts empty, but a defensive guard behind `if body.patient_type == 'ohip'` would be clearer.",
+    "RegisterBody.date_of_birth is typed `str` (not Optional); when the frontend omits it, Pydantic will 422 before reaching _register_missing. Tested path uses empty string which correctly maps to MISSING_FIELDS."
+  ],
+  "updated_files": ["/app/backend/tests/test_register_ohip_fields.py"],
+  "success_rate": {"backend": "100% (13/13)", "frontend": "100% (all assertions)"},
+  "test_credentials": "PAGUAYO/Newman2013_!, kevinrodriguez9528@gmail.com/VisitaAdmin2026!, john.smith@demo.com/Patient2026!",
+  "seed_data_creation": "QA registration accounts created with qa.reg.<ts>@example.com were cleaned up from users+patients collections via pymongo during tests.",
+  "retest_needed": false,
+  "should_main_agent_self_test": false,
+  "context_for_next_testing_agent": "test_register_ohip_fields.py parametrizes OHIP missing-field cases (health_card_version, _issue_date, _expiry_date, dob, sex, address, city, province, postal_code, phone). The valid OHIP success test aligns HC issue/expiry day+month to DOB (03-10) — do NOT change to 05-01 because validate_hc_dates enforces that match. Private branch & /api/applications/new-patient both verified to NOT require HC. Physician Rx queue headers verified: SOURCE,REF,PATIENT,PIN,STATUS,RECEIVED,(open). Staff Rx retains MEDICATION column."
+}

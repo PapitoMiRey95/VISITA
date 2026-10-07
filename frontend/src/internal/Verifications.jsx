@@ -189,7 +189,7 @@ export default function Verifications() {
     const invalidate = useInvalidate();
     const { user } = useAuth();
     const canDecide = ["staff", "admin"].includes(user?.role);
-    const [tab, setTab] = useState("pending");
+    const [tab, setTab] = useState("identity");
     const [visitaIds, setVisitaIds] = useState({});
     const [cmps, setCmps] = useState({});
     const autoLoaded = useRef(new Set());
@@ -239,6 +239,11 @@ export default function Verifications() {
             <p className="text-sm text-slate-500 mb-4">Manually verify new portal accounts and match them to VISITA patient records.</p>
 
             <div className="flex gap-1 mb-4 border-b border-slate-200">
+                <button data-testid="verif-tab-identity" onClick={() => setTab("identity")}
+                    title="Match recently registered portal applicants to their VISITA patient record"
+                    className={`px-3 py-2 text-sm font-semibold -mb-px border-b-2 inline-flex items-center gap-1 ${tab === "identity" ? "border-visita-green text-visita-greenDark" : "border-transparent text-slate-500 hover:text-slate-700"}`}>
+                    <GitMerge className="w-4 h-4" /> Identity Link Review
+                </button>
                 <button data-testid="verif-tab-pending" onClick={() => setTab("pending")}
                     className={`px-3 py-2 text-sm font-semibold -mb-px border-b-2 ${tab === "pending" ? "border-visita-green text-visita-greenDark" : "border-transparent text-slate-500 hover:text-slate-700"}`}>
                     Pending{items.length ? ` (${items.length})` : ""}
@@ -247,11 +252,12 @@ export default function Verifications() {
                     className={`px-3 py-2 text-sm font-semibold -mb-px border-b-2 inline-flex items-center gap-1 ${tab === "history" ? "border-visita-green text-visita-greenDark" : "border-transparent text-slate-500 hover:text-slate-700"}`}>
                     <History className="w-4 h-4" /> Recently Verified
                 </button>
-                <button data-testid="verif-tab-identity" onClick={() => setTab("identity")}
-                    className={`px-3 py-2 text-sm font-semibold -mb-px border-b-2 inline-flex items-center gap-1 ${tab === "identity" ? "border-visita-green text-visita-greenDark" : "border-transparent text-slate-500 hover:text-slate-700"}`}>
-                    <GitMerge className="w-4 h-4" /> Identity Link Review
-                </button>
             </div>
+            {tab === "identity" && (
+                <p className="text-xs text-slate-500 -mt-2 mb-3" data-testid="verif-identity-hint">
+                    Start here: match patients who recently applied for portal access to their existing VISITA record before verifying.
+                </p>
+            )}
 
             {tab === "identity" ? <IdentityLinks canDecide={canDecide} /> : tab === "history" ? <VerifiedHistory /> : (
             <div className="space-y-2">

@@ -172,19 +172,19 @@ export default function PortalAppointments() {
                     <form onSubmit={submit} className="space-y-5" data-testid="appointment-form">
                         {hasUpcoming && (
                             <Dialog open={!ackExisting && warnOpen} onOpenChange={(o) => !o && setWarnOpen(false)}>
-                                <DialogContent className="max-w-md rounded-2xl" data-testid="existing-upcoming-warning">
+                                <DialogContent className="max-w-2xl rounded-2xl p-8" data-testid="existing-upcoming-warning">
                                     <DialogHeader>
-                                        <DialogTitle className="flex items-center gap-2 text-amber-800">
-                                            <AlertTriangle className="w-5 h-5" /> {t("requests:appointments.existingTitle")}
+                                        <DialogTitle className="flex items-center gap-3 text-amber-800 text-xl sm:text-2xl">
+                                            <AlertTriangle className="w-7 h-7 shrink-0" /> {t("requests:appointments.existingTitle")}
                                         </DialogTitle>
                                     </DialogHeader>
-                                    <p className="text-sm text-slate-700">{t("requests:appointments.existingBody")}</p>
-                                    <div className="flex flex-col sm:flex-row gap-2 pt-2">
-                                        <Button type="button" variant="outline" className="flex-1 rounded-xl" data-testid="existing-upcoming-back"
+                                    <p className="text-base text-slate-700 leading-relaxed">{t("requests:appointments.existingBody")}</p>
+                                    <div className="flex flex-col sm:flex-row gap-3 pt-4">
+                                        <Button type="button" variant="outline" className="flex-1 rounded-xl h-12 text-base" data-testid="existing-upcoming-back"
                                             onClick={() => { setWarnOpen(false); document.getElementById("appt-your-requests")?.scrollIntoView({ behavior: "smooth" }); }}>
                                             {t("requests:appointments.back")}
                                         </Button>
-                                        <Button type="button" className="flex-1 rounded-xl bg-amber-600 hover:bg-amber-700 text-white" data-testid="existing-upcoming-ack"
+                                        <Button type="button" className="flex-1 rounded-xl h-12 text-base bg-amber-600 hover:bg-amber-700 text-white" data-testid="existing-upcoming-ack"
                                             onClick={() => { setAckExisting(true); setWarnOpen(false); }}>
                                             {t("requests:appointments.existingAck")}
                                         </Button>

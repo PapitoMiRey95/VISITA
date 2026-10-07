@@ -10,7 +10,7 @@ import json
 import re
 import secrets
 import uuid
-from datetime import datetime, timedelta, timezone
+from datetime import date, datetime, timedelta, timezone
 from typing import List, Optional
 
 from bson import ObjectId
@@ -33,6 +33,7 @@ import notifications as notify_svc
 import organizations as orgs_mod
 import relationships as rel_mod
 import delegates as delegates_mod
+import slots as slots_mod
 import storage
 from db import (APPT_PATIENT_STATUS, BLD_ACTIVE, BLD_PATIENT_STATUS, IMG_ACTIVE,
                 IMG_PATIENT_STATUS, MSG_ACTIVE, MSG_PATIENT_STATUS, RX_ACTIVE,
@@ -343,9 +344,10 @@ class ResetBody(BaseModel):
 
 class AppointmentBody(BaseModel):
     reason: str
-    options: List[dict] = []  # ranked slots [{date,time,label,display}] max 3
+    options: List[dict] = []  # exactly ONE slot [{date,time,label,display}] (legacy list shape)
     patient_note: Optional[str] = None
     appointment_type: Optional[str] = None  # IN_CLINIC | TELEPHONE
+    acknowledge_existing: bool = False      # deliberate continuation when an upcoming appt/request exists
 
 
 class PrescriptionBody(BaseModel):
@@ -409,6 +411,8 @@ class UpdateBody(BaseModel):
     offered_slots: Optional[List[dict]] = None
     patient_reply: Optional[str] = None
     void_reason: Optional[str] = None
+    cancel_reason: Optional[str] = None   # admin cancel / decline reason (required for cancel)
+    free_slot: Optional[bool] = None      # admin cancel: True = free the time, False = keep blocked
 
 
 class SelectSlotBody(BaseModel):
@@ -566,6 +570,43 @@ def _hours_until(appt) -> Optional[float]:
 async def _has_outstanding_fee(patient_id: str) -> bool:
     return bool(await db.appointment_requests.find_one(
         {"patient_id": patient_id, "late_fee.status": "outstanding"}))
+
+
+def _appt_when(a: dict):
+    """(date, time24) from canonical fields, falling back to legacy confirmed_* fields."""
+    ds = a.get("slot_date") or a.get("confirmed_date")
+    t = a.get("slot_time") or a.get("confirmed_slot_time") or avail_mod._norm_time(a.get("confirmed_time") or "")
+    return ds, t
+
+
+async def _upcoming_for_patient(patient_id: str):
+    """Future CONFIRMED appointments or active REQUESTED/HELD requests for this patient."""
+    today = date.today().isoformat()
+    items = await db.appointment_requests.find(
+        {"patient_id": patient_id, "status": {"$in": ["requested", "confirmed", "rescheduled"]}}, {"_id": 0}).to_list(50)
+    return [a for a in items if a.get("status") == "requested" or (_appt_when(a)[0] or "") >= today]
+
+
+def _validate_bookable(avail, ds, t24, allow_past=False):
+    if not avail_mod.is_within(avail, ds, t24):
+        raise HTTPException(status_code=400, detail="That time is outside the clinic's available hours.")
+    if not allow_past and avail_mod.is_past_slot(avail, ds, t24):
+        raise HTTPException(status_code=400, detail="That time is in the past. Please choose an upcoming time.")
+
+
+async def _reserve_or_409(practice_id, ds, t24, appt_id, state, actor):
+    if not await slots_mod.is_free(db, practice_id, ds, t24, exclude_appointment_id=appt_id):
+        raise HTTPException(status_code=409, detail=slots_mod.SLOT_TAKEN_MSG)
+    try:
+        return await slots_mod.reserve(db, practice_id, ds, t24, appt_id, state, actor)
+    except slots_mod.SlotTaken:
+        raise HTTPException(status_code=409, detail=slots_mod.SLOT_TAKEN_MSG)
+
+
+def _confirmed_fields(ds, t24, label=None, display=None):
+    lbl = label or avail_mod._label(avail_mod._to_min(t24))
+    return {**slots_mod.canonical_fields(ds, t24), "confirmed_date": ds, "confirmed_time": lbl,
+            "confirmed_slot_time": t24, "confirmed_display": display or f"{fmt_date_display(ds)} · {lbl}"}
 
 
 # ----------------------------- Auth routes -----------------------------
@@ -1526,40 +1567,54 @@ async def create_appointment(body: AppointmentBody, ctx: PortalCtx = Depends(por
     p = ctx.patient
     if await _has_outstanding_fee(p["id"]):
         raise HTTPException(status_code=403, detail=OUTSTANDING_FEE_MSG)
-    options = [o for o in (body.options or []) if o.get("date") and o.get("time")][:3]
+    options = [o for o in (body.options or []) if o.get("date") and o.get("time")]
     if not options:
-        raise HTTPException(status_code=400, detail="Please choose at least one preferred appointment time.")
+        raise HTTPException(status_code=400, detail="Please choose an appointment time.")
+    opt = options[0]
+    ds, t24 = opt["date"], avail_mod._norm_time(opt["time"])
     avail = await get_availability_doc()
-    for o in options:
-        if not avail_mod.is_within(avail, o.get("date"), o.get("time")):
-            raise HTTPException(status_code=400, detail="A selected time is outside the clinic's available hours.")
-        if avail_mod.is_past_slot(avail, o.get("date"), o.get("time")):
-            raise HTTPException(status_code=400, detail="A selected time is in the past. Please choose an upcoming time.")
+    _validate_bookable(avail, ds, t24)
+    existing = await _upcoming_for_patient(p["id"])
+    if existing and not body.acknowledge_existing:
+        raise HTTPException(status_code=409, detail={
+            "code": "EXISTING_UPCOMING",
+            "message": "You already have an upcoming appointment or appointment request."})
+    appt_id = str(uuid.uuid4())
+    actor = "delegate" if ctx.is_delegate else "patient"
+    await _reserve_or_409(p.get("practice_id"), ds, t24, appt_id, slots_mod.HELD, actor)
     ref = await next_ref("APT")
-    opt1 = options[0]
     appt_type = body.appointment_type if body.appointment_type in ("IN_CLINIC", "TELEPHONE") else None
+    label = opt.get("label") or avail_mod._label(avail_mod._to_min(t24))
     doc = {
-        "id": str(uuid.uuid4()), "ref_number": ref, "patient_id": p["id"],
+        "id": appt_id, "ref_number": ref, "patient_id": p["id"],
         "practice_id": p.get("practice_id"),
         "patient_name": f"{p['last_name']}, {p['first_name']}",
         "reason": body.reason, "patient_note": body.patient_note,
         "appointment_type": appt_type,
-        "preferred_options": options,
-        "preferred_date": opt1.get("date"), "preferred_time": opt1.get("label") or opt1.get("time"),
-        "status": "requested", "staff_note": None,
+        **slots_mod.canonical_fields(ds, t24),
+        "requested_display": opt.get("display") or f"{fmt_date_display(ds)} · {label}",
+        "preferred_options": [{"date": ds, "time": t24, "label": label, "display": opt.get("display")}],
+        "preferred_date": ds, "preferred_time": label,
+        "status": "requested", "slot_state": slots_mod.HELD, "staff_note": None,
         "submitted_by_delegate": ctx.is_delegate,
         "acted_by_user_id": ctx.user["id"] if ctx.is_delegate else None,
         "on_behalf_of_patient_id": p["id"] if ctx.is_delegate else None,
+        "acknowledged_existing": bool(existing),
         "offered_slots": [], "selected_slot": None,
         "confirmed_date": None, "confirmed_time": None, "confirmed_display": None,
         "approved_by": None, "approved_at": None, "assigned_to": None,
-        "internal_notes": [], "history": [{"status": "requested", "at": now_iso(), "by": ("delegate" if ctx.is_delegate else "patient")}],
+        "internal_notes": [], "history": [{"status": "requested", "at": now_iso(), "by": actor,
+                                           "note": f"Slot held {ds} {t24}"}],
         "created_at": now_iso(), "updated_at": now_iso(), "completed_at": None,
     }
     await db.appointment_requests.insert_one({**doc})
     await audit("create", "appointment", doc["id"], ctx.audit_actor(), new_status="requested",
-                meta=ctx.audit_meta())
+                meta=ctx.audit_meta({"slot": f"{ds} {t24}", "held": True}))
     doc.pop("_id", None)
+    try:
+        await notify_svc.appointment_requested(db, doc)
+    except Exception as e:
+        logger.warning(f"[appt] request notification failed: {e}")
     return doc
 
 
@@ -1576,15 +1631,17 @@ async def select_slot(item_id: str, body: SelectSlotBody, ctx: PortalCtx = Depen
         raise HTTPException(status_code=400, detail="Invalid option selected.")
     slot = slots[body.index]
     avail = await get_availability_doc()
-    if not avail_mod.is_within(avail, slot.get("date"), slot.get("time")):
+    sd, st = slot.get("date"), avail_mod._norm_time(slot.get("time") or "")
+    if not avail_mod.is_within(avail, sd, st) or avail_mod.is_past_slot(avail, sd, st):
         raise HTTPException(status_code=409, detail="That time is no longer available. Please contact the clinic.")
-    if avail_mod.is_past_slot(avail, slot.get("date"), slot.get("time")):
-        raise HTTPException(status_code=409, detail="That time is in the past. Please contact the clinic.")
+    try:
+        await slots_mod.move(db, doc.get("practice_id"), item_id, sd, st, slots_mod.CONFIRMED, "patient-selection")
+    except slots_mod.SlotTaken:
+        raise HTTPException(status_code=409, detail=slots_mod.SLOT_TAKEN_MSG)
     updates = {
-        "status": "confirmed", "selected_slot": slot,
-        "confirmed_date": slot.get("date"), "confirmed_time": slot.get("label") or slot.get("time"),
-        "confirmed_slot_time": avail_mod._norm_time(slot.get("time") or ""),
-        "confirmed_display": slot.get("display"), "approved_by": "Patient selection",
+        "status": "confirmed", "selected_slot": slot, "slot_state": slots_mod.CONFIRMED,
+        **_confirmed_fields(sd, st, slot.get("label"), slot.get("display")),
+        "approved_by": "Patient selection",
         "approved_at": now_iso(), "completed_at": now_iso(), "updated_at": now_iso(),
     }
     await db.appointment_requests.update_one({"id": item_id}, {
@@ -1610,17 +1667,25 @@ async def patient_cancel_appointment(item_id: str, ctx: PortalCtx = Depends(port
     appt = await db.appointment_requests.find_one({"id": item_id, "patient_id": p["id"]})
     if not appt:
         raise HTTPException(status_code=404, detail="Not found")
-    if appt.get("status") not in ("confirmed", "rescheduled"):
+    st = appt.get("status")
+    if st not in ("requested", "confirmed", "rescheduled"):
         raise HTTPException(status_code=400, detail="This appointment can't be cancelled online.")
-    hrs = _hours_until(appt)
-    if hrs is None or hrs < SELF_SERVICE_CUTOFF_HOURS:
-        raise HTTPException(status_code=403, detail=WITHIN_24H_MSG)
+    # >24h rule applies ONLY to confirmed appointments; a held request may be withdrawn any time.
+    if st != "requested":
+        hrs = _hours_until(appt)
+        if hrs is None or hrs < SELF_SERVICE_CUTOFF_HOURS:
+            raise HTTPException(status_code=403, detail=WITHIN_24H_MSG)
+    actor = "delegate" if ctx.is_delegate else "patient"
+    await slots_mod.release(db, item_id)
     await db.appointment_requests.update_one({"id": item_id}, {
-        "$set": {"status": "cancelled", "cancelled_by": "patient", "cancelled_at": now_iso(),
+        "$set": {"status": "cancelled", "cancelled_by": actor, "cancelled_at": now_iso(),
+                 "slot_state": None,
+                 "cancellation": {"reason": "Patient requested cancellation" if st != "requested" else "Request withdrawn by patient",
+                                  "free_slot": True, "by": actor, "at": now_iso(), "previous_status": st},
                  "completed_at": now_iso(), "updated_at": now_iso()},
-        "$push": {"history": {"status": "cancelled", "at": now_iso(), "by": "patient"}}})
+        "$push": {"history": {"status": "cancelled", "at": now_iso(), "by": actor, "note": "Slot released"}}})
     await audit("patient_cancel", "appointment", item_id,
-                ctx.audit_actor(), new_status="cancelled", meta=ctx.audit_meta())
+                ctx.audit_actor(), old_status=st, new_status="cancelled", meta=ctx.audit_meta({"slot_freed": True}))
     fresh = await db.appointment_requests.find_one({"id": item_id}, {"_id": 0})
     await notify_svc.appointment_cancelled(db, fresh)
     return {"ok": True}
@@ -1642,19 +1707,19 @@ async def patient_reschedule_appointment(item_id: str, body: PatientRescheduleBo
         raise HTTPException(status_code=403, detail=WITHIN_24H_MSG)
     time24 = avail_mod._norm_time(body.time)
     avail = await get_availability_doc()
-    if not avail_mod.is_within(avail, body.date, time24):
-        raise HTTPException(status_code=400, detail="That time is outside the clinic's available hours.")
-    if avail_mod.is_past_slot(avail, body.date, time24):
-        raise HTTPException(status_code=400, detail="That time is in the past. Please choose an upcoming time.")
-    if await _slot_taken(body.date, time24, exclude_id=item_id):
-        raise HTTPException(status_code=409, detail="This time is no longer available. Please select another time.")
-    display = body.display or f"{fmt_date_display(body.date)} · {body.label or body.time}"
+    _validate_bookable(avail, body.date, time24)
+    actor = "delegate" if ctx.is_delegate else "patient"
+    try:
+        await slots_mod.move(db, appt.get("practice_id"), item_id, body.date, time24, slots_mod.CONFIRMED, actor)
+    except slots_mod.SlotTaken:
+        raise HTTPException(status_code=409, detail=slots_mod.SLOT_TAKEN_MSG)
+    old_ds, old_t = _appt_when(appt)
     await db.appointment_requests.update_one({"id": item_id}, {
-        "$set": {"status": "confirmed", "confirmed_date": body.date,
-                 "confirmed_time": body.label or body.time, "confirmed_slot_time": time24,
-                 "confirmed_display": display, "rescheduled_by": "patient",
+        "$set": {"status": "confirmed", **_confirmed_fields(body.date, time24, body.label, body.display),
+                 "slot_state": slots_mod.CONFIRMED, "rescheduled_by": actor,
                  "rescheduled_at": now_iso(), "updated_at": now_iso()},
-        "$push": {"history": {"status": "rescheduled", "at": now_iso(), "by": "patient"}}})
+        "$push": {"history": {"status": "rescheduled", "at": now_iso(), "by": actor,
+                              "note": f"Moved from {old_ds} {old_t} to {body.date} {time24}"}}})
     await audit("patient_reschedule", "appointment", item_id,
                 ctx.audit_actor(), new_status="confirmed", meta=ctx.audit_meta())
     fresh = await db.appointment_requests.find_one({"id": item_id}, {"_id": 0})
@@ -1662,18 +1727,10 @@ async def patient_reschedule_appointment(item_id: str, body: PatientRescheduleBo
     return {"ok": True}
 
 
-async def get_busy_slots():
-    """VIen EMR is the source of truth: confirmed, rescheduled, completed and
-    no-show appointments all occupy (and keep) their slot — completing or marking
-    an appointment does NOT reopen its time."""
-    appts = await db.appointment_requests.find(
-        {"status": {"$in": ["confirmed", "rescheduled", "completed", "no_show"]}, "confirmed_date": {"$ne": None}}).to_list(2000)
-    busy = set()
-    for a in appts:
-        t = a.get("confirmed_slot_time") or avail_mod._norm_time(a.get("confirmed_time") or "")
-        if a.get("confirmed_date") and t:
-            busy.add(f"{a['confirmed_date']} {t}")
-    return busy
+async def get_busy_slots(practice_id=None):
+    """Shared availability engine input: active slot locks (HELD/CONFIRMED/BLOCKED)
+    plus legacy appointment records. Completing/no-show never reopens a slot."""
+    return await slots_mod.busy_set(db, practice_id)
 
 
 @api.get("/availability/slots")
@@ -1718,9 +1775,12 @@ async def internal_calendar(start: Optional[str] = None, days: int = 7,
     d0 = _date.fromisoformat(start)
     end = (d0 + _td(days=days - 1)).isoformat()
     appts = await db.appointment_requests.find({
-        "confirmed_date": {"$gte": start, "$lte": end},
-        "status": {"$in": ["confirmed", "rescheduled", "completed", "no_show"]},
+        "$or": [{"confirmed_date": {"$gte": start, "$lte": end}}, {"slot_date": {"$gte": start, "$lte": end}}],
+        "status": {"$in": ["requested", "confirmed", "rescheduled", "completed", "no_show", "cancelled"]},
     }, {"_id": 0}).to_list(1000)
+    lock_map = {}
+    async for lk in db[slots_mod.COLL].find({"date": {"$gte": start, "$lte": end}}, {"_id": 0}):
+        lock_map[lk["appointment_id"]] = lk
     # Batch-resolve VISITA PINs so the calendar can be searched by PIN.
     pids = {a.get("patient_id") for a in appts if a.get("patient_id")}
     dids = {a.get("directory_id") for a in appts if a.get("directory_id")}
@@ -1735,15 +1795,23 @@ async def internal_calendar(start: Optional[str] = None, days: int = 7,
                 pin_map[d["id"]] = d["visita_patient_id"]
     by_day = {}
     for a in appts:
-        by_day.setdefault(a["confirmed_date"], []).append({
+        ds, t = _appt_when(a)
+        if not ds:
+            continue
+        by_day.setdefault(ds, []).append({
             "id": a["id"], "ref_number": a.get("ref_number"),
-            "time": a.get("confirmed_slot_time") or avail_mod._norm_time(a.get("confirmed_time") or ""),
-            "label": a.get("confirmed_time"), "patient_name": a.get("patient_name"),
+            "time": t,
+            "label": a.get("confirmed_time") or (avail_mod._label(avail_mod._to_min(t)) if t else None),
+            "patient_name": a.get("patient_name"),
             "visita_patient_id": pin_map.get(a.get("patient_id")) or pin_map.get(a.get("directory_id")),
             "status": a.get("status"), "reason": a.get("reason"),
             "appointment_type": a.get("appointment_type"),
             "is_private": bool(a.get("is_private")),
             "source": (a.get("booked_from") or {}).get("source_type") or "appointment",
+            "slot_blocked": a["id"] in lock_map,
+            "cancellation": a.get("cancellation"),
+            "cancelled_by": a.get("cancelled_by"), "cancelled_at": a.get("cancelled_at"),
+            "internal_notes": a.get("internal_notes") or [],
         })
     for row in day_rows:
         row["appointments"] = sorted(by_day.get(row["date"], []), key=lambda x: x["time"] or "")
@@ -1904,29 +1972,31 @@ async def calendar_book(body: CalendarBookBody, user: dict = Depends(require_rol
         raise HTTPException(status_code=400, detail="A patient must be selected.")
     time24 = avail_mod._norm_time(body.time)
     avail = await get_availability_doc()
-    if not avail_mod.is_within(avail, body.date, time24):
-        raise HTTPException(status_code=400, detail="That time is outside Dr. Aguayo's configured availability.")
-    if avail_mod.is_past_slot(avail, body.date, time24):
-        raise HTTPException(status_code=400, detail="That time is in the past. Please choose an upcoming time.")
-    if await _slot_taken(body.date, time24):
-        raise HTTPException(status_code=409, detail="This time is no longer available. Please select another time.")
+    _validate_bookable(avail, body.date, time24)
+    appt_id = str(uuid.uuid4())
+    await _reserve_or_409(user.get("practice_id"), body.date, time24, appt_id, slots_mod.CONFIRMED, user["name"])
     ref = await next_ref("APT")
     appt = {
-        "id": str(uuid.uuid4()), "ref_number": ref, "patient_id": appt_patient_id,
+        "id": appt_id, "ref_number": ref, "patient_id": appt_patient_id,
+        "practice_id": user.get("practice_id"),
         "directory_id": appt_directory_id, "patient_name": patient_name,
         "reason": body.reason or "Office visit", "appointment_type": body.appointment_type,
         "duration": avail.get("appointment_duration"), "preferred_options": [],
-        "status": "confirmed", "confirmed_date": body.date, "confirmed_time": body.label or body.time,
-        "confirmed_slot_time": time24, "confirmed_display": f"{fmt_date_display(body.date)} · {body.label or body.time}",
+        "status": "confirmed", "slot_state": slots_mod.CONFIRMED,
+        **_confirmed_fields(body.date, time24, body.label),
         "approved_by": user["name"], "approved_at": now_iso(), "booked_by": user["name"],
         "booked_from": {"source_type": "calendar", "source_id": None},
         "assigned_to": None, "internal_notes": [],
-        "history": [{"status": "confirmed", "at": now_iso(), "by": user["name"], "note": "Booked from calendar"}],
+        "history": [{"status": "confirmed", "at": now_iso(), "by": user["name"], "note": "Booked directly from calendar"}],
         "created_at": now_iso(), "updated_at": now_iso(), "completed_at": None,
     }
     await db.appointment_requests.insert_one({**appt})
-    await audit("calendar_book", "appointment", appt["id"], user, new_status="confirmed")
-    await notify_svc.appointment_confirmed(db, appt)
+    await audit("calendar_book", "appointment", appt["id"], user, new_status="confirmed",
+                meta={"slot": f"{body.date} {time24}", "direct_booking": True})
+    try:
+        await notify_svc.appointment_confirmed(db, appt)
+    except Exception as e:
+        logger.warning(f"[appt] direct booking notification failed: {e}")
     appt.pop("_id", None)
     return appt
 
@@ -2007,14 +2077,18 @@ async def _create_private_appointment(pr: dict, ds: str, time_str: str, label, a
     err = avail_mod.private_conflict(avail, ds, time24, busy)
     if err:
         raise HTTPException(status_code=409, detail=err)
+    appt_id = str(uuid.uuid4())
+    await _reserve_or_409(pr.get("practice_id"), ds, time24, appt_id, slots_mod.CONFIRMED, actor_name)
     ref = await next_ref("APT")
     appt = {
-        "id": str(uuid.uuid4()), "ref_number": ref, "patient_id": pr["patient_id"],
+        "id": appt_id, "ref_number": ref, "patient_id": pr["patient_id"],
+        "practice_id": pr.get("practice_id"),
         "directory_id": pr.get("directory_id"), "patient_name": pr.get("patient_name"),
         "reason": pr.get("reason_label") or "Private consultation",
         "appointment_type": "PRIVATE", "is_private": True,
         "duration": avail.get("appointment_duration"), "preferred_options": [],
-        "status": "confirmed", "confirmed_date": ds,
+        "status": "confirmed", "slot_state": slots_mod.CONFIRMED, **slots_mod.canonical_fields(ds, time24),
+        "confirmed_date": ds,
         "confirmed_time": label or time_str, "confirmed_slot_time": time24,
         "confirmed_display": f"{fmt_date_display(ds)} · {label or time_str}",
         "approved_by": actor_name, "approved_at": now_iso(), "booked_by": actor_name,
@@ -2149,7 +2223,11 @@ async def _cancel_private(pr, actor, reason):
     if appt_id:
         appt = await db.appointment_requests.find_one({"id": appt_id})
         if appt and appt.get("status") in {"confirmed", "rescheduled"}:
-            await db.appointment_requests.update_one({"id": appt_id}, {"$set": {"status": "cancelled", "updated_at": now_iso()}})
+            await slots_mod.release(db, appt_id)
+            await db.appointment_requests.update_one({"id": appt_id}, {"$set": {
+                "status": "cancelled", "slot_state": None, "cancelled_by": actor, "cancelled_at": now_iso(),
+                "cancellation": {"reason": reason or "Private request cancelled", "free_slot": True, "by": actor, "at": now_iso()},
+                "updated_at": now_iso()}})
             await notify_svc.cancel_reminders(db, appt_id)
             fresh = await db.appointment_requests.find_one({"id": appt_id}, {"_id": 0})
             await notify_svc.appointment_cancelled(db, fresh, reason=reason)
@@ -3060,21 +3138,32 @@ async def portal_overview(ctx: PortalCtx = Depends(portal_access())):
     referrals = [{"id": r["id"], "specialty": r.get("specialty"),
                   "status": r.get("patient_visible_status"), "last_updated": r.get("updated_at")} for r in refs]
     def appt_view(a):
-        hrs = _hours_until(a) if a.get("status") in ("confirmed", "rescheduled") else None
+        st = a.get("status")
+        hrs = _hours_until(a) if st in ("confirmed", "rescheduled") else None
+        ds, t = _appt_when(a)
         return {
             "id": a["id"], "ref_number": a["ref_number"], "reason": a["reason"],
-            "status": APPT_PATIENT_STATUS.get(a["status"]), "raw_status": a["status"],
+            "status": APPT_PATIENT_STATUS.get(st), "raw_status": st,
             "appointment_type": a.get("appointment_type"),
             "preferred_options": a.get("preferred_options", []),
             "offered_slots": a.get("offered_slots", []),
+            "slot_date": ds, "slot_time": t, "appointment_at": a.get("appointment_at"),
+            "requested_display": a.get("requested_display") or (f"{fmt_date_display(ds)} · {avail_mod._label(avail_mod._to_min(t))}" if ds and t else None),
             "confirmed_date": a.get("confirmed_date"), "confirmed_time": a.get("confirmed_time"),
             "confirmed_slot_time": a.get("confirmed_slot_time"),
             "confirmed_display": a.get("confirmed_display"),
             "late_fee": a.get("late_fee"),
             "hours_until": hrs,
             "can_self_modify": bool(hrs is not None and hrs >= SELF_SERVICE_CUTOFF_HOURS),
+            "can_self_cancel": st == "requested" or bool(hrs is not None and hrs >= SELF_SERVICE_CUTOFF_HOURS),
+            "cancellation": ({"reason": (a.get("cancellation") or {}).get("reason"), "at": (a.get("cancellation") or {}).get("at")}
+                             if a.get("cancellation") else None),
             "staff_note": a.get("staff_note"), "created_at": a["created_at"],
         }
+    today_iso = date.today().isoformat()
+    has_upcoming = any(a.get("status") == "requested" or
+                       (a.get("status") in ("confirmed", "rescheduled") and (_appt_when(a)[0] or "") >= today_iso)
+                       for a in appts)
     has_fee = any((a.get("late_fee") or {}).get("status") == "outstanding" for a in appts)
     pending_hc = p.get("pending_health_card")
     inv_open = 0 if is_del else await db.invoices.count_documents({"patient_id": pid, "status": {"$in": ["ISSUED", "PAYMENT_SUBMITTED"]}})
@@ -3100,7 +3189,8 @@ async def portal_overview(ctx: PortalCtx = Depends(portal_access())):
                     "health_card_status": identity_mod.health_card_status(p.get("health_card_expiry_date")),
                     "health_card_update_pending": bool(pending_hc),
                     "pending_health_card": pending_hc,
-                    "has_outstanding_fee": (False if is_del else has_fee)},
+                    "has_outstanding_fee": (False if is_del else has_fee),
+                    "has_upcoming_appointment": has_upcoming},
         "requests": requests,
         "appointments": [appt_view(a) for a in appts] if allow("APPOINTMENTS") else [],
         "prescriptions": ([{"id": r["id"], "ref_number": r["ref_number"], "medication_name": r["medication_name"],
@@ -3896,16 +3986,8 @@ _BOOK_SOURCES = {
 }
 
 
-async def _slot_taken(date_str: str, time24: str, exclude_id: Optional[str] = None) -> bool:
-    existing = await db.appointment_requests.find(
-        {"status": "confirmed", "confirmed_date": date_str}).to_list(200)
-    for a in existing:
-        if exclude_id and a.get("id") == exclude_id:
-            continue
-        at = a.get("confirmed_slot_time") or avail_mod._norm_time(a.get("confirmed_time") or "")
-        if at == time24:
-            return True
-    return False
+async def _slot_taken(date_str: str, time24: str, exclude_id: Optional[str] = None, practice_id=None) -> bool:
+    return not await slots_mod.is_free(db, practice_id, date_str, time24, exclude_appointment_id=exclude_id)
 
 
 @api.post("/internal/book-appointment")
@@ -3921,23 +4003,22 @@ async def book_appointment(body: BookApptBody, user: dict = Depends(require_role
         raise HTTPException(status_code=400, detail="This request has no linked patient.")
     time24 = avail_mod._norm_time(body.time)
     avail = await get_availability_doc()
-    if not avail_mod.is_within(avail, body.date, time24):
-        raise HTTPException(status_code=400, detail="That time is outside Dr. Aguayo's configured availability.")
-    if await _slot_taken(body.date, time24):
-        raise HTTPException(status_code=409, detail="This time is no longer available. Please select another time.")
+    _validate_bookable(avail, body.date, time24)
+    appt_id = str(uuid.uuid4())
+    await _reserve_or_409(user.get("practice_id"), body.date, time24, appt_id, slots_mod.CONFIRMED, user["name"])
 
     ref = await next_ref("APT")
     display = body.display or f"{fmt_date_display(body.date)} · {body.label or body.time}"
     appt = {
-        "id": str(uuid.uuid4()), "ref_number": ref, "patient_id": source["patient_id"],
+        "id": appt_id, "ref_number": ref, "patient_id": source["patient_id"],
+        "practice_id": source.get("practice_id") or user.get("practice_id"),
         "patient_name": source.get("patient_name"),
         "reason": body.reason or f"Follow-up for {body.source_type} request {source.get('ref_number')}",
         "patient_note": None, "preferred_options": [],
         "preferred_date": body.date, "preferred_time": body.label or body.time,
-        "status": "confirmed", "staff_note": None,
+        "status": "confirmed", "slot_state": slots_mod.CONFIRMED, "staff_note": None,
         "offered_slots": [], "selected_slot": None,
-        "confirmed_date": body.date, "confirmed_time": body.label or body.time,
-        "confirmed_slot_time": time24, "confirmed_display": display,
+        **_confirmed_fields(body.date, time24, body.label, display),
         "approved_by": user["name"], "approved_at": now_iso(),
         "booked_from": {"source_type": body.source_type, "source_id": body.source_id,
                         "source_ref": source.get("ref_number")},
@@ -4014,7 +4095,22 @@ async def appt_queue(q: Optional[str] = None, status: Optional[str] = None, user
     if status:
         query["status"] = status
     query.update(_search_filter(q, ["patient_name", "reason", "ref_number"]))
-    return await db.appointment_requests.find(query, {"_id": 0}).sort("created_at", -1).to_list(500)
+    items = await db.appointment_requests.find(query, {"_id": 0}).sort("created_at", -1).to_list(500)
+    # Batch-resolve PIN / DOB / phone so the request popup can show them (no per-row lookups).
+    pids = {a.get("patient_id") for a in items if a.get("patient_id")}
+    pmap = {}
+    if pids:
+        async for p in db.patients.find({"id": {"$in": list(pids)}},
+                                        {"_id": 0, "id": 1, "visita_patient_id": 1, "date_of_birth": 1, "phone": 1}):
+            pmap[p["id"]] = p
+    for a in items:
+        p = pmap.get(a.get("patient_id")) or {}
+        a["patient_pin"] = p.get("visita_patient_id")
+        a["patient_dob"] = p.get("date_of_birth")
+        a["patient_phone"] = p.get("phone")
+        ds, t = _appt_when(a)
+        a["slot_date"], a["slot_time"] = a.get("slot_date") or ds, a.get("slot_time") or t
+    return items
 
 
 def _appt_display(a: dict) -> str:
@@ -4097,52 +4193,101 @@ async def issue_no_show_invoice(item_id: str, user: dict = Depends(require_roles
     return billing_mod.invoice_internal(inv)
 
 
+ADMIN_CANCEL_REASONS = {"Physician unavailable", "Clinic schedule change", "Unexpected closure",
+                        "Patient requested cancellation", "Other"}
+
+
 @api.patch("/internal/appointments/{item_id}")
 async def appt_update(item_id: str, body: UpdateBody, user: dict = Depends(require_roles(*CLINIC_ROLES))):
     doc = await db.appointment_requests.find_one({"id": item_id})
     if not doc:
         raise HTTPException(status_code=404, detail="Not found")
     old = doc.get("status")
+    pid_scope = doc.get("practice_id") or user.get("practice_id")
     updates = {"updated_at": now_iso()}
-    do_confirm_notify = False
-    do_reschedule_notify = False
-    do_offer_notify = False
+    history_note = None
+    notify = None  # confirmed | time_changed | cancelled | declined
+    cur_ds, cur_t = _appt_when(doc)
 
     if body.action == "approve":
-        cdate = body.confirmed_date or (doc.get("preferred_options") or [{}])[0].get("date")
-        ctime = body.confirmed_time or (doc.get("preferred_options") or [{}])[0].get("time")
+        if old != "requested":
+            raise HTTPException(status_code=400, detail="Only a requested appointment can be approved.")
+        ds = body.confirmed_date or cur_ds
+        t24 = avail_mod._norm_time(body.confirmed_time or cur_t or "")
+        if not ds or not t24:
+            raise HTTPException(status_code=400, detail="This request has no held time. Use Change Time to pick one.")
         avail = await get_availability_doc()
-        if not avail_mod.is_within(avail, cdate, ctime):
-            raise HTTPException(status_code=400, detail="That time is outside Dr. Aguayo's configured availability. Use 'Offer Available Times' instead.")
-        time24 = avail_mod._norm_time(ctime)
-        if await _slot_taken(cdate, time24, exclude_id=item_id):
-            raise HTTPException(status_code=409, detail="This time is no longer available. Please select another time.")
-        updates.update({
-            "status": "confirmed", "confirmed_date": cdate, "confirmed_time": ctime,
-            "confirmed_slot_time": time24, "confirmed_display": body.confirmed_display or f"{fmt_date_display(cdate)} · {ctime}",
-            "approved_by": user["name"], "approved_at": now_iso(), "completed_at": now_iso(),
-        })
-        do_confirm_notify = True
-    elif body.action == "reschedule":
-        cdate = body.confirmed_date
-        ctime = body.confirmed_time
+        _validate_bookable(avail, ds, t24, allow_past=True)
+        try:
+            # Same slot as the hold -> state flips HELD->CONFIRMED; a different slot is reserved first.
+            await slots_mod.move(db, pid_scope, item_id, ds, t24, slots_mod.CONFIRMED, user["name"])
+        except slots_mod.SlotTaken:
+            raise HTTPException(status_code=409, detail=slots_mod.SLOT_TAKEN_MSG)
+        updates.update({"status": "confirmed", "slot_state": slots_mod.CONFIRMED,
+                        **_confirmed_fields(ds, t24, None, body.confirmed_display),
+                        "approved_by": user["name"], "approved_at": now_iso(), "completed_at": now_iso()})
+        history_note = f"Approved for {ds} {t24}"
+        notify = "confirmed"
+    elif body.action in ("change_time", "reschedule"):
+        if old not in ("requested", "confirmed", "rescheduled"):
+            raise HTTPException(status_code=400, detail="Only a requested or confirmed appointment can be moved.")
+        ds, t24 = body.confirmed_date, avail_mod._norm_time(body.confirmed_time or "")
+        if not ds or not t24:
+            raise HTTPException(status_code=400, detail="Select a new time.")
         avail = await get_availability_doc()
-        if not avail_mod.is_within(avail, cdate, ctime):
-            raise HTTPException(status_code=400, detail="That time is outside Dr. Aguayo's configured availability.")
-        time24 = avail_mod._norm_time(ctime)
-        if avail_mod.is_past_slot(avail, cdate, time24):
-            raise HTTPException(status_code=400, detail="That time is in the past. Please choose an upcoming time.")
-        if await _slot_taken(cdate, time24, exclude_id=item_id):
-            raise HTTPException(status_code=409, detail="This time is no longer available. Please select another time.")
-        updates.update({
-            "status": "confirmed", "confirmed_date": cdate, "confirmed_time": ctime,
-            "confirmed_slot_time": time24, "confirmed_display": body.confirmed_display or f"{fmt_date_display(cdate)} · {ctime}",
-            "rescheduled_by": user["name"], "rescheduled_at": now_iso(),
-        })
-        do_reschedule_notify = True
+        _validate_bookable(avail, ds, t24)
+        try:
+            await slots_mod.move(db, pid_scope, item_id, ds, t24, slots_mod.CONFIRMED, user["name"])
+        except slots_mod.SlotTaken:
+            raise HTTPException(status_code=409, detail=slots_mod.SLOT_TAKEN_MSG)
+        updates.update({"status": "confirmed", "slot_state": slots_mod.CONFIRMED,
+                        **_confirmed_fields(ds, t24, None, body.confirmed_display),
+                        "rescheduled_by": user["name"], "rescheduled_at": now_iso(),
+                        "original_requested_slot": doc.get("original_requested_slot") or
+                        ({"date": cur_ds, "time": cur_t} if cur_ds else None)})
+        if old == "requested":
+            updates.update({"approved_by": user["name"], "approved_at": now_iso(), "completed_at": now_iso()})
+        history_note = f"Time changed from {cur_ds} {cur_t} to {ds} {t24}"
+        notify = "time_changed"
     elif body.action == "cancel":
-        updates.update({"status": "cancelled", "staff_note": body.staff_note,
-                        "cancelled_by": user["name"], "cancelled_at": now_iso(), "completed_at": now_iso()})
+        if old not in ("requested", "confirmed", "rescheduled"):
+            raise HTTPException(status_code=400, detail="This appointment cannot be cancelled.")
+        reason = (body.cancel_reason or body.staff_note or "").strip()
+        if not reason:
+            raise HTTPException(status_code=400, detail="A cancellation reason is required.")
+        free_slot = True if body.free_slot is None else bool(body.free_slot)
+        if free_slot:
+            await slots_mod.release(db, item_id)
+        else:
+            lk = await slots_mod.lock_for(db, item_id)
+            if lk:
+                await slots_mod.set_state(db, item_id, slots_mod.BLOCKED)
+            elif cur_ds and cur_t:
+                try:
+                    await slots_mod.reserve(db, pid_scope, cur_ds, cur_t, item_id, slots_mod.BLOCKED, user["name"])
+                except slots_mod.SlotTaken:
+                    pass
+        updates.update({"status": "cancelled", "staff_note": body.staff_note or reason,
+                        "slot_state": None if free_slot else slots_mod.BLOCKED,
+                        "cancelled_by": user["name"], "cancelled_at": now_iso(), "completed_at": now_iso(),
+                        "cancellation": {"reason": reason, "free_slot": free_slot, "by": user["name"],
+                                         "at": now_iso(), "previous_status": old}})
+        history_note = f"Cancelled — {reason} — slot {'freed' if free_slot else 'kept blocked'}"
+        notify = "cancelled"
+    elif body.action == "decline":
+        if old != "requested":
+            raise HTTPException(status_code=400, detail="Only a requested appointment can be declined.")
+        reason = (body.cancel_reason or body.staff_note or "").strip()
+        await slots_mod.release(db, item_id)
+        updates.update({"status": "declined", "staff_note": body.staff_note or reason or None, "slot_state": None,
+                        "declined_by": user["name"], "declined_at": now_iso(), "completed_at": now_iso(),
+                        "cancellation": {"reason": reason or "Declined by clinic", "free_slot": True,
+                                         "by": user["name"], "at": now_iso(), "previous_status": old}})
+        history_note = f"Declined — slot released{(' — ' + reason) if reason else ''}"
+        notify = "declined"
+    elif body.action == "note":
+        if not (body.internal_note or "").strip():
+            raise HTTPException(status_code=400, detail="Note text is required.")
     elif body.action == "record_fee":
         updates["late_fee"] = {"amount": LATE_FEE_AMOUNT, "status": "outstanding",
                                "created_by": user["name"], "created_at": now_iso()}
@@ -4153,15 +4298,9 @@ async def appt_update(item_id: str, body: UpdateBody, user: dict = Depends(requi
         lf = doc.get("late_fee") or {"amount": LATE_FEE_AMOUNT}
         updates["late_fee"] = {**lf, "status": "waived", "resolved_by": user["name"], "resolved_at": now_iso()}
     elif body.action == "offer":
-        slots = [s for s in (body.offered_slots or []) if s.get("date") and s.get("time")][:3]
-        if not slots:
-            raise HTTPException(status_code=400, detail="Select at least one available time to offer.")
-        updates.update({"status": "alternatives_offered", "offered_slots": slots})
-        do_offer_notify = True
+        raise HTTPException(status_code=400, detail="Offering alternative times is no longer supported. Use Change Time.")
     elif body.action == "more_info":
         updates.update({"status": "more_info_required", "staff_note": body.staff_note})
-    elif body.action == "decline":
-        updates.update({"status": "declined", "staff_note": body.staff_note, "completed_at": now_iso()})
     elif body.action == "complete":
         updates.update({"status": "completed", "completed_at": now_iso(), "completed_by": user["name"]})
     elif body.action == "no_show":
@@ -4174,28 +4313,35 @@ async def appt_update(item_id: str, body: UpdateBody, user: dict = Depends(requi
     if body.assigned_to is not None:
         updates["assigned_to"] = body.assigned_to
 
-    mongo_update = {"$set": updates, "$push": {"history": {"status": updates.get("status", old), "at": now_iso(), "by": user["name"]}}}
+    mongo_update = {"$set": updates, "$push": {}}
+    if body.action != "note":
+        hist = {"status": updates.get("status", old), "at": now_iso(), "by": user["name"]}
+        if history_note:
+            hist["note"] = history_note
+        mongo_update["$push"]["history"] = hist
     if body.internal_note:
-        mongo_update["$push"]["internal_notes"] = {"by": user["name"], "note": body.internal_note, "at": now_iso()}
+        mongo_update["$push"]["internal_notes"] = {"by": user["name"], "note": body.internal_note.strip(), "at": now_iso()}
+    if not mongo_update["$push"]:
+        mongo_update.pop("$push")
     await db.appointment_requests.update_one({"id": item_id}, mongo_update)
-    await audit("update", "appointment", item_id, user, old_status=old, new_status=updates.get("status", old))
+    await audit("update", "appointment", item_id, user, old_status=old, new_status=updates.get("status", old),
+                meta={"action": body.action, "note": history_note} if body.action else None)
 
     fresh = await db.appointment_requests.find_one({"id": item_id}, {"_id": 0})
-    if do_confirm_notify:
+    if not fresh.get("patient_id"):
+        return fresh
+    if notify == "confirmed":
         await notify_svc.appointment_confirmed(db, fresh)
-    elif do_reschedule_notify:
+    elif notify == "time_changed":
         await notify_svc.appointment_rescheduled(db, fresh)
-    elif do_offer_notify:
-        await notify_svc.alternatives_offered(db, fresh)
+    elif notify == "cancelled":
+        await notify_svc.appointment_cancelled(db, fresh, reason=(fresh.get("cancellation") or {}).get("reason"))
+    elif notify == "declined":
+        await notify_svc.appointment_declined(db, fresh, reason=body.staff_note or None)
     elif body.action == "more_info":
         await notify_patient(doc["patient_id"], "Appointment update",
                              "We need a little more information about your appointment request. Please log in to your Patient Portal.")
-    elif body.action == "decline":
-        await notify_patient(doc["patient_id"], "Appointment update",
-                             "There is an update on your appointment request. Please log in to your Patient Portal.")
-    elif body.action == "cancel":
-        await notify_svc.appointment_cancelled(db, fresh, reason=body.staff_note)
-    if body.action in ("decline", "complete", "no_show"):
+    if body.action in ("complete", "no_show"):
         await notify_svc.cancel_reminders(db, item_id)
     return fresh
 
@@ -8446,6 +8592,9 @@ async def startup():
         "linked_user_id", unique=True,
         partialFilterExpression={"linked_user_id": {"$type": "string"}})
     await db.referrals.create_index([("ready_to_fax", 1), ("faxed", 1)])
+    # Slot reservation layer: unique (practice_id, slot_start) is the final double-booking guard.
+    # Index only — NO data backfill at startup (see backfill_slot_locks.py).
+    await slots_mod.ensure_indexes(db)
     try:
         storage.init_storage()
         logger.info("Storage initialized")

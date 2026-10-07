@@ -286,7 +286,17 @@
       "confirmCancel": "Cancel this appointment? This can't be undone online.",
       "cancelled": "Appointment cancelled.",
       "chooseNewTime": "Choose a new time.",
-      "rescheduled": "Appointment rescheduled."
-    }
+      "rescheduled": "Appointment rescheduled.",
+      "confirmCancelRequest": "Withdraw this appointment request? The held time will be released.",
+      "requestCancelled": "Appointment request cancelled and time released."
+    },
+    "existingTitle": "You already have an upcoming appointment or appointment request.",
+    "existingBody": "Please check your requests below before booking another time. If you still need a second appointment, confirm below to continue.",
+    "existingAck": "I understand — I still want to request another appointment",
+    "heldNote": "This time is held for you until the clinic confirms it.",
+    "requestedFor": "Requested for",
+    "cancelRequest": "Cancel request",
+    "cancelledOn": "Cancelled",
+    "lateFeeNotice": "A $40 late-cancellation fee applies within 24 hours of the appointment."
   }
 }

@@ -286,8 +286,18 @@
       "confirmCancel": "¿Cancelar esta cita? Esto no se puede deshacer en línea.",
       "cancelled": "Cita cancelada.",
       "chooseNewTime": "Elija una nueva hora.",
-      "rescheduled": "Cita reprogramada."
-    }
+      "rescheduled": "Cita reprogramada.",
+      "confirmCancelRequest": "¿Retirar esta solicitud de cita? El horario reservado se liberará.",
+      "requestCancelled": "Solicitud de cita cancelada y horario liberado."
+    },
+    "existingTitle": "Ya tiene una cita próxima o una solicitud de cita pendiente.",
+    "existingBody": "Revise sus solicitudes a continuación antes de reservar otro horario. Si aún necesita una segunda cita, confirme abajo para continuar.",
+    "existingAck": "Entiendo — aun así deseo solicitar otra cita",
+    "heldNote": "Este horario queda reservado para usted hasta que la clínica lo confirme.",
+    "requestedFor": "Solicitada para",
+    "cancelRequest": "Cancelar solicitud",
+    "cancelledOn": "Cancelada",
+    "lateFeeNotice": "Se aplica un cargo de $40 por cancelación tardía dentro de las 24 horas previas a la cita."
   },
   "reasonLabels": {
     "New Medical Concern": "Nueva preocupación médica",

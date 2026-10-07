@@ -40,7 +40,7 @@ def _lang(p) -> str:
 
 
 def _time24(appt) -> str:
-    t = appt.get("confirmed_slot_time")
+    t = appt.get("slot_time") or appt.get("confirmed_slot_time")
     if not t:
         t = avail_mod._norm_time(appt.get("confirmed_time") or "")
     return t or ""
@@ -48,7 +48,7 @@ def _time24(appt) -> str:
 
 def _confirmed_dt_utc(appt):
     """Confirmed date+time (America/Toronto) as a UTC datetime, or None."""
-    ds, t = appt.get("confirmed_date"), _time24(appt)
+    ds, t = appt.get("slot_date") or appt.get("confirmed_date"), _time24(appt)
     if not ds or not t:
         return None
     try:
@@ -75,7 +75,7 @@ def _type_label(appt, lang="en") -> str:
 
 def _fmt_when(appt) -> str:
     """'2026 Sep - 23 at 1:30 PM' from confirmed date/time (America/Toronto)."""
-    ds, t = appt.get("confirmed_date"), _time24(appt)
+    ds, t = appt.get("slot_date") or appt.get("confirmed_date"), _time24(appt)
     if not ds:
         return appt.get("confirmed_display") or "your scheduled time"
     try:
@@ -203,6 +203,33 @@ async def account_verified(db, patient):
     email = (patient or {}).get("email")
     html = email_service.account_verified_html(first, PORTAL_URL, lang=lang)
     await _send_email(db, pid, email, email_service.subject("account_verified", lang), html)
+
+
+async def appointment_requested(db, appt):
+    """Request submitted: slot is HELD. Portal + generic email (no PHI)."""
+    p = await _patient(db, appt.get("patient_id"))
+    lang = _lang(p)
+    first = (p or {}).get("first_name") or "there"
+    when = _fmt_when(appt)
+    await _in_portal(db, appt["patient_id"], "Appointment request received",
+                     f"We received your appointment request for {when}. This time is held for you until the clinic confirms it.")
+    html = email_service.appointment_requested_html(first, when, PORTAL_URL, _type_label(appt, lang), lang=lang)
+    await _send_email(db, appt["patient_id"], (p or {}).get("email"), email_service.subject("appt_requested", lang), html)
+
+
+async def appointment_declined(db, appt, reason=None):
+    """Request declined: slot released. Portal + generic email (no PHI)."""
+    p = await _patient(db, appt.get("patient_id"))
+    lang = _lang(p)
+    first = (p or {}).get("first_name") or "there"
+    when = _fmt_when(appt)
+    note = f" Note: {reason}" if reason else ""
+    await _in_portal(db, appt["patient_id"], "Appointment request not confirmed",
+                     f"The clinic could not confirm your appointment request for {when}.{note} "
+                     "Please request another time or contact the office.")
+    html = email_service.appointment_declined_html(first, when, PORTAL_URL, lang=lang)
+    await _send_email(db, appt["patient_id"], (p or {}).get("email"), email_service.subject("appt_declined", lang), html)
+    await cancel_reminders(db, appt.get("id"))
 
 
 async def alternatives_offered(db, appt):

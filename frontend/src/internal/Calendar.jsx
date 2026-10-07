@@ -13,6 +13,16 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle } from "../components/
 import { StatusPill } from "./statusPill";
 import { ApptTypeBadge } from "../components/ApptTypeBadge";
 import BookAppointmentModal from "./BookAppointmentModal";
+import CancelAppointmentDialog from "./CancelAppointmentDialog";
+import { InternalNotes } from "./InternalNotes";
+
+// Visual state per appointment status: cancelled = red (history), requested = amber (held).
+function apptTone(a) {
+    if (a.status === "cancelled") return "bg-red-50 border-red-300 text-red-800";
+    if (a.status === "requested") return "bg-amber-50 border-amber-300";
+    if (a.is_private) return "bg-amber-50 border-amber-300";
+    return "bg-emerald-50 border-emerald-200";
+}
 
 function addDays(iso, n) {
     const d = new Date(iso + "T00:00:00");
@@ -43,6 +53,7 @@ export default function Calendar() {
     const [view, setView] = useState("month"); // day | week | month
     const [start, setStart] = useState(todayISO());
     const [resched, setResched] = useState(null);
+    const [cancelling, setCancelling] = useState(null);
     const [booking, setBooking] = useState(null); // {date, time, label}
     const [blocking, setBlocking] = useState(null); // {date}
     const [search, setSearch] = useState(""); // filter by patient name / last name / PIN
@@ -232,21 +243,27 @@ export default function Calendar() {
                                     const m = matchAppt(a);
                                     const sel = a.id === selectedId;
                                     return (
-                                    <div key={a.id} data-testid="cal-appt" className={`rounded-sm border px-2 py-1 text-xs transition-all ${a.is_private ? "bg-amber-50 border-amber-300" : "bg-emerald-50 border-emerald-200"} ${sel ? "ring-2 ring-visita-green ring-offset-2 shadow-md" : m === true ? "ring-2 ring-visita-green ring-offset-1" : ""} ${m === false && !sel ? "opacity-30" : ""}`}>
+                                    <div key={a.id} data-testid="cal-appt" data-status={a.status} className={`rounded-sm border px-2 py-1 text-xs transition-all ${apptTone(a)} ${sel ? "ring-2 ring-visita-green ring-offset-2 shadow-md" : m === true ? "ring-2 ring-visita-green ring-offset-1" : ""} ${m === false && !sel ? "opacity-30" : ""}`}>
                                         <div className="flex justify-between items-center gap-1">
-                                            <button type="button" data-testid="cal-appt-open" onClick={() => { setSelectedId(a.id); setDetail({ ...a, date: d.date }); }} className="font-semibold text-slate-800 truncate text-left hover:text-visita-greenDark hover:underline">{a.label || a.time} · {formatCombinedName(a.patient_name)}{a.visita_patient_id ? ` · PIN ${a.visita_patient_id}` : ""}</button>
+                                            <button type="button" data-testid="cal-appt-open" onClick={() => { setSelectedId(a.id); setDetail({ ...a, date: d.date }); }} className={`font-semibold truncate text-left hover:underline ${a.status === "cancelled" ? "text-red-800 line-through decoration-red-400" : "text-slate-800 hover:text-visita-greenDark"}`}>{a.label || a.time} · {formatCombinedName(a.patient_name)}{a.visita_patient_id ? ` · PIN ${a.visita_patient_id}` : ""}</button>
                                             <StatusPill status={a.status} />
                                         </div>
+                                        {a.status === "cancelled" && (
+                                            <div className="text-[10px] font-bold uppercase tracking-wide text-red-700" data-testid="cal-cancelled-badge">
+                                                Cancelled · {a.slot_blocked ? "time kept blocked" : "time freed"}
+                                            </div>
+                                        )}
                                         {a.is_private && <div className="text-[10px] font-bold uppercase tracking-wide text-amber-700" data-testid="cal-private-badge">Private / Uninsured</div>}
                                         {a.reason && <div className="text-slate-500 truncate leading-tight">{a.reason}</div>}
                                         <div className="flex items-center justify-between gap-2 mt-0.5">
                                             <ApptTypeEditor appt={a} onSaved={refresh} />
-                                            {(a.status === "confirmed" || a.status === "rescheduled") && (
+                                            {(a.status === "confirmed" || a.status === "rescheduled" || a.status === "requested") && (
                                                 <div className="flex gap-1.5 shrink-0">
-                                                    <button className="text-[11px] text-slate-500 hover:text-visita-greenDark" onClick={() => setResched(a)} data-testid="cal-reschedule">Reschedule</button>
-                                                    <button className="text-[11px] text-slate-500 hover:text-slate-800" onClick={() => act(a.id, { action: "complete" }, "Marked completed.")} data-testid="cal-complete">Complete</button>
-                                                    <button className="text-[11px] text-amber-600" onClick={() => act(a.id, { action: "no_show" }, "Marked no-show.")} data-testid="cal-noshow">No-show</button>
-                                                    <button className="text-[11px] text-red-600" onClick={() => act(a.id, { action: "cancel" }, "Cancelled.")} data-testid="cal-cancel">Cancel</button>
+                                                    {a.status === "requested" && <button className="text-[11px] text-visita-greenDark font-semibold" onClick={() => act(a.id, { action: "approve" }, "Approved — patient notified.")} data-testid="cal-approve">Approve</button>}
+                                                    <button className="text-[11px] text-slate-500 hover:text-visita-greenDark" onClick={() => setResched(a)} data-testid="cal-reschedule">Change time</button>
+                                                    {a.status !== "requested" && <button className="text-[11px] text-slate-500 hover:text-slate-800" onClick={() => act(a.id, { action: "complete" }, "Marked completed.")} data-testid="cal-complete">Complete</button>}
+                                                    {a.status !== "requested" && <button className="text-[11px] text-amber-600" onClick={() => act(a.id, { action: "no_show" }, "Marked no-show.")} data-testid="cal-noshow">No-show</button>}
+                                                    <button className="text-[11px] text-red-600" onClick={() => setCancelling(a)} data-testid="cal-cancel">Cancel</button>
                                                 </div>
                                             )}
                                         </div>
@@ -272,11 +289,16 @@ export default function Calendar() {
             {resched && (
                 <BookAppointmentModal open onClose={() => setResched(null)} onDone={refresh} mode="reschedule" source={resched} />
             )}
+            {cancelling && (
+                <CancelAppointmentDialog appt={cancelling} onClose={() => setCancelling(null)} onDone={() => { refresh(); setDetail(null); }} />
+            )}
             {booking && <BookSlotDialog slot={booking} onClose={() => setBooking(null)} onDone={refresh} />}
             {blocking && <BlockDialog day={blocking} onClose={() => setBlocking(null)} onDone={refresh} />}
             {detail && (
                 <AppointmentDetail appt={detail} onClose={() => setDetail(null)}
                     onReschedule={() => { setResched(detail); setDetail(null); }}
+                    onCancel={() => { setCancelling(detail); }}
+                    onNoteSaved={(u) => { setDetail({ ...detail, internal_notes: u.internal_notes }); refresh(); }}
                     onAction={async (body, msg) => { await act(detail.id, body, msg); setDetail(null); }} />
             )}
         </div>
@@ -295,11 +317,13 @@ function DRow({ label, children }) {
 
 // Compact appointment detail popup. Reuses StatusPill / ApptTypeBadge and the
 // parent's existing appointment actions (no duplicated business logic).
-function AppointmentDetail({ appt, onClose, onReschedule, onAction }) {
+function AppointmentDetail({ appt, onClose, onReschedule, onCancel, onNoteSaved, onAction }) {
     const canAct = appt.status === "confirmed" || appt.status === "rescheduled";
+    const isReq = appt.status === "requested";
+    const c = appt.cancellation;
     return (
         <Dialog open onOpenChange={(o) => !o && onClose()}>
-            <DialogContent className="max-w-md" data-testid="cal-appt-detail">
+            <DialogContent className="max-w-md max-h-[90vh] overflow-y-auto" data-testid="cal-appt-detail">
                 <DialogHeader><DialogTitle>Appointment Details</DialogTitle></DialogHeader>
                 <div className="space-y-3">
                     <div>
@@ -307,6 +331,13 @@ function AppointmentDetail({ appt, onClose, onReschedule, onAction }) {
                         <div className="text-lg font-bold text-slate-900" data-testid="cal-detail-name">{formatCombinedName(appt.patient_name)}</div>
                         <div className="text-xs text-slate-500">{appt.visita_patient_id ? `PIN: ${appt.visita_patient_id}` : "PIN: Not assigned"}</div>
                     </div>
+                    {appt.status === "cancelled" && (
+                        <div className="bg-red-50 border border-red-200 rounded-sm p-2 text-xs text-red-800" data-testid="cal-detail-cancellation">
+                            <div className="font-bold">CANCELLED — {appt.slot_blocked ? "time kept blocked" : "time freed"}</div>
+                            {c?.reason && <div>Reason: {c.reason}</div>}
+                            <div>By {appt.cancelled_by || c?.by || "—"}{appt.cancelled_at || c?.at ? ` · ${new Date(appt.cancelled_at || c.at).toLocaleString()}` : ""}</div>
+                        </div>
+                    )}
                     <div>
                         <div className="text-[11px] font-bold uppercase tracking-wide text-slate-400 mb-1">Appointment</div>
                         <DRow label="Date">{formatDate(appt.date)}</DRow>
@@ -318,14 +349,16 @@ function AppointmentDetail({ appt, onClose, onReschedule, onAction }) {
                         <DRow label="Reference">{appt.ref_number}</DRow>
                         <DRow label="Source">{appt.source}</DRow>
                     </div>
-                    {canAct && (
+                    {(canAct || isReq) && (
                         <div className="flex flex-wrap gap-2 pt-1">
-                            <Button size="sm" variant="outline" data-testid="cal-detail-reschedule" onClick={onReschedule}>Reschedule</Button>
-                            <Button size="sm" variant="outline" data-testid="cal-detail-complete" onClick={() => onAction({ action: "complete" }, "Marked completed.")}>Mark Completed</Button>
-                            <Button size="sm" variant="outline" className="text-amber-700 border-amber-300 hover:bg-amber-50" data-testid="cal-detail-noshow" onClick={() => onAction({ action: "no_show" }, "Marked no-show.")}>No-show</Button>
-                            <Button size="sm" variant="outline" className="text-red-600 border-red-300 hover:bg-red-50" data-testid="cal-detail-cancel" onClick={() => onAction({ action: "cancel" }, "Cancelled.")}>Cancel</Button>
+                            {isReq && <Button size="sm" className="bg-visita-green hover:bg-visita-greenDark text-white" data-testid="cal-detail-approve" onClick={() => onAction({ action: "approve" }, "Approved — patient notified.")}>Approve</Button>}
+                            <Button size="sm" variant="outline" data-testid="cal-detail-reschedule" onClick={onReschedule}>Change Time</Button>
+                            {canAct && <Button size="sm" variant="outline" data-testid="cal-detail-complete" onClick={() => onAction({ action: "complete" }, "Marked completed.")}>Mark Completed</Button>}
+                            {canAct && <Button size="sm" variant="outline" className="text-amber-700 border-amber-300 hover:bg-amber-50" data-testid="cal-detail-noshow" onClick={() => onAction({ action: "no_show" }, "Marked no-show.")}>No-show</Button>}
+                            <Button size="sm" variant="outline" className="text-red-600 border-red-300 hover:bg-red-50" data-testid="cal-detail-cancel" onClick={onCancel}>Cancel</Button>
                         </div>
                     )}
+                    <InternalNotes appt={appt} onSaved={onNoteSaved} />
                 </div>
             </DialogContent>
         </Dialog>
@@ -379,7 +412,7 @@ function MonthGrid({ anchor, rows, onPickDate, matchAppt, active }) {
                                 {appts.slice(0, 3).map((a) => {
                                     const m = matchAppt(a);
                                     return (
-                                    <div key={a.id} data-testid="cal-month-appt" className={`text-[10px] leading-tight truncate rounded-sm px-1 py-0.5 ${m === true ? "bg-visita-green text-white font-bold" : "bg-emerald-50 text-emerald-800"}`}>
+                                    <div key={a.id} data-testid="cal-month-appt" className={`text-[10px] leading-tight truncate rounded-sm px-1 py-0.5 ${m === true ? "bg-visita-green text-white font-bold" : a.status === "cancelled" ? "bg-red-50 text-red-700 line-through" : a.status === "requested" ? "bg-amber-50 text-amber-800" : "bg-emerald-50 text-emerald-800"}`}>
                                         <span className="font-semibold">{a.time}</span> {(a.patient_name || "").split(",")[0].toUpperCase()}{m === true && a.visita_patient_id ? ` · ${a.visita_patient_id}` : ""}
                                     </div>
                                     );

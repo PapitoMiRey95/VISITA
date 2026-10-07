@@ -74,9 +74,10 @@ export default function PortalAppointments() {
     const [note, setNote] = useState("");
     const [busy, setBusy] = useState(false);
 
-    const [selecting, setSelecting] = useState({});
     const [reschedId, setReschedId] = useState(null);
     const [reschedPick, setReschedPick] = useState("");
+    const [ackExisting, setAckExisting] = useState(false);
+    const hasUpcoming = !!p?.has_upcoming_appointment;
 
     const selIso = selDate ? isoOf(selDate) : null;
     const dayTimes = selIso ? (byDate[selIso] || []) : [];
@@ -93,6 +94,7 @@ export default function PortalAppointments() {
         if (!selSlot) return toast.error(t("requests:appointments.toasts.selectDateTime"));
         if (!apptType) return toast.error(t("requests:appointments.toasts.selectType"));
         if (!reason.trim()) return toast.error(t("requests:appointments.toasts.enterReason"));
+        if (hasUpcoming && !ackExisting) return toast.error(t("requests:appointments.existingTitle"));
         setBusy(true);
         try {
             // Re-check the slot is still open right before submitting (it may have been taken).
@@ -105,31 +107,25 @@ export default function PortalAppointments() {
             }
             await api.post("/portal/appointments", {
                 reason: reason.trim(), patient_note: note || undefined,
-                appointment_type: apptType,
+                appointment_type: apptType, acknowledge_existing: ackExisting,
                 options: [{ date: selSlot.date, time: selSlot.time, label: selSlot.label, display: selSlot.display }],
             });
             toast.success(t("requests:appointments.toasts.requestSubmitted"));
-            setSelDate(null); setSelSlot(null); setApptType("IN_CLINIC"); setReason(""); setNote("");
+            setSelDate(null); setSelSlot(null); setApptType("IN_CLINIC"); setReason(""); setNote(""); setAckExisting(false);
             refetch();
-        } catch (err) { toast.error(formatErr(err)); } finally { setBusy(false); }
+        } catch (err) {
+            toast.error(formatErr(err));
+            if (err?.response?.status === 409) { setSelSlot(null); slotsQ.refetch(); }
+        } finally { setBusy(false); }
     };
 
-    const confirmSlot = async (apptId) => {
-        const index = selecting[apptId];
-        if (index === undefined) return toast.error(t("requests:appointments.toasts.selectTime"));
+    const cancelAppt = async (a) => {
+        const isReq = a.raw_status === "requested";
+        if (!window.confirm(t(isReq ? "requests:appointments.toasts.confirmCancelRequest" : "requests:appointments.toasts.confirmCancel"))) return;
         try {
-            await api.post(`/portal/appointments/${apptId}/select`, { index });
-            toast.success(t("requests:appointments.toasts.confirmed"));
-            refetch();
-        } catch (err) { toast.error(formatErr(err)); }
-    };
-
-    const cancelAppt = async (id) => {
-        if (!window.confirm(t("requests:appointments.toasts.confirmCancel"))) return;
-        try {
-            await api.post(`/portal/appointments/${id}/cancel`);
-            toast.success(t("requests:appointments.toasts.cancelled"));
-            refetch();
+            await api.post(`/portal/appointments/${a.id}/cancel`);
+            toast.success(t(isReq ? "requests:appointments.toasts.requestCancelled" : "requests:appointments.toasts.cancelled"));
+            refetch(); slotsQ.refetch();
         } catch (err) { toast.error(formatErr(err)); }
     };
 
@@ -172,6 +168,18 @@ export default function PortalAppointments() {
             {verified && !hasFee && (
                 <Card>
                     <form onSubmit={submit} className="space-y-5" data-testid="appointment-form">
+                        {hasUpcoming && (
+                            <div className="bg-amber-50 border border-amber-200 rounded-xl p-3 text-sm text-amber-900" data-testid="existing-upcoming-warning">
+                                <div className="flex items-center gap-2 font-bold mb-1">
+                                    <AlertTriangle className="w-4 h-4" /> {t("requests:appointments.existingTitle")}
+                                </div>
+                                <p className="text-xs">{t("requests:appointments.existingBody")}</p>
+                                <label className="flex items-center gap-2 mt-2 text-xs font-semibold cursor-pointer">
+                                    <input type="checkbox" checked={ackExisting} onChange={(e) => setAckExisting(e.target.checked)} data-testid="existing-upcoming-ack" />
+                                    {t("requests:appointments.existingAck")}
+                                </label>
+                            </div>
+                        )}
                         {/* Step 1 — Date */}
                         <div>
                             <div className="flex items-center gap-2 mb-2">
@@ -296,7 +304,7 @@ export default function PortalAppointments() {
                             </div>
                         )}
 
-                        <Button type="submit" disabled={busy || !selSlot || !apptType || !reason.trim()} data-testid="appt-submit"
+                        <Button type="submit" disabled={busy || !selSlot || !apptType || !reason.trim() || (hasUpcoming && !ackExisting)} data-testid="appt-submit"
                             className="w-full h-12 rounded-xl bg-portal-blue hover:bg-portal-blueDark text-white text-base">
                             {busy ? t("requests:appointments.submitting") : t("requests:appointments.submit")}
                         </Button>
@@ -318,6 +326,26 @@ export default function PortalAppointments() {
                             <StatusPill status={a.status} />
                         </div>
 
+                        {a.raw_status === "requested" && (
+                            <div className="mt-2 space-y-2" data-testid={`appt-held-${a.id}`}>
+                                <div className="flex items-center gap-2 text-amber-700 font-semibold text-sm">
+                                    <Clock className="w-4 h-4" /> {t("requests:appointments.requestedFor")} {a.requested_display || `${formatDate(a.slot_date)} · ${a.slot_time}`}
+                                </div>
+                                <p className="text-xs text-slate-500">{t("requests:appointments.heldNote")}</p>
+                                <Button size="sm" variant="outline" className="text-red-600 border-red-200"
+                                    data-testid={`patient-cancel-${a.id}`} onClick={() => cancelAppt(a)}>
+                                    <X className="w-4 h-4 mr-1" /> {t("requests:appointments.cancelRequest")}
+                                </Button>
+                            </div>
+                        )}
+
+                        {a.raw_status === "cancelled" && (
+                            <div className="mt-2 text-sm text-slate-500" data-testid={`appt-cancelled-${a.id}`}>
+                                {t("requests:appointments.cancelledOn")}: {a.confirmed_display || a.requested_display || "—"}
+                                {a.cancellation?.reason && <span> · {a.cancellation.reason}</span>}
+                            </div>
+                        )}
+
                         {(a.raw_status === "confirmed" || a.raw_status === "rescheduled") && a.confirmed_display && (
                             <div className="mt-2 space-y-2">
                                 <div className="flex items-center gap-2 text-emerald-700 font-semibold text-sm">
@@ -331,7 +359,7 @@ export default function PortalAppointments() {
                                             <CalendarClock className="w-4 h-4 mr-1" /> {t("requests:appointments.reschedule")}
                                         </Button>
                                         <Button size="sm" variant="outline" className="text-red-600 border-red-200"
-                                            data-testid={`patient-cancel-${a.id}`} onClick={() => cancelAppt(a.id)}>
+                                            data-testid={`patient-cancel-${a.id}`} onClick={() => cancelAppt(a)}>
                                             <X className="w-4 h-4 mr-1" /> {t("requests:appointments.cancel")}
                                         </Button>
                                     </div>
@@ -359,6 +387,7 @@ export default function PortalAppointments() {
                                             <AlertTriangle className="w-4 h-4" /> {t("requests:appointments.within24Title")}
                                         </div>
                                         {t("requests:appointments.within24Body")}
+                                        <p className="mt-1 font-semibold" data-testid={`late-fee-notice-${a.id}`}>{t("requests:appointments.lateFeeNotice")}</p>
                                         <div className="mt-2">
                                             <Button size="sm" variant="outline" data-testid={`contact-clinic-${a.id}`} onClick={() => nav(managed ? base : "/portal/messages")}>
                                                 <Phone className="w-4 h-4 mr-1" /> {t("requests:appointments.contactClinic")}
@@ -370,25 +399,11 @@ export default function PortalAppointments() {
                         )}
 
                         {a.raw_status === "alternatives_offered" && (
-                            <div className="mt-3 bg-sky-50 border border-sky-200 rounded-xl p-3" data-testid="offered-slots">
-                                <div className="flex items-center gap-2 text-sky-800 font-bold text-sm mb-2">
-                                    <CalendarClock className="w-4 h-4" /> {t("requests:appointments.selectApptTime")}
-                                </div>
-                                <p className="text-xs text-slate-600 mb-2">{t("requests:appointments.notAvailableChoose")}</p>
-                                <div className="space-y-2">
-                                    {(a.offered_slots || []).map((s, idx) => (
-                                        <label key={s.display || idx} data-testid={`offer-option-${idx}`}
-                                            className={`flex items-center gap-2 p-2 rounded-lg border cursor-pointer ${selecting[a.id] === idx ? "border-portal-blue bg-white" : "border-slate-200 bg-white"}`}>
-                                            <input type="radio" name={`sel-${a.id}`} checked={selecting[a.id] === idx}
-                                                onChange={() => setSelecting({ ...selecting, [a.id]: idx })} />
-                                            <span className="font-semibold text-slate-800">{s.display}</span>
-                                        </label>
-                                    ))}
-                                </div>
-                                <Button onClick={() => confirmSlot(a.id)} data-testid={`confirm-slot-${a.id}`}
-                                    className="mt-3 w-full h-11 rounded-xl bg-portal-blue hover:bg-portal-blueDark text-white">
-                                    {t("requests:appointments.confirmThisTime")}
-                                </Button>
+                            <div className="mt-3 bg-slate-50 border border-slate-200 rounded-xl p-3 text-xs text-slate-600" data-testid="offered-slots">
+                                {t("requests:appointments.notAvailableChoose")}
+                                <ul className="mt-1 list-disc pl-4">
+                                    {(a.offered_slots || []).map((s, idx) => <li key={s.display || idx}>{s.display}</li>)}
+                                </ul>
                             </div>
                         )}
 

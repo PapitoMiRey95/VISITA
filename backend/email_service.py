@@ -159,6 +159,10 @@ SUBJECTS = {
                          "es": "Cita reprogramada — Dr. Aguayo"},
     "appt_cancelled": {"en": "Appointment Cancelled — Dr. Aguayo",
                        "es": "Cita cancelada — Dr. Aguayo"},
+    "appt_requested": {"en": "Appointment Request Received — Dr. Aguayo",
+                       "es": "Solicitud de cita recibida — Dr. Aguayo"},
+    "appt_declined": {"en": "Appointment Request Update — Dr. Aguayo",
+                      "es": "Actualización de su solicitud de cita — Dr. Aguayo"},
     "waiting_list": {"en": "You've been placed on the waiting list",
                      "es": "Ha sido colocado en la lista de espera"},
     "invoice_issued": {"en": "New invoice from Dr. Aguayo's office",
@@ -255,7 +259,21 @@ _APPT_COPY = {
                    "es": ("Cita reprogramada", "Su cita con el Dr. Aguayo ha sido reprogramada para:")},
     "cancelled": {"en": ("Appointment Cancelled", "Your appointment with Dr. Aguayo scheduled for the time below has been cancelled:"),
                   "es": ("Cita cancelada", "Su cita con el Dr. Aguayo programada para la fecha indicada ha sido cancelada:")},
+    "requested": {"en": ("Appointment Request Received", "We received your appointment request for the time below. This time is being held for you until the clinic confirms it:"),
+                  "es": ("Solicitud de cita recibida", "Recibimos su solicitud de cita para la fecha indicada. Este horario queda reservado hasta que el consultorio lo confirme:")},
+    "declined": {"en": ("Appointment Request Not Confirmed", "Unfortunately the clinic could not confirm your appointment request for the time below. Please sign in to request another time or contact the office:"),
+                 "es": ("Solicitud de cita no confirmada", "Lamentablemente el consultorio no pudo confirmar su solicitud de cita para la fecha indicada. Inicie sesión para solicitar otro horario o comuníquese con el consultorio:")},
 }
+
+
+def appointment_requested_html(name: str, when: str, portal_url: str = "", type_label: str = "", lang="en") -> str:
+    h, i = _APPT_COPY["requested"][norm_lang(lang)]
+    return _appt_email(h, i, name, when, portal_url, type_label, lang)
+
+
+def appointment_declined_html(name: str, when: str, portal_url: str = "", lang="en") -> str:
+    h, i = _APPT_COPY["declined"][norm_lang(lang)]
+    return _appt_email(h, i, name, when, portal_url, lang=lang)
 
 
 def appointment_confirmed_html(name: str, when: str, portal_url: str = "", type_label: str = "", lang="en") -> str:

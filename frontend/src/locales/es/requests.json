@@ -297,7 +297,11 @@
     "requestedFor": "Solicitada para",
     "cancelRequest": "Cancelar solicitud",
     "cancelledOn": "Cancelada",
-    "lateFeeNotice": "Se aplica un cargo de $40 por cancelación tardía dentro de las 24 horas previas a la cita."
+    "lateFeeNotice": "Se aplica un cargo de $40 por cancelación tardía dentro de las 24 horas previas a la cita.",
+    "yourRequest": "Su solicitud de cita",
+    "upcomingAppt": "Próxima cita",
+    "historyToggle": "Citas pasadas y canceladas ({{count}})",
+    "noActive": "No tiene citas ni solicitudes activas."
   },
   "reasonLabels": {
     "New Medical Concern": "Nueva preocupación médica",

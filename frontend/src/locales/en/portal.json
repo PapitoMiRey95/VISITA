@@ -48,6 +48,13 @@
       "count_one": "{{count}} active medicine",
       "count_other": "{{count}} active medicines",
       "view": "View medicines"
+    },
+    "cancelAlert": {
+      "title": "Appointment cancelled",
+      "body": "Your appointment for {{when}} was cancelled by the clinic.",
+      "reason": "Reason: {{reason}}",
+      "cta": "Book another appointment",
+      "dismiss": "Dismiss"
     }
   },
   "documents": {

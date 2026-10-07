@@ -1694,6 +1694,17 @@ async def patient_cancel_appointment(item_id: str, ctx: PortalCtx = Depends(port
     return {"ok": True}
 
 
+@api.post("/portal/appointments/{item_id}/ack-cancellation")
+async def ack_cancellation(item_id: str, ctx: PortalCtx = Depends(portal_access("APPOINTMENTS"))):
+    """Patient/caregiver dismisses the Home clinic-cancellation alert. Record untouched otherwise."""
+    r = await db.appointment_requests.update_one(
+        {"id": item_id, "patient_id": ctx.patient["id"], "status": {"$in": ["cancelled", "declined"]}},
+        {"$set": {"cancellation.acknowledged_at": now_iso()}})
+    if not r.matched_count:
+        raise HTTPException(status_code=404, detail="Not found")
+    return {"ok": True}
+
+
 @api.post("/portal/appointments/{item_id}/reschedule")
 async def patient_reschedule_appointment(item_id: str, body: PatientRescheduleBody,
                                          ctx: PortalCtx = Depends(portal_access("APPOINTMENTS"))):
@@ -1814,6 +1825,7 @@ async def internal_calendar(start: Optional[str] = None, days: int = 7,
             "slot_blocked": a["id"] in lock_map,
             "cancellation": a.get("cancellation"),
             "cancelled_by": a.get("cancelled_by"), "cancelled_at": a.get("cancelled_at"),
+            "completed_by": a.get("completed_by"), "marked_by": a.get("marked_by"), "completed_at": a.get("completed_at"),
             "internal_notes": a.get("internal_notes") or [],
         })
     for row in day_rows:
@@ -3167,6 +3179,23 @@ async def portal_overview(ctx: PortalCtx = Depends(portal_access())):
     has_upcoming = any(a.get("status") == "requested" or
                        (a.get("status") in ("confirmed", "rescheduled") and (_appt_when(a)[0] or "") >= today_iso)
                        for a in appts)
+    # Clinic-originated cancellation alert for Home: newest admin/physician cancel that is
+    # not acknowledged and not superseded by a later request/booking.
+    clinic_cancel_alert = None
+    cancelled = [a for a in appts if (a.get("status") == "cancelled" and a.get("cancelled_by") not in (None, "patient", "delegate"))
+                 or (a.get("status") == "declined" and a.get("declined_by"))]
+    cancelled = [a for a in cancelled if not (a.get("cancellation") or {}).get("acknowledged_at")]
+    if cancelled:
+        latest = max(cancelled, key=lambda a: a.get("cancelled_at") or a.get("declined_at") or "")
+        latest_at = latest.get("cancelled_at") or latest.get("declined_at") or ""
+        later_active = [a for a in appts if a.get("status") in ("requested", "confirmed", "rescheduled")
+                        and (a.get("created_at") or "") > latest_at]
+        if not later_active:
+            clinic_cancel_alert = {"id": latest["id"], "ref_number": latest.get("ref_number"),
+                                   "display": latest.get("confirmed_display") or latest.get("requested_display"),
+                                   "reason": (latest.get("cancellation") or {}).get("reason"),
+                                   "was_request": latest.get("status") == "declined",
+                                   "cancelled_at": latest_at}
     has_fee = any((a.get("late_fee") or {}).get("status") == "outstanding" for a in appts)
     pending_hc = p.get("pending_health_card")
     inv_open = 0 if is_del else await db.invoices.count_documents({"patient_id": pid, "status": {"$in": ["ISSUED", "PAYMENT_SUBMITTED"]}})
@@ -3193,7 +3222,8 @@ async def portal_overview(ctx: PortalCtx = Depends(portal_access())):
                     "health_card_update_pending": bool(pending_hc),
                     "pending_health_card": pending_hc,
                     "has_outstanding_fee": (False if is_del else has_fee),
-                    "has_upcoming_appointment": has_upcoming},
+                    "has_upcoming_appointment": has_upcoming,
+                    "clinic_cancellation_alert": clinic_cancel_alert if allow("APPOINTMENTS") else None},
         "requests": requests,
         "appointments": [appt_view(a) for a in appts] if allow("APPOINTMENTS") else [],
         "prescriptions": ([{"id": r["id"], "ref_number": r["ref_number"], "medication_name": r["medication_name"],

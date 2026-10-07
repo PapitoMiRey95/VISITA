@@ -16,6 +16,44 @@ import BookAppointmentModal from "./BookAppointmentModal";
 import CancelAppointmentDialog from "./CancelAppointmentDialog";
 import { InternalNotes } from "./InternalNotes";
 
+// Operational view: only what still affects today's schedule. History (cancelled+freed,
+// completed, no-show) is preserved and shown behind the per-day "Show day history" control.
+const isHistory = (a) => a.status === "completed" || a.status === "no_show" || (a.status === "cancelled" && !a.slot_blocked);
+const liveAppts = (list) => (list || []).filter((a) => !isHistory(a));
+const historyAppts = (list) => (list || []).filter(isHistory);
+
+function DayHistory({ appts, open, onToggle, onOpen }) {
+    if (!appts.length) return null;
+    return (
+        <div className="pt-1" data-testid="cal-day-history">
+            <button type="button" onClick={onToggle} data-testid="cal-day-history-toggle"
+                className="w-full text-left text-[11px] font-semibold text-slate-500 hover:text-slate-800 flex items-center gap-1">
+                <ChevronRight className={`w-3 h-3 transition-transform ${open ? "rotate-90" : ""}`} /> {open ? "Hide" : "Show"} day history ({appts.length})
+            </button>
+            {open && (
+                <div className="mt-1 space-y-1" data-testid="cal-day-history-list">
+                    {appts.map((a) => {
+                        const c = a.cancellation || {};
+                        const red = a.status === "cancelled";
+                        return (
+                            <button type="button" key={a.id} onClick={() => onOpen(a)} data-testid="cal-history-appt" data-status={a.status}
+                                className={`w-full text-left rounded-sm border px-2 py-1 text-[11px] ${red ? "bg-red-50 border-red-200 text-red-800" : "bg-slate-50 border-slate-200 text-slate-600"}`}>
+                                <div className="flex justify-between gap-1">
+                                    <span className={`font-semibold truncate ${red ? "line-through decoration-red-400" : ""}`}>{a.label || a.time} · {formatCombinedName(a.patient_name)}</span>
+                                    <StatusPill status={a.status} />
+                                </div>
+                                {red && <div>{c.reason || "Cancelled"} · {a.slot_blocked ? "TIME KEPT BLOCKED" : "TIME FREED"}{a.cancelled_by ? ` · by ${a.cancelled_by}` : ""}</div>}
+                                {a.status === "completed" && a.completed_by && <div>Completed by {a.completed_by}</div>}
+                                {a.status === "no_show" && a.marked_by && <div>Marked no-show by {a.marked_by}</div>}
+                            </button>
+                        );
+                    })}
+                </div>
+            )}
+        </div>
+    );
+}
+
 // Visual state per appointment status: cancelled = red (history), requested = amber (held).
 function apptTone(a) {
     if (a.status === "cancelled") return "bg-red-50 border-red-300 text-red-800";
@@ -54,6 +92,7 @@ export default function Calendar() {
     const [start, setStart] = useState(todayISO());
     const [resched, setResched] = useState(null);
     const [cancelling, setCancelling] = useState(null);
+    const [histOpen, setHistOpen] = useState({}); // per-day "Show day history" toggle
     const [booking, setBooking] = useState(null); // {date, time, label}
     const [blocking, setBlocking] = useState(null); // {date}
     const [search, setSearch] = useState(""); // filter by patient name / last name / PIN
@@ -239,7 +278,7 @@ export default function Calendar() {
                                         DAY BLOCKED — remaining slots unavailable
                                     </div>
                                 )}
-                                {d.appointments.map((a) => {
+                                {liveAppts(d.appointments).map((a) => {
                                     const m = matchAppt(a);
                                     const sel = a.id === selectedId;
                                     return (
@@ -279,6 +318,9 @@ export default function Calendar() {
                                 {d.appointments.length === 0 && d.open_slots.length === 0 && (
                                     <div className="text-xs text-slate-400 py-1.5 text-center">No availability</div>
                                 )}
+                                <DayHistory appts={historyAppts(d.appointments)} open={!!histOpen[d.date]}
+                                    onToggle={() => setHistOpen((h) => ({ ...h, [d.date]: !h[d.date] }))}
+                                    onOpen={(a) => { setSelectedId(a.id); setDetail({ ...a, date: d.date }); }} />
                             </div>
                         )}
                     </div>
@@ -387,7 +429,7 @@ function MonthGrid({ anchor, rows, onPickDate, matchAppt, active }) {
                     const isToday = iso === today;
                     const nonWorking = d?.closed;
                     const blocked = d?.day_blocked;
-                    const appts = d?.appointments || [];
+                    const appts = liveAppts(d?.appointments || []);
                     const dayNum = Number(iso.slice(8, 10));
                     const dayHasMatch = active && appts.some((a) => matchAppt(a) === true);
                     return (

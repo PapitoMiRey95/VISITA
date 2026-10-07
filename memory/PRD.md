@@ -629,3 +629,9 @@ UI: AppointmentQueue popup simplified (Patient/PIN/DOB/Phone/Type/Requested time
 MIGRATION: `/app/backend/backfill_slot_locks.py` (DRY-RUN default, `--apply` to create missing locks; never modifies appointments; conflicts reported for manual review). Preview dry-run: scanned=64 would_create=49 conflicts=5 (Sept-21 legacy double-bookings). NOT applied in preview; MUST dry-run against Production before apply.
 TESTS: curl matrix (concurrency 6 parallel → exactly 1 success) + testing_agent iteration_73 (backend 5/5 /app/backend/tests/test_appt_slot_lock.py, frontend 100%).
 STATUS: verified in PREVIEW. Awaiting explicit GO for Production (code deploy + backfill dry-run → review conflicts → apply).
+
+## Patient appointment UX + Admin calendar cleanup (2026-10-07, PREVIEW ONLY, NOT deployed)
+- Home clinic-cancellation alert: overview.patient.clinic_cancellation_alert = newest CANCELLED (cancelled_by not patient/delegate) or DECLINED request, not acknowledged (cancellation.acknowledged_at) and not superseded by a later requested/confirmed appointment. POST /portal/appointments/{id}/ack-cancellation dismisses. Shown on patient Home AND managed-patient Home (perm APPOINTMENTS). "Book another appointment" acks + navigates to booking.
+- Appointments page: active (requested/confirmed) first with heading "Your appointment request"/"Upcoming appointment"; history behind collapsed "Past & cancelled appointments (N)" <details>.
+- Existing-upcoming popup shows only on ENTERING the page with an active item (useEffect once); never right after a submit on the same page (justSubmitted → acknowledge_existing sent automatically for a follow-up request in that visit).
+- Admin Calendar: default shows requested/confirmed/cancelled+kept-blocked; cancelled+freed, completed, no_show hidden behind per-day "Show day history (N)" (reason, freed/blocked, cancelled_by/completed_by/marked_by). Month grid uses same filter. No data changes.

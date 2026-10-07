@@ -48,6 +48,13 @@
       "count_one": "{{count}} medicamento activo",
       "count_other": "{{count}} medicamentos activos",
       "view": "Ver medicamentos"
+    },
+    "cancelAlert": {
+      "title": "Cita cancelada",
+      "body": "Su cita para {{when}} fue cancelada por la clínica.",
+      "reason": "Motivo: {{reason}}",
+      "cta": "Reservar otra cita",
+      "dismiss": "Descartar"
     }
   },
   "documents": {

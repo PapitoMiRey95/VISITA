@@ -1,10 +1,10 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { useNavigate } from "react-router-dom";
 import { useTranslation } from "react-i18next";
 import { es } from "date-fns/locale";
 import { toast } from "sonner";
-import { CalendarClock, CheckCircle2, AlertTriangle, Phone, X, Clock, CalendarDays, Hospital } from "lucide-react";
+import { CalendarClock, CheckCircle2, AlertTriangle, Phone, X, Clock, CalendarDays, Hospital, ChevronRight } from "lucide-react";
 import { api, formatErr } from "../lib/api";
 import { usePortal, StatusPill, Card, PendingBanner } from "./shared";
 import { EmergencyNotice } from "../components/EmergencyNotice";
@@ -78,8 +78,15 @@ export default function PortalAppointments() {
     const [reschedId, setReschedId] = useState(null);
     const [reschedPick, setReschedPick] = useState("");
     const [ackExisting, setAckExisting] = useState(false);
-    const [warnOpen, setWarnOpen] = useState(true);
+    const [warnOpen, setWarnOpen] = useState(false);
+    const [justSubmitted, setJustSubmitted] = useState(false);
     const hasUpcoming = !!p?.has_upcoming_appointment;
+    const warnShownRef = useRef(false);
+    // Warn only when ENTERING the booking flow with an existing upcoming item — never right after a submit here.
+    useEffect(() => {
+        if (hasUpcoming && !justSubmitted && !warnShownRef.current) { warnShownRef.current = true; setWarnOpen(true); }
+    }, [hasUpcoming, justSubmitted]);
+    const needsAck = hasUpcoming && !ackExisting && !justSubmitted;
 
     const selIso = selDate ? isoOf(selDate) : null;
     const dayTimes = selIso ? (byDate[selIso] || []) : [];
@@ -96,7 +103,7 @@ export default function PortalAppointments() {
         if (!selSlot) return toast.error(t("requests:appointments.toasts.selectDateTime"));
         if (!apptType) return toast.error(t("requests:appointments.toasts.selectType"));
         if (!reason.trim()) return toast.error(t("requests:appointments.toasts.enterReason"));
-        if (hasUpcoming && !ackExisting) return toast.error(t("requests:appointments.existingTitle"));
+        if (needsAck) return toast.error(t("requests:appointments.existingTitle"));
         setBusy(true);
         try {
             // Re-check the slot is still open right before submitting (it may have been taken).
@@ -109,12 +116,14 @@ export default function PortalAppointments() {
             }
             await api.post("/portal/appointments", {
                 reason: reason.trim(), patient_note: note || undefined,
-                appointment_type: apptType, acknowledge_existing: ackExisting,
+                appointment_type: apptType, acknowledge_existing: ackExisting || justSubmitted,
                 options: [{ date: selSlot.date, time: selSlot.time, label: selSlot.label, display: selSlot.display }],
             });
             toast.success(t("requests:appointments.toasts.requestSubmitted"));
+            setJustSubmitted(true); setWarnOpen(false);
             setSelDate(null); setSelSlot(null); setApptType("IN_CLINIC"); setReason(""); setNote(""); setAckExisting(false);
             refetch();
+            setTimeout(() => document.getElementById("appt-your-requests")?.scrollIntoView({ behavior: "smooth" }), 300);
         } catch (err) {
             toast.error(formatErr(err));
             if (err?.response?.status === 409) { setSelSlot(null); slotsQ.refetch(); }
@@ -170,8 +179,8 @@ export default function PortalAppointments() {
             {verified && !hasFee && (
                 <Card>
                     <form onSubmit={submit} className="space-y-5" data-testid="appointment-form">
-                        {hasUpcoming && (
-                            <Dialog open={!ackExisting && warnOpen} onOpenChange={(o) => !o && setWarnOpen(false)}>
+                        {needsAck && (
+                            <Dialog open={warnOpen} onOpenChange={(o) => !o && setWarnOpen(false)}>
                                 <DialogContent className="max-w-2xl rounded-2xl p-8" data-testid="existing-upcoming-warning">
                                     <DialogHeader>
                                         <DialogTitle className="flex items-center gap-3 text-amber-800 text-xl sm:text-2xl">
@@ -192,7 +201,7 @@ export default function PortalAppointments() {
                                 </DialogContent>
                             </Dialog>
                         )}
-                        {hasUpcoming && !ackExisting && (
+                        {needsAck && (
                             <button type="button" data-testid="existing-upcoming-reopen" onClick={() => setWarnOpen(true)}
                                 className="w-full text-left bg-amber-50 border border-amber-200 rounded-xl p-3 text-xs text-amber-900 flex items-center gap-2">
                                 <AlertTriangle className="w-4 h-4 shrink-0" /> {t("requests:appointments.existingTitle")}
@@ -322,7 +331,7 @@ export default function PortalAppointments() {
                             </div>
                         )}
 
-                        <Button type="submit" disabled={busy || !selSlot || !apptType || !reason.trim() || (hasUpcoming && !ackExisting)} data-testid="appt-submit"
+                        <Button type="submit" disabled={busy || !selSlot || !apptType || !reason.trim() || needsAck} data-testid="appt-submit"
                             className="w-full h-12 rounded-xl bg-portal-blue hover:bg-portal-blueDark text-white text-base">
                             {busy ? t("requests:appointments.submitting") : t("requests:appointments.submit")}
                         </Button>
@@ -331,10 +340,9 @@ export default function PortalAppointments() {
             )}
 
             <div className="space-y-3">
-                <h2 className="font-bold text-slate-700" id="appt-your-requests">{t("requests:appointments.yourRequests")}</h2>
-                {list.length === 0 && <p className="text-slate-500 text-sm">{t("requests:appointments.noRequests")}</p>}
-                {list.map((a) => (
-                    <Card key={a.id} className="p-4" data-testid="appt-card">
+            {(() => {
+                const renderCard = (a) => (
+                    <Card key={a.id} className="p-4 mb-3" data-testid="appt-card" data-status={a.raw_status}>
                         <div className="flex justify-between items-start gap-2">
                             <div>
                                 <div className="font-bold text-slate-800">{a.reason}</div>
@@ -429,8 +437,31 @@ export default function PortalAppointments() {
                             <div className="text-sm text-slate-600 mt-2">{t("requests:appointments.note")} {a.staff_note}</div>
                         )}
                     </Card>
-                ))}
+                );
+                const active = list.filter((a) => ACTIVE.includes(a.raw_status)).sort((x, y) => (x.slot_date || "").localeCompare(y.slot_date || "") || (x.slot_time || "").localeCompare(y.slot_time || ""));
+                const history = list.filter((a) => !ACTIVE.includes(a.raw_status));
+                return (<>
+                    <h2 className="font-bold text-slate-700" id="appt-your-requests" data-testid="appt-active-heading">
+                        {active.some((a) => a.raw_status === "requested") && !active.some((a) => a.raw_status !== "requested")
+                            ? t("requests:appointments.yourRequest")
+                            : active.length ? t("requests:appointments.upcomingAppt") : t("requests:appointments.yourRequests")}
+                    </h2>
+                    {active.length === 0 && <p className="text-slate-500 text-sm" data-testid="appt-no-active">{t("requests:appointments.noActive")}</p>}
+                    <div data-testid="appt-active-list">{active.map(renderCard)}</div>
+                    {history.length > 0 && (
+                        <details className="group" data-testid="appt-history">
+                            <summary className="cursor-pointer text-sm font-semibold text-slate-600 select-none flex items-center gap-1 py-2" data-testid="appt-history-toggle">
+                                <ChevronRight className="w-4 h-4 transition-transform group-open:rotate-90" />
+                                {t("requests:appointments.historyToggle", { count: history.length })}
+                            </summary>
+                            <div className="space-y-3 mt-2" data-testid="appt-history-list">{history.map(renderCard)}</div>
+                        </details>
+                    )}
+                </>);
+            })()}
             </div>
         </div>
     );
 }
+
+const ACTIVE = ["requested", "confirmed", "rescheduled", "alternatives_offered"];

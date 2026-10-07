@@ -2,7 +2,7 @@ import { useNavigate, Navigate } from "react-router-dom";
 import { useState, useEffect } from "react";
 import { useTranslation } from "react-i18next";
 import { toast } from "sonner";
-import { Calendar, Pill, FileHeart, MessageSquare, ClipboardList, ChevronRight, User, Users, CalendarClock, FlaskConical, FileText, BellRing } from "lucide-react";
+import { Calendar, Pill, FileHeart, MessageSquare, ClipboardList, ChevronRight, User, Users, CalendarClock, CalendarX, FlaskConical, FileText, BellRing } from "lucide-react";
 import { api, formatErr } from "../lib/api";
 import { useAuth } from "../context/AuthContext";
 import { EmergencyNotice } from "../components/EmergencyNotice";
@@ -58,6 +58,43 @@ const todayIso = () => {
     const d = new Date();
     return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
 };
+
+// Prominent Home alert for a CLINIC-originated cancellation (never for patient self-cancel).
+function ClinicCancellationAlert() {
+    const nav = useNavigate();
+    const { t } = useTranslation(["portal"]);
+    const { overview, refetch, base } = usePortal();
+    const alert = overview.data?.patient?.clinic_cancellation_alert;
+    if (!alert) return null;
+    const dismiss = async () => {
+        try { await api.post(`/portal/appointments/${alert.id}/ack-cancellation`); refetch && refetch(); }
+        catch (e) { toast.error(formatErr(e)); }
+    };
+    return (
+        <Card data-testid="clinic-cancel-alert" className="bg-red-50 border-red-200">
+            <div className="flex items-start gap-3">
+                <div className="w-10 h-10 rounded-full bg-red-100 flex items-center justify-center flex-shrink-0">
+                    <CalendarX className="w-5 h-5 text-red-700" />
+                </div>
+                <div className="flex-1">
+                    <p className="font-bold text-red-900">{t("home.cancelAlert.title")}</p>
+                    <p className="text-sm text-red-800 mt-0.5" data-testid="clinic-cancel-alert-body">{t("home.cancelAlert.body", { when: alert.display || alert.ref_number })}</p>
+                    {alert.reason && <p className="text-sm text-red-800" data-testid="clinic-cancel-alert-reason">{t("home.cancelAlert.reason", { reason: alert.reason })}</p>}
+                    <div className="flex flex-wrap gap-2 mt-3">
+                        <button data-testid="clinic-cancel-alert-book" onClick={async () => { await dismiss(); nav(`${base}/appointments`); }}
+                            className="inline-flex items-center gap-1 px-4 py-2 rounded-xl bg-red-700 hover:bg-red-800 text-white text-sm font-bold transition active:scale-95">
+                            {t("home.cancelAlert.cta")} <ChevronRight className="w-4 h-4" />
+                        </button>
+                        <button data-testid="clinic-cancel-alert-dismiss" onClick={dismiss}
+                            className="px-4 py-2 rounded-xl border border-red-300 text-red-800 text-sm font-semibold hover:bg-red-100">
+                            {t("home.cancelAlert.dismiss")}
+                        </button>
+                    </div>
+                </div>
+            </div>
+        </Card>
+    );
+}
 
 function UpcomingAppointment() {
     const nav = useNavigate();
@@ -202,6 +239,7 @@ export default function PortalHome() {
                     <h1 className="text-3xl font-extrabold text-slate-900">{delegate?.patient_name || `${p?.first_name || ""} ${p?.last_name || ""}`}</h1>
                 </div>
                 <NewUpdatesCard />
+                {can("APPOINTMENTS") && <ClinicCancellationAlert />}
                 {can("RX_REQUESTS") && <YourMedicinesCard />}
                 {can("APPOINTMENTS") && <UpcomingAppointment />}
                 <div className="grid grid-cols-2 gap-3">
@@ -227,6 +265,8 @@ export default function PortalHome() {
             </div>
 
             {p && <PendingBanner status={p.verification_status} />}
+
+            <ClinicCancellationAlert />
 
             <NewUpdatesCard />
 

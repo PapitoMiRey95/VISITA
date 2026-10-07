@@ -297,6 +297,10 @@
     "requestedFor": "Requested for",
     "cancelRequest": "Cancel request",
     "cancelledOn": "Cancelled",
-    "lateFeeNotice": "A $40 late-cancellation fee applies within 24 hours of the appointment."
+    "lateFeeNotice": "A $40 late-cancellation fee applies within 24 hours of the appointment.",
+    "yourRequest": "Your appointment request",
+    "upcomingAppt": "Upcoming appointment",
+    "historyToggle": "Past & cancelled appointments ({{count}})",
+    "noActive": "No active appointment or request."
   }
 }

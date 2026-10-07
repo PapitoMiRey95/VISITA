@@ -13,6 +13,7 @@ import { Button } from "../components/ui/button";
 import { Textarea } from "../components/ui/textarea";
 import { Label } from "../components/ui/label";
 import { Calendar } from "../components/ui/calendar";
+import { Dialog, DialogContent, DialogHeader, DialogTitle } from "../components/ui/dialog";
 import { formatDate } from "../lib/date";
 import PortalPrivateAppointments from "./PortalPrivateAppointments";
 
@@ -77,6 +78,7 @@ export default function PortalAppointments() {
     const [reschedId, setReschedId] = useState(null);
     const [reschedPick, setReschedPick] = useState("");
     const [ackExisting, setAckExisting] = useState(false);
+    const [warnOpen, setWarnOpen] = useState(true);
     const hasUpcoming = !!p?.has_upcoming_appointment;
 
     const selIso = selDate ? isoOf(selDate) : null;
@@ -169,16 +171,32 @@ export default function PortalAppointments() {
                 <Card>
                     <form onSubmit={submit} className="space-y-5" data-testid="appointment-form">
                         {hasUpcoming && (
-                            <div className="bg-amber-50 border border-amber-200 rounded-xl p-3 text-sm text-amber-900" data-testid="existing-upcoming-warning">
-                                <div className="flex items-center gap-2 font-bold mb-1">
-                                    <AlertTriangle className="w-4 h-4" /> {t("requests:appointments.existingTitle")}
-                                </div>
-                                <p className="text-xs">{t("requests:appointments.existingBody")}</p>
-                                <label className="flex items-center gap-2 mt-2 text-xs font-semibold cursor-pointer">
-                                    <input type="checkbox" checked={ackExisting} onChange={(e) => setAckExisting(e.target.checked)} data-testid="existing-upcoming-ack" />
-                                    {t("requests:appointments.existingAck")}
-                                </label>
-                            </div>
+                            <Dialog open={!ackExisting && warnOpen} onOpenChange={(o) => !o && setWarnOpen(false)}>
+                                <DialogContent className="max-w-md rounded-2xl" data-testid="existing-upcoming-warning">
+                                    <DialogHeader>
+                                        <DialogTitle className="flex items-center gap-2 text-amber-800">
+                                            <AlertTriangle className="w-5 h-5" /> {t("requests:appointments.existingTitle")}
+                                        </DialogTitle>
+                                    </DialogHeader>
+                                    <p className="text-sm text-slate-700">{t("requests:appointments.existingBody")}</p>
+                                    <div className="flex flex-col sm:flex-row gap-2 pt-2">
+                                        <Button type="button" variant="outline" className="flex-1 rounded-xl" data-testid="existing-upcoming-back"
+                                            onClick={() => { setWarnOpen(false); document.getElementById("appt-your-requests")?.scrollIntoView({ behavior: "smooth" }); }}>
+                                            {t("requests:appointments.back")}
+                                        </Button>
+                                        <Button type="button" className="flex-1 rounded-xl bg-amber-600 hover:bg-amber-700 text-white" data-testid="existing-upcoming-ack"
+                                            onClick={() => { setAckExisting(true); setWarnOpen(false); }}>
+                                            {t("requests:appointments.existingAck")}
+                                        </Button>
+                                    </div>
+                                </DialogContent>
+                            </Dialog>
+                        )}
+                        {hasUpcoming && !ackExisting && (
+                            <button type="button" data-testid="existing-upcoming-reopen" onClick={() => setWarnOpen(true)}
+                                className="w-full text-left bg-amber-50 border border-amber-200 rounded-xl p-3 text-xs text-amber-900 flex items-center gap-2">
+                                <AlertTriangle className="w-4 h-4 shrink-0" /> {t("requests:appointments.existingTitle")}
+                            </button>
                         )}
                         {/* Step 1 — Date */}
                         <div>
@@ -313,7 +331,7 @@ export default function PortalAppointments() {
             )}
 
             <div className="space-y-3">
-                <h2 className="font-bold text-slate-700">{t("requests:appointments.yourRequests")}</h2>
+                <h2 className="font-bold text-slate-700" id="appt-your-requests">{t("requests:appointments.yourRequests")}</h2>
                 {list.length === 0 && <p className="text-slate-500 text-sm">{t("requests:appointments.noRequests")}</p>}
                 {list.map((a) => (
                     <Card key={a.id} className="p-4" data-testid="appt-card">

@@ -46,6 +46,20 @@ const COLUMNS = [
     { header: "Status", cell: (i) => <StatusPill status={i.internal_status} /> },
 ];
 
+// Physician triage view: no medication text in the list — only a compact count
+// (+ the safety badge). Full Rx details appear after Open.
+const medCount = (i) => (i.medications_structured || []).length || (i.medications || []).length || (i.medication_name ? 1 : 0);
+const PHYSICIAN_COLUMNS = [
+    COLUMNS[0], COLUMNS[1], COLUMNS[2], COLUMNS[3],
+    { header: "Status", cell: (i) => (
+        <span className="flex flex-col gap-1">
+            <StatusPill status={i.internal_status} />
+            <span className="text-[11px] text-slate-500" data-testid="rx-row-med-count">{medCount(i)} medication{medCount(i) === 1 ? "" : "s"}</span>
+            <ManualReviewBadge item={i} />
+        </span>
+    ) },
+];
+
 export default function RxQueue() {
     const { user } = useAuth();
     const physician = user?.role === "physician";
@@ -101,7 +115,7 @@ export default function RxQueue() {
                     </Button>
                 )
             }
-            columns={COLUMNS}
+            columns={physician ? PHYSICIAN_COLUMNS : COLUMNS}
             detail={(i) => (
                 <div className="space-y-1.5">
                     <KV label="Source">{i.source === "pharmacy" ? "PHARMACY REQUEST" : "PATIENT REQUEST"}</KV>

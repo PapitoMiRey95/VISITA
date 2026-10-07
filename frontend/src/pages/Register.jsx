@@ -16,6 +16,7 @@ import { Label } from "../components/ui/label";
 import { Select, SelectTrigger, SelectValue, SelectContent, SelectItem } from "../components/ui/select";
 import { Logo } from "../components/Logo";
 import { normalizeSurnameInput } from "../lib/name";
+import { setAppLanguage } from "../i18n";
 
 // Reason values are sent to the backend and MUST remain in English.
 const NP_REASONS = [
@@ -42,6 +43,14 @@ const STATUS_OPTIONS = [
     { value: "Unsure / Prefer not to say", k: "unsure" },
 ];
 
+const FIELD_TESTID = {
+    first_name: "reg-first", last_name: "reg-last", date_of_birth: "reg-dob", sex: "reg-sex",
+    health_card_number: "reg-hcn", health_card_version: "reg-hcv", health_card_issue_date: "reg-hc-issue",
+    health_card_expiry_date: "reg-hc-expiry", address: "reg-address", city: "reg-city", province: "reg-address-province",
+    postal_code: "reg-postal", country: "reg-address-country", phone: "reg-phone", email: "reg-email",
+    password: "reg-password-field", confirm_password: "reg-confirm-password-field",
+};
+
 export default function Register() {
     const { register } = useAuth();
     const nav = useNavigate();
@@ -64,6 +73,7 @@ export default function Register() {
     const [type, setType] = useState(null);
     const [busy, setBusy] = useState(false);
     const [confirm, setConfirm] = useState(null);
+    const [errors, setErrors] = useState({});
     const [form, setForm] = useState({
         first_name: "", last_name: "", second_name: "", second_last_name: "",
         date_of_birth: "", phone: "", email: "", password: "", confirm_password: "", sex: "",
@@ -91,32 +101,27 @@ export default function Register() {
 
     useEffect(() => { resolveContext(); }, [resolveContext]);
 
-    const set = (k) => (e) => setForm({ ...form, [k]: e.target.value });
-    const setDob = (v) => setForm((f) => {
+    const set = (k) => (e) => { clearErr(k); setForm({ ...form, [k]: e.target.value }); };
+    const setDob = (v) => { clearErr("date_of_birth"); setForm((f) => {
         let expiry = f.health_card_expiry_date;
         if (expiry) { const exYear = Number(String(expiry).split("-")[0]); expiry = deriveExpiryISO(v, exYear); }
         return { ...f, date_of_birth: v, health_card_expiry_date: expiry };
-    });
-    const setHcDate = (k) => (v) => setForm((f) => ({ ...f, [k]: v }));
-    const setSurname = (k) => (e) => setForm({ ...form, [k]: normalizeSurnameInput(e.target.value) });
+    }); };
+    const setHcDate = (k) => (v) => { clearErr(k); setForm((f) => ({ ...f, [k]: v })); };
+    const setSurname = (k) => (e) => { clearErr(k); setForm({ ...form, [k]: normalizeSurnameInput(e.target.value) }); };
     const optional = t("common:status.optional");
     const practiceCtx = practice ? { practice_id: practice.id, practice_slug: practice.slug } : {};
 
     const submit = async (e) => {
         e.preventDefault();
-        if (type === "ohip") {
-            const num = (form.health_card_number || "").replace(/\D/g, "");
-            const ver = (form.health_card_version || "").replace(/[^A-Za-z]/g, "");
-            if (num.length !== 10) { toast.error(t("auth:register.errHcNumber")); return; }
-            if (ver.length !== 2) { toast.error(t("auth:register.errVersionCode")); return; }
-            if (!form.health_card_issue_date) { toast.error(t("auth:register.errIssueDate")); return; }
-            if (!form.health_card_expiry_date) { toast.error(t("auth:register.errExpiryDate")); return; }
+        const errs = validateCurrent();
+        if (Object.keys(errs).length) {
+            setErrors(errs);
+            toast.error(t("auth:register.errFixFields"));
+            document.querySelector(`[data-testid="${FIELD_TESTID[Object.keys(errs)[0]] || "reg-first"}"]`)?.scrollIntoView({ behavior: "smooth", block: "center" });
+            return;
         }
-        if (!form.address?.trim() || !form.city?.trim() || !form.province?.trim() || !form.postal_code?.trim() || !form.country?.trim()) {
-            toast.error(t("auth:register.errAddress")); return;
-        }
-        if ((form.password || "").length < 6) { toast.error(t("auth:register.errPwShort")); return; }
-        if (form.password !== form.confirm_password) { toast.error(t("auth:register.errPwMismatch")); return; }
+        setErrors({});
         setBusy(true);
         try {
             const res = await register({
@@ -135,8 +140,42 @@ export default function Register() {
             }
             toast.success(t("auth:register.accountCreated"));
             nav("/portal", { replace: true });
-        } catch (err) { toast.error(formatErr(err)); } finally { setBusy(false); }
+        } catch (err) {
+            const detail = err?.response?.data?.detail;
+            if (detail?.code === "MISSING_FIELDS" && Array.isArray(detail.fields)) {
+                // Server is the final guard: mirror its missing-field list onto the form.
+                const srv = {};
+                detail.fields.forEach((f) => { srv[f] = t("auth:register.errRequired"); });
+                setErrors(srv);
+                toast.error(t("auth:register.errFixFields"));
+            } else toast.error(formatErr(err));
+        } finally { setBusy(false); }
     };
+
+    // Field-level validation for the current-patient form (OHIP + private branches).
+    const validateCurrent = () => {
+        const errs = {};
+        const req = (k, msg) => { if (!String(form[k] ?? "").trim()) errs[k] = msg || t("auth:register.errRequired"); };
+        req("first_name"); req("last_name");
+        req("date_of_birth", t("auth:register.errDob"));
+        req("sex", t("auth:register.errSex"));
+        if (type === "ohip") {
+            const num = (form.health_card_number || "").replace(/\D/g, "");
+            const ver = (form.health_card_version || "").replace(/[^A-Za-z]/g, "");
+            if (num.length !== 10) errs.health_card_number = t("auth:register.errHcNumber");
+            if (ver.length !== 2) errs.health_card_version = t("auth:register.errVersionCode");
+            if (!form.health_card_issue_date) errs.health_card_issue_date = t("auth:register.errIssueDate");
+            if (!form.health_card_expiry_date) errs.health_card_expiry_date = t("auth:register.errExpiryDate");
+        }
+        req("address"); req("city"); req("province"); req("postal_code"); req("country");
+        if ((form.phone || "").replace(/\D/g, "").length < 10) errs.phone = t("auth:register.errPhone");
+        if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(form.email || "")) errs.email = t("auth:register.errEmail");
+        if ((form.password || "").length < 6) errs.password = t("auth:register.errPwShort");
+        else if (form.password !== form.confirm_password) errs.confirm_password = t("auth:register.errPwMismatch");
+        return errs;
+    };
+    const err = (k) => errors[k];
+    const clearErr = (k) => { if (errors[k]) setErrors((e) => { const n = { ...e }; delete n[k]; return n; }); };
 
     const submitNewPatient = async (e) => {
         e.preventDefault();
@@ -174,8 +213,20 @@ export default function Register() {
                     className="inline-flex items-center gap-1 text-sm text-slate-600 hover:text-portal-blueDark font-semibold mb-4 transition-colors">
                     <ChevronLeft className="h-4 w-4" /> {t("common:actions.back")}
                 </button>
-                <div className="flex items-center gap-2 mb-6">
+                <div className="flex items-center justify-between gap-2 mb-6">
                     <Logo variant="light" iconClass="h-9 w-9" textClass="text-xl" />
+                    <div className="inline-flex items-center rounded-full border border-slate-300 bg-white p-0.5 shadow-sm" role="group" aria-label={t("auth:register.langPick")} data-testid="reg-lang-switch">
+                        {[["en", "EN"], ["es", "ES"]].map(([code, label]) => {
+                            const on = (i18n.language || "en").startsWith(code);
+                            return (
+                                <button key={code} type="button" data-testid={`reg-lang-${code}`} onClick={() => setAppLanguage(code)}
+                                    aria-pressed={on}
+                                    className={`px-3 h-8 rounded-full text-xs font-bold tracking-wide transition-colors ${on ? "bg-portal-blue text-white" : "text-slate-600 hover:text-portal-blueDark"}`}>
+                                    {label}
+                                </button>
+                            );
+                        })}
+                    </div>
                 </div>
 
                 {practice && [1, "coverage", 2, 99, "whoFor", "caregiver"].includes(step) && (
@@ -279,23 +330,23 @@ export default function Register() {
                 )}
 
                 {step === 2 && (
-                    <form onSubmit={submit} data-testid="register-current-form" className="bg-white rounded-2xl border border-slate-200 p-6 shadow-sm animate-fade-in space-y-4">
+                    <form onSubmit={submit} noValidate data-testid="register-current-form" className="bg-white rounded-2xl border border-slate-200 p-6 shadow-sm animate-fade-in space-y-4">
                         <button type="button" onClick={() => setStep("coverage")} className="flex items-center text-slate-500 text-sm">
                             <ChevronLeft className="w-4 h-4" /> {t("common:actions.back")}
                         </button>
                         <h2 className="text-xl font-bold text-slate-900">{t("auth:register.createAccount")}</h2>
 
                         <div className="grid grid-cols-2 gap-3">
-                            <Field label={t("auth:register.firstName")} testid="reg-first"><Input required value={form.first_name} onChange={set("first_name")} /></Field>
+                            <Field required error={err("first_name")} label={t("auth:register.firstName")} testid="reg-first"><Input required value={form.first_name} onChange={set("first_name")} /></Field>
                             <Field label={t("auth:register.secondName")} testid="reg-second"><Input value={form.second_name} onChange={set("second_name")} placeholder={optional} /></Field>
                         </div>
                         <div className="grid grid-cols-2 gap-3">
-                            <Field label={t("auth:register.firstLastName")} testid="reg-last"><Input required value={form.last_name} onChange={setSurname("last_name")} /></Field>
+                            <Field required error={err("last_name")} label={t("auth:register.firstLastName")} testid="reg-last"><Input required value={form.last_name} onChange={setSurname("last_name")} /></Field>
                             <Field label={t("auth:register.secondLastName")} testid="reg-second-last"><Input value={form.second_last_name} onChange={setSurname("second_last_name")} placeholder={optional} /></Field>
                         </div>
-                        <Field label={t("auth:register.dob")} testid="reg-dob"><DobPicker value={form.date_of_birth} onChange={setDob} testid="reg-dob" /></Field>
-                        <Field label={t("auth:register.sexLabel")} testid="reg-sex">
-                            <Select value={form.sex} onValueChange={(v) => setForm({ ...form, sex: v })}>
+                        <Field required error={err("date_of_birth")} label={t("auth:register.dob")} testid="reg-dob"><DobPicker value={form.date_of_birth} onChange={setDob} testid="reg-dob" /></Field>
+                        <Field required error={err("sex")} label={t("auth:register.sexLabel")} testid="reg-sex">
+                            <Select value={form.sex} onValueChange={(v) => { clearErr("sex"); setForm({ ...form, sex: v }); }}>
                                 <SelectTrigger data-testid="reg-sex-trigger"><SelectValue placeholder={t("auth:register.sexSelect")} /></SelectTrigger>
                                 <SelectContent>
                                     {["Male", "Female", "X"].map((o) => <SelectItem key={o} value={o}>{t(`auth:register.sexOptions.${o}`)}</SelectItem>)}
@@ -307,17 +358,17 @@ export default function Register() {
                             <>
                                 <div className="grid grid-cols-3 gap-3">
                                     <div className="col-span-2">
-                                        <Field label={t("auth:register.hcNumberLabel")} testid="reg-hcn">
-                                            <HealthCardNumberInput required value={form.health_card_number} onChange={(v) => setForm({ ...form, health_card_number: v })} placeholder="1234 567 890" />
+                                        <Field required error={err("health_card_number")} label={t("auth:register.hcNumberLabel")} testid="reg-hcn">
+                                            <HealthCardNumberInput required value={form.health_card_number} onChange={(v) => { clearErr("health_card_number"); setForm({ ...form, health_card_number: v }); }} placeholder="1234 567 890" />
                                         </Field>
                                     </div>
-                                    <Field label={t("auth:register.versionCode")} testid="reg-hcv">
-                                        <Input required value={form.health_card_version} onChange={(e) => setForm({ ...form, health_card_version: e.target.value.toUpperCase() })} placeholder="XX" maxLength={2} />
+                                    <Field required error={err("health_card_version")} label={t("auth:register.versionCode")} testid="reg-hcv">
+                                        <Input required value={form.health_card_version} onChange={(e) => { clearErr("health_card_version"); setForm({ ...form, health_card_version: e.target.value.replace(/[^A-Za-z]/g, "").toUpperCase() }); }} placeholder="XX" maxLength={2} />
                                     </Field>
                                 </div>
                                 <div className="grid grid-cols-2 gap-3">
-                                    <Field label={t("auth:register.issueDateOptional")} testid="reg-hc-issue"><IssueDatePicker value={form.health_card_issue_date} onChange={setHcDate("health_card_issue_date")} testid="reg-hc-issue" /></Field>
-                                    <Field label={t("auth:register.expiryDateOptional")} testid="reg-hc-expiry"><ExpiryPicker value={form.health_card_expiry_date} onChange={setHcDate("health_card_expiry_date")} dob={form.date_of_birth} testid="reg-hc-expiry" /></Field>
+                                    <Field required error={err("health_card_issue_date")} label={t("auth:register.issueDate")} testid="reg-hc-issue"><IssueDatePicker value={form.health_card_issue_date} onChange={setHcDate("health_card_issue_date")} testid="reg-hc-issue" /></Field>
+                                    <Field required error={err("health_card_expiry_date")} label={t("auth:register.expiryDate")} testid="reg-hc-expiry"><ExpiryPicker value={form.health_card_expiry_date} onChange={setHcDate("health_card_expiry_date")} dob={form.date_of_birth} testid="reg-hc-expiry" /></Field>
                                 </div>
                             </>
                         )}
@@ -326,30 +377,32 @@ export default function Register() {
                             <div className="space-y-3">
                                 <div className="grid grid-cols-3 gap-3">
                                     <div className="col-span-2">
-                                        <Field label={t("auth:register.addressStreet")} testid="reg-address"><Input required value={form.address} onChange={set("address")} placeholder="123 Main St" /></Field>
+                                        <Field required error={err("address")} label={t("auth:register.addressStreet")} testid="reg-address"><Input required value={form.address} onChange={set("address")} placeholder="123 Main St" /></Field>
                                     </div>
                                     <Field label={t("auth:register.addressUnit")} testid="reg-unit"><Input value={form.unit} onChange={set("unit")} placeholder={optional} /></Field>
                                 </div>
                                 <div className="grid grid-cols-2 gap-3">
-                                    <Field label={t("auth:register.addressCity")} testid="reg-city"><Input required value={form.city} onChange={set("city")} /></Field>
-                                    <Field label={t("auth:register.addressProvince")} testid="reg-address-province"><Input required value={form.province} onChange={set("province")} /></Field>
+                                    <Field required error={err("city")} label={t("auth:register.addressCity")} testid="reg-city"><Input required value={form.city} onChange={set("city")} /></Field>
+                                    <Field required error={err("province")} label={t("auth:register.addressProvince")} testid="reg-address-province"><Input required value={form.province} onChange={set("province")} /></Field>
                                 </div>
                                 <div className="grid grid-cols-2 gap-3">
-                                    <Field label={t("auth:register.addressPostal")} testid="reg-postal"><Input required value={form.postal_code} onChange={set("postal_code")} /></Field>
-                                    <Field label={t("auth:register.addressCountry")} testid="reg-address-country"><Input required value={form.country} onChange={set("country")} /></Field>
+                                    <Field required error={err("postal_code")} label={t("auth:register.addressPostal")} testid="reg-postal"><Input required value={form.postal_code} onChange={set("postal_code")} /></Field>
+                                    <Field required error={err("country")} label={t("auth:register.addressCountry")} testid="reg-address-country"><Input required value={form.country} onChange={set("country")} /></Field>
                                 </div>
                             </div>
                         </div>
 
-                        <Field label={t("auth:register.phone")} testid="reg-phone"><Input required value={form.phone} onChange={set("phone")} placeholder="(416) 555-0000" /></Field>
-                        <Field label={t("auth:register.email")} testid="reg-email"><Input type="email" required value={form.email} onChange={set("email")} /></Field>
-                        <div>
-                            <Label className="text-sm font-semibold text-slate-700">{t("auth:register.password")}</Label>
-                            <PasswordInput testid="reg-password" value={form.password} onChange={(v) => setForm({ ...form, password: v })} minLength={6} required />
+                        <Field required error={err("phone")} label={t("auth:register.phone")} testid="reg-phone"><Input required value={form.phone} onChange={set("phone")} placeholder="(416) 555-0000" /></Field>
+                        <Field required error={err("email")} label={t("auth:register.email")} testid="reg-email"><Input type="email" required value={form.email} onChange={set("email")} /></Field>
+                        <div data-testid="reg-password-field">
+                            <Label className="text-sm font-semibold text-slate-700">{t("auth:register.password")}<span className="text-rose-500 ml-0.5">*</span></Label>
+                            <PasswordInput testid="reg-password" value={form.password} onChange={(v) => { clearErr("password"); setForm({ ...form, password: v }); }} minLength={6} required />
+                            {err("password") && <p className="text-xs text-rose-600 font-semibold mt-1" data-testid="reg-password-field-error">{err("password")}</p>}
                         </div>
-                        <div>
-                            <Label className="text-sm font-semibold text-slate-700">{t("auth:register.confirmPassword")}</Label>
-                            <PasswordInput testid="reg-confirm-password" value={form.confirm_password} onChange={(v) => setForm({ ...form, confirm_password: v })} minLength={6} required />
+                        <div data-testid="reg-confirm-password-field">
+                            <Label className="text-sm font-semibold text-slate-700">{t("auth:register.confirmPassword")}<span className="text-rose-500 ml-0.5">*</span></Label>
+                            <PasswordInput testid="reg-confirm-password" value={form.confirm_password} onChange={(v) => { clearErr("confirm_password"); setForm({ ...form, confirm_password: v }); }} minLength={6} required />
+                            {err("confirm_password") && <p className="text-xs text-rose-600 font-semibold mt-1" data-testid="reg-confirm-password-field-error">{err("confirm_password")}</p>}
                             {form.confirm_password.length > 0 && (
                                 form.password === form.confirm_password
                                     ? <p className="text-xs text-emerald-600 font-semibold mt-1" data-testid="pw-match">{t("auth:register.pwMatch")}</p>
@@ -364,8 +417,7 @@ export default function Register() {
                             {t("auth:register.reviewNotice")}
                         </div>
 
-                        <Button data-testid="reg-submit" type="submit"
-                            disabled={busy || form.password.length < 6 || form.password !== form.confirm_password}
+                        <Button data-testid="reg-submit" type="submit" disabled={busy}
                             className="w-full bg-portal-blue hover:bg-portal-blueDark text-white text-base h-12 rounded-xl">
                             {busy ? <Loader2 className="w-4 h-4 animate-spin" /> : t("auth:register.createAccountBtn")}
                         </Button>
@@ -547,11 +599,12 @@ function YesNo({ value, onChange, yes, no, testid }) {
     );
 }
 
-function Field({ label, testid, children }) {
+function Field({ label, testid, children, error, required }) {
     return (
-        <div data-testid={testid}>
-            <Label className="text-sm font-semibold text-slate-700">{label}</Label>
+        <div data-testid={testid} className={error ? "[&_input]:border-rose-400 [&_button]:border-rose-400" : ""}>
+            <Label className="text-sm font-semibold text-slate-700">{label}{required && <span className="text-rose-500 ml-0.5" aria-hidden>*</span>}</Label>
             <div className="mt-1">{children}</div>
+            {error && <p className="text-xs text-rose-600 font-semibold mt-1" data-testid={`${testid}-error`}>{error}</p>}
         </div>
     );
 }

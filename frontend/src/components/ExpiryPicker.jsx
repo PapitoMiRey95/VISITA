@@ -1,4 +1,6 @@
 import { useState, useMemo, useEffect } from "react";
+import { createPortal } from "react-dom";
+import { useLockBodyScroll } from "../hooks/useLockBodyScroll";
 import { useTranslation } from "react-i18next";
 import { Calendar, Check, X } from "lucide-react";
 import { deriveExpiryISO } from "../lib/hcDates";
@@ -18,6 +20,7 @@ export function ExpiryPicker({ value, onChange, dob, testid = "expiry" }) {
     };
     const disabled = !dob;
     const [open, setOpen] = useState(false);
+    useLockBodyScroll(open);
     const [year, setYear] = useState(null);
     const [confirming, setConfirming] = useState(false);
 
@@ -57,9 +60,9 @@ export function ExpiryPicker({ value, onChange, dob, testid = "expiry" }) {
                 <p className="mt-1 text-xs text-slate-400" data-testid={`${testid}-dob-hint`}>{t("pickers.selectDob")}</p>
             )}
 
-            {open && !disabled && (
-                <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center bg-black/50 p-0 sm:p-4" data-testid={`${testid}-modal`}>
-                    <div className="w-full sm:max-w-md bg-white rounded-t-2xl sm:rounded-2xl shadow-xl max-h-[88vh] flex flex-col animate-fade-in">
+            {open && !disabled && createPortal(
+                <div className="fixed inset-0 z-50 flex items-start sm:items-center justify-center bg-black/50 px-3 pb-3 pt-[max(0.75rem,env(safe-area-inset-top))] sm:p-4 overscroll-contain" data-testid={`${testid}-modal`}>
+                    <div className="w-full sm:max-w-md bg-white rounded-2xl shadow-xl max-h-[min(78dvh,78vh)] sm:max-h-[88vh] flex flex-col animate-fade-in">
                         <div className="flex items-center justify-between px-4 py-3 border-b border-slate-100">
                             <h3 className="font-bold text-slate-900">{t("pickers.expiryTitle")}</h3>
                             <button type="button" data-testid={`${testid}-close`} onClick={() => setOpen(false)} className="text-slate-400 hover:text-slate-700 p-1">
@@ -100,7 +103,7 @@ export function ExpiryPicker({ value, onChange, dob, testid = "expiry" }) {
                         )}
                     </div>
                 </div>
-            )}
+            , document.body)}
         </>
     );
 }

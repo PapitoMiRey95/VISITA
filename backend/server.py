@@ -791,8 +791,30 @@ def _full_display_name(first: str, middle: Optional[str], last: Optional[str],
     return " ".join(p for p in [given, family] if p).strip()
 
 
+REGISTER_REQUIRED = [("first_name", "First name"), ("last_name", "Last name"), ("date_of_birth", "Date of birth"),
+                     ("sex", "Sex"), ("phone", "Primary phone"), ("address", "Street address"), ("city", "City"),
+                     ("province", "Province"), ("postal_code", "Postal code")]
+REGISTER_REQUIRED_OHIP = [("health_card_number", "Health Card number"), ("health_card_version", "Version Code"),
+                          ("health_card_issue_date", "Health Card issue date"), ("health_card_expiry_date", "Health Card expiry date")]
+
+
+def _register_missing(body: "RegisterBody") -> list:
+    """Server-side required-field check (never trust disabled buttons). Middle name,
+    second last name and unit stay optional. OHIP fields only on the OHIP branch."""
+    req = list(REGISTER_REQUIRED) + (list(REGISTER_REQUIRED_OHIP) if body.patient_type == "ohip" else [])
+    missing = [{"field": f, "label": lbl} for f, lbl in req if not str(getattr(body, f, "") or "").strip()]
+    if body.sex and body.sex not in ("Male", "Female", "X"):
+        missing.append({"field": "sex", "label": "Sex"})
+    return missing
+
+
 @api.post("/auth/register")
 async def register(body: RegisterBody):
+    missing = _register_missing(body)
+    if missing:
+        raise HTTPException(status_code=400, detail={
+            "code": "MISSING_FIELDS", "fields": [m["field"] for m in missing],
+            "message": "Please complete: " + ", ".join(m["label"] for m in missing) + "."})
     validate_dob_age(body.date_of_birth)
     email = body.email.lower()
     if await db.users.find_one({"email": email}):

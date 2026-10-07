@@ -1,4 +1,6 @@
 import { useState, useMemo, useEffect } from "react";
+import { createPortal } from "react-dom";
+import { useLockBodyScroll } from "../hooks/useLockBodyScroll";
 import { useTranslation } from "react-i18next";
 import { Calendar, ChevronLeft, Check, X } from "lucide-react";
 
@@ -39,6 +41,7 @@ export function DobPicker({ value, onChange, testid = "dob" }) {
     const minYear = today.getFullYear() - MAX_AGE - 1;  // oldest allowed birth year (edge handled by day check)
 
     const [open, setOpen] = useState(false);
+    useLockBodyScroll(open);
     const [stepIdx, setStepIdx] = useState(0); // 0=year 1=month 2=day 3=confirm
     const [year, setYear] = useState(null);
     const [month, setMonth] = useState(null); // 0-based
@@ -55,6 +58,11 @@ export function DobPicker({ value, onChange, testid = "dob" }) {
     const years = useMemo(() => {
         const arr = [];
         for (let y = maxYear; y >= minYear; y--) arr.push(y);
+        return arr;
+    }, [maxYear, minYear]);
+    const decades = useMemo(() => {
+        const arr = [];
+        for (let d = Math.floor(maxYear / 10) * 10; d >= Math.floor(minYear / 10) * 10; d -= 10) arr.push(d);
         return arr;
     }, [maxYear, minYear]);
 
@@ -96,9 +104,9 @@ export function DobPicker({ value, onChange, testid = "dob" }) {
                 <Calendar className="w-4 h-4 text-slate-400" />
             </button>
 
-            {open && (
-                <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center bg-black/50 p-0 sm:p-4" data-testid={`${testid}-modal`}>
-                    <div className="w-full sm:max-w-md bg-white rounded-t-2xl sm:rounded-2xl shadow-xl max-h-[88vh] flex flex-col animate-fade-in">
+            {open && createPortal(
+                <div className="fixed inset-0 z-50 flex items-start sm:items-center justify-center bg-black/50 px-3 pb-3 pt-[max(0.75rem,env(safe-area-inset-top))] sm:p-4 overscroll-contain" data-testid={`${testid}-modal`}>
+                    <div className="w-full sm:max-w-md bg-white rounded-2xl shadow-xl max-h-[min(78dvh,78vh)] sm:max-h-[88vh] flex flex-col animate-fade-in">
                         <div className="flex items-center justify-between px-4 py-3 border-b border-slate-100">
                             <div className="flex items-center gap-2">
                                 {stepIdx > 0 && (
@@ -121,14 +129,25 @@ export function DobPicker({ value, onChange, testid = "dob" }) {
 
                         <div className="overflow-y-auto p-4 flex-1">
                             {stepIdx === 0 && (
-                                <div className="grid grid-cols-3 sm:grid-cols-4 gap-2" data-testid={`${testid}-years`}>
+                                <div data-testid={`${testid}-years`}>
+                                    <div className="flex flex-wrap gap-1.5 mb-3" data-testid={`${testid}-decades`}>
+                                        {decades.map((dec) => (
+                                            <button key={dec} type="button" data-testid={`${testid}-decade-${dec}`}
+                                                onClick={() => document.getElementById(`${testid}-y-${Math.min(maxYear, dec + 9)}`)?.scrollIntoView({ block: "start", behavior: "smooth" })}
+                                                className="px-2.5 h-8 rounded-full border border-slate-200 text-xs font-bold text-slate-600 hover:border-portal-blue hover:text-portal-blueDark">
+                                                {dec}s
+                                            </button>
+                                        ))}
+                                    </div>
+                                    <div className="grid grid-cols-3 sm:grid-cols-4 gap-2">
                                     {years.map((y) => (
-                                        <button key={y} type="button" data-testid={`${testid}-year-${y}`}
+                                        <button key={y} id={`${testid}-y-${y}`} type="button" data-testid={`${testid}-year-${y}`}
                                             onClick={() => { setYear(y); setDay(null); setStepIdx(1); }}
-                                            className={`h-12 rounded-lg text-base font-semibold border transition-colors ${year === y ? "bg-portal-blue text-white border-portal-blue" : "bg-white text-slate-700 border-slate-200 hover:border-portal-blue"}`}>
+                                            className={`h-12 rounded-lg text-base font-semibold border transition-colors scroll-mt-2 ${year === y ? "bg-portal-blue text-white border-portal-blue" : "bg-white text-slate-700 border-slate-200 hover:border-portal-blue"}`}>
                                             {y}
                                         </button>
                                     ))}
+                                    </div>
                                 </div>
                             )}
                             {stepIdx === 1 && (
@@ -177,7 +196,7 @@ export function DobPicker({ value, onChange, testid = "dob" }) {
                         </div>
                     </div>
                 </div>
-            )}
+            , document.body)}
         </>
     );
 }

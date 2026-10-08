@@ -220,26 +220,14 @@ async def _notify_patient_rx_sent(req: dict):
     await notify_patient(pid, "Prescription sent to your pharmacy",
                          "Your prescription has been sent to your pharmacy. Sign in to the Patient Portal for details.")
     p = await db.patients.find_one({"id": pid}, {"_id": 0})
-    if p and p.get("email"):
-        portal_url = notify_svc.PORTAL_URL or ""
-        link = (f"<p style='margin:16px 0'><a href='{portal_url}' "
-                f"style='background:#1d4ed8;color:#fff;padding:10px 18px;border-radius:8px;"
-                f"text-decoration:none;font-weight:bold'>Open Patient Portal</a></p>" if portal_url else "")
-        html = (
-            "<table role='presentation' width='100%'><tr><td style='padding:24px;font-family:Arial,sans-serif;color:#0f172a'>"
-            "<h2 style='margin:0 0 12px'>An update is available</h2>"
-            f"<p>Hello {(_clean_name(p.get('first_name')))},</p>"
-            "<p>There is a new update on one of your Patient Portal requests. "
-            "Please sign in to view the details.</p>"
-            f"{link}"
-            "<p style='font-size:12px;color:#888;margin-top:20px'>This message contains no medical information.</p>"
-            "</td></tr></table>"
-        )
-        try:
-            await notify_svc._send_email(db, pid, p["email"],
-                                         "An update is available in your Patient Portal", html)
-        except Exception as e:
-            logger.warning(f"[rx-sent patient email] failed: {e}")
+    # Tracked send: records sent / failed / skipped_no_email (e.g. directory-only patient).
+    lang = notify_svc._lang(p)
+    html = email_service.generic_update_html((p or {}).get("first_name") or "", "Prescription sent to your pharmacy",
+                                             "Your prescription has been sent to your pharmacy. Sign in to the Patient Portal for details.",
+                                             notify_svc.PORTAL_URL, lang=lang)
+    await notify_svc._send_email(db, pid, (p or {}).get("email"),
+                                 email_service.subject("rx_sent", lang), html,
+                                 kind="prescription_sent", ref=req.get("ref_number"))
 
 
 def _clean_name(v) -> str:
@@ -598,7 +586,9 @@ def _validate_bookable(avail, ds, t24, allow_past=False):
 
 
 async def _reserve_or_409(practice_id, ds, t24, appt_id, state, actor):
-    if not await slots_mod.is_free(db, practice_id, ds, t24, exclude_appointment_id=appt_id):
+    avail = await get_availability_doc()
+    dur = int((avail or {}).get("appointment_duration") or 30)
+    if not await slots_mod.is_free(db, practice_id, ds, t24, exclude_appointment_id=appt_id, duration=dur):
         raise HTTPException(status_code=409, detail=slots_mod.SLOT_TAKEN_MSG)
     try:
         return await slots_mod.reserve(db, practice_id, ds, t24, appt_id, state, actor)
@@ -955,6 +945,14 @@ async def register(body: RegisterBody):
         visita_patient_id=None, by=patient["first_name"], source="registration")
     token = authlib.create_access_token(uid, email, "patient")
     user = await db.users.find_one({"_id": res.inserted_id})
+    try:
+        await notify_svc.generic_update(
+            db, patient_id, "Registration received",
+            "Thank you for registering with Dr. Aguayo's practice. The clinic will verify your identity and "
+            "you will receive another email when your Patient Portal account is active.",
+            "registration_received", ref=patient_id)
+    except Exception as e:
+        logger.warning(f"[register] notification failed: {e}")
     return {"token": token, "user": serialize_user(user)}
 
 
@@ -1606,20 +1604,23 @@ async def create_appointment(body: AppointmentBody, ctx: PortalCtx = Depends(por
             "message": "You already have an upcoming appointment or appointment request."})
     appt_id = str(uuid.uuid4())
     actor = "delegate" if ctx.is_delegate else "patient"
+    # Legacy portal patients may have no practice_id: resolve the default practice so the
+    # appointment is always practice-scoped (visible in internal queues/calendar).
+    practice_id = p.get("practice_id") or ((await resolve_practice()) or {}).get("id")
     # portal_access() guarantees a VERIFIED patient (or an authorized caregiver acting for a
     # verified patient) — so verified bookings are CONFIRMED directly (approved by Dr. Aguayo).
     # Any non-verified path is already rejected upstream; the legacy HELD/requested branch is
     # kept only for defensive safety and is never reached for verified patients.
     auto_confirm = p.get("verification_status") == "verified"
     lock_state = slots_mod.CONFIRMED if auto_confirm else slots_mod.HELD
-    await _reserve_or_409(p.get("practice_id"), ds, t24, appt_id, lock_state, actor)
+    await _reserve_or_409(practice_id, ds, t24, appt_id, lock_state, actor)
     ref = await next_ref("APT")
     appt_type = body.appointment_type if body.appointment_type in ("IN_CLINIC", "TELEPHONE") else None
     label = opt.get("label") or avail_mod._label(avail_mod._to_min(t24))
     status = "confirmed" if auto_confirm else "requested"
     doc = {
         "id": appt_id, "ref_number": ref, "patient_id": p["id"],
-        "practice_id": p.get("practice_id"),
+        "practice_id": practice_id,
         "patient_name": f"{p['last_name']}, {p['first_name']}",
         "reason": body.reason, "patient_note": body.patient_note,
         "appointment_type": appt_type,
@@ -1760,7 +1761,8 @@ async def patient_reschedule_appointment(item_id: str, body: PatientRescheduleBo
     _validate_bookable(avail, body.date, time24)
     actor = "delegate" if ctx.is_delegate else "patient"
     try:
-        await slots_mod.move(db, appt.get("practice_id"), item_id, body.date, time24, slots_mod.CONFIRMED, actor)
+        await slots_mod.move(db, appt.get("practice_id"), item_id, body.date, time24, slots_mod.CONFIRMED, actor,
+                             duration=int(avail.get("appointment_duration") or 30))
     except slots_mod.SlotTaken:
         raise HTTPException(status_code=409, detail=slots_mod.SLOT_TAKEN_MSG)
     old_ds, old_t = _appt_when(appt)
@@ -3542,7 +3544,15 @@ async def _update_request(coll, entity, item_id, body: UpdateBody, user, status_
     await coll.update_one({"id": item_id}, mongo_update)
     await audit("update", entity, item_id, user, old_status=old, new_status=updates.get(status_field, old))
     if notify:
-        await notify_patient(doc["patient_id"], notify_title, f"{notify_title} Please log in to your Patient Portal.")
+        new_status = updates.get(status_field, old)
+        kind = f"{entity}_{new_status}"
+        if entity == "prescription" and new_status == "approved_process_visita":
+            await notify_svc.generic_update(db, doc["patient_id"], "Prescription approved",
+                                            "Your prescription request was approved by the clinic and is being processed. "
+                                            "Sign in to the Patient Portal for details.", kind, ref=doc.get("ref_number"))
+        else:
+            await notify_svc.generic_update(db, doc["patient_id"], notify_title,
+                                            f"{notify_title} Please log in to your Patient Portal.", kind, ref=doc.get("ref_number"))
     return await coll.find_one({"id": item_id}, {"_id": 0})
 
 
@@ -3962,7 +3972,7 @@ async def _notify_result_reviewed(patient_id: str):
         lang = email_service.norm_lang(p.get("preferred_language"))
         html = email_service.document_available_html(p.get("first_name") or "", notify_svc.PORTAL_URL, lang=lang)
         await notify_svc._send_email(db, patient_id, p["email"],
-                                     email_service.subject("document_available", lang), html)
+                                     email_service.subject("document_available", lang), html, kind="document_available")
 
 
 @api.post("/internal/exams/results/{rid}/review")
@@ -4160,7 +4170,9 @@ async def msg_update(item_id: str, body: UpdateBody, user: dict = Depends(requir
 # ----------------------------- Appointments -----------------------------
 @api.get("/internal/appointments")
 async def appt_queue(q: Optional[str] = None, status: Optional[str] = None, user: dict = Depends(require_roles(*CLINIC_ROLES))):
-    query = dict(pscope(user))
+    # Appointments: include legacy/portal records with no practice_id so a patient can never
+    # hold a request the clinic cannot see.
+    query = {"practice_id": {"$in": [user.get("practice_id"), None]}}
     if status:
         query["status"] = status
     query.update(_search_filter(q, ["patient_name", "reason", "ref_number"]))
@@ -4289,7 +4301,8 @@ async def appt_update(item_id: str, body: UpdateBody, user: dict = Depends(requi
         _validate_bookable(avail, ds, t24, allow_past=True)
         try:
             # Same slot as the hold -> state flips HELD->CONFIRMED; a different slot is reserved first.
-            await slots_mod.move(db, pid_scope, item_id, ds, t24, slots_mod.CONFIRMED, user["name"])
+            await slots_mod.move(db, pid_scope, item_id, ds, t24, slots_mod.CONFIRMED, user["name"],
+                                 duration=int(avail.get("appointment_duration") or 30))
         except slots_mod.SlotTaken:
             raise HTTPException(status_code=409, detail=slots_mod.SLOT_TAKEN_MSG)
         updates.update({"status": "confirmed", "slot_state": slots_mod.CONFIRMED,
@@ -4306,7 +4319,8 @@ async def appt_update(item_id: str, body: UpdateBody, user: dict = Depends(requi
         avail = await get_availability_doc()
         _validate_bookable(avail, ds, t24)
         try:
-            await slots_mod.move(db, pid_scope, item_id, ds, t24, slots_mod.CONFIRMED, user["name"])
+            await slots_mod.move(db, pid_scope, item_id, ds, t24, slots_mod.CONFIRMED, user["name"],
+                                 duration=int(avail.get("appointment_duration") or 30))
         except slots_mod.SlotTaken:
             raise HTTPException(status_code=409, detail=slots_mod.SLOT_TAKEN_MSG)
         updates.update({"status": "confirmed", "slot_state": slots_mod.CONFIRMED,
@@ -4780,7 +4794,7 @@ async def share_attachment(att_id: str, body: ShareAttachmentBody,
             lang = email_service.norm_lang(p.get("preferred_language"))
             html = email_service.document_available_html(p.get("first_name") or "", notify_svc.PORTAL_URL, lang=lang)
             await notify_svc._send_email(db, patient_id, p["email"],
-                                         email_service.subject("document_available", lang), html)
+                                         email_service.subject("document_available", lang), html, kind="document_available")
     if body.complete and entity_type == "imaging":
         await db.imaging_requests.update_one({"id": att["entity_id"]}, {"$set": {
             "internal_status": "completed", "completed_at": now_iso(), "updated_at": now_iso()}})

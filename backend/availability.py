@@ -111,8 +111,18 @@ def _slots_for_day(avail, d, dur, busy, cutoff=None):
         if ds == today_iso:
             past_before = now_min
     slots, t = [], start
+    # Busy entries are the START minutes of existing appointments for this day. A grid slot is
+    # occupied if ANY existing appointment overlaps it (not only exact start-time matches), so
+    # off-grid/imported times (e.g. 15:45) still block the surrounding slots.
+    busy_starts = []
+    for b in busy:
+        if isinstance(b, str) and b.startswith(ds + " "):
+            try:
+                busy_starts.append(_to_min(b.split(" ", 1)[1]))
+            except Exception:
+                continue
     while t + dur <= end:
-        occupied = any(bs <= t < be for bs, be in day_blocks) or f"{ds} {t // 60:02d}:{t % 60:02d}" in busy
+        occupied = any(bs <= t < be for bs, be in day_blocks) or any(b < t + dur and t < b + dur for b in busy_starts)
         if past_before is not None and t < past_before:
             occupied = True
         if not occupied:

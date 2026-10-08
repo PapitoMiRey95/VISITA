@@ -163,6 +163,10 @@ SUBJECTS = {
                        "es": "Solicitud de cita recibida — Dr. Aguayo"},
     "appt_declined": {"en": "Appointment Request Update — Dr. Aguayo",
                       "es": "Actualización de su solicitud de cita — Dr. Aguayo"},
+    "rx_sent": {"en": "Prescription Sent to Your Pharmacy — Dr. Aguayo",
+                "es": "Receta enviada a su farmacia — Dr. Aguayo"},
+    "registration_received": {"en": "Registration Received — Dr. Aguayo",
+                              "es": "Registro recibido — Dr. Aguayo"},
     "waiting_list": {"en": "You've been placed on the waiting list",
                      "es": "Ha sido colocado en la lista de espera"},
     "invoice_issued": {"en": "New invoice from Dr. Aguayo's office",
@@ -421,6 +425,29 @@ def document_available_html(name: str, portal_url: str = "", lang="en") -> str:
         f'<p>{hello}</p>'
         f'<p>{p1}</p>'
         f'<p>{p2}</p>'
+        f'{link}'
+        f'<p style="margin-top:16px"><strong>{_CHROME["office"][L]}</strong><br>VIsita EMR</p>'
+        f'<p style="font-size:12px;color:#888;margin-top:20px">{_CHROME["no_medical"][L]}</p>'
+        '</td></tr></table>'
+    )
+
+
+def generic_update_html(name: str, heading: str, body: str, portal_url: str = "", lang="en") -> str:
+    """Generic no-PHI status email (prescription approved / sent to pharmacy, registration
+    received, …). Heading/body are short status sentences only — never clinical content."""
+    L = norm_lang(lang)
+    safe_name = _clean(name) or _DEFAULT_NAME[L]
+    hello = _CHROME["hello"][L].format(n=safe_name)
+    link = ""
+    if portal_url and portal_url.startswith("https://"):
+        link = (f'<p style="margin:18px 0"><a href="{portal_url}/portal" '
+                f'style="background:#0e7490;color:#fff;padding:10px 18px;border-radius:6px;'
+                f'text-decoration:none">{_CHROME["open_portal"][L]}</a></p>')
+    return (
+        '<table role="presentation" width="100%"><tr><td style="padding:24px;font-family:Arial,sans-serif;color:#0f172a">'
+        f'<h2 style="margin:0 0 12px">{_clean(heading)}</h2>'
+        f'<p>{hello}</p>'
+        f'<p>{_clean(body)}</p>'
         f'{link}'
         f'<p style="margin-top:16px"><strong>{_CHROME["office"][L]}</strong><br>VIsita EMR</p>'
         f'<p style="font-size:12px;color:#888;margin-top:20px">{_CHROME["no_medical"][L]}</p>'

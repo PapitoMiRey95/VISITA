@@ -32,7 +32,17 @@ async def _in_portal(db, patient_id, title, body):
 
 
 async def _patient(db, patient_id):
-    return await db.patients.find_one({"id": patient_id}, {"_id": 0})
+    """Recipient record for notifications. Portal patient first; otherwise the directory
+    record (admin/physician direct bookings for patients without a portal account carry the
+    directory id as patient_id — their email must still be used)."""
+    p = await db.patients.find_one({"id": patient_id}, {"_id": 0})
+    if p:
+        return p
+    d = await db.patient_directory.find_one({"$or": [{"id": patient_id}, {"linked_patient_id": patient_id}]}, {"_id": 0})
+    if d:
+        return {"id": patient_id, "first_name": d.get("first_name"), "last_name": d.get("last_name"),
+                "email": d.get("email"), "preferred_language": d.get("preferred_language"), "_directory": True}
+    return None
 
 
 def _lang(p) -> str:
@@ -94,20 +104,47 @@ def _fmt_when(appt) -> str:
     return base
 
 
-async def _send_email(db, patient_id, to, subject, html):
-    status = "prepared"
+def _clean_email(to):
+    e = str(to or "").strip().lower()
+    return e if "@" in e and "." in e.split("@")[-1] else ""
+
+
+async def _send_email(db, patient_id, to, subject, html, *, kind=None, ref=None):
+    """Send + ALWAYS record delivery status. Never raises: an email failure must not undo
+    the clinical action. Statuses: sent | failed | skipped_no_email."""
+    to = _clean_email(to)
+    status, provider_id, error = "skipped_no_email", None, None
     if to:
         try:
-            await email_service.send_email(to=to, subject=subject, html=html)
+            provider_id = await email_service.send_email(to=to, subject=subject, html=html)
             status = "sent"
         except Exception as e:
-            status = "failed"
-            logger.warning(f"[email] send failed: {e}")
+            status, error = "failed", str(e)[:300]
+            logger.warning(f"[email] send failed kind={kind} ref={ref} patient={patient_id}: {e}")
+    else:
+        logger.warning(f"[email] skipped (no valid email) kind={kind} ref={ref} patient={patient_id}")
     await db.outbound_notifications.insert_one({
-        "id": str(uuid.uuid4()), "channel": "email", "patient_id": patient_id,
-        "to": to, "subject": subject, "status": status, "created_at": now_iso(),
+        "id": str(uuid.uuid4()), "channel": "email", "patient_id": patient_id, "type": kind, "ref": ref,
+        "to": to or None, "subject": subject, "status": status, "provider_id": provider_id, "error": error,
+        "created_at": now_iso(),
     })
     return status
+
+
+async def generic_update(db, patient_id, title, body, kind, ref=None):
+    """Portal notification (always) + generic no-PHI email (tracked). Used for request
+    status changes such as prescription approved / sent to pharmacy / registration received."""
+    await _in_portal(db, patient_id, title, body)
+    p = await _patient(db, patient_id)
+    if not p:
+        await db.outbound_notifications.insert_one({
+            "id": str(uuid.uuid4()), "channel": "email", "patient_id": patient_id, "type": kind, "ref": ref,
+            "to": None, "subject": title, "status": "skipped_no_email", "error": "no portal patient record",
+            "created_at": now_iso()})
+        return "skipped_no_email"
+    lang = _lang(p)
+    html = email_service.generic_update_html(p.get("first_name") or "", title, body, PORTAL_URL, lang=lang)
+    return await _send_email(db, patient_id, p.get("email"), f"{title} — Dr. Aguayo", html, kind=kind, ref=ref)
 
 
 async def schedule_reminders(db, appt):
@@ -144,7 +181,7 @@ async def appointment_confirmed(db, appt):
                      f"Your {_type_label(appt)} with Dr. Aguayo is confirmed for {disp}. See your Patient Portal for details.")
     email = (p or {}).get("email")
     html = email_service.appointment_confirmed_html(first, disp, PORTAL_URL, tlabel, lang=lang)
-    await _send_email(db, appt["patient_id"], email, email_service.subject("appt_confirmed", lang), html)
+    await _send_email(db, appt["patient_id"], email, email_service.subject("appt_confirmed", lang), html, kind="appointment_confirmed", ref=appt.get("ref_number"))
     await schedule_reminders(db, appt)
 
 
@@ -159,7 +196,7 @@ async def appointment_type_changed(db, appt):
                      "See your Patient Portal for details.")
     email = (p or {}).get("email")
     html = email_service.appointment_type_changed_html(first, disp, PORTAL_URL, tlabel, lang=lang)
-    await _send_email(db, appt["patient_id"], email, email_service.subject("appt_type_changed", lang), html)
+    await _send_email(db, appt["patient_id"], email, email_service.subject("appt_type_changed", lang), html, kind="appointment_type_changed", ref=appt.get("ref_number"))
 
 
 async def appointment_rescheduled(db, appt):
@@ -172,7 +209,7 @@ async def appointment_rescheduled(db, appt):
                      f"Your appointment with Dr. Aguayo has been rescheduled to {disp}. See your Patient Portal for details.")
     email = (p or {}).get("email")
     html = email_service.appointment_reschedule_html(first, disp, PORTAL_URL, lang=lang)
-    await _send_email(db, appt["patient_id"], email, email_service.subject("appt_rescheduled", lang), html)
+    await _send_email(db, appt["patient_id"], email, email_service.subject("appt_rescheduled", lang), html, kind="appointment_rescheduled", ref=appt.get("ref_number"))
     await schedule_reminders(db, appt)
 
 
@@ -188,7 +225,7 @@ async def appointment_cancelled(db, appt, reason=None):
                      "Please contact the office if you have questions.")
     email = (p or {}).get("email")
     html = email_service.appointment_cancelled_html(first, disp, PORTAL_URL, lang=lang)
-    await _send_email(db, appt["patient_id"], email, email_service.subject("appt_cancelled", lang), html)
+    await _send_email(db, appt["patient_id"], email, email_service.subject("appt_cancelled", lang), html, kind="appointment_cancelled", ref=appt.get("ref_number"))
     await cancel_reminders(db, appt.get("id"))
 
 
@@ -202,7 +239,7 @@ async def account_verified(db, patient):
                      "You can sign in to submit requests.")
     email = (patient or {}).get("email")
     html = email_service.account_verified_html(first, PORTAL_URL, lang=lang)
-    await _send_email(db, pid, email, email_service.subject("account_verified", lang), html)
+    await _send_email(db, pid, email, email_service.subject("account_verified", lang), html, kind="account_verified", ref=(patient or {}).get("visita_patient_id"))
 
 
 async def appointment_requested(db, appt):
@@ -214,7 +251,7 @@ async def appointment_requested(db, appt):
     await _in_portal(db, appt["patient_id"], "Appointment request received",
                      f"We received your appointment request for {when}. This time is held for you until the clinic confirms it.")
     html = email_service.appointment_requested_html(first, when, PORTAL_URL, _type_label(appt, lang), lang=lang)
-    await _send_email(db, appt["patient_id"], (p or {}).get("email"), email_service.subject("appt_requested", lang), html)
+    await _send_email(db, appt["patient_id"], (p or {}).get("email"), email_service.subject("appt_requested", lang), html, kind="appointment_requested", ref=appt.get("ref_number"))
 
 
 async def appointment_declined(db, appt, reason=None):
@@ -228,7 +265,7 @@ async def appointment_declined(db, appt, reason=None):
                      f"The clinic could not confirm your appointment request for {when}.{note} "
                      "Please request another time or contact the office.")
     html = email_service.appointment_declined_html(first, when, PORTAL_URL, lang=lang)
-    await _send_email(db, appt["patient_id"], (p or {}).get("email"), email_service.subject("appt_declined", lang), html)
+    await _send_email(db, appt["patient_id"], (p or {}).get("email"), email_service.subject("appt_declined", lang), html, kind="appointment_declined", ref=appt.get("ref_number"))
     await cancel_reminders(db, appt.get("id"))
 
 
@@ -260,7 +297,7 @@ async def send_due_reminders(db):
             continue
         html = email_service.appointment_reminder_html(first, disp, PORTAL_URL, lang=lang)
         status = await _send_email(db, r["patient_id"], (p or {}).get("email"),
-                                   email_service.subject("appt_reminder", lang), html)
+                                   email_service.subject("appt_reminder", lang), html, kind="appointment_reminder", ref=r.get("appointment_id"))
         await db.appointment_reminders.update_one({"id": r["id"]}, {"$set": {
             "delivery_status": status, "sent_time": now_iso()}})
         sent += 1

@@ -2,7 +2,7 @@ import { Outlet, NavLink, useNavigate } from "react-router-dom";
 import { useState, useRef, useCallback } from "react";
 import {
     ClipboardList, Pill, Calendar, MessageSquare, ClipboardCheck,
-    Send, UserCheck, UserPlus, CalendarDays, Settings as SettingsIcon, LogOut, UserSearch, Menu, Building2, Stethoscope, Users, Receipt, AlertTriangle, Truck, Contact, QrCode, ShieldCheck, Microscope, CreditCard,
+    Send, UserCheck, UserPlus, CalendarDays, Settings as SettingsIcon, LogOut, UserSearch, Menu, Building2, Stethoscope, Users, Receipt, AlertTriangle, Truck, Contact, QrCode, ShieldCheck, Microscope, CreditCard, LayoutGrid,
 } from "lucide-react";
 import { useAuth } from "../context/AuthContext";
 import { useCounters } from "./hooks";
@@ -91,7 +91,15 @@ export default function InternalLayout() {
               ...(role === "admin" ? [{ to: "/internal/settings", icon: SettingsIcon, label: "Settings", key: null }] : []),
           ];
 
-    const renderNav = (onNavigate, prefix = "sidebar") => items.map((it) => (
+    // Permanent quick-access set; everything else lives inside the Central Work Hub drawer.
+    const QUICK = new Set(["/internal/patients", "/internal/rx", "/internal/calendar", "/internal/verifications",
+                           "/internal/registration-qr", "/internal/settings"]);
+    const quickItems = items.filter((it) => QUICK.has(it.to));
+    const hubItems = items.filter((it) => !QUICK.has(it.to));
+    const hubBadge = hubItems.reduce((n, it) => n + (it.key && c[it.key] > 0 ? c[it.key] : 0), 0);
+    const [hubOpen, setHubOpen] = useState(false);
+
+    const renderItem = (it, onNavigate, prefix) => (
         <NavLink
             key={it.to}
             to={it.to}
@@ -113,7 +121,28 @@ export default function InternalLayout() {
                 </span>
             )}
         </NavLink>
-    ));
+    );
+
+    const workHubButton = (onNavigate, prefix) => (
+        <button key="work-hub" type="button" data-testid={`${prefix}-work-hub`} onClick={() => { onNavigate?.(); setHubOpen(true); }}
+            className="w-[calc(100%-1rem)] flex items-center justify-between px-3 py-2 mx-2 my-0.5 rounded-sm text-sm font-semibold text-visita-greenDark bg-visita-greenLight/60 hover:bg-visita-greenLight border border-visita-green/30 transition-colors duration-75">
+            <span className="flex items-center gap-2"><LayoutGrid className="w-4 h-4" /> Work Hub</span>
+            {hubBadge > 0 && (
+                <span className="bg-red-600 text-white text-xs font-bold rounded-full min-w-[20px] h-5 px-1 flex items-center justify-center" data-testid={`${prefix}-work-hub-badge`}>
+                    {hubBadge}
+                </span>
+            )}
+        </button>
+    );
+
+    const renderNav = (onNavigate, prefix = "sidebar") => {
+        const out = [];
+        quickItems.forEach((it) => {
+            out.push(renderItem(it, onNavigate, prefix));
+            if (it.to === "/internal/patients") out.push(workHubButton(onNavigate, prefix));
+        });
+        return out;
+    };
 
     return (
         <div className="min-h-screen bg-visita-bg font-plex flex flex-col">
@@ -149,6 +178,19 @@ export default function InternalLayout() {
                 <aside className="w-52 bg-white border-r border-slate-300 flex-shrink-0 py-2 overflow-y-auto hidden md:block">
                     {renderNav()}
                 </aside>
+
+                <Sheet open={hubOpen} onOpenChange={setHubOpen}>
+                    <SheetContent side="left" className="w-80 p-0 bg-white overflow-y-auto" data-testid="work-hub-drawer">
+                        <div className="h-12 bg-visita-ribbon flex items-center gap-2 px-4 text-white">
+                            <LayoutGrid className="w-5 h-5" />
+                            <SheetTitle className="text-white text-base font-semibold">Central Work Hub</SheetTitle>
+                        </div>
+                        <p className="px-4 pt-3 pb-1 text-xs text-slate-500">All clinic tools you're authorized to use. Quick-access items stay in the sidebar.</p>
+                        <div className="py-2" data-testid="work-hub-items">
+                            {hubItems.map((it) => renderItem(it, () => setHubOpen(false), "workhub"))}
+                        </div>
+                    </SheetContent>
+                </Sheet>
 
                 <main className="flex-1 min-w-0 overflow-y-auto p-4">
                     <UnsavedGuardContext.Provider value={{ setGuard }}>

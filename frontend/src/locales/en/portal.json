@@ -20,12 +20,12 @@
       "viewAll": "View all appointments",
       "noneTitle": "No upcoming appointments",
       "nonePrompt": "Need to see the doctor?",
-      "requestCta": "Request an appointment"
+      "requestCta": "Book an appointment"
     },
     "results": {
       "title": "Results & Follow-up",
       "body": "Questions about your results? Some results require a medical appointment for proper review and discussion. If the doctor determines that follow-up is needed, the clinic may contact you. You can request an appointment at any time to discuss your results or other medical concerns.",
-      "cta": "Request an appointment"
+      "cta": "Book an appointment"
     },
     "updates": {
       "title": "New update",
@@ -33,7 +33,7 @@
       "cta": "View / Download"
     },
     "tiles": {
-      "appointments": "Request an Appointment",
+      "appointments": "Book an Appointment",
       "prescriptions": "Prescription Request",
       "documents": "Results & Reports",
       "bloodwork": "Bloodwork Request",
@@ -67,7 +67,7 @@
     "download": "Download",
     "reviewedBy": "Reviewed by",
     "questionsTitle": "Have questions about a result?",
-    "requestAppointment": "Request an Appointment",
+    "requestAppointment": "Book an Appointment",
     "requestAccess": "Request access to report",
     "accessRequested": "Access request sent to your physician.",
     "accessRequestedBadge": "Access requested",

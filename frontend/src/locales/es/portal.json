@@ -20,12 +20,12 @@
       "viewAll": "Ver todas las citas",
       "noneTitle": "No hay citas próximas",
       "nonePrompt": "¿Necesita ver al médico?",
-      "requestCta": "Solicitar una cita"
+      "requestCta": "Reservar una cita"
     },
     "results": {
       "title": "Resultados y seguimiento",
       "body": "¿Preguntas sobre sus resultados? Algunos resultados requieren una cita médica para su revisión y análisis adecuados. Si el médico determina que es necesario un seguimiento, la clínica puede comunicarse con usted. Puede solicitar una cita en cualquier momento para analizar sus resultados u otras inquietudes médicas.",
-      "cta": "Solicitar una cita"
+      "cta": "Reservar una cita"
     },
     "updates": {
       "title": "Nueva actualización",
@@ -33,7 +33,7 @@
       "cta": "Ver / Descargar"
     },
     "tiles": {
-      "appointments": "Solicitar una cita",
+      "appointments": "Reservar una cita",
       "prescriptions": "Solicitar receta",
       "documents": "Resultados e informes",
       "bloodwork": "Solicitar análisis de sangre",
@@ -67,7 +67,7 @@
     "download": "Descargar",
     "reviewedBy": "Revisado por",
     "questionsTitle": "¿Tiene preguntas sobre un resultado?",
-    "requestAppointment": "Solicitar una cita",
+    "requestAppointment": "Reservar una cita",
     "requestAccess": "Solicitar acceso al informe",
     "accessRequested": "Solicitud de acceso enviada a su médico.",
     "accessRequestedBadge": "Acceso solicitado",

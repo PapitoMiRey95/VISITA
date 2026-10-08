@@ -1606,10 +1606,17 @@ async def create_appointment(body: AppointmentBody, ctx: PortalCtx = Depends(por
             "message": "You already have an upcoming appointment or appointment request."})
     appt_id = str(uuid.uuid4())
     actor = "delegate" if ctx.is_delegate else "patient"
-    await _reserve_or_409(p.get("practice_id"), ds, t24, appt_id, slots_mod.HELD, actor)
+    # portal_access() guarantees a VERIFIED patient (or an authorized caregiver acting for a
+    # verified patient) — so verified bookings are CONFIRMED directly (approved by Dr. Aguayo).
+    # Any non-verified path is already rejected upstream; the legacy HELD/requested branch is
+    # kept only for defensive safety and is never reached for verified patients.
+    auto_confirm = p.get("verification_status") == "verified"
+    lock_state = slots_mod.CONFIRMED if auto_confirm else slots_mod.HELD
+    await _reserve_or_409(p.get("practice_id"), ds, t24, appt_id, lock_state, actor)
     ref = await next_ref("APT")
     appt_type = body.appointment_type if body.appointment_type in ("IN_CLINIC", "TELEPHONE") else None
     label = opt.get("label") or avail_mod._label(avail_mod._to_min(t24))
+    status = "confirmed" if auto_confirm else "requested"
     doc = {
         "id": appt_id, "ref_number": ref, "patient_id": p["id"],
         "practice_id": p.get("practice_id"),
@@ -1620,7 +1627,7 @@ async def create_appointment(body: AppointmentBody, ctx: PortalCtx = Depends(por
         "requested_display": opt.get("display") or f"{fmt_date_display(ds)} · {label}",
         "preferred_options": [{"date": ds, "time": t24, "label": label, "display": opt.get("display")}],
         "preferred_date": ds, "preferred_time": label,
-        "status": "requested", "slot_state": slots_mod.HELD, "staff_note": None,
+        "status": status, "slot_state": lock_state, "staff_note": None,
         "submitted_by_delegate": ctx.is_delegate,
         "acted_by_user_id": ctx.user["id"] if ctx.is_delegate else None,
         "on_behalf_of_patient_id": p["id"] if ctx.is_delegate else None,
@@ -1628,18 +1635,25 @@ async def create_appointment(body: AppointmentBody, ctx: PortalCtx = Depends(por
         "offered_slots": [], "selected_slot": None,
         "confirmed_date": None, "confirmed_time": None, "confirmed_display": None,
         "approved_by": None, "approved_at": None, "assigned_to": None,
-        "internal_notes": [], "history": [{"status": "requested", "at": now_iso(), "by": actor,
-                                           "note": f"Slot held {ds} {t24}"}],
+        "booked_from": {"source_type": "portal_self_booking" if auto_confirm else "portal_request", "source_id": None},
+        "internal_notes": [], "history": [{"status": status, "at": now_iso(), "by": actor,
+                                           "note": ("Self-booked (verified patient) — slot confirmed " if auto_confirm else "Slot held ") + f"{ds} {t24}"}],
         "created_at": now_iso(), "updated_at": now_iso(), "completed_at": None,
     }
+    if auto_confirm:
+        doc.update({**_confirmed_fields(ds, t24, label, opt.get("display")),
+                    "approved_by": "Patient self-booking (verified)", "approved_at": now_iso(), "completed_at": now_iso()})
     await db.appointment_requests.insert_one({**doc})
-    await audit("create", "appointment", doc["id"], ctx.audit_actor(), new_status="requested",
-                meta=ctx.audit_meta({"slot": f"{ds} {t24}", "held": True}))
+    await audit("create", "appointment", doc["id"], ctx.audit_actor(), new_status=status,
+                meta=ctx.audit_meta({"slot": f"{ds} {t24}", "auto_confirmed": auto_confirm}))
     doc.pop("_id", None)
     try:
-        await notify_svc.appointment_requested(db, doc)
+        if auto_confirm:
+            await notify_svc.appointment_confirmed(db, doc)
+        else:
+            await notify_svc.appointment_requested(db, doc)
     except Exception as e:
-        logger.warning(f"[appt] request notification failed: {e}")
+        logger.warning(f"[appt] booking notification failed: {e}")
     return doc
 
 

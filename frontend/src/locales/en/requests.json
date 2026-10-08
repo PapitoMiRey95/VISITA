@@ -186,7 +186,7 @@
     "action": "Results / Document Request",
     "prompt": "What would you like a copy of? The clinic will review your request.",
     "toast": "Your document request was sent to the clinic.",
-    "requestAppointment": "Request an Appointment",
+    "requestAppointment": "Book an Appointment",
     "interpretationPre": "If you would like the doctor to review or explain your results, please",
     "purposes": {
       "copy_result": "Request copy of a result",
@@ -198,7 +198,7 @@
     "title": "Referral Status",
     "needNewTitle": "Need a new referral?",
     "needNewFallback": "A medical appointment may be required before a new referral can be issued.",
-    "requestAppointment": "Request an Appointment",
+    "requestAppointment": "Book an Appointment",
     "yourReferrals": "Your referrals",
     "none": "You have no referrals on file.",
     "lastUpdated": "LAST UPDATED:"
@@ -218,7 +218,7 @@
     }
   },
   "appointments": {
-    "title": "Request an Appointment",
+    "title": "Book an Appointment",
     "step1": "Select a date",
     "step1Hint": "Dr. Aguayo sees patients Monday–Thursday. Only dates with availability can be selected.",
     "loadingDates": "Loading available dates…",
@@ -237,16 +237,16 @@
     "longerMessagePre": "Need to send a longer message? Use the",
     "messagesLink": "Messages",
     "longerMessagePost": "section.",
-    "review": "Review",
+    "review": "Review your appointment",
     "when": "When:",
     "type": "Type:",
     "reason": "Reason:",
     "at": "at",
     "notConfirmedNote": "Your appointment type and time are not confirmed until the clinic approves your request. You will be notified once it is confirmed.",
-    "submit": "Submit Appointment Request",
-    "submitting": "Submitting…",
-    "yourRequests": "Your appointment requests",
-    "noRequests": "No requests yet.",
+    "submit": "Confirm Appointment",
+    "submitting": "Confirming…",
+    "yourRequests": "Your appointments",
+    "noRequests": "No appointments yet.",
     "reschedule": "Reschedule",
     "cancel": "Cancel",
     "chooseNewTime": "Choose a new time",
@@ -280,7 +280,7 @@
       "selectType": "Please choose an appointment type (In-Clinic or Telephone).",
       "enterReason": "Please enter a reason for the appointment.",
       "noLongerAvailable": "This appointment time is no longer available. Please select another time.",
-      "requestSubmitted": "Appointment request submitted. The clinic will confirm your time.",
+      "requestSubmitted": "Appointment confirmed.",
       "selectTime": "Please select a time.",
       "confirmed": "Appointment confirmed!",
       "confirmCancel": "Cancel this appointment? This can't be undone online.",
@@ -301,6 +301,8 @@
     "yourRequest": "Your appointment request",
     "upcomingAppt": "Upcoming appointment",
     "historyToggle": "Past & cancelled appointments ({{count}})",
-    "noActive": "No active appointment or request."
+    "noActive": "No active appointment or request.",
+    "bookedFor": "Confirmed for",
+    "instantNote": "Your time is reserved and confirmed as soon as you tap Confirm Appointment."
   }
 }

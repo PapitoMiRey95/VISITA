@@ -186,7 +186,7 @@
     "action": "Solicitud de resultados / documento",
     "prompt": "¿De qué desea una copia? La clínica revisará su solicitud.",
     "toast": "Su solicitud de documento fue enviada a la clínica.",
-    "requestAppointment": "Solicitar una cita",
+    "requestAppointment": "Reservar una cita",
     "interpretationPre": "Si desea que el médico revise o explique sus resultados, por favor",
     "purposes": {
       "copy_result": "Solicitar copia de un resultado",
@@ -198,7 +198,7 @@
     "title": "Estado de referencia",
     "needNewTitle": "¿Necesita una nueva referencia?",
     "needNewFallback": "Puede requerirse una cita médica antes de emitir una nueva referencia.",
-    "requestAppointment": "Solicitar una cita",
+    "requestAppointment": "Reservar una cita",
     "yourReferrals": "Sus referencias",
     "none": "No tiene referencias registradas.",
     "lastUpdated": "ÚLTIMA ACTUALIZACIÓN:"
@@ -218,7 +218,7 @@
     }
   },
   "appointments": {
-    "title": "Solicitar una cita",
+    "title": "Reservar una cita",
     "step1": "Seleccione una fecha",
     "step1Hint": "El Dr. Aguayo atiende de lunes a jueves. Solo se pueden seleccionar fechas con disponibilidad.",
     "loadingDates": "Cargando fechas disponibles…",
@@ -237,16 +237,16 @@
     "longerMessagePre": "¿Necesita enviar un mensaje más largo? Use la sección",
     "messagesLink": "Mensajes",
     "longerMessagePost": ".",
-    "review": "Revisar",
+    "review": "Revise su cita",
     "when": "Cuándo:",
     "type": "Tipo:",
     "reason": "Motivo:",
     "at": "a las",
     "notConfirmedNote": "El tipo y la hora de su cita no se confirman hasta que la clínica apruebe su solicitud. Se le notificará una vez confirmada.",
-    "submit": "Enviar solicitud de cita",
-    "submitting": "Enviando…",
-    "yourRequests": "Sus solicitudes de cita",
-    "noRequests": "Aún no hay solicitudes.",
+    "submit": "Confirmar cita",
+    "submitting": "Confirmando…",
+    "yourRequests": "Sus citas",
+    "noRequests": "Aún no hay citas.",
     "reschedule": "Reprogramar",
     "cancel": "Cancelar",
     "chooseNewTime": "Elija una nueva hora",
@@ -280,7 +280,7 @@
       "selectType": "Por favor elija un tipo de cita (En la clínica o Telefónica).",
       "enterReason": "Por favor ingrese un motivo para la cita.",
       "noLongerAvailable": "Esta hora de cita ya no está disponible. Por favor seleccione otra hora.",
-      "requestSubmitted": "Solicitud de cita enviada. La clínica confirmará su hora.",
+      "requestSubmitted": "Cita confirmada.",
       "selectTime": "Por favor seleccione una hora.",
       "confirmed": "¡Cita confirmada!",
       "confirmCancel": "¿Cancelar esta cita? Esto no se puede deshacer en línea.",
@@ -301,7 +301,9 @@
     "yourRequest": "Su solicitud de cita",
     "upcomingAppt": "Próxima cita",
     "historyToggle": "Citas pasadas y canceladas ({{count}})",
-    "noActive": "No tiene citas ni solicitudes activas."
+    "noActive": "No tiene citas ni solicitudes activas.",
+    "bookedFor": "Confirmada para",
+    "instantNote": "Su horario queda reservado y confirmado en cuanto toque Confirmar cita."
   },
   "reasonLabels": {
     "New Medical Concern": "Nueva preocupación médica",

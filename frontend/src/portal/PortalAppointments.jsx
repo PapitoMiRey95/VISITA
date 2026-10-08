@@ -327,7 +327,7 @@ export default function PortalAppointments() {
                                     {apptType && <div className="mt-1"><span className="text-slate-500">{t("requests:appointments.type")}</span> <span className="font-semibold" data-testid="appt-review-type">{apptTypeConfirmationLabel(apptType)}</span></div>}
                                     {reason.trim() && <div className="mt-1"><span className="text-slate-500">{t("requests:appointments.reason")}</span> <span className="font-semibold">{t(`requests:appointments.reasons.${reason.trim()}`, reason.trim())}</span></div>}
                                 </div>
-                                <p className="text-xs text-slate-500 mt-2" data-testid="appt-not-confirmed-note">{t("requests:appointments.notConfirmedNote")}</p>
+                                <p className="text-xs text-emerald-700 font-semibold mt-2" data-testid="appt-instant-note">{t("requests:appointments.instantNote")}</p>
                             </div>
                         )}
 
@@ -442,9 +442,9 @@ export default function PortalAppointments() {
                 const history = list.filter((a) => !ACTIVE.includes(a.raw_status));
                 return (<>
                     <h2 className="font-bold text-slate-700" id="appt-your-requests" data-testid="appt-active-heading">
-                        {active.some((a) => a.raw_status === "requested") && !active.some((a) => a.raw_status !== "requested")
-                            ? t("requests:appointments.yourRequest")
-                            : active.length ? t("requests:appointments.upcomingAppt") : t("requests:appointments.yourRequests")}
+                        {active.length === 0 ? t("requests:appointments.yourRequests")
+                            : active.some((a) => a.raw_status !== "requested") ? t("requests:appointments.upcomingAppt")
+                                : t("requests:appointments.yourRequest")}
                     </h2>
                     {active.length === 0 && <p className="text-slate-500 text-sm" data-testid="appt-no-active">{t("requests:appointments.noActive")}</p>}
                     <div data-testid="appt-active-list">{active.map(renderCard)}</div>

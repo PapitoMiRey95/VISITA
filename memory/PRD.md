@@ -642,3 +642,8 @@ STATUS: verified in PREVIEW. Awaiting explicit GO for Production (code deploy + 
 - /register/:slug: EN|ES pill switch (reg-lang-switch) using setAppLanguage; component state preserved across switch.
 - RxQueue: PHYSICIAN_COLUMNS (Source, Ref, Patient, PIN, Status + "N medications" + manual badge); staff COLUMNS unchanged.
 - Tests: testing_agent iteration_74 — backend 13/13, frontend all pass. Mobile 390x664 verified by screenshots (all 3 modals y=12, fully visible).
+
+## Direct booking for verified patients (2026-10-08, PREVIEW ONLY, NOT deployed)
+- POST /portal/appointments: `auto_confirm = verification_status == "verified"` (portal_access already enforces verified patient / caregiver-for-verified) → status CONFIRMED, lock CONFIRMED, confirmed_* set, approved_by "Patient self-booking (verified)", booked_from.source_type "portal_self_booking", appointment_confirmed notification (portal+email). Legacy HELD/requested branch retained only as defensive fallback (unreachable for verified). No approve action removed; queue untouched; legacy requested records still readable/approvable.
+- Frontend: title "Book an Appointment", button "Confirm Appointment", toast "Appointment confirmed.", review block note "Your time is reserved and confirmed…", heading "Upcoming appointment" when any confirmed is active. Home/nav copy "Book an appointment" (EN/ES).
+- Verified by curl + UI: patient & caregiver → CONFIRMED instantly; same slot → 409; appears in Home + admin calendar (source portal_self_booking); not in requested queue; existing-upcoming 409 preserved; >24h cancel ok; emails "Appointment Confirmed" sent.

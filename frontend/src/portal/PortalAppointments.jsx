@@ -81,6 +81,7 @@ export default function PortalAppointments() {
     const [warnOpen, setWarnOpen] = useState(false);
     const [justSubmitted, setJustSubmitted] = useState(false);
     const hasUpcoming = !!p?.has_upcoming_appointment;
+    const instant = p?.booking_mode === "confirm"; // server feature flag: direct confirm vs clinic approval
     const warnShownRef = useRef(false);
     // Warn only when ENTERING the booking flow with an existing upcoming item — never right after a submit here.
     useEffect(() => {
@@ -119,7 +120,7 @@ export default function PortalAppointments() {
                 appointment_type: apptType, acknowledge_existing: ackExisting || justSubmitted,
                 options: [{ date: selSlot.date, time: selSlot.time, label: selSlot.label, display: selSlot.display }],
             });
-            toast.success(t("requests:appointments.toasts.requestSubmitted"));
+            toast.success(t(instant ? "requests:appointments.toasts.requestSubmitted" : "requests:appointments.toasts.requestHeld"));
             setJustSubmitted(true); setWarnOpen(false);
             setSelDate(null); setSelSlot(null); setApptType("IN_CLINIC"); setReason(""); setNote(""); setAckExisting(false);
             refetch();
@@ -157,7 +158,7 @@ export default function PortalAppointments() {
 
     return (
         <div className="space-y-5 animate-fade-in">
-            <h1 className="text-2xl font-bold text-slate-900">{t("requests:appointments.title")}</h1>
+            <h1 className="text-2xl font-bold text-slate-900">{t(instant ? "requests:appointments.title" : "requests:appointments.titleRequest")}</h1>
             <EmergencyNotice />
             {p && <PendingBanner status={p.verification_status} />}
 
@@ -327,13 +328,14 @@ export default function PortalAppointments() {
                                     {apptType && <div className="mt-1"><span className="text-slate-500">{t("requests:appointments.type")}</span> <span className="font-semibold" data-testid="appt-review-type">{apptTypeConfirmationLabel(apptType)}</span></div>}
                                     {reason.trim() && <div className="mt-1"><span className="text-slate-500">{t("requests:appointments.reason")}</span> <span className="font-semibold">{t(`requests:appointments.reasons.${reason.trim()}`, reason.trim())}</span></div>}
                                 </div>
-                                <p className="text-xs text-emerald-700 font-semibold mt-2" data-testid="appt-instant-note">{t("requests:appointments.instantNote")}</p>
+                                {instant ? <p className="text-xs text-emerald-700 font-semibold mt-2" data-testid="appt-instant-note">{t("requests:appointments.instantNote")}</p>
+                                    : <p className="text-xs text-slate-500 mt-2" data-testid="appt-not-confirmed-note">{t("requests:appointments.notConfirmedNote")}</p>}
                             </div>
                         )}
 
                         <Button type="submit" disabled={busy || !selSlot || !apptType || !reason.trim() || needsAck} data-testid="appt-submit"
                             className="w-full h-12 rounded-xl bg-portal-blue hover:bg-portal-blueDark text-white text-base">
-                            {busy ? t("requests:appointments.submitting") : t("requests:appointments.submit")}
+                            {busy ? t("requests:appointments.submitting") : t(instant ? "requests:appointments.submit" : "requests:appointments.submitRequest")}
                         </Button>
                     </form>
                 </Card>

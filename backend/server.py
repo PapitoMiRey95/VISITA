@@ -1611,7 +1611,7 @@ async def create_appointment(body: AppointmentBody, ctx: PortalCtx = Depends(por
     # verified patient) — so verified bookings are CONFIRMED directly (approved by Dr. Aguayo).
     # Any non-verified path is already rejected upstream; the legacy HELD/requested branch is
     # kept only for defensive safety and is never reached for verified patients.
-    auto_confirm = p.get("verification_status") == "verified"
+    auto_confirm = PORTAL_AUTO_CONFIRM and p.get("verification_status") == "verified"
     lock_state = slots_mod.CONFIRMED if auto_confirm else slots_mod.HELD
     await _reserve_or_409(practice_id, ds, t24, appt_id, lock_state, actor)
     ref = await next_ref("APT")
@@ -3261,6 +3261,7 @@ async def portal_overview(ctx: PortalCtx = Depends(portal_access())):
                     "pending_health_card": pending_hc,
                     "has_outstanding_fee": (False if is_del else has_fee),
                     "has_upcoming_appointment": has_upcoming,
+                    "booking_mode": "confirm" if PORTAL_AUTO_CONFIRM else "request",
                     "clinic_cancellation_alert": clinic_cancel_alert if allow("APPOINTMENTS") else None},
         "requests": requests,
         "appointments": [appt_view(a) for a in appts] if allow("APPOINTMENTS") else [],
@@ -4172,7 +4173,11 @@ async def msg_update(item_id: str, body: UpdateBody, user: dict = Depends(requir
 async def appt_queue(q: Optional[str] = None, status: Optional[str] = None, user: dict = Depends(require_roles(*CLINIC_ROLES))):
     # Appointments: include legacy/portal records with no practice_id so a patient can never
     # hold a request the clinic cannot see.
-    query = {"practice_id": {"$in": [user.get("practice_id"), None]}}
+    default_pr = await resolve_practice()
+    pids = [user.get("practice_id")]
+    if default_pr and user.get("practice_id") == default_pr.get("id"):
+        pids.append(None)  # unstamped legacy records belong to the default practice only
+    query = {"practice_id": {"$in": pids}}
     if status:
         query["status"] = status
     query.update(_search_filter(q, ["patient_name", "reason", "ref_number"]))
@@ -4273,6 +4278,8 @@ async def issue_no_show_invoice(item_id: str, user: dict = Depends(require_roles
     await db.appointment_requests.update_one({"id": item_id}, {"$set": {"no_show_invoice_id": inv["id"], "updated_at": now_iso()}})
     return billing_mod.invoice_internal(inv)
 
+
+PORTAL_AUTO_CONFIRM = os.environ.get("PORTAL_AUTO_CONFIRM", "false").strip().lower() in ("1", "true", "yes")
 
 ADMIN_CANCEL_REASONS = {"Physician unavailable", "Clinic schedule change", "Unexpected closure",
                         "Patient requested cancellation", "Other"}

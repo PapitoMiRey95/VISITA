@@ -288,7 +288,8 @@
       "chooseNewTime": "Choose a new time.",
       "rescheduled": "Appointment rescheduled.",
       "confirmCancelRequest": "Withdraw this appointment request? The held time will be released.",
-      "requestCancelled": "Appointment request cancelled and time released."
+      "requestCancelled": "Appointment request cancelled and time released.",
+      "requestHeld": "Request submitted — this time is held for you until the clinic confirms it."
     },
     "existingTitle": "You already have an upcoming appointment or appointment request.",
     "existingBody": "Please check your requests below before booking another time. If you still need a second appointment, confirm below to continue.",
@@ -303,6 +304,8 @@
     "historyToggle": "Past & cancelled appointments ({{count}})",
     "noActive": "No active appointment or request.",
     "bookedFor": "Confirmed for",
-    "instantNote": "Your time is reserved and confirmed as soon as you tap Confirm Appointment."
+    "instantNote": "Your time is reserved and confirmed as soon as you tap Confirm Appointment.",
+    "titleRequest": "Request an Appointment",
+    "submitRequest": "Submit Appointment Request"
   }
 }

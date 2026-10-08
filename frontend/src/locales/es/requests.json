@@ -288,7 +288,8 @@
       "chooseNewTime": "Elija una nueva hora.",
       "rescheduled": "Cita reprogramada.",
       "confirmCancelRequest": "¿Retirar esta solicitud de cita? El horario reservado se liberará.",
-      "requestCancelled": "Solicitud de cita cancelada y horario liberado."
+      "requestCancelled": "Solicitud de cita cancelada y horario liberado.",
+      "requestHeld": "Solicitud enviada — este horario queda reservado hasta que la clínica lo confirme."
     },
     "existingTitle": "Ya tiene una cita próxima o una solicitud de cita pendiente.",
     "existingBody": "Revise sus solicitudes a continuación antes de reservar otro horario. Si aún necesita una segunda cita, confirme abajo para continuar.",
@@ -303,7 +304,9 @@
     "historyToggle": "Citas pasadas y canceladas ({{count}})",
     "noActive": "No tiene citas ni solicitudes activas.",
     "bookedFor": "Confirmada para",
-    "instantNote": "Su horario queda reservado y confirmado en cuanto toque Confirmar cita."
+    "instantNote": "Su horario queda reservado y confirmado en cuanto toque Confirmar cita.",
+    "titleRequest": "Solicitar una cita",
+    "submitRequest": "Enviar solicitud de cita"
   },
   "reasonLabels": {
     "New Medical Concern": "Nueva preocupación médica",

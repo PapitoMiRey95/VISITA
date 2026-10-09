@@ -27,8 +27,9 @@ const whenOf = (a) => a.confirmed_display || (a.slot_date ? `${formatDate(a.slot
 export default function AppointmentQueue() {
     const invalidate = useInvalidate();
     const [q, setQ] = useState("");
-    const [view, setView] = useState("queue"); // queue | no_show | reschedule
-    const [status, setStatus] = useState("requested");
+    const [view, setView] = useState("bookings"); // bookings | legacy | no_show | reschedule
+    const [bookingSel, setBookingSel] = useState(null);
+    const [status, setStatus] = useState("confirmed");
     const [sel, setSel] = useState(null);
     const [busy, setBusy] = useState(false);
     const [changeOpen, setChangeOpen] = useState(false);
@@ -42,6 +43,12 @@ export default function AppointmentQueue() {
         queryKey: ["queue", "/internal/appointments", q, status],
         queryFn: async () => (await api.get("/internal/appointments", { params: { q: q || undefined, status: status || undefined } })).data,
     });
+    // Legacy pending requests (old approval workflow) — kept separate until resolved.
+    const legacyQ = useQuery({
+        queryKey: ["queue", "/internal/appointments", "legacy-requested"],
+        queryFn: async () => (await api.get("/internal/appointments", { params: { status: "requested" } })).data,
+    });
+    const legacy = legacyQ.data || [];
     const followupsQ = useQuery({
         queryKey: ["queue", "/internal/appointments/followups"],
         queryFn: async () => (await api.get("/internal/appointments/followups")).data,
@@ -71,7 +78,7 @@ export default function AppointmentQueue() {
 
     const open = (i) => { setSel(i); setLinkOpen(false); setLinkQ(""); setLinkResults([]); };
     const close = () => setSel(null);
-    const refreshAll = () => { invalidate(); list.refetch(); };
+    const refreshAll = () => { invalidate(); list.refetch(); legacyQ.refetch(); };
 
     const searchDirectory = async () => {
         if (!linkQ.trim()) return;
@@ -114,19 +121,18 @@ export default function AppointmentQueue() {
     };
 
     const items = list.data || [];
-    const chips = [["requested", "Requested"], ["confirmed", "Confirmed"], ["cancelled", "Cancelled"], ["declined", "Declined"], ["", "All"]];
     const isReq = sel?.status === "requested";
     const isConf = sel?.status === "confirmed" || sel?.status === "rescheduled";
 
     return (
         <div className="animate-fade-in">
-            <h1 className="text-2xl font-bold text-slate-900 tracking-tight">Appointment Requests</h1>
-            <p className="text-sm text-slate-500 mb-3">A requested time is held for the patient until you approve, change it, or cancel.</p>
+            <h1 className="text-2xl font-bold text-slate-900 tracking-tight">Recent Bookings</h1>
+            <p className="text-sm text-slate-500 mb-3">Verified patients book directly — appointments are confirmed instantly. Use the Calendar to change or cancel a booking.</p>
 
-            <div className="flex gap-1 mb-3 border-b border-slate-200">
-                {[["queue", "Queue"], ["no_show", "No-Shows"], ["reschedule", "Reschedule Requested"]].map(([v, l]) => (
+            <div className="flex gap-1 mb-3 border-b border-slate-200 flex-wrap">
+                {[["bookings", "Recent Bookings"], ["legacy", `Legacy pending requests (${legacy.length})`], ["no_show", "No-Shows"], ["reschedule", "Reschedule Requested"]].map(([v, l]) => (
                     <button key={v} data-testid={`appt-tab-${v}`} onClick={() => setView(v)}
-                        className={`px-3 py-2 text-sm font-semibold -mb-px border-b-2 ${view === v ? "border-visita-green text-visita-greenDark" : "border-transparent text-slate-500 hover:text-slate-700"}`}>
+                        className={`px-3 py-2 text-sm font-semibold -mb-px border-b-2 ${view === v ? "border-visita-green text-visita-greenDark" : "border-transparent text-slate-500 hover:text-slate-700"} ${v === "legacy" && legacy.length ? "text-amber-700" : ""}`}>
                         {v === "no_show" && <UserX className="w-4 h-4 inline mr-1" />}
                         {v === "reschedule" && <CalendarClock className="w-4 h-4 inline mr-1" />}
                         {l}
@@ -138,18 +144,18 @@ export default function AppointmentQueue() {
                 onIssueFee={issueNoShowFee} onRemoveFee={removeNoShowFee} feeBusy={feeBusy} />}
             {view === "reschedule" && <FollowupTable testid="reschedule-table" rows={followupsQ.data?.reschedules || []} showType emptyText="No reschedule requests." />}
 
-            {view === "queue" && (<>
+            {view === "bookings" && <RecentBookings items={items} q={q} setQ={setQ} status={status} setStatus={setStatus} onOpen={setBookingSel} />}
+
+            {view === "legacy" && (<>
+                <div className="bg-amber-50 border border-amber-200 rounded-sm p-2 mb-3 text-xs text-amber-800" data-testid="legacy-pending-banner">
+                    These are older requests created under the previous approval workflow. Approve, change time or cancel each one; new verified-patient bookings no longer arrive here.
+                </div>
                 <div className="flex flex-wrap items-center gap-2 mb-3">
                     <div className="relative">
                         <Search className="w-4 h-4 text-slate-400 absolute left-2 top-2.5" />
                         <Input data-testid="queue-search" value={q} onChange={(e) => setQ(e.target.value)} placeholder="Search patient, reason, APT-…" className="pl-8 h-9 w-64 bg-white" />
                     </div>
-                    <div className="flex gap-1 flex-wrap">
-                        {chips.map(([v, l]) => (
-                            <button key={l} data-testid={`filter-${l.toLowerCase().replace(/ /g, "-")}`} onClick={() => setStatus(v)}
-                                className={`px-2.5 py-1 rounded-sm text-xs font-medium border ${status === v ? "bg-visita-green text-white border-visita-green" : "bg-white text-slate-600 border-slate-300"}`}>{l}</button>
-                        ))}
-                    </div>
+
                 </div>
 
                 <div className="bg-white border border-slate-300 rounded-sm overflow-hidden">
@@ -164,8 +170,8 @@ export default function AppointmentQueue() {
                             </tr>
                         </thead>
                         <tbody>
-                            {items.length === 0 && <tr><td colSpan={8} className="px-3 py-8 text-center text-slate-400">No appointment requests.</td></tr>}
-                            {items.map((i) => (
+                            {legacy.length === 0 && <tr><td colSpan={8} className="px-3 py-8 text-center text-slate-400">No legacy pending requests — all clear.</td></tr>}
+                            {legacy.map((i) => (
                                 <tr key={i.id} data-testid="queue-row" onClick={() => open(i)} className={`border-b border-slate-200 even:bg-slate-50/60 hover:bg-visita-bg cursor-pointer ${i.status === "cancelled" ? "text-red-700" : ""}`}>
                                     <td className="px-3 py-2 text-slate-500">{i.ref_number}</td>
                                     <td className="px-3 py-2 font-semibold">{formatCombinedName(i.patient_name)}</td>
@@ -339,7 +345,91 @@ export default function AppointmentQueue() {
             {sel && cancelOpen && (
                 <CancelAppointmentDialog appt={sel} onClose={() => setCancelOpen(false)} onDone={() => { refreshAll(); close(); }} />
             )}
+            {bookingSel && <BookingDetail appt={bookingSel} onClose={() => setBookingSel(null)} onSaved={(u) => setBookingSel({ ...bookingSel, ...u })} />}
         </div>
+    );
+}
+
+// Informational list of confirmed bookings, most recently booked first. Schedule changes live in the Calendar.
+function RecentBookings({ items, q, setQ, status, setStatus, onOpen }) {
+    const rows = [...items].sort((a, b) => (b.booked_at || "").localeCompare(a.booked_at || ""));
+    const chips = [["confirmed", "Confirmed"], ["cancelled", "Cancelled"], ["completed", "Completed"], ["", "All"]];
+    return (<>
+        <div className="flex flex-wrap items-center gap-2 mb-3">
+            <div className="relative">
+                <Search className="w-4 h-4 text-slate-400 absolute left-2 top-2.5" />
+                <Input data-testid="bookings-search" value={q} onChange={(e) => setQ(e.target.value)} placeholder="Search patient, reason, APT-…" className="pl-8 h-9 w-64 bg-white" />
+            </div>
+            <div className="flex gap-1 flex-wrap">
+                {chips.map(([v, l]) => (
+                    <button key={l} data-testid={`bookings-filter-${l.toLowerCase()}`} onClick={() => setStatus(v)}
+                        className={`px-2.5 py-1 rounded-sm text-xs font-medium border ${status === v ? "bg-visita-green text-white border-visita-green" : "bg-white text-slate-600 border-slate-300"}`}>{l}</button>
+                ))}
+            </div>
+        </div>
+        <div className="bg-white border border-slate-300 rounded-sm overflow-hidden" data-testid="recent-bookings-table">
+            <table className="w-full text-sm">
+                <thead>
+                    <tr className="bg-slate-100 text-left text-xs uppercase tracking-wider text-slate-600">
+                        <th className="px-3 py-2 font-medium">Patient</th><th className="px-3 py-2 font-medium">PIN</th>
+                        <th className="px-3 py-2 font-medium">Phone</th><th className="px-3 py-2 font-medium">Appointment</th>
+                        <th className="px-3 py-2 font-medium">Type</th><th className="px-3 py-2 font-medium">Reason</th>
+                        <th className="px-3 py-2 font-medium">Booked at</th><th className="px-3 py-2 font-medium">Status</th><th />
+                    </tr>
+                </thead>
+                <tbody>
+                    {rows.length === 0 && <tr><td colSpan={9} className="px-3 py-8 text-center text-slate-400">No bookings.</td></tr>}
+                    {rows.map((i) => (
+                        <tr key={i.id} data-testid="booking-row" onClick={() => onOpen(i)} className={`border-b border-slate-200 even:bg-slate-50/60 hover:bg-visita-bg cursor-pointer ${i.status === "cancelled" ? "text-red-700" : ""}`}>
+                            <td className="px-3 py-2 font-semibold">{formatCombinedName(i.patient_name)}<div className="text-xs font-normal text-slate-400">{i.ref_number}</div></td>
+                            <td className="px-3 py-2 text-slate-500">{i.patient_pin || "—"}</td>
+                            <td className="px-3 py-2">{i.patient_phone ? <a href={`tel:${i.patient_phone}`} className="text-visita-greenDark underline" onClick={(e) => e.stopPropagation()}>{i.patient_phone}</a> : "—"}</td>
+                            <td className="px-3 py-2 font-semibold" data-testid="booking-when">{whenOf(i)}</td>
+                            <td className="px-3 py-2"><ApptTypeBadge type={i.appointment_type} /></td>
+                            <td className="px-3 py-2">{i.reason}</td>
+                            <td className="px-3 py-2 text-slate-500" data-testid="booking-booked-at">{i.booked_at ? formatDateTime(i.booked_at) : "—"}<div className="text-xs text-slate-400">{i.booked_by_label}</div></td>
+                            <td className="px-3 py-2"><StatusPill status={i.status} /></td>
+                            <td className="px-3 py-2 text-right"><Button size="sm" variant="ghost" className="h-7 text-visita-green" data-testid="booking-open">Open</Button></td>
+                        </tr>
+                    ))}
+                </tbody>
+            </table>
+        </div>
+    </>);
+}
+
+// Informational only — no approval/decline. Schedule changes are done in the Calendar.
+function BookingDetail({ appt, onClose, onSaved }) {
+    return (
+        <Dialog open onOpenChange={(o) => !o && onClose()}>
+            <DialogContent className="max-w-md font-plex max-h-[90vh] overflow-y-auto" data-testid="booking-detail-dialog">
+                <DialogHeader><DialogTitle>{appt.ref_number} · {formatCombinedName(appt.patient_name)}</DialogTitle></DialogHeader>
+                <div className="space-y-2 text-sm">
+                    <div className="grid grid-cols-2 gap-x-4 gap-y-1 bg-slate-50 border border-slate-200 rounded-sm p-2">
+                        <KV label="Patient">{formatCombinedName(appt.patient_name)}</KV>
+                        <KV label="PIN">{appt.patient_pin || "—"}</KV>
+                        <KV label="DOB">{appt.patient_dob ? formatDate(appt.patient_dob) : "—"}</KV>
+                        <KV label="Phone">{appt.patient_phone ? <a href={`tel:${appt.patient_phone}`} className="text-visita-greenDark underline">{appt.patient_phone}</a> : "—"}</KV>
+                    </div>
+                    <KV label="Appointment"><span className="font-semibold" data-testid="booking-detail-when">{whenOf(appt)}</span></KV>
+                    <KV label="Type"><ApptTypeBadge type={appt.appointment_type} /></KV>
+                    <KV label="Reason">{appt.reason}</KV>
+                    <KV label="Patient note">{appt.patient_note || "—"}</KV>
+                    <KV label="Booked at">{appt.booked_at ? formatDateTime(appt.booked_at) : "—"}</KV>
+                    <KV label="Booked by">{appt.booked_by_label}</KV>
+                    <KV label="Status"><StatusPill status={appt.status} /></KV>
+                    {appt.status === "cancelled" && appt.cancellation && (
+                        <div className="bg-red-50 border border-red-200 rounded-sm p-2 text-xs text-red-800">
+                            Cancelled — {appt.cancellation.reason} — {appt.cancellation.free_slot ? "time freed" : "time kept blocked"} · by {appt.cancelled_by}
+                        </div>
+                    )}
+                    <p className="text-xs text-slate-500 border-t border-slate-200 pt-2" data-testid="booking-detail-hint">
+                        To change the time, cancel, or mark completed / no-show, use the <b>Calendar</b>.
+                    </p>
+                    <InternalNotes appt={appt} onSaved={onSaved} />
+                </div>
+            </DialogContent>
+        </Dialog>
     );
 }
 

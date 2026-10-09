@@ -4194,6 +4194,10 @@ async def appt_queue(q: Optional[str] = None, status: Optional[str] = None, user
         a["patient_pin"] = p.get("visita_patient_id")
         a["patient_dob"] = p.get("date_of_birth")
         a["patient_phone"] = p.get("phone")
+        a["booked_at"] = a.get("created_at")
+        a["booked_by_label"] = ("Caregiver (on behalf)" if a.get("submitted_by_delegate")
+                                else "Patient (portal)" if (a.get("booked_from") or {}).get("source_type", "").startswith("portal")
+                                else a.get("booked_by") or a.get("approved_by") or "Clinic")
         ds, t = _appt_when(a)
         a["slot_date"], a["slot_time"] = a.get("slot_date") or ds, a.get("slot_time") or t
     return items
@@ -4279,7 +4283,8 @@ async def issue_no_show_invoice(item_id: str, user: dict = Depends(require_roles
     return billing_mod.invoice_internal(inv)
 
 
-PORTAL_AUTO_CONFIRM = os.environ.get("PORTAL_AUTO_CONFIRM", "false").strip().lower() in ("1", "true", "yes")
+# Verified patients/caregivers book directly (approved by Dr. Aguayo). Set PORTAL_AUTO_CONFIRM=false to fall back to approval mode.
+PORTAL_AUTO_CONFIRM = os.environ.get("PORTAL_AUTO_CONFIRM", "true").strip().lower() in ("1", "true", "yes")
 
 ADMIN_CANCEL_REASONS = {"Physician unavailable", "Clinic schedule change", "Unexpected closure",
                         "Patient requested cancellation", "Other"}

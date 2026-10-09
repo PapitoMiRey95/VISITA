@@ -50,7 +50,7 @@ function SoapColumn({ soap, onChange, onBlur }) {
         <div className="flex flex-col gap-2 min-h-0 h-full" data-testid="soap-column">
             {SOAP.map(({ k, letter, label }) => (
                 <label key={k} className="flex flex-col gap-0.5 flex-1 min-h-0">
-                    <span className="text-xs font-bold text-slate-700 leading-none"><span className="inline-flex w-5 h-5 items-center justify-center rounded-sm bg-visita-ribbon text-white mr-1.5 text-[11px]">{letter}</span>{label}</span>
+                    <span className="text-xs font-bold text-slate-700 leading-none" title={label}><span className="inline-flex w-5 h-5 items-center justify-center rounded-sm bg-visita-ribbon text-white text-[11px]">{letter}</span></span>
                     <Textarea value={soap[k]} onChange={(e) => onChange(k, e.target.value)} onBlur={onBlur}
                         data-testid={`soap-${k}`} placeholder={`${label}…`}
                         className="flex-1 min-h-[72px] resize-none text-sm bg-white overflow-auto border-slate-300 focus-visible:ring-2 focus-visible:ring-cyan-500 focus-visible:border-visita-ribbon" />

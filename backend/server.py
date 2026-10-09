@@ -4283,8 +4283,8 @@ async def issue_no_show_invoice(item_id: str, user: dict = Depends(require_roles
     return billing_mod.invoice_internal(inv)
 
 
-# Verified patients/caregivers book directly (approved by Dr. Aguayo). Set PORTAL_AUTO_CONFIRM=false to fall back to approval mode.
-PORTAL_AUTO_CONFIRM = os.environ.get("PORTAL_AUTO_CONFIRM", "true").strip().lower() in ("1", "true", "yes")
+# Fail-safe: approval mode unless PORTAL_AUTO_CONFIRM=true is explicitly configured.
+PORTAL_AUTO_CONFIRM = os.environ.get("PORTAL_AUTO_CONFIRM", "false").strip().lower() in ("1", "true", "yes")
 
 ADMIN_CANCEL_REASONS = {"Physician unavailable", "Clinic schedule change", "Unexpected closure",
                         "Patient requested cancellation", "Other"}

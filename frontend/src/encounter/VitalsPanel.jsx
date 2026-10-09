@@ -82,9 +82,15 @@ export function VitalsPanel({ visitId, patientRef, initial }) {
             className={`${w} h-7 px-1.5 text-sm text-right rounded-sm border bg-white focus:outline-none transition-colors ${active === k ? "border-visita-ribbon ring-2 ring-cyan-400 bg-cyan-50" : "border-slate-300"}`} />
     );
     const stateText = { idle: "", dirty: "…", saving: "Saving…", saved: "Saved", failed: "Save failed" }[state];
-    const Key = ({ label, onClick, testid, className = "", primary = false, children, ...rest }) => (
-        <button type="button" tabIndex={-1} onMouseDown={(e) => e.preventDefault()} onClick={onClick} data-testid={testid} {...rest}
-            className={`h-6 rounded-sm border text-xs font-semibold ${primary ? "bg-visita-ribbon border-visita-ribbon text-white hover:bg-[#162c49]" : "bg-white border-slate-300 text-slate-800 hover:bg-visita-bg active:bg-cyan-100"} ${className}`}>{children || label}</button>
+    /* Access-inspired green rapid-entry keys. tone: number | utility | primary */
+    const TONE = {
+        number: "bg-[#22c55e] border-[#15803d] text-[#052e16] hover:bg-[#4ade80] active:bg-[#16a34a]",
+        utility: "bg-[#15803d] border-[#14532d] text-white hover:bg-[#16a34a] active:bg-[#166534]",
+        primary: "bg-[#14532d] border-[#052e16] text-white hover:bg-[#166534] active:bg-[#052e16]",
+    };
+    const Key = ({ label, onClick, testid, className = "", tone = "number", children, ...rest }) => (
+        <button type="button" tabIndex={-1} onMouseDown={(e) => e.preventDefault()} onClick={onClick} data-testid={testid} data-tone={tone} {...rest}
+            className={`h-6 border text-xs font-bold leading-none transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-cyan-500 focus-visible:z-10 ${TONE[tone]} ${className}`}>{children || label}</button>
     );
     return (
         <section className="bg-white border border-slate-300 rounded-sm" data-testid="vitals-panel">
@@ -101,15 +107,15 @@ export function VitalsPanel({ visitId, patientRef, initial }) {
                     </span>
                 </div>
                 <div className="flex items-start gap-2">
-                    <div className="grid grid-cols-10 gap-px flex-1 min-w-0" data-testid="number-bank">
-                        {Array.from({ length: 10 }, (_, i) => String(10 + i)).map((d) => <Key key={d} label={d} onClick={() => keypad(d)} testid={`keypad-${d}`} className="rounded-none first:rounded-tl-sm last:rounded-tr-sm" />)}
-                        {Array.from({ length: 10 }, (_, i) => String(i)).map((d) => <Key key={d} label={d} onClick={() => keypad(d)} testid={`keypad-${d}`} className="rounded-none first:rounded-bl-sm last:rounded-br-sm" />)}
+                    <div className="grid grid-cols-10 gap-px flex-1 min-w-0 bg-[#15803d] border border-[#15803d] rounded-sm overflow-hidden" data-testid="number-bank">
+                        {Array.from({ length: 10 }, (_, i) => String(10 + i)).map((d) => <Key key={d} label={d} onClick={() => keypad(d)} testid={`keypad-${d}`} className="rounded-none border-0" />)}
+                        {Array.from({ length: 10 }, (_, i) => String(i)).map((d) => <Key key={d} label={d} onClick={() => keypad(d)} testid={`keypad-${d}`} className="rounded-none border-0" />)}
                     </div>
-                    <div className="grid grid-cols-2 gap-px shrink-0" data-testid="utility-keys">
-                        <Key label="." onClick={() => keypad(".")} testid="keypad-dot" className={`w-8 ${active && !DECIMAL_OK[active] ? "opacity-40" : ""}`} />
-                        <Key onClick={() => keypad("⌫")} testid="keypad-backspace" aria-label="Backspace" className="w-8"><Delete className="w-4 h-4 mx-auto" /></Key>
-                        <Key onClick={() => keypad("C")} testid="keypad-clear" aria-label="Clear field" className="w-8 text-slate-500"><Eraser className="w-3.5 h-3.5 mx-auto" /></Key>
-                        <Key onClick={next} testid="keypad-next" primary className="w-8" aria-label="Next field"><CornerDownLeft className="w-4 h-4 mx-auto" /></Key>
+                    <div className="grid grid-cols-2 gap-px shrink-0 bg-[#14532d] border border-[#14532d] rounded-sm overflow-hidden" data-testid="utility-keys">
+                        <Key label="." onClick={() => keypad(".")} testid="keypad-dot" tone="utility" className={`w-8 rounded-tl-sm ${active && !DECIMAL_OK[active] ? "opacity-40" : ""}`} />
+                        <Key onClick={() => keypad("⌫")} testid="keypad-backspace" aria-label="Backspace" tone="utility" className="w-8 border-0 rounded-none"><Delete className="w-4 h-4 mx-auto" /></Key>
+                        <Key onClick={() => keypad("C")} testid="keypad-clear" aria-label="Clear field" tone="utility" className="w-8 border-0 rounded-none"><Eraser className="w-3.5 h-3.5 mx-auto" /></Key>
+                        <Key onClick={next} testid="keypad-next" tone="primary" className="w-8 border-0 rounded-none" aria-label="Next field"><CornerDownLeft className="w-4 h-4 mx-auto" /></Key>
                     </div>
                 </div>
             </div>

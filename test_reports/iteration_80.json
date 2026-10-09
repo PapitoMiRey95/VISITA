@@ -1,0 +1,20 @@
+{
+  "summary": "Phase 2A3.2.1 Vitals keypad layout change (Access-style horizontal number bank) fully verified at 1920x1080 and 1366x768. number-bank renders exactly 20 buttons in 2 rows: row1=keypad-10..keypad-19, row2=keypad-0..keypad-9 (confirmed via DOM bounding rects at both viewports). rapid-entry-keypad height=77px (<100). All keypad-* buttons visible/clickable at both widths. Full Phase 2A3.2 flow re-verified: initial 128/82/72/36.8/80/175 BMI 26.1; click vital-systolic_bp -> target 'Entering: BP SYS'; keypad-clear empties sys; keypad-13 then keypad-5 -> '135'; keypad-next -> 'BP DIA'; keypad-clear, keypad-8, keypad-6 -> '86'; Enter key -> 'HR'; keypad-dot ignored (hr stays 72); keypad-next -> TEMP; keypad-backspace -> '36.'; keypad-7 -> '36.7'; keypad-next -> WT -> HT -> 'Select a field'; vitals-state 'saved' within ~5s; reload persists 135/86/36.7 with BMI 26.1. Keyboard flow: click vital-weight_kg, type 81, Tab -> focus moves to vital-height_cm, Saved, BMI 26.4. Invalid HR 999 via keypad -> vitals-state 'failed' + vitals-error 'heart_rate out of plausible range (20-300).' value preserved. Restored to 128/82/72/36.8/80/175 BMI 26.1 and Saved. Last 3 visits unchanged: cols Oct 01/Sep 18/Aug 27, BP 121/78 134/86 140/90, BMI 25.8 26.6 27.1. Center column order encounter-info(62) -> soap-helper-tool(97.5) -> vitals-panel(177). No page scroll at 1920x1080 (sh=ih=1080) and 1366x768 (sh=ih=768).",
+  "backend_issues": {"critical": [], "minor": []},
+  "frontend_issues": {"ui_bugs": [], "integration_issues": [], "design_issues": []},
+  "test_report_links": ["/app/frontend/src/encounter/VitalsPanel.jsx"],
+  "action_items": [],
+  "critical_code_review_comments": [
+    "VitalsPanel.jsx number-bank uses grid-cols-10 gap-px with flex-1 min-w-0 so both 10-wide rows fit cleanly at 1366 and 1920 widths without wrapping. Keypad total height ~77px satisfies compactness requirement.",
+    "Utility keys 2x2 grid (dot/backspace/clear/next) correctly dims dot when active field is not DECIMAL_OK (opacity-40) — purely visual; dot click path still correctly no-ops via DECIMAL_OK guard.",
+    "All keypad keys retain tabIndex=-1 + onMouseDown preventDefault so active input focus is preserved across clicks — verified by HR dot test and sequential digit entry."
+  ],
+  "updated_files": [],
+  "success_rate": {"backend": "N/A (frontend-only scope)", "frontend": "100% of in-scope checks"},
+  "test_credentials": "Physician PAGUAYO / Newman2013_! (login via POST /api/auth/login with identifier). sessionStorage key visita_token.",
+  "seed_data_creation": "No new seed. Final vitals on VIS-000004 restored to 128/82/72/36.8/80/175 (BMI 26.1).",
+  "retest_needed": false,
+  "should_main_agent_self_test": false,
+  "context_for_next_testing_agent": "Phase 2A3.2.1 keypad relayout verified. New testids keypad-10..keypad-19 live in row1, keypad-0..keypad-9 in row2 inside data-testid=number-bank. Utility keys unchanged: keypad-dot, keypad-backspace, keypad-clear, keypad-next. All other Phase 2A3.2 behaviors preserved. VIS-000004 remains IN PROGRESS.",
+  "rca of the issue": "N/A — no defects detected."
+}

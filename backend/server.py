@@ -34,6 +34,7 @@ import organizations as orgs_mod
 import relationships as rel_mod
 import delegates as delegates_mod
 import slots as slots_mod
+import data_hygiene as hygiene_mod
 import storage
 from db import (APPT_PATIENT_STATUS, BLD_ACTIVE, BLD_PATIENT_STATUS, IMG_ACTIVE,
                 IMG_PATIENT_STATUS, MSG_ACTIVE, MSG_PATIENT_STATUS, RX_ACTIVE,
@@ -7898,6 +7899,34 @@ async def admin_reset_pharmacy_temp_password(body: ResetPharmacyPwBody, user: di
     return {"ok": True, "username": target.get("username"),
             "pharmacy_name": target.get("pharmacy_name"),
             "must_change_password": True, "temp_password": temp}
+
+
+class DataHygieneBody(BaseModel):
+    token: str
+    operation: str  # stamp_practice_id | backfill_slot_locks
+    appointment_ids: List[str]
+    dry_run: bool = True
+
+
+@api.post("/internal/admin/data-hygiene")
+async def admin_data_hygiene(body: DataHygieneBody, user: dict = Depends(require_roles("admin"))):
+    """TEMPORARY maintenance endpoint: admin + MAINTENANCE_TOKEN gated, scoped to an explicit
+    appointment id list, idempotent, audited. No delete/reset, conflicts never auto-resolved."""
+    expected = os.environ.get("MAINTENANCE_TOKEN", "")
+    if not expected or not secrets.compare_digest(body.token, expected):
+        raise HTTPException(status_code=403, detail="Invalid maintenance token.")
+    ids = list(dict.fromkeys(i.strip() for i in body.appointment_ids if i and i.strip()))
+    if not ids or len(ids) > hygiene_mod.MAX_IDS:
+        raise HTTPException(status_code=400, detail=f"Provide 1-{hygiene_mod.MAX_IDS} explicit appointment ids.")
+    ops = {"stamp_practice_id": hygiene_mod.stamp_practice_id, "backfill_slot_locks": hygiene_mod.backfill_slot_locks,
+           "close_stale_request": hygiene_mod.close_stale_request}
+    if body.operation not in ops:
+        raise HTTPException(status_code=400, detail="Unknown operation.")
+    result = await ops[body.operation](db, ids, not body.dry_run, user)
+    await audit("data_hygiene", "appointment_requests", body.operation, user,
+                meta={"mode": result.get("mode"), "ids": ids, "summary": result.get("summary"),
+                      "changed_ids": [r["id"] for r in result.get("stamped", []) + result.get("created", []) + result.get("closed", [])]})
+    return result
 
 
 # ============= PROFESSIONALS — Dr. Aguayo's Professional Construct (Phase 1) =============

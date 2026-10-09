@@ -1,0 +1,25 @@
+{
+  "summary": "Phase 2A3 SOAP Helpers — full backend + frontend verification. 15/15 pytest cases pass (search variants, patient-sex gating, 404 inactive/other-practice, 403 staff+admin on all three endpoints, helper-used audit filters bogus sections and omits helper text). Full physician UI flow on visit 84460a4c (ROMERO) verified: center column order encounter-info → soap-helper-tool → vitals-panel; 'review' search → only helper-option-SYNTH_REVIEW; Enter opens preview 'SYNTH Routine Review' with S+P only (no O), insert buttons S/P/All present, O absent; selecting a helper does NOT modify textareas (autosave stays 'Saved'); helper-insert-plan appends with blank line and reaches autosave 'Saved'; helper-insert-all appends subjective and plan again (objective unchanged); reload persists. Cleanup performed: inserted [SYNTHETIC] lines removed, subjective restored to 'Headache for 3 days...', plan restored to empty (initial state). Visibility: helper-sex-unknown label shown for ROMERO, searching 'female' returns helper-no-results, 'zzz' returns no-results, Escape closes dropdown, helper-preview-close clears preview. Regression: exit-encounter-btn → /internal/patients with resume-encounter-btn which reopens same visit; staff GET visit → 403; 1366x768 and 1920x1080 scrollHeight==viewport (no overflow); /internal/calendar, /internal/rx, /internal/patients all load. Vitals/Previous Encounters/timer/header untouched.",
+  "backend_issues": {"critical": [], "minor": []},
+  "frontend_issues": {"ui_bugs": [], "integration_issues": [], "design_issues": []},
+  "test_report_links": [
+    "/app/backend/tests/test_soap_helpers_phase2a3.py",
+    "/app/test_reports/pytest/phase2a3_soap_helpers.xml"
+  ],
+  "action_items": [],
+  "critical_code_review_comments": [
+    "soap_helpers.search: ok to compact after limit, but sex filter applies AFTER the DB fetch — fine at current volume (limit 200) but could become inefficient; consider pushing sex_filter into Mongo query when sex is known.",
+    "visit_helper_used silently drops unknown section names (good — tested); consider returning the accepted sections in the 200 payload for client-side verification.",
+    "SoapHelperTool.jsx fires POST helper-used even if onInsert hits readonly textarea — low risk, but no error surfaced to the clinician if the autosave later fails."
+  ],
+  "updated_files": [
+    "/app/backend/tests/test_soap_helpers_phase2a3.py"
+  ],
+  "success_rate": {"backend": "100% (15/15)", "frontend": "100%"},
+  "test_credentials": "Physician PAGUAYO / Newman2013_! ; Staff staff@visita.demo / Staff2026! ; Admin kevinrodriguez9528@gmail.com / VisitaAdmin2026!",
+  "seed_data_creation": "No new data created. All SYNTH_* helpers were pre-seeded and preserved. Encounter 84460a4c SOAP S/P values restored to pre-test state after cleanup (Subjective: 'Headache for 3 days, worse in the morning.', Plan: empty). Objective field still contains a pre-existing '[SYNTHETIC] Afebrile. Throat mildly erythematous. Chest clear.' line that was there BEFORE this test run — left untouched as instructed.",
+  "retest_needed": false,
+  "should_main_agent_self_test": false,
+  "context_for_next_testing_agent": "Phase 2A3 fully green. SYNTH helper ids captured dynamically from Mongo soap_helpers collection. test_soap_helpers_phase2a3.py is idempotent and safe to re-run (audit insert count assertion uses before/after delta). Visit 84460a4c remains IN PROGRESS; objective field still carries a prior [SYNTHETIC] URI line from an earlier iteration which pre-dates this run.",
+  "rca of the issue": "N/A — no issues found."
+}

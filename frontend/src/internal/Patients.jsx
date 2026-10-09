@@ -382,15 +382,15 @@ export default function Patients() {
                     </p>
                     </>
                     )}
-                    <FamilyAccess patient={selected} />
-                    {!editing && selected.patient_id && ["admin", "staff"].includes(user?.role) && (
-                        <PortalAccountPanel patientId={selected.patient_id} />
+                    {!editing && ["admin", "physician"].includes(user?.role) && (
+                        <VisitHistory patientRef={patientRefOf(selected)} />
                     )}
                     {!editing && selected.patient_id && ["admin", "physician"].includes(user?.role) && (
                         <MedicalRecord patientId={selected.patient_id} />
                     )}
-                    {!editing && ["admin", "physician"].includes(user?.role) && (
-                        <VisitHistory patientRef={patientRefOf(selected)} />
+                    <FamilyAccess patient={selected} />
+                    {!editing && selected.patient_id && ["admin", "staff"].includes(user?.role) && (
+                        <PortalAccountPanel patientId={selected.patient_id} />
                     )}
                 </div>
             )}

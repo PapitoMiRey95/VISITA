@@ -76,14 +76,14 @@ export function StartEncounterButton({ patient }) {
 
     if (!ref) return null;
     return (
-        <div className="flex flex-col items-end gap-1" data-testid="encounter-controls">
+        <div className="flex flex-col items-start gap-0.5 shrink-0" data-testid="encounter-controls">
             {active ? (
                 <>
                     <Button size="sm" disabled={busy} data-testid="resume-encounter-btn" onClick={() => resume(active.id)}
                         className="bg-visita-ribbon hover:bg-[#162c49] text-white">
                         <Play className="w-3.5 h-3.5 mr-1" /> Resume Encounter
                     </Button>
-                    <span className="text-[11px] text-amber-700 font-medium" data-testid="encounter-in-progress-since">
+                    <span className="text-[11px] text-amber-700 font-medium whitespace-nowrap" data-testid="encounter-in-progress-since">
                         Encounter in progress since {formatDateTime(active.started_at)}
                     </span>
                 </>
@@ -100,7 +100,7 @@ export function StartEncounterButton({ patient }) {
                         <DialogTitle>Select Encounter Type</DialogTitle>
                         <DialogDescription>Choose how this encounter is taking place. Nothing is created until you press Continue.</DialogDescription>
                     </DialogHeader>
-                    <div className="grid grid-cols-1 gap-2" role="radiogroup">
+                    <div className="grid grid-cols-1 gap-1.5" role="radiogroup">
                         {ENCOUNTER_TYPES.map(({ value, label, Icon }) => (
                             <button key={value} type="button" role="radio" aria-checked={type === value} onClick={() => setType(value)}
                                 data-testid={`encounter-type-${value}`}

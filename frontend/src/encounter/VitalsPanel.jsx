@@ -82,9 +82,9 @@ export function VitalsPanel({ visitId, patientRef, initial }) {
             className={`${w} h-7 px-1.5 text-sm text-right rounded-sm border bg-white focus:outline-none transition-colors ${active === k ? "border-visita-ribbon ring-2 ring-cyan-400 bg-cyan-50" : "border-slate-300"}`} />
     );
     const stateText = { idle: "", dirty: "…", saving: "Saving…", saved: "Saved", failed: "Save failed" }[state];
-    const Key = ({ label, onClick, testid, className = "", primary = false, children }) => (
-        <button type="button" tabIndex={-1} onMouseDown={(e) => e.preventDefault()} onClick={onClick} data-testid={testid}
-            className={`h-7 rounded-sm border text-sm font-semibold ${primary ? "bg-visita-ribbon border-visita-ribbon text-white hover:bg-[#162c49]" : "bg-white border-slate-300 text-slate-800 hover:bg-visita-bg active:bg-cyan-100"} ${className}`}>{children || label}</button>
+    const Key = ({ label, onClick, testid, className = "", primary = false, children, ...rest }) => (
+        <button type="button" tabIndex={-1} onMouseDown={(e) => e.preventDefault()} onClick={onClick} data-testid={testid} {...rest}
+            className={`h-6 rounded-sm border text-xs font-semibold ${primary ? "bg-visita-ribbon border-visita-ribbon text-white hover:bg-[#162c49]" : "bg-white border-slate-300 text-slate-800 hover:bg-visita-bg active:bg-cyan-100"} ${className}`}>{children || label}</button>
     );
     return (
         <section className="bg-white border border-slate-300 rounded-sm" data-testid="vitals-panel">
@@ -92,7 +92,7 @@ export function VitalsPanel({ visitId, patientRef, initial }) {
                 <HeartPulse className="w-3.5 h-3.5" /> Vitals — today
                 <span className={`ml-auto normal-case font-medium text-[10px] ${state === "failed" ? "text-red-700" : state === "saved" ? "text-emerald-700" : "text-slate-400"}`} data-testid="vitals-state" data-state={state}>{stateText}</span>
             </div>
-            <div className="p-2 flex flex-wrap gap-x-4 gap-y-2 items-start">
+            <div className="p-2">
                 <div className="contents">
                     <div className="grid grid-cols-[auto_1fr] gap-x-2 gap-y-1 items-center text-xs" data-testid="vitals-fields">
                         {VITAL_FIELDS.map(({ k, label, unit, step, w, pair }) => (
@@ -108,22 +108,26 @@ export function VitalsPanel({ visitId, patientRef, initial }) {
                         <span className="font-bold text-slate-700 w-9">BMI</span>
                         <span className="font-mono text-sm font-semibold text-visita-ribbon" data-testid="vital-bmi">{bmi ?? "—"}</span>
                     </div>
-                    {/* Rapid entry keypad */}
-                    <div className="w-[7.75rem] ml-auto" data-testid="rapid-entry-keypad">
-                        <div className="text-[10px] font-bold uppercase tracking-wide text-slate-500 leading-none mb-1">Rapid entry</div>
-                        <div className="h-5 mb-1 text-[11px] font-bold text-visita-ribbon" data-testid="rapid-entry-target">
-                            {active ? <>Entering: <span className="px-1 rounded-sm bg-cyan-100">{TARGET_LABEL[active]}</span></> : <span className="text-slate-400 font-medium">Select a field</span>}
-                        </div>
-                        <div className="grid grid-cols-3 gap-1">
-                            {["1", "2", "3", "4", "5", "6", "7", "8", "9"].map((d) => <Key key={d} label={d} onClick={() => keypad(d)} testid={`keypad-${d}`} />)}
-                            <Key label="." onClick={() => keypad(".")} testid="keypad-dot" className={active && !DECIMAL_OK[active] ? "opacity-40" : ""} />
-                            <Key label="0" onClick={() => keypad("0")} testid="keypad-0" />
-                            <Key onClick={() => keypad("⌫")} testid="keypad-backspace" aria-label="Backspace"><Delete className="w-4 h-4 mx-auto" /></Key>
-                            <Key onClick={() => keypad("C")} testid="keypad-clear" className="text-slate-500"><Eraser className="w-3.5 h-3.5 mx-auto" /></Key>
-                            <Key onClick={next} testid="keypad-next" primary className="col-span-2">
-                                <span className="inline-flex items-center gap-1 justify-center">Next <CornerDownLeft className="w-3.5 h-3.5" /></span>
-                            </Key>
-                        </div>
+                </div>
+            </div>
+            {/* Rapid entry — Access-style horizontal number bank (10-19 over 0-9) + utility keys */}
+            <div className="border-t border-slate-200 px-2 py-1.5" data-testid="rapid-entry-keypad">
+                <div className="flex items-center gap-2 mb-1">
+                    <span className="text-[10px] font-bold uppercase tracking-wide text-slate-500 leading-none">Rapid entry</span>
+                    <span className="text-[11px] font-bold text-visita-ribbon leading-none" data-testid="rapid-entry-target">
+                        {active ? <>Entering: <span className="px-1 rounded-sm bg-cyan-100">{TARGET_LABEL[active]}</span></> : <span className="text-slate-400 font-medium">Select a field</span>}
+                    </span>
+                </div>
+                <div className="flex items-start gap-2">
+                    <div className="grid grid-cols-10 gap-px flex-1 min-w-0" data-testid="number-bank">
+                        {Array.from({ length: 10 }, (_, i) => String(10 + i)).map((d) => <Key key={d} label={d} onClick={() => keypad(d)} testid={`keypad-${d}`} className="rounded-none first:rounded-tl-sm last:rounded-tr-sm" />)}
+                        {Array.from({ length: 10 }, (_, i) => String(i)).map((d) => <Key key={d} label={d} onClick={() => keypad(d)} testid={`keypad-${d}`} className="rounded-none first:rounded-bl-sm last:rounded-br-sm" />)}
+                    </div>
+                    <div className="grid grid-cols-2 gap-px shrink-0" data-testid="utility-keys">
+                        <Key label="." onClick={() => keypad(".")} testid="keypad-dot" className={`w-8 ${active && !DECIMAL_OK[active] ? "opacity-40" : ""}`} />
+                        <Key onClick={() => keypad("⌫")} testid="keypad-backspace" aria-label="Backspace" className="w-8"><Delete className="w-4 h-4 mx-auto" /></Key>
+                        <Key onClick={() => keypad("C")} testid="keypad-clear" aria-label="Clear field" className="w-8 text-slate-500"><Eraser className="w-3.5 h-3.5 mx-auto" /></Key>
+                        <Key onClick={next} testid="keypad-next" primary className="w-8" aria-label="Next field"><CornerDownLeft className="w-4 h-4 mx-auto" /></Key>
                     </div>
                 </div>
             </div>

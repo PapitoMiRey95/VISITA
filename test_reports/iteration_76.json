@@ -1,0 +1,27 @@
+{
+  "summary": "Phase 2A2 Vitals + Previous Encounters tested end-to-end. Backend pytest (/app/backend/tests/test_visits_phase2a2.py) 11/11 PASS: Maria IN_CLINIC create (reused 409 flow where appl), PATCH full 6-field vitals -> bmi 26.1, updated_by.name 'Dr. Pablo Aguayo', changed==6; repeat body -> noop:true with zero audit delta; PATCH height_cm:null -> bmi null; PATCH heart_rate:'abc'/systolic_bp:900/subjective:'x' -> 400; GET /visits/{id} returns vitals; staff & admin PATCH /vitals -> 403; cross-practice practice_id='other' -> 404 (restored). History GET /patients/directory:ROMERO/visits returns VIS-000004(IN_PROGRESS) + VIS-SAMPLE-HX(COMPLETED) with has_vitals flags and no soap text. Frontend physician (VIS-000004 ROMERO): three columns present (soap-column + encounter-center{encounter-info+vitals-panel} + encounter-context{ctx-previous-encounters FIRST}); all vital-* inputs + vital-bmi + vitals-state testids rendered; weight 80->82 Tab -> vitals-state=saved within ~1s, BMI 26.1->26.8; reload persists (weight=82, BMI=26.8); clear height -> BMI '—'; restore height=175 -> BMI 26.8; restore weight=80 -> BMI 26.1; heart_rate=999 -> vitals-state=failed + vitals-error 'heart_rate out of plausible range (20-300).' with input value 999 preserved. Previous encounters: prev-encounter-VIS-SAMPLE-HX visible (row text '2026 Oct - 01 · Regular / In-Clinic · Dr. Pablo Aguayo · COMPLETED'); VIS-000004 current NOT listed; click opens previous-encounter-dialog with READ-ONLY badge, prev-soap-subjective/objective/assessment/plan matching expected text, prev-vitals BMI 25.8; zero textarea/input nodes inside dialog; URL unchanged; Escape closes it; current soap-subjective and vital inputs unchanged post-close. Regression: SOAP plan autosave shows autosave-state=saved; exit-encounter-btn returns to /internal/patients?patient_ref=directory:... with resume-encounter-btn; Resume reopens same visit; encounter-timer non-zero after reload (00:32:45); safety header shows PIN/DOB/OHIP/physician; no <aside>/Work Hub inside encounter mode; scrollHeight == viewport height at both 1366x768 and 1920x1080; /internal/calendar, /internal/rx, /internal/patients load clean. Staff: direct /internal/encounter/<id> navigation redirected to /internal (Clinic Staff Hub); no vitals-panel.",
+  "backend_issues": {"critical": [], "minor": []},
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [],
+    "design_issues": [
+      {"screen": "Vitals panel error recovery", "issues": ["After an out-of-range save fails (e.g. HR 999 -> vitals-state=failed, red error), typing a corrected value that happens to equal the last-saved value (e.g. back to 72) leaves vitals-state stuck at 'failed' with the stale error message, because the client diff vs saved.current is empty and no new PATCH is issued. Suggest: when onBlur/debounce produces an empty patch and current form equals saved snapshot across all keys, reset state back to 'saved' (or 'idle') and clear err. Low priority (DB is still correct)."]}
+    ]
+  },
+  "test_report_links": ["/app/backend/tests/test_visits_phase2a2.py", "/app/test_reports/pytest/phase2a2.xml"],
+  "action_items": [
+    "Optional UX: VitalsPanel.save() should clear the 'failed' state + err when the resulting patch is empty (user typed a value equal to the last-persisted one)."
+  ],
+  "critical_code_review_comments": [
+    "VitalsPanel.save(): when patch is empty (user restored the last-saved value after a failed save) the function returns early without resetting state/err, so 'Save failed' + red error persist indefinitely. Add `if (!Object.keys(patch).length) { setState('saved'); setErr(''); return; }` or similar.",
+    "backend visit_save_vitals accepts raw dict without a Pydantic model; relies on validate_vitals + unknown-field check. Works correctly today but a dedicated BaseModel with Optional[float|int] fields would make OpenAPI contract explicit and keep validation co-located."
+  ],
+  "updated_files": ["/app/backend/tests/test_visits_phase2a2.py"],
+  "success_rate": {"backend": "100%", "frontend": "100%"},
+  "test_credentials": "Physician PAGUAYO/Newman2013_!, Staff staff@visita.demo/Staff2026!, Admin kevinrodriguez9528@gmail.com/VisitaAdmin2026!, Patient maria.lopez@demo.com/Patient2026!",
+  "seed_data_creation": "Created transient Maria IN_PROGRESS visit during backend test and cleaned it up on fixture teardown (visit + audit_logs removed). VIS-000004 vitals left in instructed state: BP 128/82 HR 72 Temp 36.8 Wt 80 Ht 175 BMI 26.1 updated_by 'Dr. Pablo Aguayo'. VIS-SAMPLE-HX untouched.",
+  "retest_needed": false,
+  "main_agent_can_self_test": true,
+  "context_for_next_testing_agent": "Backend regression lives at /app/backend/tests/test_visits_phase2a2.py (11 cases, module-scoped fixtures). Uses Maria (06f6ee08-58f7-4286-82f5-7c845de99ce1) as a disposable patient; cleans up on teardown. Do NOT delete VIS-000004 or VIS-SAMPLE-HX (synthetic sample). Previous Encounters list currently has 1 row (VIS-SAMPLE-HX) when viewing VIS-000004 - correct because current visit is excluded client-side.",
+  "rca of the issue": "No functional bugs; only a minor UX observation in VitalsPanel where a 'failed' state is not cleared when the user restores the previously-saved value (empty-patch path returns early without touching state)."
+}

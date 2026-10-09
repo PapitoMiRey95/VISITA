@@ -95,6 +95,7 @@ async def create(db, *, practice_id, identity, snapshot, visita_patient_id, user
         "appointment_id": (appointment or {}).get("id"), "appointment_ref": (appointment or {}).get("ref_number"),
         "source": source, "encounter_type": encounter_type, "reason": reason,
         "soap": {k: "" for k in SOAP_FIELDS},
+        "vitals": dict(EMPTY_VITALS),
         "status": IN_PROGRESS,
         "started_at": now, "last_saved_at": None, "exited_at": None, "resumed_at": None,
         "created_at": now, "updated_at": now, "created_by": actor, "updated_by": actor, "save_count": 0,
@@ -120,8 +121,54 @@ async def save_soap(db, visit, patch: dict, user):
     return sorted(changed), await db[COLL].find_one({"id": visit["id"]}, {"_id": 0})
 
 
+VITAL_FIELDS = ("systolic_bp", "diastolic_bp", "heart_rate", "temperature_c", "weight_kg", "height_cm")
+VITAL_RANGES = {"systolic_bp": (40, 300), "diastolic_bp": (20, 200), "heart_rate": (20, 300),
+                "temperature_c": (25.0, 45.0), "weight_kg": (0.5, 500.0), "height_cm": (20.0, 272.0)}
+EMPTY_VITALS = {**{k: None for k in VITAL_FIELDS}, "bmi": None, "updated_at": None, "updated_by": None}
+
+
+def validate_vitals(patch: dict) -> dict:
+    """Return {field: value|None} for allowed fields only. Raises ValueError on bad input."""
+    out = {}
+    for k in VITAL_FIELDS:
+        if k not in patch:
+            continue
+        v = patch[k]
+        if v is None or v == "":
+            out[k] = None
+            continue
+        if isinstance(v, bool) or not isinstance(v, (int, float)):
+            raise ValueError(f"{k} must be a number.")
+        lo, hi = VITAL_RANGES[k]
+        if not (lo <= float(v) <= hi):
+            raise ValueError(f"{k} out of plausible range ({lo}-{hi}).")
+        out[k] = round(float(v), 1) if isinstance(v, float) else int(v)
+    return out
+
+
+def compute_bmi(weight_kg, height_cm):
+    if not weight_kg or not height_cm:
+        return None
+    return round(weight_kg / ((height_cm / 100) ** 2), 1)
+
+
+async def save_vitals(db, visit, patch: dict, user):
+    cur = {**EMPTY_VITALS, **(visit.get("vitals") or {})}
+    changed = {k: v for k, v in validate_vitals(patch).items() if v != cur.get(k)}
+    if not changed:
+        return [], visit
+    merged = {**cur, **changed}
+    now = _now()
+    merged.update({"bmi": compute_bmi(merged["weight_kg"], merged["height_cm"]), "updated_at": now,
+                   "updated_by": {"id": user["id"], "name": user.get("name")}})
+    await db[COLL].update_one({"id": visit["id"], "status": IN_PROGRESS},
+                              {"$set": {"vitals": merged, "updated_at": now, "updated_by": merged["updated_by"]}})
+    return sorted(changed), await db[COLL].find_one({"id": visit["id"]}, {"_id": 0})
+
+
 def history_row(v: dict) -> dict:
     return {"id": v["id"], "ref_number": v.get("ref_number"), "encounter_type": v.get("encounter_type"),
             "status": v.get("status"), "started_at": v.get("started_at"), "last_saved_at": v.get("last_saved_at"),
             "exited_at": v.get("exited_at"), "physician_name": v.get("physician_name"),
-            "appointment_ref": v.get("appointment_ref"), "reason": v.get("reason")}
+            "appointment_ref": v.get("appointment_ref"), "reason": v.get("reason"),
+            "has_vitals": any((v.get("vitals") or {}).get(k) is not None for k in VITAL_FIELDS)}

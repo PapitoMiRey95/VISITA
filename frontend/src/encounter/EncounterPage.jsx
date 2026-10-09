@@ -9,6 +9,8 @@ import { Textarea } from "../components/ui/textarea";
 import { SafetyHeader, useElapsed } from "./SafetyHeader";
 import { useSoapAutosave } from "./useSoapAutosave";
 import { encounterTypeLabel } from "./StartEncounter";
+import { VitalsPanel } from "./VitalsPanel";
+import { PreviousEncounters } from "./PreviousEncounters";
 
 const SOAP = [
     { k: "subjective", letter: "S", label: "Subjective" },
@@ -74,7 +76,8 @@ function CenterControls({ visit, state, savedAt }) {
                     <div className="text-[10px] text-slate-400 mt-0.5 leading-snug">Notes save automatically. Exit keeps this encounter in progress.</div>
                 </div>
             </Panel>
-            <div className="text-[10px] text-slate-400 italic px-1" data-testid="encounter-tools">Clinical tools (vitals, helpers, orders) — later phase.</div>
+            <VitalsPanel visitId={visit.id} initial={visit.vitals} />
+            <div className="text-[10px] text-slate-400 italic px-1" data-testid="encounter-tools">More clinical tools (helpers, services, diagnoses) — later phase.</div>
         </div>
     );
 }
@@ -84,6 +87,7 @@ function ContextColumn({ ctx }) {
     const emptyNames = [!meds.length && "medications", !appts.length && "appointments", !docs.length && "documents"].filter(Boolean);
     return (
         <div className="flex flex-col gap-2" data-testid="encounter-context">
+            <PreviousEncounters patientRef={ctx?.patient_ref} currentVisitId={ctx?.visit_id} />
             {meds.length > 0 && (
                 <Panel title="Active medications" Icon={Pill} testid="ctx-medications">
                     {meds.map((m) => (
@@ -141,10 +145,10 @@ function Workspace({ visit }) {
     return (
         <div className="h-screen bg-visita-bg flex flex-col" data-testid="encounter-mode">
             <SafetyHeader visit={visit} elapsed={elapsed} typeLabel={encounterTypeLabel(visit.encounter_type)} onExit={onExit} exiting={exiting} />
-            <main className="flex-1 min-h-0 grid grid-cols-[minmax(0,1.55fr)_minmax(200px,0.5fr)_minmax(280px,0.95fr)] gap-3 p-3">
+            <main className="flex-1 min-h-0 grid grid-cols-[minmax(0,1.45fr)_minmax(250px,0.62fr)_minmax(280px,0.93fr)] gap-3 p-3">
                 <SoapColumn soap={soap} onChange={onChange} onBlur={onBlur} />
                 <div className="min-h-0 overflow-y-auto"><CenterControls visit={visit} state={state} savedAt={savedAt} /></div>
-                <div className="min-h-0 overflow-y-auto"><ContextColumn ctx={visit.context} /></div>
+                <div className="min-h-0 overflow-y-auto"><ContextColumn ctx={{ ...visit.context, patient_ref: visit.patient_ref, visit_id: visit.id }} /></div>
             </main>
         </div>
     );

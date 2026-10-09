@@ -7370,7 +7370,7 @@ async def visit_get(visit_id: str, user: dict = Depends(require_roles(*VISIT_REA
     ident = await visits_mod.resolve_identity(db, v["patient_ref"], v.get("patient_id"), v.get("directory_id"))
     ctx = await _visit_context(ident) if ident else {}
     await audit("visit_read", "visit", v["id"], user, meta={"patient_ref": v["patient_ref"], "ref_number": v.get("ref_number")})
-    return {**v, "context": ctx, "server_time": now_iso()}
+    return {**v, "vitals": {**visits_mod.EMPTY_VITALS, **(v.get("vitals") or {})}, "context": ctx, "server_time": now_iso()}
 
 
 @api.patch("/internal/visits/{visit_id}/soap")
@@ -7384,6 +7384,24 @@ async def visit_save_soap(visit_id: str, body: VisitSoapBody, user: dict = Depen
                     meta={"fields_changed": changed, "save_count": v2.get("save_count"), "saved_at": v2.get("last_saved_at")})
     return {"id": v2["id"], "last_saved_at": v2.get("last_saved_at"), "save_count": v2.get("save_count"),
             "changed": changed, "noop": not changed}
+
+
+@api.patch("/internal/visits/{visit_id}/vitals")
+async def visit_save_vitals(visit_id: str, body: dict, user: dict = Depends(require_roles(*VISIT_WRITE_ROLES))):
+    v = await _get_visit_scoped(visit_id, user)
+    if v.get("status") != visits_mod.IN_PROGRESS:
+        raise HTTPException(status_code=409, detail="Encounter is not in progress.")
+    unknown = set(body) - set(visits_mod.VITAL_FIELDS)
+    if unknown:
+        raise HTTPException(status_code=400, detail=f"Unknown vitals field(s): {', '.join(sorted(unknown))}")
+    try:
+        changed, v2 = await visits_mod.save_vitals(db, v, body, user)
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    if changed:
+        await audit("visit_vitals_saved", "visit", v["id"], user,
+                    meta={"fields_changed": changed, "updated_at": v2["vitals"]["updated_at"]})
+    return {"id": v2["id"], "vitals": {**visits_mod.EMPTY_VITALS, **(v2.get("vitals") or {})}, "changed": changed, "noop": not changed}
 
 
 @api.post("/internal/visits/{visit_id}/exit")

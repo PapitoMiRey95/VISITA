@@ -1,0 +1,27 @@
+{
+  "summary": "Phase 2A3.2 Vitals rapid-entry keypad + Last 3 visits grid fully verified. BACKEND (7/7 pytest pass): GET /api/internal/patients/directory:c5c30d56-.../recent-vitals ?limit=3&exclude=84460a4c -> exactly [VIS-SAMPLE-HX, VIS-SAMPLE-HX2, VIS-SAMPLE-HX3] in order; no NOVIT; no HX4; no soap/no _id; BMI 25.8 & BP 121/78 asserted on row 1. ?limit=10 -> 4 rows (adds HX4, still no NOVIT). ?limit=0 treated as 1 row. Staff 403. Admin 200. patient_ref 'bogus' 400. PATCH vitals heart_rate=999 -> 400. FRONTEND physician on /internal/encounter/84460a4c at 1920x1080 and 1366x768: initial 128/82/72/36.8/80/175 BMI 26.1 confirmed. Click vital-systolic_bp -> rapid-entry-target 'Entering: BP SYS' and data-active=true. keypad-clear empties active only; keypad-1,3,2 -> '132'. keypad-next -> 'BP DIA' (data-active on dia). Enter key -> 'HR'. keypad-dot ignored for HR (72->72). Next -> TEMP; backspace '36.8'->'36.'; extra dot stays '36.'; keypad-9 -> '36.9'. Next -> WT; Next -> HT; final Next -> blur + target 'Select a field'. Within ~3s vitals-state 'Saved' and BMI 26.1. Reload: sys=132, temp=36.9, hr=72 persisted. Weight-kg click + fill '81' + Tab moves focus to vital-height_cm (focused data-testid confirmed) and autosave -> Saved, BMI 26.4. HR=999 via keypad -> vitals-state 'Save failed' + vitals-error 'heart_rate out of plausible range (20-300).' value stays 999 in input. RESTORED to 128/82/72/36.8/80/175 BMI 26.1 'Saved'. Last 3: last3-table 3 columns last3-col-VIS-SAMPLE-HX ('Oct 01'), -HX2 ('Sep 18'), -HX3 ('Aug 27'); BP row '121/78  134/86  140/90'; BMI row '25.8 26.6 27.1'; Temp HX3 shows '—'; 0 inputs/textareas inside last3-visits; column title='2026 Oct - 01 · VIS-SAMPLE-HX' (contains '2026 Oct - 01'). Center column order encounter-info(62) -> soap-helper-tool(98) -> vitals-panel(177) confirmed; vitals-panel contains rapid-entry-keypad AND last3-visits. Right column ctx-pmhx->medications->pshx->allergies->studies in order. scrollHeight==innerHeight at 1920x1080 (1080/1080) and 1366x768 (768/768). SOAP helper 'uri' returns 1 helper-option-*; SOAP plan autosave edit+clear -> 'Saved'. Staff token on /internal/encounter/84460a4c redirected to /internal (vitals-panel absent) — route blocked for staff. Nav /internal/calendar, /internal/rx, /internal/patients all load. Issue/plan history visible with 5 rows (screenshot verified).",
+  "backend_issues": {"critical": [], "minor": []},
+  "frontend_issues": {"ui_bugs": [], "integration_issues": [], "design_issues": []},
+  "test_report_links": [
+    "/app/backend/tests/test_recent_vitals_phase2a32.py",
+    "/app/test_reports/pytest/phase2a32_recent_vitals.xml"
+  ],
+  "action_items": [],
+  "critical_code_review_comments": [
+    "server.py visit_recent_vitals: `limit = max(1, min(limit, 10))` cleanly maps 0 to 1 and caps at 10 — matches contract. Negative limit also becomes 1 (safe).",
+    "Query uses `$or` across VITAL_FIELDS with $ne:null — guarantees NOVIT (all-null) rows are skipped; combined with patient_ref $in all_refs and practice_id scoping + physician_user_id filter for physicians, isolation holds.",
+    "Projection excludes _id and omits soap entirely — row shape remains compact as spec requires.",
+    "VitalsPanel keypad: tabIndex=-1 + onMouseDown preventDefault correctly keeps focus in active input; dot ignored for BP/HR via DECIMAL_OK map; single-dot invariant enforced; blur after final Next clears active state ('Select a field').",
+    "last3 header title string format '2026 Oct - 01 · VIS-SAMPLE-HX' satisfies 'contains 2026 Oct - 01' requirement and also surfaces ref_number for hover disambiguation."
+  ],
+  "updated_files": [
+    "/app/backend/tests/test_recent_vitals_phase2a32.py"
+  ],
+  "success_rate": {"backend": "100% (7/7)", "frontend": "100% of in-scope checks"},
+  "test_credentials": "Physician PAGUAYO / Newman2013_! ; Staff staff@visita.demo / Staff2026! ; Admin kevinrodriguez9528@gmail.com / VisitaAdmin2026! — all verified via /api/auth/login with 'identifier' key. sessionStorage key is 'visita_token'.",
+  "seed_data_creation": "No new seed data created. VIS-SAMPLE-HX/HX2/HX3/HX4/NOVIT and VIS-000004 preserved. End-of-test vitals on VIS-000004 restored to 128/82/72/36.8/80/175 (BMI 26.1).",
+  "retest_needed": false,
+  "should_main_agent_self_test": false,
+  "context_for_next_testing_agent": "Phase 2A3.2 fully green. Keypad testids: keypad-1..9, keypad-0, keypad-dot, keypad-backspace, keypad-clear, keypad-next. Active input gets data-active=true. Target label testid='rapid-entry-target' ('Entering: BP SYS/DIA/HR/TEMP/WT/HT' or 'Select a field'). Vitals field testids are vital-<key> with keys systolic_bp, diastolic_bp, heart_rate, temperature_c, weight_kg, height_cm; derived BMI at vital-bmi; status at vitals-state (data-state=saving|saved|failed) and error at vitals-error. Last 3: last3-visits, last3-table, last3-col-<REF>, last3-empty. Backend GET /api/internal/patients/{patient_ref}/recent-vitals?limit=&exclude= correctly scopes by practice_id and physician_user_id. VIS-000004 remains IN PROGRESS.",
+  "rca of the issue": "N/A — no defects detected."
+}

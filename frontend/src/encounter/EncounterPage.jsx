@@ -70,10 +70,10 @@ function CenterControls({ visit, state, savedAt, onInsert }) {
                 <span className="ml-auto shrink-0" data-testid="encounter-autosave"><SaveState state={state} savedAt={savedAt} /></span>
             </div>
             <SoapHelperTool visitId={visit.id} patientRef={visit.patient_ref} onInsert={onInsert} />
-            <VitalsPanel visitId={visit.id} initial={visit.vitals} />
+            <VitalsPanel visitId={visit.id} patientRef={visit.patient_ref} initial={visit.vitals} />
             <div className="border border-dashed border-slate-300 rounded-sm px-2 py-2 text-[11px] text-slate-400" data-testid="rapid-entry-reserved">
-                <div className="font-bold uppercase tracking-wide text-[10px] text-slate-500">Rapid entry · Service · Diagnosis</div>
-                <div className="italic">Reserved for the fast clinical-entry keypad and selectors (next phases).</div>
+                <div className="font-bold uppercase tracking-wide text-[10px] text-slate-500">Service · Diagnosis</div>
+                <div className="italic">Reserved for Service and Diagnosis selectors (next phases).</div>
             </div>
         </div>
     );

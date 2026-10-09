@@ -7459,6 +7459,25 @@ async def visit_issue_plan_history(patient_ref: str, search: str = "", exclude: 
          "issue": (r.get("soap") or {}).get("assessment") or "", "plan": (r.get("soap") or {}).get("plan") or ""} for r in rows]}
 
 
+@api.get("/internal/patients/{patient_ref}/recent-vitals")
+async def visit_recent_vitals(patient_ref: str, limit: int = 3, exclude: Optional[str] = None,
+                              user: dict = Depends(require_roles(*VISIT_READ_ROLES))):
+    """Compact read-only vitals of the most recent historical visits that contain vitals (newest first)."""
+    ident = await _visit_identity_or_400(patient_ref, None, None)
+    limit = max(1, min(limit, 10))
+    q = {"practice_id": user.get("practice_id"), "patient_ref": {"$in": visits_mod.all_refs(ident)},
+         "$or": [{f"vitals.{k}": {"$ne": None}} for k in visits_mod.VITAL_FIELDS]}
+    if user["role"] == "physician":
+        q["physician_user_id"] = user["id"]
+    if exclude:
+        q["id"] = {"$ne": exclude}
+    proj = {"_id": 0, "id": 1, "ref_number": 1, "started_at": 1, **{f"vitals.{k}": 1 for k in (*visits_mod.VITAL_FIELDS, "bmi")}}
+    rows = await db[visits_mod.COLL].find(q, proj).sort("started_at", -1).to_list(limit)
+    return {"patient_ref": ident["patient_ref"], "visits": [
+        {"visit_id": r["id"], "ref_number": r.get("ref_number"), "started_at": r.get("started_at"),
+         **{k: (r.get("vitals") or {}).get(k) for k in (*visits_mod.VITAL_FIELDS, "bmi")}} for r in rows]}
+
+
 MED_RECORD_ROLES = ("admin", "physician")
 
 

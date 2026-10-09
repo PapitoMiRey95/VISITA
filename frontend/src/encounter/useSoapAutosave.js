@@ -42,6 +42,21 @@ export function useSoapAutosave(visitId, initial) {
     };
     const onBlur = () => { clearTimeout(timer.current); save(soapRef.current); };
 
+    /* Explicit helper insertion: append (never overwrite) then run the normal autosave path. */
+    const insertText = (sections) => {
+        const cur = soapRef.current;
+        const next = { ...cur };
+        Object.entries(sections).forEach(([k, text]) => {
+            if (!FIELDS.includes(k) || !text) return;
+            next[k] = cur[k] && cur[k].trim() ? `${cur[k].replace(/\s+$/, "")}\n\n${text}` : text;
+        });
+        setSoap(next);
+        soapRef.current = next;
+        setState("dirty");
+        clearTimeout(timer.current);
+        timer.current = setTimeout(() => save(soapRef.current), 1500);
+    };
+
     const flush = useCallback(async () => {
         clearTimeout(timer.current);
         if (inflight.current) await inflight.current;
@@ -49,5 +64,5 @@ export function useSoapAutosave(visitId, initial) {
     }, [save]);
 
     useEffect(() => () => clearTimeout(timer.current), []);
-    return { soap, onChange, onBlur, state, savedAt, flush };
+    return { soap, onChange, onBlur, insertText, state, savedAt, flush };
 }

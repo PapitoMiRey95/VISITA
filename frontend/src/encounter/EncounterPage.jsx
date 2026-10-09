@@ -11,6 +11,7 @@ import { useSoapAutosave } from "./useSoapAutosave";
 import { encounterTypeLabel } from "./StartEncounter";
 import { VitalsPanel } from "./VitalsPanel";
 import { PreviousEncounters } from "./PreviousEncounters";
+import { SoapHelperTool } from "./SoapHelperTool";
 
 const SOAP = [
     { k: "subjective", letter: "S", label: "Subjective" },
@@ -60,7 +61,7 @@ function SoapColumn({ soap, onChange, onBlur }) {
     );
 }
 
-function CenterControls({ visit, state, savedAt }) {
+function CenterControls({ visit, state, savedAt, onInsert }) {
     return (
         <div className="flex flex-col gap-2" data-testid="encounter-center">
             <Panel title="Encounter" Icon={ClipboardList} testid="encounter-info">
@@ -76,8 +77,9 @@ function CenterControls({ visit, state, savedAt }) {
                     <div className="text-[10px] text-slate-400 mt-0.5 leading-snug">Notes save automatically. Exit keeps this encounter in progress.</div>
                 </div>
             </Panel>
+            <SoapHelperTool visitId={visit.id} patientRef={visit.patient_ref} onInsert={onInsert} />
             <VitalsPanel visitId={visit.id} initial={visit.vitals} />
-            <div className="text-[10px] text-slate-400 italic px-1" data-testid="encounter-tools">More clinical tools (helpers, services, diagnoses) — later phase.</div>
+            <div className="text-[10px] text-slate-400 italic px-1" data-testid="encounter-tools">More clinical tools (services, diagnoses) — later phase.</div>
         </div>
     );
 }
@@ -130,7 +132,7 @@ function Workspace({ visit }) {
     const nav = useNavigate();
     const [exiting, setExiting] = useState(false);
     const elapsed = useElapsed(visit.started_at, visit.server_time);
-    const { soap, onChange, onBlur, state, savedAt, flush } = useSoapAutosave(visit.id, { ...visit.soap, last_saved_at: visit.last_saved_at });
+    const { soap, onChange, onBlur, insertText, state, savedAt, flush } = useSoapAutosave(visit.id, { ...visit.soap, last_saved_at: visit.last_saved_at });
 
     const onExit = async () => {
         setExiting(true);
@@ -145,9 +147,9 @@ function Workspace({ visit }) {
     return (
         <div className="h-screen bg-visita-bg flex flex-col" data-testid="encounter-mode">
             <SafetyHeader visit={visit} elapsed={elapsed} typeLabel={encounterTypeLabel(visit.encounter_type)} onExit={onExit} exiting={exiting} />
-            <main className="flex-1 min-h-0 grid grid-cols-[minmax(0,1.45fr)_minmax(250px,0.62fr)_minmax(280px,0.93fr)] gap-3 p-3">
+            <main className="flex-1 min-h-0 grid grid-cols-[minmax(0,1.4fr)_minmax(270px,0.7fr)_minmax(270px,0.9fr)] gap-3 p-3">
                 <SoapColumn soap={soap} onChange={onChange} onBlur={onBlur} />
-                <div className="min-h-0 overflow-y-auto"><CenterControls visit={visit} state={state} savedAt={savedAt} /></div>
+                <div className="min-h-0 overflow-y-auto"><CenterControls visit={visit} state={state} savedAt={savedAt} onInsert={insertText} /></div>
                 <div className="min-h-0 overflow-y-auto"><ContextColumn ctx={{ ...visit.context, patient_ref: visit.patient_ref, visit_id: visit.id }} /></div>
             </main>
         </div>

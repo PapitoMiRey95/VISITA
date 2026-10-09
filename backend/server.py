@@ -36,6 +36,7 @@ import delegates as delegates_mod
 import slots as slots_mod
 import data_hygiene as hygiene_mod
 import visits as visits_mod
+import soap_helpers as helpers_mod
 import storage
 from db import (APPT_PATIENT_STATUS, BLD_ACTIVE, BLD_PATIENT_STATUS, IMG_ACTIVE,
                 IMG_PATIENT_STATUS, MSG_ACTIVE, MSG_PATIENT_STATUS, RX_ACTIVE,
@@ -7437,6 +7438,43 @@ async def visit_history(patient_ref: str, user: dict = Depends(require_roles(*VI
 
 
 MED_RECORD_ROLES = ("admin", "physician")
+
+
+# ============= SOAP HELPERS (read/search for Encounter use) — Phase 2A3 =============
+@api.get("/internal/soap-helpers")
+async def soap_helpers_search(search: str = "", patient_ref: Optional[str] = None,
+                              user: dict = Depends(require_roles(*VISIT_WRITE_ROLES))):
+    sex = None
+    if patient_ref:
+        ident = await visits_mod.resolve_identity(db, patient_ref, None, None)
+        sex = helpers_mod.patient_sex(ident)
+    return {"helpers": await helpers_mod.search(db, user, search, sex), "patient_sex": sex}
+
+
+@api.get("/internal/soap-helpers/{helper_id}")
+async def soap_helper_get(helper_id: str, user: dict = Depends(require_roles(*VISIT_WRITE_ROLES))):
+    h = await helpers_mod.get(db, user, helper_id)
+    if not h:
+        raise HTTPException(status_code=404, detail="Not found.")
+    return h
+
+
+class HelperUsedBody(BaseModel):
+    helper_id: str
+    sections_inserted: List[str]
+
+
+@api.post("/internal/visits/{visit_id}/helper-used")
+async def visit_helper_used(visit_id: str, body: HelperUsedBody, user: dict = Depends(require_roles(*VISIT_WRITE_ROLES))):
+    """Audit-only: records that a helper's text was explicitly inserted. Note text itself flows through PATCH /soap."""
+    v = await _get_visit_scoped(visit_id, user)
+    h = await helpers_mod.get(db, user, body.helper_id)
+    if not h:
+        raise HTTPException(status_code=404, detail="Helper not found.")
+    sections = [s for s in body.sections_inserted if s in visits_mod.SOAP_FIELDS]
+    await audit("soap_helper_used", "visit", v["id"], user,
+                meta={"helper_id": h["id"], "helper_key": h.get("key"), "sections_inserted": sections, "visit_id": v["id"]})
+    return {"ok": True}
 
 
 def _med_public(d: dict) -> dict:

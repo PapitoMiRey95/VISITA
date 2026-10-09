@@ -1,4 +1,5 @@
 import { useState, useRef, useEffect } from "react";
+import { useSearchParams } from "react-router-dom";
 import { toast } from "sonner";
 import { UserSearch, Search, MapPin, Phone, IdCard, Building2, Lock, RefreshCw, Pencil, ShieldCheck, X, Copy } from "lucide-react";
 import { api, formatErr } from "../lib/api";
@@ -12,6 +13,8 @@ import { HealthCardNumberInput } from "../components/HealthCardNumberInput";
 import FamilyAccess from "./FamilyAccess";
 import PortalAccountPanel from "./PortalAccountPanel";
 import MedicalRecord from "./MedicalRecord";
+import { StartEncounterButton, patientRefOf } from "../encounter/StartEncounter";
+import { VisitHistory } from "../encounter/VisitHistory";
 
 const HC_BADGE = {
     VALID: "bg-emerald-100 text-emerald-700",
@@ -62,6 +65,14 @@ export default function Patients() {
     const { user } = useAuth();
     const canEdit = ["admin", "staff", "physician"].includes(user?.role);
     const searchRef = useRef(null);
+    const [params, setParams] = useSearchParams();
+    const returnRef = params.get("patient_ref");
+    useEffect(() => {
+        if (!returnRef) return;
+        api.get("/internal/patient-lookup/by-ref", { params: { patient_ref: returnRef } })
+            .then(({ data }) => { setSelected(data); setParams({}, { replace: true }); })
+            .catch(() => setParams({}, { replace: true }));
+    }, [returnRef, setParams]);
 
     const reloadSelected = async () => {
         if (!selected) return;
@@ -240,15 +251,16 @@ export default function Patients() {
                 </div>
             ) : (
                 <div className="bg-white border border-slate-300 rounded-sm p-5 max-w-3xl" data-testid="patient-snapshot">
-                    <div className="flex items-center justify-between mb-3">
-                        <div>
+                    <div className="flex items-start justify-between gap-4 mb-3">
+                        <div className="min-w-[220px]">
                             <h2 className="text-lg font-bold text-slate-900" data-testid="patient-name">{formatPatientName(selected)}</h2>
                             <div className="flex items-center gap-2 mt-1">
                                 <span className={`inline-block px-2 py-0.5 rounded-sm text-xs ${selected.source === "portal" ? "bg-emerald-100 text-emerald-800 font-semibold" : "bg-slate-100 text-slate-600"}`}>{statusLabel(selected.patient_status)}</span>
                                 <PortalBadge access={selected.portal_access} />
                             </div>
                         </div>
-                        <div className="flex items-center gap-3">
+                        <div className="flex items-center justify-end flex-wrap gap-2">
+                            {user?.role === "physician" && !editing && <StartEncounterButton patient={selected} />}
                             {canEdit && !editing && (
                                 <Button variant="outline" size="sm" data-testid="patient-edit-btn" onClick={startEdit}>
                                     <Pencil className="w-3.5 h-3.5 mr-1" /> Edit Patient Information
@@ -376,6 +388,9 @@ export default function Patients() {
                     )}
                     {!editing && selected.patient_id && ["admin", "physician"].includes(user?.role) && (
                         <MedicalRecord patientId={selected.patient_id} />
+                    )}
+                    {!editing && ["admin", "physician"].includes(user?.role) && (
+                        <VisitHistory patientRef={patientRefOf(selected)} />
                     )}
                 </div>
             )}

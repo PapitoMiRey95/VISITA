@@ -35,6 +35,7 @@ import relationships as rel_mod
 import delegates as delegates_mod
 import slots as slots_mod
 import data_hygiene as hygiene_mod
+import visits as visits_mod
 import storage
 from db import (APPT_PATIENT_STATUS, BLD_ACTIVE, BLD_PATIENT_STATUS, IMG_ACTIVE,
                 IMG_PATIENT_STATUS, MSG_ACTIVE, MSG_PATIENT_STATUS, RX_ACTIVE,
@@ -5197,6 +5198,15 @@ async def internal_patient_lookup(q: str, include_pin: bool = True, user: dict =
     return await _attach_portal_access(await _search_patients_merged(qn, limit=40, include_pin=include_pin))
 
 
+@api.get("/internal/patient-lookup/by-ref")
+async def internal_patient_lookup_by_ref(patient_ref: str, user: dict = Depends(require_roles(*CLINIC_ROLES))):
+    """Resolve one patient snapshot from a canonical patient_ref (used to reselect after Exit Encounter)."""
+    ident = await visits_mod.resolve_identity(db, patient_ref, None, None)
+    if not ident:
+        raise HTTPException(status_code=404, detail="Patient not found.")
+    return (await _attach_portal_access([_visit_snapshot(ident)]))[0]
+
+
 @api.get("/internal/patient-lookup/pin")
 async def internal_patient_lookup_pin(pin: str, user: dict = Depends(require_roles(*CLINIC_ROLES))):
     """Dedicated VISITA PIN search — EXACT match on the PIN field only, ACTIVE
@@ -7246,6 +7256,168 @@ async def portal_account_enable(patient_id: str, user: dict = Depends(require_ro
 #   Medication writes reuse the authoritative patient_medications / medication_catalog
 #   / physician_rx_memory architecture. Discontinue != delete; history is preserved.
 # ============================================================================
+# ============= VISITS (UI: Encounter) — canonical clinical record, Phase 2A1 =============
+VISIT_WRITE_ROLES = ("physician",)
+VISIT_READ_ROLES = ("physician", "admin")
+
+
+class VisitCreateBody(BaseModel):
+    patient_ref: Optional[str] = None
+    patient_id: Optional[str] = None
+    directory_id: Optional[str] = None
+    encounter_type: str
+    appointment_id: Optional[str] = None
+    reason: Optional[str] = None
+    source: Optional[str] = "patients"
+
+
+class VisitSoapBody(BaseModel):
+    subjective: Optional[str] = None
+    objective: Optional[str] = None
+    assessment: Optional[str] = None
+    plan: Optional[str] = None
+
+
+async def _visit_identity_or_400(body_ref, patient_id, directory_id):
+    ident = await visits_mod.resolve_identity(db, body_ref, patient_id, directory_id)
+    if not ident:
+        raise HTTPException(status_code=400, detail="Patient identity could not be resolved.")
+    return ident
+
+
+def _visit_snapshot(ident) -> dict:
+    return _portal_patient_snapshot(ident["portal"]) if ident["portal"] else _directory_snapshot(ident["directory"])
+
+
+async def _get_visit_scoped(visit_id: str, user: dict) -> dict:
+    v = await db[visits_mod.COLL].find_one({"id": visit_id}, {"_id": 0})
+    if not v:
+        raise HTTPException(status_code=404, detail="Not found.")
+    assert_practice(v, user)
+    if user["role"] == "physician" and v.get("physician_user_id") != user["id"]:
+        raise HTTPException(status_code=404, detail="Not found.")
+    return v
+
+
+async def _visit_context(ident) -> dict:
+    pid, did = ident.get("patient_id"), ident.get("directory_id")
+    ids = [x for x in (pid, did) if x]
+    meds = await db.patient_medications.find({"patient_id": pid, "active": True}, {"_id": 0}).sort(
+        "last_prescribed_at", -1).to_list(100) if pid else []
+    appts = await db.appointment_requests.find(
+        {"$or": [{"patient_id": {"$in": ids}}, {"directory_id": {"$in": ids}}],
+         "status": {"$in": ["confirmed", "rescheduled", "completed", "no_show"]}},
+        {"_id": 0, "ref_number": 1, "status": 1, "reason": 1, "appointment_type": 1,
+         "slot_date": 1, "confirmed_date": 1, "slot_time": 1, "confirmed_slot_time": 1}).sort("created_at", -1).to_list(10)
+    try:
+        docs = await attach_mod.list_shared_for_patient(db, pid) if pid else []
+    except Exception:
+        docs = []
+    return {"medications_active": [_med_public(m) for m in meds],
+            "recent_appointments": [{**a, "date": a.get("slot_date") or a.get("confirmed_date"),
+                                     "time": a.get("slot_time") or a.get("confirmed_slot_time")} for a in appts],
+            "documents": docs,
+            "diagnoses": None, "pmhx": None, "allergies": None}
+
+
+@api.get("/internal/visits/active")
+async def visit_active(patient_ref: str, user: dict = Depends(require_roles(*VISIT_WRITE_ROLES))):
+    ident = await _visit_identity_or_400(patient_ref, None, None)
+    v = await visits_mod.find_active(db, user.get("practice_id"), ident["patient_ref"], user["id"])
+    return {"active": visits_mod.history_row(v) if v else None, "patient_ref": ident["patient_ref"]}
+
+
+@api.post("/internal/visits")
+async def visit_create(body: VisitCreateBody, user: dict = Depends(require_roles(*VISIT_WRITE_ROLES))):
+    if body.encounter_type not in visits_mod.ENCOUNTER_TYPES:
+        raise HTTPException(status_code=400, detail="Invalid encounter type.")
+    ident = await _visit_identity_or_400(body.patient_ref, body.patient_id, body.directory_id)
+    practice_id = user.get("practice_id")
+    appointment = None
+    if body.appointment_id:
+        appointment = await db.appointment_requests.find_one({"id": body.appointment_id}, {"_id": 0, "id": 1, "ref_number": 1, "practice_id": 1})
+        if not appointment:
+            raise HTTPException(status_code=404, detail="Appointment not found.")
+        assert_practice(appointment, user)
+    existing = await visits_mod.find_active(db, practice_id, ident["patient_ref"], user["id"])
+    if existing:
+        await audit("visit_start_blocked_active_exists", "visit", existing["id"], user,
+                    meta={"patient_ref": ident["patient_ref"], "ref_number": existing.get("ref_number")})
+        raise HTTPException(status_code=409, detail={"message": "An encounter is already in progress for this patient.",
+                                                     "visit_id": existing["id"], "ref_number": existing.get("ref_number")})
+    snap = _visit_snapshot(ident)
+    prof = await db.professionals.find_one({"linked_user_id": user["id"]}, {"_id": 0, "id": 1})
+    try:
+        v = await visits_mod.create(
+            db, practice_id=practice_id, identity=ident, snapshot=snap, visita_patient_id=snap.get("visita_patient_id"),
+            user=user, professional_id=(prof or {}).get("id"), encounter_type=body.encounter_type,
+            reason=(body.reason or "").strip() or None, appointment=appointment,
+            source="calendar" if body.source == "calendar" else "patients", ref_number=await next_ref("VIS"))
+    except visits_mod.ActiveVisitExists as e:
+        ex = e.visit or {}
+        await audit("visit_start_blocked_active_exists", "visit", ex.get("id"), user, meta={"patient_ref": ident["patient_ref"]})
+        raise HTTPException(status_code=409, detail={"message": "An encounter is already in progress for this patient.",
+                                                     "visit_id": ex.get("id"), "ref_number": ex.get("ref_number")})
+    await audit("visit_created", "visit", v["id"], user, new_status=v["status"],
+                meta={"ref_number": v["ref_number"], "patient_ref": v["patient_ref"], "encounter_type": v["encounter_type"],
+                      "appointment_id": v["appointment_id"], "source": v["source"]})
+    return v
+
+
+@api.get("/internal/visits/{visit_id}")
+async def visit_get(visit_id: str, user: dict = Depends(require_roles(*VISIT_READ_ROLES))):
+    v = await _get_visit_scoped(visit_id, user)
+    ident = await visits_mod.resolve_identity(db, v["patient_ref"], v.get("patient_id"), v.get("directory_id"))
+    ctx = await _visit_context(ident) if ident else {}
+    await audit("visit_read", "visit", v["id"], user, meta={"patient_ref": v["patient_ref"], "ref_number": v.get("ref_number")})
+    return {**v, "context": ctx, "server_time": now_iso()}
+
+
+@api.patch("/internal/visits/{visit_id}/soap")
+async def visit_save_soap(visit_id: str, body: VisitSoapBody, user: dict = Depends(require_roles(*VISIT_WRITE_ROLES))):
+    v = await _get_visit_scoped(visit_id, user)
+    if v.get("status") != visits_mod.IN_PROGRESS:
+        raise HTTPException(status_code=409, detail="Encounter is not in progress.")
+    changed, v2 = await visits_mod.save_soap(db, v, body.model_dump(), user)
+    if changed:
+        await audit("visit_soap_saved", "visit", v["id"], user,
+                    meta={"fields_changed": changed, "save_count": v2.get("save_count"), "saved_at": v2.get("last_saved_at")})
+    return {"id": v2["id"], "last_saved_at": v2.get("last_saved_at"), "save_count": v2.get("save_count"),
+            "changed": changed, "noop": not changed}
+
+
+@api.post("/internal/visits/{visit_id}/exit")
+async def visit_exit(visit_id: str, user: dict = Depends(require_roles(*VISIT_WRITE_ROLES))):
+    v = await _get_visit_scoped(visit_id, user)
+    now = now_iso()
+    await db[visits_mod.COLL].update_one({"id": visit_id}, {"$set": {
+        "exited_at": now, "updated_at": now, "updated_by": {"id": user["id"], "name": user.get("name")}}})
+    await audit("visit_exited", "visit", visit_id, user, meta={"ref_number": v.get("ref_number"), "started_at": v.get("started_at")})
+    return {"id": visit_id, "status": v["status"], "exited_at": now}
+
+
+@api.post("/internal/visits/{visit_id}/resume")
+async def visit_resume(visit_id: str, user: dict = Depends(require_roles(*VISIT_WRITE_ROLES))):
+    v = await _get_visit_scoped(visit_id, user)
+    if v.get("status") != visits_mod.IN_PROGRESS:
+        raise HTTPException(status_code=409, detail="Encounter is not in progress.")
+    now = now_iso()
+    await db[visits_mod.COLL].update_one({"id": visit_id}, {"$set": {
+        "resumed_at": now, "exited_at": None, "updated_at": now, "updated_by": {"id": user["id"], "name": user.get("name")}}})
+    await audit("visit_resumed", "visit", visit_id, user, meta={"ref_number": v.get("ref_number")})
+    return {"id": visit_id, "status": v["status"], "resumed_at": now}
+
+
+@api.get("/internal/patients/{patient_ref}/visits")
+async def visit_history(patient_ref: str, user: dict = Depends(require_roles(*VISIT_READ_ROLES))):
+    ident = await _visit_identity_or_400(patient_ref, None, None)
+    q = {"practice_id": user.get("practice_id"), "patient_ref": {"$in": visits_mod.all_refs(ident)}}
+    if user["role"] == "physician":
+        q["physician_user_id"] = user["id"]
+    rows = await db[visits_mod.COLL].find(q, {"_id": 0}).sort("started_at", -1).to_list(200)
+    return {"patient_ref": ident["patient_ref"], "visits": [visits_mod.history_row(v) for v in rows]}
+
+
 MED_RECORD_ROLES = ("admin", "physician")
 
 
@@ -8719,6 +8891,7 @@ async def startup():
     # Slot reservation layer: unique (practice_id, slot_start) is the final double-booking guard.
     # Index only — NO data backfill at startup (see backfill_slot_locks.py).
     await slots_mod.ensure_indexes(db)
+    await visits_mod.ensure_indexes(db)
     try:
         storage.init_storage()
         logger.info("Storage initialized")

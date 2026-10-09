@@ -40,6 +40,7 @@ import Verifications from "./internal/Verifications";
 import Applications from "./internal/Applications";
 import Settings from "./internal/Settings";
 import Patients from "./internal/Patients";
+import EncounterPage from "./encounter/EncounterPage";
 import Organizations from "./internal/Organizations";
 import Providers from "./internal/Providers";
 import PrivateRequests from "./internal/PrivateRequests";
@@ -103,6 +104,15 @@ function App() {
                         <Route path="invoices" element={<PortalInvoices />} />
                         <Route path="account" element={<PortalAccount />} />
                     </Route>
+
+                    <Route
+                        path="/internal/encounter/:visitId"
+                        element={
+                            <RoleRoute roles={["physician"]}>
+                                <EncounterPage />
+                            </RoleRoute>
+                        }
+                    />
 
                     <Route
                         path="/internal"

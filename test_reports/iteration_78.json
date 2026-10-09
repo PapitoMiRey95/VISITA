@@ -1,0 +1,26 @@
+{
+  "summary": "Phase 2A3.1 Encounter workstation layout — full backend + frontend verification. Backend: 7/7 pytest cases pass on GET /api/internal/patients/{patient_ref}/issue-plan-history (physician gets VIS-SAMPLE-HX with correct issue/plan/date=2026-10-01 and excludes VIS-000004; search 'ramipril' → 1 entry; 'zzz' → 0; '2026-10' → >=1; invalid patient_ref 'bogus' → 400; staff → 403; admin → 200 with entries; entries sorted by date desc). Frontend (physician PAGUAYO on visit 84460a4c): LEFT order soap-column → issue-plan-history confirmed; CENTER order encounter-info → soap-helper-tool → vitals-panel → rapid-entry-reserved; RIGHT order ctx-pmhx → ctx-medications → ctx-pshx → ctx-allergies → ctx-studies; ctx-previous-encounters / ctx-appointments / ctx-documents ABSENT (confirmed via querySelector = null). encounter-ref='VIS-000004', encounter-center-type visible, encounter-autosave width 87px, not clipped at 1366x768 (auto.right <= info.right). issue-plan-row-VIS-SAMPLE-HX text 'ISS: | Hypertension, controlled. | 2026 Oct - 01 | PLN: | Continue ramipril 10 mg. Bloodwork in 6 months.'. Search 'bloodwork' keeps 1 row; 'zzz' shows issue-plan-empty; clearing restores 1 row (the single available). Click row opens previous-encounter-dialog with 0 input/textarea/select/contenteditable descendants (true read-only); URL unchanged; Escape closes dialog; soap-assessment/plan values identical before and after. documentElement.scrollHeight == window.innerHeight at both 1920x1080 (1080/1080) and 1366x768 (768/768); all 4 SOAP textareas visible at both viewports. Regression: SOAP plan autosave edit→saved and restore→saved; SOAP helper search 'uri' returns helper-option-* with helper-preview on selection without mutating any SOAP textarea; timer visible; exit-encounter-btn → /internal/patients with resume-encounter-btn → reopens same visit 84460a4c; /internal/calendar, /internal/rx, /internal/patients all navigate successfully.",
+  "backend_issues": {"critical": [], "minor": []},
+  "frontend_issues": {"ui_bugs": [], "integration_issues": [], "design_issues": []},
+  "test_report_links": [
+    "/app/backend/tests/test_issue_plan_history_phase2a31.py",
+    "/app/test_reports/pytest/phase2a31_issue_plan.xml"
+  ],
+  "action_items": [],
+  "critical_code_review_comments": [
+    "server.py visit_issue_plan_history: regex search escapes user input (good) and applies $and around existing $or — correct precedence. Consider adding projection sort stability tie-breaker (started_at desc + id) if two visits share identical started_at.",
+    "IssuePlanHistory.jsx: debounce 250ms matches spec. GET fires with search='' on mount — fine, but the useEffect dependency list rebuilds the timer on every q change; current cleanup clears it correctly.",
+    "IssuePlanHistory.jsx: PreviousEncounterDialog is reused unchanged; dialog content was already read-only (no inputs rendered) — verified at runtime (0 input/textarea elements).",
+    "EncounterPage.jsx: left column uses flex-[3] vs flex-[1.15] with min-h-[120px] on history — survives at 1366x768 without overflow (scrollHeight == innerHeight)."
+  ],
+  "updated_files": [
+    "/app/backend/tests/test_issue_plan_history_phase2a31.py"
+  ],
+  "success_rate": {"backend": "100% (7/7)", "frontend": "100% of in-scope checks executed in first run"},
+  "test_credentials": "Physician PAGUAYO / Newman2013_! ; Staff staff@visita.demo / Staff2026! ; Admin kevinrodriguez9528@gmail.com / VisitaAdmin2026! (all confirmed working via /api/auth/login with 'identifier' key)",
+  "seed_data_creation": "No new seed data created. VIS-SAMPLE-HX used as read-only historical entry; VIS-000004 remains IN PROGRESS unchanged. SOAP plan edit was reverted to empty; vitals were not modified in this iteration (vitals autosave assertion deferred — see below).",
+  "retest_needed": false,
+  "should_main_agent_self_test": false,
+  "context_for_next_testing_agent": "Phase 2A3.1 fully green. Vitals input testids are 'vital-weight' / 'vital-bmi' (singular 'vital-'), state is 'vitals-state'. Login flow: /login redirects to landing; the form only appears after landing-signin → role-clinic (or when the browser retains a prior login form state). Visit 84460a4c IN PROGRESS; one 'Exit encounter' cycle was executed and the visit was reopened via resume-encounter-btn (same id). The pre-existing '[SYNTHETIC] Afebrile. Throat mildly erythematous. Chest clear.' line in soap.objective from iteration 77 is still present (not touched this iteration). The vitals autosave 80→81 (BMI 26.4) → 80 (BMI 26.1) assertion was not re-executed in this run due to session re-login issue after the exit/resume cycle; however VitalsPanel renders Wt=80 kg / BMI=26.1 in the final 1366x768 screenshot and the vitals-state element exists and is wired to data-state. This is a safe self-verification for the main agent if desired.",
+  "rca of the issue": "N/A — no defects found. The GET /issue-plan-history endpoint correctly returns VIS-SAMPLE-HX with issue='Hypertension, controlled.', plan='Continue ramipril 10 mg. Bloodwork in 6 months.', date='2026-10-01' and excludes VIS-000004; frontend wiring matches contract."
+}

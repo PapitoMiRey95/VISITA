@@ -681,3 +681,15 @@ PROD FOLLOW-UPS (need explicit GO, scripts not yet written): stamp practice_id o
 - PORTAL_AUTO_CONFIRM default TRUE (env "false" = approval fallback). Production currently runs the P0 repair build where this default was "false" → prod still in request mode until next deploy. Portal wording follows overview.patient.booking_mode.
 - /internal/appointments = "Recent Bookings" (confirmed, newest booked_at first; Patient/PIN/Phone/Appointment/Type/Reason/Booked at(+booked_by_label)/Status; informational BookingDetail with notes; no approve). Tab "Legacy pending requests (N)" keeps the old approval popup for status=requested only. appt_queue returns booked_at, booked_by_label.
 - Verified: patient/caregiver → CONFIRMED instantly, 6 parallel → 1, calendar + Recent Bookings + emails sent, unverified → 403 pending verification, legacy requested preserved (2 in preview).
+
+## Encounter Phase 2A (2A1–2A3.2.2) — Visits foundation, Vitals, SOAP Helpers, Access-style workstation (2026-10-09, PREVIEW ONLY)
+- `visits` collection; 3-column workstation (Left SOAP + Issue/Plan Hx; Center helpers/vitals/green rapid-entry/Last 3 Visits; Right PMHx/Meds/PSHx/Allergies/Studies). Layout APPROVED — do not redesign.
+
+## Encounter Phase 2A4A — Clinical History Core: PMHx / PSHx / Allergies (2026-10-09, PREVIEW ONLY, NOT deployed)
+- New `backend/clinical_history.py` + 9 routes in server.py: GET/POST/PATCH `/api/internal/patients/{patient_ref}/{conditions|surgeries|allergies}[/{id}]`. Read: staff/physician/admin. Write: physician only. No DELETE (status semantics: conditions ACTIVE/RESOLVED/HISTORICAL; surgeries ACTIVE/ARCHIVED; allergies ACTIVE/INACTIVE). Allergy severity enum MILD/MODERATE/SEVERE/LIFE_THREATENING (optional); allergy_type required.
+- Collections: `patient_conditions`, `patient_surgeries`, `patient_allergies` (practice_id, patient_ref, patient_id, directory_id, visita_patient_id, created/updated_at/by). Canonical identity = visits.resolve_identity; portal ref and directory ref share one history.
+- Audit: {condition|surgery|allergy}_created / _updated / _status_changed, surgery_archived (meta: patient_ref, fields_changed).
+- Frontend: `encounter/ClinicalHistory.jsx` (sections + [Manage]), `encounter/HistoryDrawer.jsx` (Sheet drawer add/edit). Active allergies → red panel. Medications & Studies untouched.
+- SYNTHETIC Preview records (remove before Prod: `deleteMany({synthetic_sample:true})` on the 3 collections): SYNTH-COND-HTN, SYNTH-COND-PNA, SYNTH-SURG-APPY, SYNTH-ALL-PCN (seed: `backend/seed_synthetic_clinical_history.py`). QA records prefixed "QA"/"TEST" also exist in Preview.
+- Tests: tests/test_clinical_history_phase2a4a.py (6), tests/test_clinical_history_roles_isolation.py (7), iteration_81 (all pass).
+- NEXT: Phase 2A4B Studies/Exams connection to Exams & Results module; then Diagnosis/Service selectors, Sign/Firm.

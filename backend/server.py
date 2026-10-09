@@ -7437,6 +7437,28 @@ async def visit_history(patient_ref: str, user: dict = Depends(require_roles(*VI
     return {"patient_ref": ident["patient_ref"], "visits": [visits_mod.history_row(v) for v in rows]}
 
 
+@api.get("/internal/patients/{patient_ref}/issue-plan-history")
+async def visit_issue_plan_history(patient_ref: str, search: str = "", exclude: Optional[str] = None,
+                                   user: dict = Depends(require_roles(*VISIT_READ_ROLES))):
+    """Read-only Issue (Assessment) / Plan history across the patient's canonical identity, most recent first."""
+    ident = await _visit_identity_or_400(patient_ref, None, None)
+    q = {"practice_id": user.get("practice_id"), "patient_ref": {"$in": visits_mod.all_refs(ident)}}
+    if user["role"] == "physician":
+        q["physician_user_id"] = user["id"]
+    if exclude:
+        q["id"] = {"$ne": exclude}
+    q["$or"] = [{"soap.assessment": {"$nin": [None, ""]}}, {"soap.plan": {"$nin": [None, ""]}}]
+    if search.strip():
+        rx = {"$regex": re.escape(search.strip()), "$options": "i"}
+        q = {"$and": [q, {"$or": [{"soap.assessment": rx}, {"soap.plan": rx}, {"started_at": rx}, {"ref_number": rx}]}]}
+    rows = await db[visits_mod.COLL].find(q, {"_id": 0, "id": 1, "ref_number": 1, "started_at": 1, "status": 1,
+                                             "encounter_type": 1, "physician_name": 1, "soap.assessment": 1, "soap.plan": 1}).sort("started_at", -1).to_list(100)
+    return {"patient_ref": ident["patient_ref"], "entries": [
+        {"visit_id": r["id"], "ref_number": r.get("ref_number"), "date": (r.get("started_at") or "")[:10], "status": r.get("status"),
+         "encounter_type": r.get("encounter_type"), "physician_name": r.get("physician_name"),
+         "issue": (r.get("soap") or {}).get("assessment") or "", "plan": (r.get("soap") or {}).get("plan") or ""} for r in rows]}
+
+
 MED_RECORD_ROLES = ("admin", "physician")
 
 

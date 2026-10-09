@@ -11,7 +11,7 @@ const VIT = [["systolic_bp", "BP sys", "mmHg"], ["diastolic_bp", "BP dia", "mmHg
 const statusLabel = (s) => (s === "IN_PROGRESS" ? "IN PROGRESS" : s);
 
 /* READ-ONLY viewer for a historical visit. Never writes; never touches the current encounter state. */
-function PreviousEncounterDialog({ visitId, onClose }) {
+export function PreviousEncounterDialog({ visitId, onClose }) {
     const [v, setV] = useState(null);
     const [err, setErr] = useState("");
     useEffect(() => {

@@ -1,16 +1,15 @@
 import { useEffect, useState } from "react";
 import { useNavigate, useParams } from "react-router-dom";
 import { toast } from "sonner";
-import { Pill, CalendarDays, FileText, ClipboardList } from "lucide-react";
-import { ApptTypeBadge } from "../components/ApptTypeBadge";
+import { Pill, ClipboardList, Stethoscope, Scissors, AlertTriangle, FlaskConical } from "lucide-react";
 import { api, formatErr } from "../lib/api";
-import { formatDate, formatDateTime } from "../lib/date";
+import { formatDateTime } from "../lib/date";
 import { Textarea } from "../components/ui/textarea";
 import { SafetyHeader, useElapsed } from "./SafetyHeader";
 import { useSoapAutosave } from "./useSoapAutosave";
 import { encounterTypeLabel } from "./StartEncounter";
 import { VitalsPanel } from "./VitalsPanel";
-import { PreviousEncounters } from "./PreviousEncounters";
+import { IssuePlanHistory } from "./IssuePlanHistory";
 import { SoapHelperTool } from "./SoapHelperTool";
 
 const SOAP = [
@@ -64,66 +63,51 @@ function SoapColumn({ soap, onChange, onBlur }) {
 function CenterControls({ visit, state, savedAt, onInsert }) {
     return (
         <div className="flex flex-col gap-2" data-testid="encounter-center">
-            <Panel title="Encounter" Icon={ClipboardList} testid="encounter-info">
-                <dl className="grid grid-cols-[auto_1fr] gap-x-2 gap-y-0.5 text-xs">
-                    <dt className="text-slate-500">Ref</dt><dd className="font-semibold" data-testid="encounter-ref">{visit.ref_number}</dd>
-                    <dt className="text-slate-500">Type</dt><dd data-testid="encounter-center-type">{encounterTypeLabel(visit.encounter_type)}</dd>
-                    <dt className="text-slate-500">Started</dt><dd data-testid="encounter-started">{formatDateTime(visit.started_at)}</dd>
-                    {visit.appointment_ref && (<><dt className="text-slate-500">Appt</dt><dd>{visit.appointment_ref}</dd></>)}
-                    {visit.reason && (<><dt className="text-slate-500">Reason</dt><dd>{visit.reason}</dd></>)}
-                </dl>
-                <div className="mt-2 pt-2 border-t border-slate-200" data-testid="encounter-autosave">
-                    <SaveState state={state} savedAt={savedAt} />
-                    <div className="text-[10px] text-slate-400 mt-0.5 leading-snug">Notes save automatically. Exit keeps this encounter in progress.</div>
-                </div>
-            </Panel>
+            <div className="flex items-center gap-x-3 px-2 py-1 bg-white border border-slate-300 rounded-sm text-[11px] text-slate-600 whitespace-nowrap overflow-hidden" data-testid="encounter-info">
+                <span className="font-semibold text-slate-800" data-testid="encounter-ref">{visit.ref_number}</span>
+                <span data-testid="encounter-center-type">{encounterTypeLabel(visit.encounter_type)}</span>
+                <span className="hidden 2xl:inline" data-testid="encounter-started">{formatDateTime(visit.started_at)}</span>
+                <span className="ml-auto shrink-0" data-testid="encounter-autosave"><SaveState state={state} savedAt={savedAt} /></span>
+            </div>
             <SoapHelperTool visitId={visit.id} patientRef={visit.patient_ref} onInsert={onInsert} />
             <VitalsPanel visitId={visit.id} initial={visit.vitals} />
-            <div className="text-[10px] text-slate-400 italic px-1" data-testid="encounter-tools">More clinical tools (services, diagnoses) — later phase.</div>
+            <div className="border border-dashed border-slate-300 rounded-sm px-2 py-2 text-[11px] text-slate-400" data-testid="rapid-entry-reserved">
+                <div className="font-bold uppercase tracking-wide text-[10px] text-slate-500">Rapid entry · Service · Diagnosis</div>
+                <div className="italic">Reserved for the fast clinical-entry keypad and selectors (next phases).</div>
+            </div>
         </div>
     );
 }
 
+const EmptyLine = ({ children, testid }) => <div className="text-[11px] text-slate-400 italic" data-testid={testid}>{children}</div>;
+
 function ContextColumn({ ctx }) {
-    const meds = ctx?.medications_active || [], appts = ctx?.recent_appointments || [], docs = ctx?.documents || [];
-    const emptyNames = [!meds.length && "medications", !appts.length && "appointments", !docs.length && "documents"].filter(Boolean);
+    const meds = ctx?.medications_active || [];
     return (
         <div className="flex flex-col gap-2" data-testid="encounter-context">
-            <PreviousEncounters patientRef={ctx?.patient_ref} currentVisitId={ctx?.visit_id} />
-            {meds.length > 0 && (
-                <Panel title="Active medications" Icon={Pill} testid="ctx-medications">
-                    {meds.map((m) => (
-                        <div key={m.id} className="py-0.5 border-b last:border-0 border-slate-100">
-                            <div className="font-semibold text-xs">{m.drug}</div>
-                            <div className="text-[11px] text-slate-500">{[m.strength_display || m.strength, m.form, m.sig].filter(Boolean).join(" · ")}</div>
-                        </div>
-                    ))}
-                </Panel>
-            )}
-            {appts.length > 0 && (
-                <Panel title="Recent appointments" Icon={CalendarDays} testid="ctx-appointments">
-                    {appts.map((a) => (
-                        <div key={a.ref_number} className="flex items-center gap-2 py-0.5 border-b last:border-0 border-slate-100 text-[11px]">
-                            <span className="whitespace-nowrap">{formatDate(a.date)} {a.time}</span>
-                            {a.appointment_type && <ApptTypeBadge type={a.appointment_type} />}
-                            <span className="text-slate-500 truncate ml-auto">{a.reason || a.status}</span>
-                        </div>
-                    ))}
-                </Panel>
-            )}
-            {docs.length > 0 && (
-                <Panel title="Documents" Icon={FileText} testid="ctx-documents">
-                    {docs.map((d) => <div key={d.id} className="text-[11px] py-0.5 truncate">{d.original_filename || d.title}</div>)}
-                </Panel>
-            )}
-            {emptyNames.length > 0 && (
-                <div className="bg-white/60 border border-dashed border-slate-300 rounded-sm px-2 py-1.5 text-[11px] text-slate-500" data-testid="ctx-empty">
-                    No {emptyNames.join(", ")} on record for this patient.
-                </div>
-            )}
-            <div className="bg-white/60 border border-dashed border-slate-300 rounded-sm px-2 py-1.5 text-[11px] text-slate-400 italic" data-testid="ctx-coming-later">
-                Diagnoses · PMHx · Allergies — not yet recorded in VIen (later phase).
-            </div>
+            <Panel title="Past medical Hx" Icon={Stethoscope} testid="ctx-pmhx">
+                <EmptyLine testid="ctx-pmhx-empty">No structured past medical history recorded in VIen yet.</EmptyLine>
+            </Panel>
+            <Panel title="Medications" Icon={Pill} testid="ctx-medications">
+                {meds.length ? meds.map((m) => (
+                    <div key={m.id} className="py-0.5 border-b last:border-0 border-slate-100 text-[11px] leading-snug">
+                        <span className="font-semibold text-slate-900">{m.drug}</span>
+                        {(m.strength_display || m.strength) && <span className="text-slate-700"> {m.strength_display || m.strength}</span>}
+                        {m.form && <span className="text-slate-600"> {m.form}</span>}
+                        {m.sig && <span className="text-slate-600">; {m.sig}</span>}
+                        {m.status && <span className="text-slate-400"> · {m.status}</span>}
+                    </div>
+                )) : <EmptyLine testid="ctx-medications-empty">No physician-confirmed active medications on record.</EmptyLine>}
+            </Panel>
+            <Panel title="Past surgical Hx" Icon={Scissors} testid="ctx-pshx">
+                <EmptyLine testid="ctx-pshx-empty">No surgical history recorded in VIen yet.</EmptyLine>
+            </Panel>
+            <Panel title="Allergies" Icon={AlertTriangle} testid="ctx-allergies">
+                <EmptyLine testid="ctx-allergies-empty">No allergy data recorded in VIen yet.</EmptyLine>
+            </Panel>
+            <Panel title="Studies / Exams" Icon={FlaskConical} testid="ctx-studies">
+                <EmptyLine testid="ctx-studies-empty">No physician-reviewed studies or results available in VIen yet.</EmptyLine>
+            </Panel>
         </div>
     );
 }
@@ -147,10 +131,13 @@ function Workspace({ visit }) {
     return (
         <div className="h-screen bg-visita-bg flex flex-col" data-testid="encounter-mode">
             <SafetyHeader visit={visit} elapsed={elapsed} typeLabel={encounterTypeLabel(visit.encounter_type)} onExit={onExit} exiting={exiting} />
-            <main className="flex-1 min-h-0 grid grid-cols-[minmax(0,1.4fr)_minmax(270px,0.7fr)_minmax(270px,0.9fr)] gap-3 p-3">
-                <SoapColumn soap={soap} onChange={onChange} onBlur={onBlur} />
+            <main className="flex-1 min-h-0 grid grid-cols-[minmax(0,1.45fr)_minmax(270px,0.68fr)_minmax(270px,0.87fr)] gap-3 p-3">
+                <div className="min-h-0 flex flex-col gap-2" data-testid="encounter-left">
+                    <div className="flex-[3] min-h-0"><SoapColumn soap={soap} onChange={onChange} onBlur={onBlur} /></div>
+                    <div className="flex-[1.15] min-h-[120px]"><IssuePlanHistory patientRef={visit.patient_ref} currentVisitId={visit.id} /></div>
+                </div>
                 <div className="min-h-0 overflow-y-auto"><CenterControls visit={visit} state={state} savedAt={savedAt} onInsert={insertText} /></div>
-                <div className="min-h-0 overflow-y-auto"><ContextColumn ctx={{ ...visit.context, patient_ref: visit.patient_ref, visit_id: visit.id }} /></div>
+                <div className="min-h-0 overflow-y-auto"><ContextColumn ctx={visit.context} /></div>
             </main>
         </div>
     );

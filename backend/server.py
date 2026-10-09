@@ -8697,6 +8697,11 @@ async def cron_appointment_reminders(background: BackgroundTasks,
 
 app.include_router(api)
 
+
+@app.get("/health", include_in_schema=False)
+async def health():
+    return {"status": "ok"}
+
 _DEFAULT_CORS = "https://visitaemr.com,https://www.visitaemr.com,https://visita-admin.preview.emergentagent.com"
 app.add_middleware(
     CORSMiddleware,

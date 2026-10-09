@@ -37,6 +37,7 @@ import slots as slots_mod
 import data_hygiene as hygiene_mod
 import visits as visits_mod
 import soap_helpers as helpers_mod
+import clinical_history as history_mod
 import storage
 from db import (APPT_PATIENT_STATUS, BLD_ACTIVE, BLD_PATIENT_STATUS, IMG_ACTIVE,
                 IMG_PATIENT_STATUS, MSG_ACTIVE, MSG_PATIENT_STATUS, RX_ACTIVE,
@@ -7481,6 +7482,96 @@ async def visit_recent_vitals(patient_ref: str, limit: int = 3, exclude: Optiona
 MED_RECORD_ROLES = ("admin", "physician")
 
 
+# ============= CLINICAL HISTORY (PMHx / PSHx / Allergies) — Phase 2A4A =============
+HISTORY_READ_ROLES = CLINIC_ROLES  # staff/admin read-only; physicians write
+
+
+async def _history_list(domain, patient_ref, user):
+    ident = await _visit_identity_or_400(patient_ref, None, None)
+    rows = await history_mod.list_records(db, domain, user.get("practice_id"), visits_mod.all_refs(ident))
+    return {"patient_ref": ident["patient_ref"], "items": rows}
+
+
+async def _history_create(domain, patient_ref, body, user):
+    ident = await _visit_identity_or_400(patient_ref, None, None)
+    snap = _visit_snapshot(ident)
+    try:
+        doc = await history_mod.create(db, domain, practice_id=user.get("practice_id"), identity=ident,
+                                       visita_patient_id=snap.get("visita_patient_id"), body=body, user=user)
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    ent = history_mod.DOMAINS[domain]["entity"]
+    await audit(f"{ent}_created", ent, doc["id"], user, new_status=doc["status"], meta={"patient_ref": doc["patient_ref"]})
+    return doc
+
+
+async def _history_patch(domain, patient_ref, record_id, body, user):
+    ident = await _visit_identity_or_400(patient_ref, None, None)
+    d = history_mod.DOMAINS[domain]
+    rec = await db[d["coll"]].find_one({"id": record_id, "patient_ref": {"$in": visits_mod.all_refs(ident)}}, {"_id": 0})
+    if not rec:
+        raise HTTPException(status_code=404, detail="Not found.")
+    assert_practice(rec, user)
+    try:
+        changed, old_s, new_s, doc = await history_mod.patch(db, domain, rec, body, user)
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    ent = d["entity"]
+    if changed:
+        meta = {"patient_ref": doc["patient_ref"], "fields_changed": changed}
+        if old_s != new_s:
+            ev = f"{ent}_archived" if new_s == "ARCHIVED" else f"{ent}_status_changed"
+            await audit(ev, ent, doc["id"], user, old_status=old_s, new_status=new_s, meta=meta)
+        if [c for c in changed if c != "status"]:
+            await audit(f"{ent}_updated", ent, doc["id"], user, meta=meta)
+    return {**doc, "changed": changed}
+
+
+@api.get("/internal/patients/{patient_ref}/conditions")
+async def conditions_list(patient_ref: str, user: dict = Depends(require_roles(*HISTORY_READ_ROLES))):
+    return await _history_list("conditions", patient_ref, user)
+
+
+@api.post("/internal/patients/{patient_ref}/conditions")
+async def conditions_create(patient_ref: str, body: dict, user: dict = Depends(require_roles(*VISIT_WRITE_ROLES))):
+    return await _history_create("conditions", patient_ref, body, user)
+
+
+@api.patch("/internal/patients/{patient_ref}/conditions/{record_id}")
+async def conditions_patch(patient_ref: str, record_id: str, body: dict, user: dict = Depends(require_roles(*VISIT_WRITE_ROLES))):
+    return await _history_patch("conditions", patient_ref, record_id, body, user)
+
+
+@api.get("/internal/patients/{patient_ref}/surgeries")
+async def surgeries_list(patient_ref: str, user: dict = Depends(require_roles(*HISTORY_READ_ROLES))):
+    return await _history_list("surgeries", patient_ref, user)
+
+
+@api.post("/internal/patients/{patient_ref}/surgeries")
+async def surgeries_create(patient_ref: str, body: dict, user: dict = Depends(require_roles(*VISIT_WRITE_ROLES))):
+    return await _history_create("surgeries", patient_ref, body, user)
+
+
+@api.patch("/internal/patients/{patient_ref}/surgeries/{record_id}")
+async def surgeries_patch(patient_ref: str, record_id: str, body: dict, user: dict = Depends(require_roles(*VISIT_WRITE_ROLES))):
+    return await _history_patch("surgeries", patient_ref, record_id, body, user)
+
+
+@api.get("/internal/patients/{patient_ref}/allergies")
+async def allergies_list(patient_ref: str, user: dict = Depends(require_roles(*HISTORY_READ_ROLES))):
+    return await _history_list("allergies", patient_ref, user)
+
+
+@api.post("/internal/patients/{patient_ref}/allergies")
+async def allergies_create(patient_ref: str, body: dict, user: dict = Depends(require_roles(*VISIT_WRITE_ROLES))):
+    return await _history_create("allergies", patient_ref, body, user)
+
+
+@api.patch("/internal/patients/{patient_ref}/allergies/{record_id}")
+async def allergies_patch(patient_ref: str, record_id: str, body: dict, user: dict = Depends(require_roles(*VISIT_WRITE_ROLES))):
+    return await _history_patch("allergies", patient_ref, record_id, body, user)
+
+
 # ============= SOAP HELPERS (read/search for Encounter use) — Phase 2A3 =============
 @api.get("/internal/soap-helpers")
 async def soap_helpers_search(search: str = "", patient_ref: Optional[str] = None,
@@ -8989,6 +9080,7 @@ async def startup():
     # Index only — NO data backfill at startup (see backfill_slot_locks.py).
     await slots_mod.ensure_indexes(db)
     await visits_mod.ensure_indexes(db)
+    await history_mod.ensure_indexes(db)
     try:
         storage.init_storage()
         logger.info("Storage initialized")

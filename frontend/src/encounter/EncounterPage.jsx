@@ -1,8 +1,10 @@
 import { useEffect, useState } from "react";
 import { useNavigate, useParams } from "react-router-dom";
 import { toast } from "sonner";
-import { Pill, ClipboardList, Stethoscope, Scissors, AlertTriangle, FlaskConical } from "lucide-react";
+import { Pill, FlaskConical } from "lucide-react";
 import { api, formatErr } from "../lib/api";
+import { useAuth } from "../context/AuthContext";
+import { PmhxSection, PshxSection, AllergySection } from "./ClinicalHistory";
 import { formatDateTime } from "../lib/date";
 import { Textarea } from "../components/ui/textarea";
 import { SafetyHeader, useElapsed } from "./SafetyHeader";
@@ -81,13 +83,13 @@ function CenterControls({ visit, state, savedAt, onInsert }) {
 
 const EmptyLine = ({ children, testid }) => <div className="text-[11px] text-slate-400 italic" data-testid={testid}>{children}</div>;
 
-function ContextColumn({ ctx }) {
+function ContextColumn({ ctx, patientRef }) {
+    const { user } = useAuth();
+    const canEdit = user?.role === "physician";
     const meds = ctx?.medications_active || [];
     return (
         <div className="flex flex-col gap-2" data-testid="encounter-context">
-            <Panel title="Past medical Hx" Icon={Stethoscope} testid="ctx-pmhx">
-                <EmptyLine testid="ctx-pmhx-empty">No structured past medical history recorded in VIen yet.</EmptyLine>
-            </Panel>
+            <PmhxSection patientRef={patientRef} canEdit={canEdit} />
             <Panel title="Medications" Icon={Pill} testid="ctx-medications">
                 {meds.length ? meds.map((m) => (
                     <div key={m.id} className="py-0.5 border-b last:border-0 border-slate-100 text-[11px] leading-snug">
@@ -99,12 +101,8 @@ function ContextColumn({ ctx }) {
                     </div>
                 )) : <EmptyLine testid="ctx-medications-empty">No physician-confirmed active medications on record.</EmptyLine>}
             </Panel>
-            <Panel title="Past surgical Hx" Icon={Scissors} testid="ctx-pshx">
-                <EmptyLine testid="ctx-pshx-empty">No surgical history recorded in VIen yet.</EmptyLine>
-            </Panel>
-            <Panel title="Allergies" Icon={AlertTriangle} testid="ctx-allergies">
-                <EmptyLine testid="ctx-allergies-empty">No allergy data recorded in VIen yet.</EmptyLine>
-            </Panel>
+            <PshxSection patientRef={patientRef} canEdit={canEdit} />
+            <AllergySection patientRef={patientRef} canEdit={canEdit} />
             <Panel title="Studies / Exams" Icon={FlaskConical} testid="ctx-studies">
                 <EmptyLine testid="ctx-studies-empty">No physician-reviewed studies or results available in VIen yet.</EmptyLine>
             </Panel>
@@ -137,7 +135,7 @@ function Workspace({ visit }) {
                     <div className="flex-[1.15] min-h-[120px]"><IssuePlanHistory patientRef={visit.patient_ref} currentVisitId={visit.id} /></div>
                 </div>
                 <div className="min-h-0 overflow-y-auto"><CenterControls visit={visit} state={state} savedAt={savedAt} onInsert={insertText} /></div>
-                <div className="min-h-0 overflow-y-auto"><ContextColumn ctx={visit.context} /></div>
+                <div className="min-h-0 overflow-y-auto"><ContextColumn ctx={visit.context} patientRef={visit.patient_ref} /></div>
             </main>
         </div>
     );

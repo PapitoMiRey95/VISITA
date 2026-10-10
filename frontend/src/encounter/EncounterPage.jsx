@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { useNavigate, useParams } from "react-router-dom";
+import { useNavigate, useParams, useSearchParams } from "react-router-dom";
 import { toast } from "sonner";
 import { Pill, FlaskConical } from "lucide-react";
 import { api, formatErr } from "../lib/api";
@@ -7,9 +7,12 @@ import { useAuth } from "../context/AuthContext";
 import { PmhxSection, PshxSection, AllergySection } from "./ClinicalHistory";
 import { formatDateTime } from "../lib/date";
 import { Textarea } from "../components/ui/textarea";
+import { Button } from "../components/ui/button";
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from "../components/ui/dialog";
 import { SafetyHeader, useElapsed } from "./SafetyHeader";
 import { useSoapAutosave } from "./useSoapAutosave";
-import { encounterTypeLabel } from "./StartEncounter";
+import { encounterTypeLabel, EncounterTypeDialog } from "./StartEncounter";
+import { VisitToggle } from "./VisitToggle";
 import { VitalsPanel } from "./VitalsPanel";
 import { IssuePlanHistory } from "./IssuePlanHistory";
 import { SoapHelperTool } from "./SoapHelperTool";
@@ -61,17 +64,22 @@ function SoapColumn({ soap, onChange, onBlur }) {
     );
 }
 
-function CenterControls({ visit, state, savedAt, onInsert }) {
+function CenterControls({ visit, patientRef, state, savedAt, onInsert, toggle }) {
     return (
         <div className="flex flex-col gap-2" data-testid="encounter-center">
             <div className="flex items-center gap-x-3 px-2 py-1 bg-white border border-slate-300 rounded-sm text-[11px] text-slate-600 whitespace-nowrap overflow-hidden" data-testid="encounter-info">
-                <span className="font-semibold text-slate-800" data-testid="encounter-ref">{visit.ref_number}</span>
-                <span data-testid="encounter-center-type">{encounterTypeLabel(visit.encounter_type)}</span>
-                <span className="hidden 2xl:inline" data-testid="encounter-started">{formatDateTime(visit.started_at)}</span>
-                <span className="ml-auto shrink-0" data-testid="encounter-autosave"><SaveState state={state} savedAt={savedAt} /></span>
+                {visit ? (<>
+                    <span className="font-semibold text-slate-800" data-testid="encounter-ref">{visit.ref_number}</span>
+                    <span data-testid="encounter-center-type">{encounterTypeLabel(visit.encounter_type)}</span>
+                    <span className="hidden 2xl:inline" data-testid="encounter-started">{formatDateTime(visit.started_at)}</span>
+                    <span className="ml-auto shrink-0" data-testid="encounter-autosave"><SaveState state={state} savedAt={savedAt} /></span>
+                </>) : <span className="italic text-slate-500" data-testid="encounter-ready-hint">No visit started — press Start Visit to begin documenting.</span>}
             </div>
-            <SoapHelperTool visitId={visit.id} patientRef={visit.patient_ref} onInsert={onInsert} />
-            <VitalsPanel visitId={visit.id} patientRef={visit.patient_ref} initial={visit.vitals} />
+            <fieldset disabled={!visit} className="contents" data-testid="center-tools">
+                <SoapHelperTool visitId={visit?.id} patientRef={patientRef} onInsert={onInsert} />
+                <VitalsPanel key={visit?.id || "ready"} visitId={visit?.id} patientRef={patientRef} initial={visit?.vitals} />
+            </fieldset>
+            <div className="bg-white border border-slate-300 rounded-sm px-2 py-1.5" data-testid="lower-visit-toggle-wrap">{toggle}</div>
             <div className="border border-dashed border-slate-300 rounded-sm px-2 py-2 text-[11px] text-slate-400" data-testid="rapid-entry-reserved">
                 <div className="font-bold uppercase tracking-wide text-[10px] text-slate-500">Service · Diagnosis</div>
                 <div className="italic">Reserved for Service and Diagnosis selectors (next phases).</div>
@@ -109,45 +117,111 @@ function ContextColumn({ ctx, patientRef }) {
     );
 }
 
-function Workspace({ visit }) {
+/* shell = ready context (no visit) or the visit itself. `visit` null => READY state. */
+function Workspace({ shell, visit, setVisit }) {
     const nav = useNavigate();
     const [exiting, setExiting] = useState(false);
-    const elapsed = useElapsed(visit.started_at, visit.server_time);
-    const { soap, onChange, onBlur, insertText, state, savedAt, flush } = useSoapAutosave(visit.id, { ...visit.soap, last_saved_at: visit.last_saved_at });
+    const [typeOpen, setTypeOpen] = useState(false);
+    const [exitWarn, setExitWarn] = useState(false);
+    const [busy, setBusy] = useState(false);
+    const patientRef = shell.patient_ref;
+    const timer = visit ? { timer_state: visit.timer_state, elapsed_seconds: visit.elapsed_seconds, running_since: visit.running_since } : null;
+    const timerState = visit ? visit.timer_state : "READY";
+    const elapsed = useElapsed(timer, shell.server_time);
+    const { soap, onChange, onBlur, insertText, state, savedAt, flush } = useSoapAutosave(visit?.id, { ...(visit?.soap || {}), last_saved_at: visit?.last_saved_at });
 
-    const onExit = async () => {
+    const applyTimer = (data) => setVisit((v) => ({ ...v, timer_state: data.timer_state, elapsed_seconds: data.elapsed_seconds,
+        running_since: data.running_since, paused_at: data.paused_at, server_time: data.server_time }));
+    const stop = async () => { const { data } = await api.post(`/internal/visits/${visit.id}/stop`); applyTimer(data); return data; };
+
+    const onToggle = async () => {
+        if (!visit) { setTypeOpen(true); return; }
+        setBusy(true);
+        try {
+            if (visit.timer_state === "RUNNING") await stop();
+            else { const { data } = await api.post(`/internal/visits/${visit.id}/resume`); applyTimer(data); }
+        } catch (e) { toast.error(formatErr(e)); } finally { setBusy(false); }
+    };
+
+    const onStartContinue = async (encounterType) => {
+        setBusy(true);
+        try {
+            const { data } = await api.post("/internal/visits", { patient_ref: patientRef, encounter_type: encounterType, source: "patients" });
+            setTypeOpen(false);
+            nav(`/internal/encounter/${data.id}`, { replace: true });
+        } catch (e) {
+            const d = e?.response?.data?.detail;
+            if (e?.response?.status === 409 && d?.visit_id) { setTypeOpen(false); nav(`/internal/encounter/${d.visit_id}`, { replace: true }); }
+            else toast.error(formatErr(e));
+        } finally { setBusy(false); }
+    };
+
+    const leave = () => nav(`/internal/patients?patient_ref=${encodeURIComponent(patientRef)}`);
+    const doExit = async (stopFirst) => {
+        setExitWarn(false);
+        if (!visit) { leave(); return; }
         setExiting(true);
         const ok = await flush();
         if (!ok) { setExiting(false); toast.error("Your note could not be saved. Please check your connection and try again before exiting."); return; }
         try {
+            if (stopFirst) await stop();
             await api.post(`/internal/visits/${visit.id}/exit`);
-            nav(`/internal/patients?patient_ref=${encodeURIComponent(visit.patient_ref)}`);
+            leave();
         } catch (e) { toast.error(formatErr(e)); setExiting(false); }
     };
+    const onExit = () => { if (visit?.timer_state === "RUNNING") setExitWarn(true); else doExit(false); };
+
+    const toggle = (testid, compact) => <VisitToggle timerState={timerState} onClick={onToggle} busy={busy} testid={testid} compact={compact} />;
 
     return (
-        <div className="h-screen bg-visita-bg flex flex-col" data-testid="encounter-mode">
-            <SafetyHeader visit={visit} elapsed={elapsed} typeLabel={encounterTypeLabel(visit.encounter_type)} onExit={onExit} exiting={exiting} />
+        <div className="h-screen bg-visita-bg flex flex-col" data-testid="encounter-mode" data-timer-state={timerState}>
+            <SafetyHeader visit={shell} timerState={timerState} elapsed={elapsed} typeLabel={visit ? encounterTypeLabel(visit.encounter_type) : "Not started"}
+                onExit={onExit} exiting={exiting} toggle={toggle("visit-toggle-top", false)} />
             <main className="flex-1 min-h-0 grid grid-cols-[minmax(0,1.45fr)_minmax(270px,0.68fr)_minmax(270px,0.87fr)] gap-3 p-3">
                 <div className="min-h-0 flex flex-col gap-2" data-testid="encounter-left">
-                    <div className="flex-[3] min-h-0"><SoapColumn soap={soap} onChange={onChange} onBlur={onBlur} /></div>
-                    <div className="flex-[1.15] min-h-[120px]"><IssuePlanHistory patientRef={visit.patient_ref} currentVisitId={visit.id} /></div>
+                    <fieldset disabled={!visit} className="contents"><div className="flex-[3] min-h-0"><SoapColumn soap={soap} onChange={onChange} onBlur={onBlur} /></div></fieldset>
+                    <div className="flex-[1.15] min-h-[120px]"><IssuePlanHistory patientRef={patientRef} currentVisitId={visit?.id} /></div>
                 </div>
-                <div className="min-h-0 overflow-y-auto"><CenterControls visit={visit} state={state} savedAt={savedAt} onInsert={insertText} /></div>
-                <div className="min-h-0 overflow-y-auto"><ContextColumn ctx={visit.context} patientRef={visit.patient_ref} /></div>
+                <div className="min-h-0 overflow-y-auto"><CenterControls visit={visit} patientRef={patientRef} state={state} savedAt={savedAt} onInsert={insertText} toggle={toggle("visit-toggle-lower", true)} /></div>
+                <div className="min-h-0 overflow-y-auto"><ContextColumn ctx={shell.context} patientRef={patientRef} /></div>
             </main>
+            <EncounterTypeDialog open={typeOpen} busy={busy} onCancel={() => setTypeOpen(false)} onContinue={onStartContinue} />
+            <Dialog open={exitWarn} onOpenChange={setExitWarn}>
+                <DialogContent className="max-w-sm" data-testid="exit-running-dialog">
+                    <DialogHeader>
+                        <DialogTitle>Visit timer is currently running.</DialogTitle>
+                        <DialogDescription>Stop the visit time before leaving, or stay in the encounter. Nothing is signed or completed.</DialogDescription>
+                    </DialogHeader>
+                    <DialogFooter>
+                        <Button variant="outline" data-testid="exit-stay-btn" onClick={() => setExitWarn(false)}>Stay</Button>
+                        <Button data-testid="exit-stop-and-exit-btn" onClick={() => doExit(true)} className="bg-red-600 hover:bg-red-700 text-white">Stop Visit &amp; Exit</Button>
+                    </DialogFooter>
+                </DialogContent>
+            </Dialog>
         </div>
     );
 }
 
 export default function EncounterPage() {
     const { visitId } = useParams();
+    const [params] = useSearchParams();
+    const nav = useNavigate();
+    const patientRef = params.get("patient_ref");
+    const [shell, setShell] = useState(null);
     const [visit, setVisit] = useState(null);
     const [err, setErr] = useState("");
     useEffect(() => {
-        api.get(`/internal/visits/${visitId}`).then(({ data }) => setVisit(data)).catch((e) => setErr(formatErr(e)));
-    }, [visitId]);
+        setShell(null); setVisit(null); setErr("");
+        if (visitId) {
+            api.get(`/internal/visits/${visitId}`).then(({ data }) => { setVisit(data); setShell(data); }).catch((e) => setErr(formatErr(e)));
+        } else if (patientRef) {
+            api.get("/internal/visits/ready", { params: { patient_ref: patientRef } }).then(({ data }) => {
+                if (data.active) nav(`/internal/encounter/${data.active.id}`, { replace: true });
+                else setShell(data);
+            }).catch((e) => setErr(formatErr(e)));
+        } else setErr("No patient selected.");
+    }, [visitId, patientRef, nav]);
     if (err) return <div className="p-8 text-red-700" data-testid="encounter-error">{err}</div>;
-    if (!visit) return <div className="p-8 text-slate-500" data-testid="encounter-loading">Loading encounter…</div>;
-    return <Workspace visit={visit} />;
+    if (!shell) return <div className="p-8 text-slate-500" data-testid="encounter-loading">Loading encounter…</div>;
+    return <Workspace key={visitId || "ready"} shell={shell} visit={visit} setVisit={setVisit} />;
 }

@@ -12,6 +12,8 @@ from pymongo.errors import DuplicateKeyError
 
 COLL = "visits"
 IN_PROGRESS = "IN_PROGRESS"
+RUNNING, PAUSED = "RUNNING", "PAUSED"
+TIMER_FIELDS = ("timer_state", "elapsed_seconds", "running_since", "paused_at")
 ENCOUNTER_TYPES = ("IN_CLINIC", "TELEPHONE", "VIDEO", "PROXY", "PHYSICAL")
 SOAP_FIELDS = ("subjective", "objective", "assessment", "plan")
 SNAPSHOT_FIELDS = ("last_name", "first_name", "date_of_birth", "health_card_display",
@@ -97,6 +99,7 @@ async def create(db, *, practice_id, identity, snapshot, visita_patient_id, user
         "soap": {k: "" for k in SOAP_FIELDS},
         "vitals": dict(EMPTY_VITALS),
         "status": IN_PROGRESS,
+        "timer_state": RUNNING, "elapsed_seconds": 0, "running_since": now, "paused_at": None,
         "started_at": now, "last_saved_at": None, "exited_at": None, "resumed_at": None,
         "created_at": now, "updated_at": now, "created_by": actor, "updated_by": actor, "save_count": 0,
     }
@@ -170,5 +173,39 @@ def history_row(v: dict) -> dict:
     return {"id": v["id"], "ref_number": v.get("ref_number"), "encounter_type": v.get("encounter_type"),
             "status": v.get("status"), "started_at": v.get("started_at"), "last_saved_at": v.get("last_saved_at"),
             "exited_at": v.get("exited_at"), "physician_name": v.get("physician_name"),
-            "appointment_ref": v.get("appointment_ref"), "reason": v.get("reason"),
+            "appointment_ref": v.get("appointment_ref"), "reason": v.get("reason"), **timer_of(v),
             "has_vitals": any((v.get("vitals") or {}).get(k) is not None for k in VITAL_FIELDS)}
+
+
+def timer_of(v: dict) -> dict:
+    """Server-authoritative accumulated timer. Legacy visits (no timer fields) count as RUNNING since started_at."""
+    if not v.get("timer_state"):
+        return {"timer_state": RUNNING, "elapsed_seconds": 0, "running_since": v.get("started_at"), "paused_at": None}
+    return {k: v.get(k) for k in TIMER_FIELDS}
+
+
+def _secs_since(iso: str) -> int:
+    return max(0, int((datetime.now(timezone.utc) - datetime.fromisoformat(iso)).total_seconds()))
+
+
+async def timer_stop(db, visit, user):
+    """RUNNING -> PAUSED: fold running span into elapsed_seconds. Idempotent when already PAUSED."""
+    t = timer_of(visit)
+    if t["timer_state"] == PAUSED:
+        return t
+    now = _now()
+    t = {"timer_state": PAUSED, "elapsed_seconds": int(t["elapsed_seconds"] or 0) + _secs_since(t["running_since"] or now),
+         "running_since": None, "paused_at": now}
+    await db[COLL].update_one({"id": visit["id"]}, {"$set": {**t, "updated_at": now, "updated_by": {"id": user["id"], "name": user.get("name")}}})
+    return t
+
+
+async def timer_resume(db, visit, user):
+    """PAUSED -> RUNNING on the SAME visit. Idempotent when already RUNNING."""
+    t = timer_of(visit)
+    now = _now()
+    sets = {"resumed_at": now, "exited_at": None, "updated_at": now, "updated_by": {"id": user["id"], "name": user.get("name")}}
+    if t["timer_state"] != RUNNING:
+        t = {**t, "timer_state": RUNNING, "running_since": now, "paused_at": None}
+    await db[COLL].update_one({"id": visit["id"]}, {"$set": {**t, **sets}})
+    return t

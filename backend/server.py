@@ -7329,6 +7329,19 @@ async def visit_active(patient_ref: str, user: dict = Depends(require_roles(*VIS
     return {"active": visits_mod.history_row(v) if v else None, "patient_ref": ident["patient_ref"]}
 
 
+@api.get("/internal/visits/ready")
+async def visit_ready(patient_ref: str, user: dict = Depends(require_roles(*VISIT_WRITE_ROLES))):
+    """Enter-Encounter workspace shell: identity + context + this physician's open visit (if any). Creates nothing."""
+    ident = await _visit_identity_or_400(patient_ref, None, None)
+    v = await visits_mod.find_active(db, user.get("practice_id"), ident["patient_ref"], user["id"])
+    snap = _visit_snapshot(ident)
+    return {"patient_ref": ident["patient_ref"], "patient_id": ident["patient_id"], "directory_id": ident["directory_id"],
+            "patient_snapshot": {k: snap.get(k) for k in visits_mod.SNAPSHOT_FIELDS}, "visita_patient_id": snap.get("visita_patient_id"),
+            "physician_name": user.get("name"), "context": await _visit_context(ident),
+            "active": {"id": v["id"], "ref_number": v.get("ref_number"), **visits_mod.timer_of(v)} if v else None,
+            "server_time": now_iso()}
+
+
 @api.post("/internal/visits")
 async def visit_create(body: VisitCreateBody, user: dict = Depends(require_roles(*VISIT_WRITE_ROLES))):
     if body.encounter_type not in visits_mod.ENCOUNTER_TYPES:
@@ -7372,7 +7385,7 @@ async def visit_get(visit_id: str, user: dict = Depends(require_roles(*VISIT_REA
     ident = await visits_mod.resolve_identity(db, v["patient_ref"], v.get("patient_id"), v.get("directory_id"))
     ctx = await _visit_context(ident) if ident else {}
     await audit("visit_read", "visit", v["id"], user, meta={"patient_ref": v["patient_ref"], "ref_number": v.get("ref_number")})
-    return {**v, "vitals": {**visits_mod.EMPTY_VITALS, **(v.get("vitals") or {})}, "context": ctx, "server_time": now_iso()}
+    return {**v, "vitals": {**visits_mod.EMPTY_VITALS, **(v.get("vitals") or {})}, **visits_mod.timer_of(v), "context": ctx, "server_time": now_iso()}
 
 
 @api.patch("/internal/visits/{visit_id}/soap")
@@ -7416,16 +7429,31 @@ async def visit_exit(visit_id: str, user: dict = Depends(require_roles(*VISIT_WR
     return {"id": visit_id, "status": v["status"], "exited_at": now}
 
 
+@api.post("/internal/visits/{visit_id}/stop")
+async def visit_stop(visit_id: str, user: dict = Depends(require_roles(*VISIT_WRITE_ROLES))):
+    """Stop (pause) active visit timing only. Keeps visit IN_PROGRESS, SOAP/vitals untouched, nothing signed or locked."""
+    v = await _get_visit_scoped(visit_id, user)
+    if v.get("status") != visits_mod.IN_PROGRESS:
+        raise HTTPException(status_code=409, detail="Encounter is not in progress.")
+    before = visits_mod.timer_of(v)["timer_state"]
+    t = await visits_mod.timer_stop(db, v, user)
+    if before != t["timer_state"]:
+        await audit("visit_timer_stopped", "visit", visit_id, user, old_status=before, new_status=t["timer_state"],
+                    meta={"ref_number": v.get("ref_number"), "elapsed_seconds": t["elapsed_seconds"]})
+    return {"id": visit_id, "status": v["status"], **t, "server_time": now_iso()}
+
+
 @api.post("/internal/visits/{visit_id}/resume")
 async def visit_resume(visit_id: str, user: dict = Depends(require_roles(*VISIT_WRITE_ROLES))):
     v = await _get_visit_scoped(visit_id, user)
     if v.get("status") != visits_mod.IN_PROGRESS:
         raise HTTPException(status_code=409, detail="Encounter is not in progress.")
-    now = now_iso()
-    await db[visits_mod.COLL].update_one({"id": visit_id}, {"$set": {
-        "resumed_at": now, "exited_at": None, "updated_at": now, "updated_by": {"id": user["id"], "name": user.get("name")}}})
-    await audit("visit_resumed", "visit", visit_id, user, meta={"ref_number": v.get("ref_number")})
-    return {"id": visit_id, "status": v["status"], "resumed_at": now}
+    before = visits_mod.timer_of(v)["timer_state"]
+    t = await visits_mod.timer_resume(db, v, user)
+    if before != t["timer_state"]:
+        await audit("visit_timer_resumed", "visit", visit_id, user, old_status=before, new_status=t["timer_state"],
+                    meta={"ref_number": v.get("ref_number"), "elapsed_seconds": t["elapsed_seconds"]})
+    return {"id": visit_id, "status": v["status"], **t, "resumed_at": now_iso(), "server_time": now_iso()}
 
 
 @api.get("/internal/patients/{patient_ref}/visits")

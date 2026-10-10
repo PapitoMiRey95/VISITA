@@ -1,14 +1,17 @@
 import { useEffect, useState } from "react";
 import { formatDate } from "../lib/date";
 
-export function useElapsed(startedAt, serverTime) {
+export function useElapsed(timer, serverTime) {
     const [now, setNow] = useState(() => Date.now());
+    const running = timer?.timer_state === "RUNNING";
     useEffect(() => {
+        if (!running) return undefined;
         const id = setInterval(() => setNow(Date.now()), 1000);
         return () => clearInterval(id);
-    }, []);
+    }, [running]);
     const skew = serverTime ? new Date(serverTime).getTime() - Date.now() : 0;
-    const secs = startedAt ? Math.max(0, Math.floor((now + skew - new Date(startedAt).getTime()) / 1000)) : 0;
+    let secs = timer?.elapsed_seconds || 0;
+    if (running && timer.running_since) secs += Math.max(0, Math.floor((Math.max(now, Date.now()) + skew - new Date(timer.running_since).getTime()) / 1000));
     const h = Math.floor(secs / 3600), m = Math.floor((secs % 3600) / 60), s = secs % 60;
     return `${String(h).padStart(2, "0")}:${String(m).padStart(2, "0")}:${String(s).padStart(2, "0")}`;
 }
@@ -31,7 +34,10 @@ function Item({ label, value, testid, className = "" }) {
     );
 }
 
-export function SafetyHeader({ visit, elapsed, typeLabel, onExit, exiting }) {
+const STATUS_STYLE = { READY: "bg-white/15 text-white", RUNNING: "bg-emerald-400/25 text-emerald-100", PAUSED: "bg-amber-400/25 text-amber-100" };
+const STATUS_TEXT = { READY: "READY · NOT STARTED", RUNNING: "IN PROGRESS", PAUSED: "PAUSED" };
+
+export function SafetyHeader({ visit, timerState, elapsed, typeLabel, onExit, exiting, toggle }) {
     const s = visit.patient_snapshot || {};
     const age = s.date_of_birth ? Math.floor((Date.now() - new Date(s.date_of_birth).getTime()) / 31557600000) : null;
     const ohip = s.health_card_display
@@ -62,10 +68,11 @@ export function SafetyHeader({ visit, elapsed, typeLabel, onExit, exiting }) {
                 <Item label="Physician" value={visit.physician_name} testid="encounter-physician" className="hidden 2xl:block" />
 
                 <div className="ml-auto flex items-center gap-3 whitespace-nowrap">
-                    <span className="px-2 py-0.5 rounded-sm bg-cyan-400/20 text-cyan-100 text-xs font-bold tracking-wide whitespace-nowrap" data-testid="encounter-status">
-                        {visit.status === "IN_PROGRESS" ? "IN PROGRESS" : visit.status}
+                    <span className={`px-2 py-0.5 rounded-sm text-xs font-bold tracking-wide whitespace-nowrap ${STATUS_STYLE[timerState] || STATUS_STYLE.READY}`} data-testid="encounter-status" data-timer-state={timerState}>
+                        {STATUS_TEXT[timerState] || timerState}
                     </span>
                     <span className="font-mono text-[21px] leading-none tabular-nums px-2.5 py-1 rounded-sm bg-black/25 border border-white/15" data-testid="encounter-timer">{elapsed}</span>
+                    {toggle}
                     <button type="button" onClick={onExit} disabled={exiting} data-testid="exit-encounter-btn"
                         className="whitespace-nowrap rounded-sm bg-white text-visita-ribbon px-3 py-1.5 text-sm font-bold hover:bg-cyan-50 disabled:opacity-60">
                         {exiting ? "Saving…" : "Exit Encounter"}

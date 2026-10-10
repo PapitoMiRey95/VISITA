@@ -106,6 +106,14 @@ function App() {
                     </Route>
 
                     <Route
+                        path="/internal/encounter"
+                        element={
+                            <RoleRoute roles={["physician"]}>
+                                <EncounterPage />
+                            </RoleRoute>
+                        }
+                    />
+                    <Route
                         path="/internal/encounter/:visitId"
                         element={
                             <RoleRoute roles={["physician"]}>

@@ -52,12 +52,12 @@ const Empty = ({ children }) => <div className="text-xs text-slate-400 italic">{
 
 function SoapColumn({ soap, onChange, onBlur }) {
     return (
-        <div className="flex flex-col gap-2 min-h-0 h-full" data-testid="soap-column">
+        <div className="flex flex-col min-h-0 h-full border border-black divide-y divide-black bg-white" data-testid="soap-column">
             {SOAP.map(({ k, label }) => (
                 <label key={k} className="flex flex-col flex-1 min-h-0">
                     <Textarea value={soap[k]} onChange={(e) => onChange(k, e.target.value)} onBlur={onBlur}
                         data-testid={`soap-${k}`} aria-label={label} title={label}
-                        className="flex-1 min-h-[72px] resize-none text-sm bg-white overflow-auto border-slate-300 focus-visible:ring-2 focus-visible:ring-cyan-500 focus-visible:border-visita-ribbon" />
+                        className="flex-1 min-h-[72px] resize-none text-sm bg-white overflow-auto border-0 rounded-none shadow-none focus-visible:ring-0 focus-visible:ring-offset-0 focus-visible:bg-cyan-50/40" />
                 </label>
             ))}
         </div>
@@ -66,7 +66,7 @@ function SoapColumn({ soap, onChange, onBlur }) {
 
 function CenterControls({ visit, patientRef, state, savedAt, onInsert, toggle, timerStrip }) {
     return (
-        <div className="flex flex-col gap-2" data-testid="encounter-center">
+        <div className="flex flex-col border border-black bg-white [&>*]:border-0 [&>*]:border-t [&>*]:border-black [&>*:first-child]:border-t-0 [&>*]:rounded-none" data-testid="encounter-center">
             {timerStrip}
             <div className="flex items-center gap-x-3 px-2 py-1 bg-white border border-slate-300 rounded-sm text-[11px] text-slate-600 whitespace-nowrap overflow-hidden" data-testid="encounter-info">
                 {visit ? (<>
@@ -76,13 +76,13 @@ function CenterControls({ visit, patientRef, state, savedAt, onInsert, toggle, t
                     <span className="ml-auto shrink-0" data-testid="encounter-autosave"><SaveState state={state} savedAt={savedAt} /></span>
                 </>) : <span className="italic text-slate-500" data-testid="encounter-ready-hint">No visit started — press Start Visit to begin documenting.</span>}
             </div>
-            <fieldset disabled={!visit} className="contents" data-testid="center-tools">
+            <fieldset disabled={!visit} className="flex flex-col min-w-0 [&>section]:border-0 [&>section]:border-t [&>section]:border-black [&>section:first-child]:border-t-0 [&>section]:rounded-none" data-testid="center-tools">
                 <SoapHelperTool visitId={visit?.id} patientRef={patientRef} onInsert={onInsert} />
                 <VitalsPanel key={visit?.id || "ready"} visitId={visit?.id} patientRef={patientRef} initial={visit?.vitals}
                     onInsertObjective={(text) => onInsert({ objective: text })} />
             </fieldset>
-            <div className="bg-white border border-slate-300 rounded-sm px-2 py-1.5" data-testid="lower-visit-toggle-wrap">{toggle}</div>
-            <div className="border border-dashed border-slate-300 rounded-sm px-2 py-2 text-[11px] text-slate-400" data-testid="rapid-entry-reserved">
+            <div className="bg-white px-2 py-1.5" data-testid="lower-visit-toggle-wrap">{toggle}</div>
+            <div className="px-2 py-2 text-[11px] text-slate-400" data-testid="rapid-entry-reserved">
                 <div className="font-bold uppercase tracking-wide text-[10px] text-slate-500">Service · Diagnosis</div>
                 <div className="italic">Reserved for Service and Diagnosis selectors (next phases).</div>
             </div>
@@ -179,9 +179,9 @@ function Workspace({ shell, visit, setVisit }) {
         <div className="h-screen bg-visita-bg flex flex-col" data-testid="encounter-mode" data-timer-state={timerState}>
             <SafetyHeader visit={shell} typeLabel={visit ? encounterTypeLabel(visit.encounter_type) : "Not started"} onExit={onExit} exiting={exiting} />
             <main className="flex-1 min-h-0 grid grid-cols-[minmax(0,1.45fr)_minmax(270px,0.68fr)_minmax(270px,0.87fr)] gap-3 p-3">
-                <div className="min-h-0 flex flex-col gap-2" data-testid="encounter-left">
+                <div className="min-h-0 flex flex-col" data-testid="encounter-left">
                     <fieldset disabled={!visit} className="contents"><div className="flex-[3] min-h-0"><SoapColumn soap={soap} onChange={onChange} onBlur={onBlur} /></div></fieldset>
-                    <div className="flex-[1.15] min-h-[120px]"><IssuePlanHistory patientRef={patientRef} currentVisitId={visit?.id} /></div>
+                    <div className="flex-[1.15] min-h-[120px] [&>section]:border-black [&>section]:border-t-0 [&>section]:rounded-none"><IssuePlanHistory patientRef={patientRef} currentVisitId={visit?.id} /></div>
                 </div>
                 <div className="min-h-0 overflow-y-auto"><CenterControls visit={visit} patientRef={patientRef} state={state} savedAt={savedAt} onInsert={insertText} toggle={toggle("visit-toggle-lower", true, true)}
                     timerStrip={<VisitTimerStrip timerState={timerState} elapsed={elapsed} toggle={toggle("visit-toggle-top", true)} />} /></div>

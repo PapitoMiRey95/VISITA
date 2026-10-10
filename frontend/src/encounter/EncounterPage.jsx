@@ -52,7 +52,7 @@ const Empty = ({ children }) => <div className="text-xs text-slate-400 italic">{
 
 function SoapColumn({ soap, onChange, onBlur }) {
     return (
-        <div className="flex flex-col min-h-0 h-full border border-black divide-y divide-black bg-white" data-testid="soap-column">
+        <div className="flex flex-col min-h-0 h-full divide-y divide-black bg-white" data-testid="soap-column">
             {SOAP.map(({ k, label }) => (
                 <label key={k} className="flex flex-col flex-1 min-h-0">
                     <Textarea value={soap[k]} onChange={(e) => onChange(k, e.target.value)} onBlur={onBlur}
@@ -66,7 +66,7 @@ function SoapColumn({ soap, onChange, onBlur }) {
 
 function CenterControls({ visit, patientRef, state, savedAt, onInsert, toggle, timerStrip }) {
     return (
-        <div className="flex flex-col border border-black bg-white [&>*]:border-0 [&>*]:border-t [&>*]:border-black [&>*:first-child]:border-t-0 [&>*]:rounded-none" data-testid="encounter-center">
+        <div className="flex flex-col bg-white [&>*]:border-0 [&>*]:border-t [&>*]:border-black [&>*:first-child]:border-t-0 [&>*]:rounded-none" data-testid="encounter-center">
             {timerStrip}
             <div className="flex items-center gap-x-3 px-2 py-1 bg-white border border-slate-300 rounded-sm text-[11px] text-slate-600 whitespace-nowrap overflow-hidden" data-testid="encounter-info">
                 {visit ? (<>
@@ -178,14 +178,14 @@ function Workspace({ shell, visit, setVisit }) {
     return (
         <div className="h-screen bg-visita-bg flex flex-col" data-testid="encounter-mode" data-timer-state={timerState}>
             <SafetyHeader visit={shell} typeLabel={visit ? encounterTypeLabel(visit.encounter_type) : "Not started"} onExit={onExit} exiting={exiting} />
-            <main className="flex-1 min-h-0 grid grid-cols-[minmax(0,1.45fr)_minmax(270px,0.68fr)_minmax(270px,0.87fr)] gap-3 p-3">
-                <div className="min-h-0 flex flex-col" data-testid="encounter-left">
+            <main className="flex-1 min-h-0 grid grid-cols-[minmax(0,1.45fr)_minmax(270px,0.68fr)_minmax(270px,0.87fr)] gap-0 p-0 bg-white border-t border-black">
+                <div className="min-h-0 flex flex-col border-r border-black" data-testid="encounter-left">
                     <fieldset disabled={!visit} className="contents"><div className="flex-[3] min-h-0"><SoapColumn soap={soap} onChange={onChange} onBlur={onBlur} /></div></fieldset>
-                    <div className="flex-[1.15] min-h-[120px] [&>section]:border-black [&>section]:border-t-0 [&>section]:rounded-none"><IssuePlanHistory patientRef={patientRef} currentVisitId={visit?.id} /></div>
+                    <div className="flex-[1.15] min-h-[120px] border-t border-black [&>section]:border-0 [&>section]:rounded-none"><IssuePlanHistory patientRef={patientRef} currentVisitId={visit?.id} /></div>
                 </div>
-                <div className="min-h-0 overflow-y-auto"><CenterControls visit={visit} patientRef={patientRef} state={state} savedAt={savedAt} onInsert={insertText} toggle={toggle("visit-toggle-lower", true, true)}
+                <div className="min-h-0 overflow-y-auto border-r border-black"><CenterControls visit={visit} patientRef={patientRef} state={state} savedAt={savedAt} onInsert={insertText} toggle={toggle("visit-toggle-lower", true, true)}
                     timerStrip={<VisitTimerStrip timerState={timerState} elapsed={elapsed} toggle={toggle("visit-toggle-top", true)} />} /></div>
-                <div className="min-h-0 overflow-y-auto"><ContextColumn ctx={shell.context} patientRef={patientRef} /></div>
+                <div className="min-h-0 overflow-y-auto [&_[data-testid=encounter-context]]:gap-0 [&_[data-testid=encounter-context]>*]:border-0 [&_[data-testid=encounter-context]>*]:border-b [&_[data-testid=encounter-context]>*]:border-black [&_[data-testid=encounter-context]>*]:rounded-none [&_[data-testid=encounter-context]>*]:ring-0"><ContextColumn ctx={shell.context} patientRef={patientRef} /></div>
             </main>
             <EncounterTypeDialog open={typeOpen} busy={busy} onCancel={() => setTypeOpen(false)} onContinue={onStartContinue} />
             <Dialog open={exitWarn} onOpenChange={setExitWarn}>

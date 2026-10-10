@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { formatDate } from "../lib/date";
 
 export function useElapsed(timer, serverTime) {
@@ -6,12 +6,14 @@ export function useElapsed(timer, serverTime) {
     const running = timer?.timer_state === "RUNNING";
     useEffect(() => {
         if (!running) return undefined;
+        setNow(Date.now());
         const id = setInterval(() => setNow(Date.now()), 1000);
         return () => clearInterval(id);
     }, [running]);
-    const skew = serverTime ? new Date(serverTime).getTime() - Date.now() : 0;
+    // Clock skew captured ONCE when the server payload arrived (not per render, or the ticking would cancel out).
+    const skew = useMemo(() => (serverTime ? new Date(serverTime).getTime() - Date.now() : 0), [serverTime]);
     let secs = timer?.elapsed_seconds || 0;
-    if (running && timer.running_since) secs += Math.max(0, Math.floor((Math.max(now, Date.now()) + skew - new Date(timer.running_since).getTime()) / 1000));
+    if (running && timer.running_since) secs += Math.max(0, Math.floor((now + skew - new Date(timer.running_since).getTime()) / 1000));
     const h = Math.floor(secs / 3600), m = Math.floor((secs % 3600) / 60), s = secs % 60;
     return `${String(h).padStart(2, "0")}:${String(m).padStart(2, "0")}:${String(s).padStart(2, "0")}`;
 }

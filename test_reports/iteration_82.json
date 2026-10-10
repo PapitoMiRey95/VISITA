@@ -1,0 +1,37 @@
+{
+  "summary": "Phase 2A5 Encounter START/STOP/RESUME toggle backend fully green (9/9). Frontend passes the Patients-side flow (enter-encounter-btn label is 'Enter Encounter', no 'Start Encounter' text, no auto type-dialog on enter, READY state renders with both green START VISIT toggles synchronised, SOAP disabled, encounter-ready-hint visible, Cancel keeps READY, type-dialog Continue creates visit and navigates to /internal/encounter/{id}, both toggles become RED STOP VISIT, autosave 'Saved' after typing). CRITICAL FRONTEND BUG CONFIRMED: the RUNNING timer in [data-testid=encounter-timer] does NOT increment over time. Direct server verification shows backend timer is correct (elapsed_seconds=123 for a visit after ~2 min RUNNING; running_since & server_time populated; stop/resume accumulate properly, PAUSED freezes exact value). The bug is in /app/frontend/src/encounter/SafetyHeader.jsx useElapsed(): `const skew = new Date(serverTime).getTime() - Date.now()` is recomputed on every render using the CURRENT Date.now(), so `Math.max(now, Date.now()) + skew` collapses to `serverTime` (the Date.now() terms cancel). Therefore the displayed elapsed is pinned to `max(0, serverTime - running_since)` at fetch time and never ticks up. Consequence: for a fresh RUNNING visit (server_time ≈ running_since) the UI shows 00:00:00 indefinitely. PAUSED works correctly because secs is read directly from server-stored elapsed_seconds. Re-entry redirect, PAUSED timer freeze (frozen value correct), SOAP disable in READY / enable in RUNNING all verified visually.",
+  "backend_issues": {"critical": [], "minor": []},
+  "frontend_issues": {
+    "ui_bugs": [
+      {"component": "SafetyHeader.useElapsed", "issue": "RUNNING timer does not tick up — Date.now() cancels in skew term, so elapsed is pinned to (serverTime - running_since) at fetch time. Fresh RUNNING visit shows 00:00:00 forever. Reload while RUNNING will show (serverTime_at_reload - running_since) but still won't tick up afterwards.", "selector": "[data-testid=encounter-timer]", "priority": "HIGH"}
+    ],
+    "integration_issues": [],
+    "design_issues": []
+  },
+  "test_report_links": [
+    "/app/backend/tests/test_visit_toggle_phase2a5.py",
+    "/app/test_reports/pytest/visit_toggle_phase2a5.xml"
+  ],
+  "action_items": [
+    "Fix /app/frontend/src/encounter/SafetyHeader.jsx useElapsed(). Capture mount time once (useRef or state) and compute: `const serverNow = new Date(serverTime).getTime() + (now - mountedAt); secs += Math.max(0, Math.floor((serverNow - new Date(running_since).getTime()) / 1000));`. Alternatively capture `skew` once in useRef on first render (so it doesn't recompute each render). Current formula collapses Date.now() terms and freezes the display."
+  ],
+  "critical_code_review_comments": [
+    "SafetyHeader.jsx useElapsed: skew term recomputed every render using current Date.now() ⇒ cancels the Math.max(now, Date.now()) term, timer is frozen on RUNNING visits. Needs mount-time capture.",
+    "Server-side timer_stop/timer_resume in visits.py are correct and idempotent (verified by backend tests). timer_resume preserves accumulated elapsed_seconds (never zeroes) ✓.",
+    "GET /internal/visits/{id} properly returns timer fields + server_time (checked).",
+    "VISIT_WRITE_ROLES = ('physician',) correctly 403s admin and staff on /ready, /stop, /resume (all three verified).",
+    "EncounterPage auto-redirects to existing active visit when /visits/ready returns an active one (verified live for MACHADO FARIA Olga Manuela → VIS-000016).",
+    "No 'Save visit?' modal appears on Stop and SOAP textarea remains editable in PAUSED (verified).",
+    "exit-running-dialog with exit-stay-btn / exit-stop-and-exit-btn only appears when timer_state=='RUNNING'; PAUSED exits directly (verified)."
+  ],
+  "updated_files": [
+    "/app/backend/tests/test_visit_toggle_phase2a5.py"
+  ],
+  "success_rate": {"backend": "100% (9/9)", "frontend": "~85% — all flows work except RUNNING timer display"},
+  "test_credentials": "Physician PAGUAYO / Newman2013_! ; Staff staff@visita.demo / Staff2026! ; Admin kevinrodriguez9528@gmail.com / VisitaAdmin2026!",
+  "seed_data_creation": "Created VIS-000033 on directory:9cd2cf0b-52b0-4869-b4ed-c70a94c2db77 (QUADROS, Elsa Maria) for PAGUAYO — now PAUSED (elapsed_seconds=123) with exited_at set, so it won't block the next fresh READY run. Existing VIS-000016 for MACHADO FARIA Olga Manuela remains PAUSED+exited (left intact for re-entry regression). SOAP sentinel 'QA toggle sentinel' present on both.",
+  "retest_needed": true,
+  "should_main_agent_self_test": true,
+  "context_for_next_testing_agent": "Backend contract fully green via test_visit_toggle_phase2a5.py (9/9). Only remaining defect is client timer freeze in SafetyHeader.useElapsed(). After the main agent fixes the hook, retest by: (1) opening /internal/encounter/{id} for a RUNNING visit and watching [data-testid=encounter-timer] over 5 seconds (should strictly increase); (2) reload-while-running should resume ticking from the server-known elapsed; (3) create a fresh visit (QUADROS Matthew directory:… or any fresh directory patient) and watch timer tick from 00:00:00 upward. For a clean run, pick a directory patient without an open visit (query /api/internal/visits/active?patient_ref=directory:<id> → active==null). Current open visits for PAGUAYO are both PAUSED+exited (safe to re-enter).",
+  "rca of the issue": "In /app/frontend/src/encounter/SafetyHeader.jsx useElapsed(timer, serverTime): `const skew = new Date(serverTime).getTime() - Date.now()` is a NEW computation on every render; and the elapsed expression is `Math.max(now, Date.now()) + skew - new Date(running_since).getTime()`. Substituting: `now ≈ Date.now()` (both captured near render time) ⇒ `Date.now() + (serverTime - Date.now()) = serverTime` (constant). So the displayed elapsed is `max(0, serverTime - running_since)` at the one GET, and never advances with wall clock. Fix: capture `skew` once (useRef on mount) OR compute `const serverNow = new Date(serverTime).getTime() + (now - mountRef.current); const delta = serverNow - new Date(running_since).getTime();`. Verified at API level that elapsed_seconds accumulates correctly on the server (stop after ~2 min returned elapsed_seconds=123)."
+}

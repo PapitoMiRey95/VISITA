@@ -693,3 +693,10 @@ PROD FOLLOW-UPS (need explicit GO, scripts not yet written): stamp practice_id o
 - SYNTHETIC Preview records (remove before Prod: `deleteMany({synthetic_sample:true})` on the 3 collections): SYNTH-COND-HTN, SYNTH-COND-PNA, SYNTH-SURG-APPY, SYNTH-ALL-PCN (seed: `backend/seed_synthetic_clinical_history.py`). QA records prefixed "QA"/"TEST" also exist in Preview.
 - Tests: tests/test_clinical_history_phase2a4a.py (6), tests/test_clinical_history_roles_isolation.py (7), iteration_81 (all pass).
 - NEXT: Phase 2A4B Studies/Exams connection to Exams & Results module; then Diagnosis/Service selectors, Sign/Firm.
+
+## Encounter START/STOP toggle rework (2026-10-10, PREVIEW ONLY, NOT deployed)
+- Patients page: "Enter Encounter" (enter-encounter-btn) → `/internal/encounter?patient_ref=…` opens the workspace only (GET `/api/internal/visits/ready`); nothing created. READY: timer 00:00:00, SOAP/Vitals disabled (fieldset), both toggles GREEN "START VISIT".
+- Two synchronized toggles from ONE canonical state (visit.timer_state): header `visit-toggle-top`, lower-center `visit-toggle-lower` (above Service·Diagnosis). START → single EncounterTypeDialog → POST /visits → RUNNING (RED "STOP VISIT"). STOP → POST `/visits/{id}/stop` → PAUSED (GREEN "RESUME VISIT"), timer frozen, nothing locked/signed, no "Save visit?" modal. RESUME → POST `/visits/{id}/resume` → same visit, no type dialog.
+- Server-authoritative accumulated timer on `visits`: timer_state RUNNING|PAUSED, elapsed_seconds, running_since, paused_at (legacy visits = RUNNING since started_at). Audit: visit_timer_stopped / visit_timer_resumed.
+- Exit while RUNNING → dialog "Visit timer is currently running." [Stay] / [Stop Visit & Exit]. Re-enter with open visit → redirect to same visit (no duplicate).
+- Files: backend/visits.py, server.py (ready/stop/resume/get), frontend encounter/{EncounterPage,SafetyHeader,StartEncounter,VisitToggle}.jsx, App.js route. Tests: iteration_82 + tests/test_visit_toggle_phase2a5.py (9/9); timer tick bug (skew recomputed per render) fixed after test.

@@ -14,7 +14,7 @@ COLL = "visits"
 IN_PROGRESS = "IN_PROGRESS"
 RUNNING, PAUSED = "RUNNING", "PAUSED"
 TIMER_FIELDS = ("timer_state", "elapsed_seconds", "running_since", "paused_at")
-ENCOUNTER_TYPES = ("IN_CLINIC", "TELEPHONE", "VIDEO", "PROXY", "PHYSICAL")
+ENCOUNTER_TYPES = ("IN_CLINIC", "TELEPHONE", "VIDEO", "PROXY", "ADMIN", "PHYSICAL")
 SOAP_FIELDS = ("subjective", "objective", "assessment", "plan")
 SNAPSHOT_FIELDS = ("last_name", "first_name", "date_of_birth", "health_card_display",
                    "health_card_version_code", "health_card_expiry_date")

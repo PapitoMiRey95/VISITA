@@ -46,7 +46,7 @@ export function VisitTimerStrip({ timerState, elapsed, toggle }) {
             <span className={`px-2 py-0.5 rounded-sm text-[10px] font-bold tracking-wide whitespace-nowrap ${STATUS_STYLE[timerState] || STATUS_STYLE.READY}`} data-testid="encounter-status" data-timer-state={timerState}>
                 {STATUS_TEXT[timerState] || timerState}
             </span>
-            <span className="font-mono text-xl leading-none tabular-nums px-2 py-1 rounded-sm bg-slate-900 text-emerald-300 border border-slate-700" data-testid="encounter-timer">{elapsed}</span>
+            <span className="font-mono text-xl leading-none tabular-nums px-2 py-1 rounded-sm bg-white text-slate-900 border border-slate-300" data-testid="encounter-timer">{elapsed}</span>
             <div className="ml-auto min-w-[150px] flex-1 [&>button]:w-full">{toggle}</div>
         </div>
     );

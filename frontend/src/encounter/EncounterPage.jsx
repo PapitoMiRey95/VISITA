@@ -64,7 +64,7 @@ function SoapColumn({ soap, onChange, onBlur }) {
     );
 }
 
-function CenterControls({ visit, patientRef, dob, state, savedAt, onInsert, toggle, timerStrip }) {
+function CenterControls({ visit, patientRef, state, savedAt, onInsert, toggle, timerStrip }) {
     return (
         <div className="flex flex-col gap-2" data-testid="encounter-center">
             {timerStrip}
@@ -78,7 +78,7 @@ function CenterControls({ visit, patientRef, dob, state, savedAt, onInsert, togg
             </div>
             <fieldset disabled={!visit} className="contents" data-testid="center-tools">
                 <SoapHelperTool visitId={visit?.id} patientRef={patientRef} onInsert={onInsert} />
-                <VitalsPanel key={visit?.id || "ready"} visitId={visit?.id} patientRef={patientRef} initial={visit?.vitals} dob={dob}
+                <VitalsPanel key={visit?.id || "ready"} visitId={visit?.id} patientRef={patientRef} initial={visit?.vitals}
                     onInsertObjective={(text) => onInsert({ objective: text })} />
             </fieldset>
             <div className="bg-white border border-slate-300 rounded-sm px-2 py-1.5" data-testid="lower-visit-toggle-wrap">{toggle}</div>
@@ -183,7 +183,7 @@ function Workspace({ shell, visit, setVisit }) {
                     <fieldset disabled={!visit} className="contents"><div className="flex-[3] min-h-0"><SoapColumn soap={soap} onChange={onChange} onBlur={onBlur} /></div></fieldset>
                     <div className="flex-[1.15] min-h-[120px]"><IssuePlanHistory patientRef={patientRef} currentVisitId={visit?.id} /></div>
                 </div>
-                <div className="min-h-0 overflow-y-auto"><CenterControls visit={visit} patientRef={patientRef} dob={shell.patient_snapshot?.date_of_birth} state={state} savedAt={savedAt} onInsert={insertText} toggle={toggle("visit-toggle-lower", true, true)}
+                <div className="min-h-0 overflow-y-auto"><CenterControls visit={visit} patientRef={patientRef} state={state} savedAt={savedAt} onInsert={insertText} toggle={toggle("visit-toggle-lower", true, true)}
                     timerStrip={<VisitTimerStrip timerState={timerState} elapsed={elapsed} toggle={toggle("visit-toggle-top", true)} />} /></div>
                 <div className="min-h-0 overflow-y-auto"><ContextColumn ctx={shell.context} patientRef={patientRef} /></div>
             </main>

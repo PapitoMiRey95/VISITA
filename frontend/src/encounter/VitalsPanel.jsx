@@ -1,57 +1,56 @@
 import { useEffect, useRef, useState } from "react";
-import { HeartPulse, Delete, CornerDownLeft, Eraser, ArrowDownToLine, Plus } from "lucide-react";
+import { HeartPulse, Delete, CornerDownLeft, Eraser, ArrowDownToLine } from "lucide-react";
 import { api, formatErr } from "../lib/api";
 import { formatDate } from "../lib/date";
 
-/* Measured fields. Height is ENTERED/DISPLAYED in metres (1.70 m) but stored canonically as height_cm. */
-export const VITAL_FIELDS = [
-    { k: "systolic_bp", label: "BP", unit: "mmHg", w: "w-14", pair: "diastolic_bp", hint: "Sst / Dst" },
-    { k: "heart_rate", label: "HR", unit: "bpm", w: "w-14", hint: "bpm" },
-    { k: "height_cm", label: "Height", unit: "m", w: "w-16", hint: "Hgt" },
-    { k: "weight_kg", label: "Weight", unit: "kg", w: "w-16", hint: "WK" },
-    { k: "temperature_c", label: "Temp", unit: "°C", w: "w-16" },
-    { k: "head_circumference_cm", label: "Head circ.", unit: "cm", w: "w-16", hint: "HC", more: true },
+/* Dr. Aguayo Access vitals row — EXACT visible labels/order. Editable = physician-measured; ro = derived automatically. */
+export const VITAL_ROW = [
+    { k: "systolic_bp", label: "Sst", tip: "Systolic", w: "w-12" },
+    { k: "diastolic_bp", label: "Dst", tip: "Diastolic", w: "w-12" },
+    { k: "heart_rate", label: "Bpm", tip: "Heart rate", w: "w-12" },
+    { k: "weight_kg", label: "WK", tip: "Weight kilos", w: "w-14" },
+    { k: "weight_lb", label: "WL", tip: "Weight pounds (auto)", w: "w-14", ro: true },
+    { k: "height_cm", label: "Hgt", tip: "Height (m)", w: "w-14" },
+    { k: "bmi", label: "BMI", tip: "Body mass index (auto)", w: "w-12", ro: true },
+    { k: "iwk", label: "IWK", tip: "Ideal weight kilos — formula not yet confirmed", w: "w-12", ro: true },
+    { k: "iwl", label: "IWL", tip: "Ideal weight pounds — formula not yet confirmed", w: "w-12", ro: true },
+    { k: "temperature_c", label: "°C", tip: "Temperature", w: "w-12" },
+    { k: "head_circumference_cm", label: "HC", tip: "Head circumference (cm)", w: "w-12" },
 ];
-/* Dr. Aguayo fast-entry sequence: BP SYS → BP DIA → HR → HEIGHT → WEIGHT (then Temp, then HC when shown) */
-const ORDER = ["systolic_bp", "diastolic_bp", "heart_rate", "height_cm", "weight_kg", "temperature_c", "head_circumference_cm"];
-const TARGET_LABEL = { systolic_bp: "BP SYS", diastolic_bp: "BP DIA", heart_rate: "HR", height_cm: "HEIGHT (m)", weight_kg: "WEIGHT (kg)", temperature_c: "TEMP", head_circumference_cm: "HEAD CIRC." };
+/* Editable navigation only — Next/Enter skips WL/BMI/IWK/IWL: Sst → Dst → Bpm → WK → Hgt → °C → HC */
+const ORDER = ["systolic_bp", "diastolic_bp", "heart_rate", "weight_kg", "height_cm", "temperature_c", "head_circumference_cm"];
+const TARGET_LABEL = Object.fromEntries(VITAL_ROW.map((f) => [f.k, f.label]));
 const DECIMAL_OK = { temperature_c: true, weight_kg: true, height_cm: true, head_circumference_cm: true };
 const toStr = (v) => (v === null || v === undefined ? "" : String(v));
 const cmToM = (cm) => (cm === null || cm === undefined ? "" : (Number(cm) / 100).toFixed(2));
 const mToCm = (m) => (m === "" ? null : Math.round(Number(m) * 1000) / 10);
 const kgToLb = (kg) => (kg ? Math.round(kg * 2.20462 * 10) / 10 : null);
-const ageYears = (dob) => (dob ? (Date.now() - new Date(dob).getTime()) / (365.25 * 24 * 3600 * 1000) : null);
 const fmt1 = (n) => (n === null || n === undefined ? null : Number(n).toFixed(1).replace(/\.0$/, ""));
 
 /* Builds the compact Objective snippet from CURRENT structured values only — nothing fabricated. */
 export function vitalsToObjective(v, which) {
     const parts = [];
-    const bp = v.systolic_bp != null && v.diastolic_bp != null ? `BP ${v.systolic_bp}/${v.diastolic_bp} mmHg` : null;
-    const wt = v.weight_kg != null ? `Wt ${fmt1(v.weight_kg)} kg (${Math.round(kgToLb(v.weight_kg))} lb)` : null;
+    const bp = v.systolic_bp != null && v.diastolic_bp != null ? `BP ${v.systolic_bp}/${v.diastolic_bp}` : null;
+    const wk = v.weight_kg != null ? `WK ${fmt1(v.weight_kg)}` : null;
+    const wl = v.weight_kg != null ? `WL ${Math.round(kgToLb(v.weight_kg))}` : null;
     const bmi = v.bmi != null ? `BMI ${v.bmi}` : null;
     if (which === "bp") { if (bp) parts.push(bp); }
-    else if (which === "weight") { if (wt) parts.push(wt); if (bmi) parts.push(bmi); }
+    else if (which === "weight") { if (wk) parts.push(wk, wl); if (bmi) parts.push(bmi); }
     else {
         if (bp) parts.push(bp);
-        if (v.heart_rate != null) parts.push(`HR ${v.heart_rate} bpm`);
-        if (v.temperature_c != null) parts.push(`Temp ${fmt1(v.temperature_c)} °C`);
-        if (v.height_cm != null) parts.push(`Ht ${cmToM(v.height_cm)} m`);
-        if (wt) parts.push(wt);
+        if (v.heart_rate != null) parts.push(`Bpm ${v.heart_rate}`);
+        if (v.height_cm != null) parts.push(`Hgt ${cmToM(v.height_cm)}`);
+        if (wk) parts.push(wk, wl);
         if (bmi) parts.push(bmi);
-        if (v.head_circumference_cm != null) parts.push(`HC ${fmt1(v.head_circumference_cm)} cm`);
+        if (v.temperature_c != null) parts.push(`°C ${fmt1(v.temperature_c)}`);
+        if (v.head_circumference_cm != null) parts.push(`HC ${fmt1(v.head_circumference_cm)}`);
     }
     return parts.length ? `${parts.join("; ")}.` : "";
 }
-const shortDate = (iso) => { const d = iso ? new Date(iso) : null; return d ? d.toLocaleDateString("en-CA", { month: "short", day: "2-digit" }) : "—"; };
 
-/* Compact structured vitals + rapid-entry keypad + Last 3 visits. Autosave contract identical to SOAP. */
-export function VitalsPanel({ visitId, patientRef, initial, dob, onInsertObjective }) {
+export function VitalsPanel({ visitId, patientRef, initial, onInsertObjective }) {
     const [form, setForm] = useState(() => Object.fromEntries(ORDER.map((k) => [k, k === "height_cm" ? cmToM(initial?.[k]) : toStr(initial?.[k])])));
     const [bmi, setBmi] = useState(initial?.bmi ?? null);
-    const pediatric = (ageYears(dob) ?? 99) < 3;
-    const [moreOpen, setMoreOpen] = useState(false);
-    const showHC = pediatric || moreOpen || form.head_circumference_cm !== "";
-    const visibleOrder = ORDER.filter((k) => k !== "head_circumference_cm" || showHC);
     const [state, setState] = useState("idle");
     const [err, setErr] = useState("");
     const [active, setActive] = useState(null);
@@ -89,9 +88,9 @@ export function VitalsPanel({ visitId, patientRef, initial, dob, onInsertObjecti
 
     const focusField = (k) => { if (k) { setActive(k); inputs.current[k]?.focus(); inputs.current[k]?.select?.(); } };
     const next = () => {
-        const i = visibleOrder.indexOf(active);
-        if (i === -1) return focusField(visibleOrder[0]);
-        if (i < visibleOrder.length - 1) return focusField(visibleOrder[i + 1]);
+        const i = ORDER.indexOf(active);
+        if (i === -1) return focusField(ORDER[0]);
+        if (i < ORDER.length - 1) return focusField(ORDER[i + 1]);
         clearTimeout(timer.current); save(); inputs.current[active]?.blur(); setActive(null);
     };
     const keypad = (key) => {
@@ -117,13 +116,13 @@ export function VitalsPanel({ visitId, patientRef, initial, dob, onInsertObjecti
     const current = { systolic_bp: num("systolic_bp"), diastolic_bp: num("diastolic_bp"), heart_rate: num("heart_rate"), temperature_c: num("temperature_c"),
         weight_kg: num("weight_kg"), height_cm: form.height_cm === "" ? null : mToCm(form.height_cm), head_circumference_cm: num("head_circumference_cm"), bmi };
     const weightLb = kgToLb(current.weight_kg);
+    const derived = { weight_lb: weightLb, bmi, iwk: null, iwl: null }; // IWK/IWL: formula NOT confirmed — intentionally empty
     const prev = recent?.[0];
     const lastCtx = prev && (prev.weight_kg != null || prev.bmi != null) && (current.weight_kg != null || bmi != null) ? {
-        last: [prev.weight_kg != null && `${fmt1(prev.weight_kg)} kg`, prev.bmi != null && `BMI ${prev.bmi}`].filter(Boolean).join(" · "),
-        today: [current.weight_kg != null && `${fmt1(current.weight_kg)} kg`, bmi != null && `BMI ${bmi}`].filter(Boolean).join(" · "),
-        change: prev.weight_kg != null && current.weight_kg != null ? `${current.weight_kg - prev.weight_kg >= 0 ? "+" : ""}${(current.weight_kg - prev.weight_kg).toFixed(1)} kg` : null,
+        last: [prev.weight_kg != null && `WK ${fmt1(prev.weight_kg)}`, prev.bmi != null && `BMI ${prev.bmi}`].filter(Boolean).join(" · "),
+        today: [current.weight_kg != null && `WK ${fmt1(current.weight_kg)}`, bmi != null && `BMI ${bmi}`].filter(Boolean).join(" · "),
+        change: prev.weight_kg != null && current.weight_kg != null ? `${current.weight_kg - prev.weight_kg >= 0 ? "+" : ""}${(current.weight_kg - prev.weight_kg).toFixed(1)} WK` : null,
     } : null;
-    const Auto = ({ show }) => (show ? <span className="text-[9px] font-bold tracking-wide px-1 rounded-sm bg-slate-100 text-slate-500 border border-slate-200" data-testid="auto-badge">AUTO</span> : <span />);
     /* Access-inspired green rapid-entry keys. tone: number | utility | primary */
     const TONE = {
         number: "bg-[#22c55e] border-[#15803d] text-[#052e16] hover:bg-[#4ade80] active:bg-[#16a34a]",
@@ -162,51 +161,32 @@ export function VitalsPanel({ visitId, patientRef, initial, dob, onInsertObjecti
                 </div>
             </div>
             <div className="p-2">
-                {/* Measured vitals laid out sideways (left→right) in the same fast-entry order as the keypad */}
-                <div className="flex flex-wrap items-end gap-x-2 gap-y-1 text-xs" data-testid="vitals-fields">
-                    {VITAL_FIELDS.filter(({ k }) => k !== "head_circumference_cm" || showHC).map(({ k, label, unit, w, pair, hint }) => (
-                        <div key={k} className="flex flex-col gap-0.5" data-testid={`vital-cell-${k}`}>
-                            <span className="text-[10px] font-bold uppercase tracking-wide text-slate-600 leading-none whitespace-nowrap" title={hint ? `Access: ${hint}` : undefined}>{label}</span>
-                            <span className="flex items-center gap-0.5 whitespace-nowrap">
-                                {renderInput(k, w)}
-                                {pair && (<><span className="text-slate-400">/</span>{renderInput(pair, w)}</>)}
-                                <span className="text-[10px] text-slate-500">{unit}</span>
-                            </span>
+                {/* Access vitals row: Sst Dst Bpm WK WL Hgt BMI IWK IWL °C HC — derived cells are read-only AUTO */}
+                <div className="flex flex-wrap items-end gap-x-1.5 gap-y-1 text-xs" data-testid="vitals-fields">
+                    {VITAL_ROW.map(({ k, label, tip, w, ro }) => (
+                        <div key={k} className="flex flex-col gap-0.5" data-testid={`vital-cell-${k}`} data-readonly={ro ? "true" : undefined}>
+                            <span className={`text-[10px] font-bold leading-none whitespace-nowrap ${ro ? "text-slate-400" : "text-slate-700"}`} title={tip}>{label}</span>
+                            {ro ? (
+                                <span title={tip} data-testid={`vital-${k}`} data-auto={derived[k] != null ? "true" : undefined}
+                                    className={`${w} h-7 px-1.5 inline-flex items-center justify-end rounded-sm border border-dashed border-slate-300 bg-slate-50 font-mono text-sm ${derived[k] != null ? "text-visita-ribbon font-semibold" : "text-slate-300"}`}>
+                                    {derived[k] ?? "—"}
+                                </span>
+                            ) : renderInput(k, w)}
                         </div>
                     ))}
-                    {!showHC && (
-                        <button type="button" onClick={() => setMoreOpen(true)} data-testid="vitals-more-btn"
-                            className="inline-flex items-center gap-0.5 h-7 text-[10px] font-semibold text-visita-ribbon hover:underline whitespace-nowrap">
-                            <Plus className="w-3 h-3" /> More vitals (Head circ.)
-                        </button>
-                    )}
                 </div>
-                {/* CALCULATED — derived, never measured */}
-                <div className="mt-1.5 border-t border-dashed border-slate-200 pt-1" data-testid="vitals-calculated">
-                    <div className="text-[10px] font-bold uppercase tracking-wide text-slate-500 leading-none mb-0.5">Calculated</div>
-                    <div className="grid grid-cols-[auto_1fr_auto] gap-x-2 gap-y-px items-baseline text-xs">
-                        <span className="text-slate-600">BMI</span>
-                        <span className="font-mono text-sm font-semibold text-visita-ribbon" data-testid="vital-bmi">{bmi ?? <span className="text-[10px] text-slate-400 font-sans font-normal">Needs height + weight</span>}</span>
-                        <Auto show={bmi != null} />
-                        <span className="text-slate-600" title="Access: WL">Weight</span>
-                        <span className="font-mono text-sm font-semibold text-visita-ribbon" data-testid="vital-weight-lb">{weightLb != null ? `${weightLb} lb` : <span className="text-[10px] text-slate-400 font-sans font-normal">Needs weight</span>}</span>
-                        <Auto show={weightLb != null} />
-                        <span className="text-slate-600" title="Access: iWK / iWL">Ideal Weight</span>
-                        <span className="text-[10px] text-slate-400 col-span-2" data-testid="vital-ideal-weight">Formula pending confirmation</span>
+                {lastCtx && (
+                    <div className="mt-1 text-[10px] text-slate-600 leading-tight" data-testid="vitals-last-context">
+                        <span className="text-slate-400">Last:</span> {lastCtx.last} <span className="text-slate-300">·</span> <span className="text-slate-400">Today:</span> {lastCtx.today}
+                        {lastCtx.change && <> <span className="text-slate-300">·</span> <span className={`font-semibold ${lastCtx.change.startsWith("+") ? "text-amber-700" : "text-emerald-700"}`}>{lastCtx.change}</span></>}
                     </div>
-                    {lastCtx && (
-                        <div className="mt-1 text-[10px] text-slate-600 leading-tight" data-testid="vitals-last-context">
-                            <span className="text-slate-400">Last:</span> {lastCtx.last} <span className="text-slate-300">·</span> <span className="text-slate-400">Today:</span> {lastCtx.today}
-                            {lastCtx.change && <> <span className="text-slate-300">·</span> <span className={`font-semibold ${lastCtx.change.startsWith("+") ? "text-amber-700" : "text-emerald-700"}`}>{lastCtx.change}</span></>}
-                        </div>
-                    )}
-                </div>
+                )}
                 {/* QUICK → OBJECTIVE: append-only documentation convenience; structured vitals stay authoritative */}
                 {onInsertObjective && (
                     <div className="mt-1.5 border-t border-dashed border-slate-200 pt-1" data-testid="quick-objective">
                         <div className="text-[10px] font-bold uppercase tracking-wide text-slate-500 leading-none mb-1">Quick to Objective</div>
                         <div className="flex gap-1">
-                            {[["bp", "BP", "quick-obj-bp"], ["weight", "Weight / BMI", "quick-obj-weight"], ["all", "All Vitals", "quick-obj-all"]].map(([w, lbl, tid]) => {
+                            {[["bp", "BP", "quick-obj-bp"], ["weight", "WK / BMI", "quick-obj-weight"], ["all", "All Vitals", "quick-obj-all"]].map(([w, lbl, tid]) => {
                                 const text = vitalsToObjective(current, w);
                                 return (
                                     <button key={w} type="button" disabled={!text} onClick={() => { onInsertObjective(text); }} data-testid={tid}
@@ -234,7 +214,7 @@ export function VitalsPanel({ visitId, patientRef, initial, dob, onInsertObjecti
                         </tr></thead>
                         <tbody>
                             {[["BP", (r) => (r.systolic_bp != null || r.diastolic_bp != null ? `${r.systolic_bp ?? "—"}/${r.diastolic_bp ?? "—"}` : "—")],
-                              ["HR", (r) => r.heart_rate], ["Temp", (r) => r.temperature_c], ["Wt", (r) => r.weight_kg], ["Ht m", (r) => (r.height_cm != null ? cmToM(r.height_cm) : null)], ["BMI", (r) => r.bmi],
+                              ["Bpm", (r) => r.heart_rate], ["WK", (r) => r.weight_kg], ["Hgt", (r) => (r.height_cm != null ? cmToM(r.height_cm) : null)], ["BMI", (r) => r.bmi], ["°C", (r) => r.temperature_c],
                               ...(recent.some((r) => r.head_circumference_cm != null) ? [["HC", (r) => r.head_circumference_cm]] : [])].map(([lbl, fn]) => (
                                 <tr key={lbl} className="border-t border-slate-100">
                                     <td className="font-bold text-slate-600 py-px">{lbl}</td>

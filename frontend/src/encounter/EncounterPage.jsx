@@ -9,7 +9,7 @@ import { formatDateTime } from "../lib/date";
 import { Textarea } from "../components/ui/textarea";
 import { Button } from "../components/ui/button";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from "../components/ui/dialog";
-import { SafetyHeader, useElapsed } from "./SafetyHeader";
+import { SafetyHeader, VisitTimerStrip, useElapsed } from "./SafetyHeader";
 import { useSoapAutosave } from "./useSoapAutosave";
 import { encounterTypeLabel, EncounterTypeDialog } from "./StartEncounter";
 import { VisitToggle } from "./VisitToggle";
@@ -64,9 +64,10 @@ function SoapColumn({ soap, onChange, onBlur }) {
     );
 }
 
-function CenterControls({ visit, patientRef, state, savedAt, onInsert, toggle }) {
+function CenterControls({ visit, patientRef, state, savedAt, onInsert, toggle, timerStrip }) {
     return (
         <div className="flex flex-col gap-2" data-testid="encounter-center">
+            {timerStrip}
             <div className="flex items-center gap-x-3 px-2 py-1 bg-white border border-slate-300 rounded-sm text-[11px] text-slate-600 whitespace-nowrap overflow-hidden" data-testid="encounter-info">
                 {visit ? (<>
                     <span className="font-semibold text-slate-800" data-testid="encounter-ref">{visit.ref_number}</span>
@@ -171,18 +172,18 @@ function Workspace({ shell, visit, setVisit }) {
     };
     const onExit = () => { if (visit?.timer_state === "RUNNING") setExitWarn(true); else doExit(false); };
 
-    const toggle = (testid, compact) => <VisitToggle timerState={timerState} onClick={onToggle} busy={busy} testid={testid} compact={compact} />;
+    const toggle = (testid, compact, fullWidth) => <VisitToggle timerState={timerState} onClick={onToggle} busy={busy} testid={testid} compact={compact} fullWidth={fullWidth} />;
 
     return (
         <div className="h-screen bg-visita-bg flex flex-col" data-testid="encounter-mode" data-timer-state={timerState}>
-            <SafetyHeader visit={shell} timerState={timerState} elapsed={elapsed} typeLabel={visit ? encounterTypeLabel(visit.encounter_type) : "Not started"}
-                onExit={onExit} exiting={exiting} toggle={toggle("visit-toggle-top", false)} />
+            <SafetyHeader visit={shell} typeLabel={visit ? encounterTypeLabel(visit.encounter_type) : "Not started"} onExit={onExit} exiting={exiting} />
             <main className="flex-1 min-h-0 grid grid-cols-[minmax(0,1.45fr)_minmax(270px,0.68fr)_minmax(270px,0.87fr)] gap-3 p-3">
                 <div className="min-h-0 flex flex-col gap-2" data-testid="encounter-left">
                     <fieldset disabled={!visit} className="contents"><div className="flex-[3] min-h-0"><SoapColumn soap={soap} onChange={onChange} onBlur={onBlur} /></div></fieldset>
                     <div className="flex-[1.15] min-h-[120px]"><IssuePlanHistory patientRef={patientRef} currentVisitId={visit?.id} /></div>
                 </div>
-                <div className="min-h-0 overflow-y-auto"><CenterControls visit={visit} patientRef={patientRef} state={state} savedAt={savedAt} onInsert={insertText} toggle={toggle("visit-toggle-lower", true)} /></div>
+                <div className="min-h-0 overflow-y-auto"><CenterControls visit={visit} patientRef={patientRef} state={state} savedAt={savedAt} onInsert={insertText} toggle={toggle("visit-toggle-lower", true, true)}
+                    timerStrip={<VisitTimerStrip timerState={timerState} elapsed={elapsed} toggle={toggle("visit-toggle-top", true)} />} /></div>
                 <div className="min-h-0 overflow-y-auto"><ContextColumn ctx={shell.context} patientRef={patientRef} /></div>
             </main>
             <EncounterTypeDialog open={typeOpen} busy={busy} onCancel={() => setTypeOpen(false)} onContinue={onStartContinue} />

@@ -36,10 +36,23 @@ function Item({ label, value, testid, className = "" }) {
     );
 }
 
-const STATUS_STYLE = { READY: "bg-white/15 text-white", RUNNING: "bg-emerald-400/25 text-emerald-100", PAUSED: "bg-amber-400/25 text-amber-100" };
+const STATUS_STYLE = { READY: "bg-slate-200 text-slate-700", RUNNING: "bg-emerald-100 text-emerald-800", PAUSED: "bg-amber-100 text-amber-800" };
 const STATUS_TEXT = { READY: "READY · NOT STARTED", RUNNING: "IN PROGRESS", PAUSED: "PAUSED" };
 
-export function SafetyHeader({ visit, timerState, elapsed, typeLabel, onExit, exiting, toggle }) {
+/* Center-column visit timer strip: status · timer · primary Start/Stop/Resume toggle (sits above SOAP Helper). */
+export function VisitTimerStrip({ timerState, elapsed, toggle }) {
+    return (
+        <div className="flex flex-wrap items-center gap-2 px-2 py-1.5 bg-white border border-slate-300 rounded-sm" data-testid="visit-timer-strip">
+            <span className={`px-2 py-0.5 rounded-sm text-[10px] font-bold tracking-wide whitespace-nowrap ${STATUS_STYLE[timerState] || STATUS_STYLE.READY}`} data-testid="encounter-status" data-timer-state={timerState}>
+                {STATUS_TEXT[timerState] || timerState}
+            </span>
+            <span className="font-mono text-xl leading-none tabular-nums px-2 py-1 rounded-sm bg-slate-900 text-emerald-300 border border-slate-700" data-testid="encounter-timer">{elapsed}</span>
+            <div className="ml-auto min-w-[150px] flex-1 [&>button]:w-full">{toggle}</div>
+        </div>
+    );
+}
+
+export function SafetyHeader({ visit, typeLabel, onExit, exiting }) {
     const s = visit.patient_snapshot || {};
     const age = s.date_of_birth ? Math.floor((Date.now() - new Date(s.date_of_birth).getTime()) / 31557600000) : null;
     const ohip = s.health_card_display
@@ -70,11 +83,6 @@ export function SafetyHeader({ visit, timerState, elapsed, typeLabel, onExit, ex
                 <Item label="Physician" value={visit.physician_name} testid="encounter-physician" className="hidden 2xl:block" />
 
                 <div className="ml-auto flex items-center gap-3 whitespace-nowrap">
-                    <span className={`px-2 py-0.5 rounded-sm text-xs font-bold tracking-wide whitespace-nowrap ${STATUS_STYLE[timerState] || STATUS_STYLE.READY}`} data-testid="encounter-status" data-timer-state={timerState}>
-                        {STATUS_TEXT[timerState] || timerState}
-                    </span>
-                    <span className="font-mono text-[21px] leading-none tabular-nums px-2.5 py-1 rounded-sm bg-black/25 border border-white/15" data-testid="encounter-timer">{elapsed}</span>
-                    {toggle}
                     <button type="button" onClick={onExit} disabled={exiting} data-testid="exit-encounter-btn"
                         className="whitespace-nowrap rounded-sm bg-white text-visita-ribbon px-3 py-1.5 text-sm font-bold hover:bg-cyan-50 disabled:opacity-60">
                         {exiting ? "Saving…" : "Exit Encounter"}

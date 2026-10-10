@@ -52,7 +52,16 @@ export function SoapHelperTool({ visitId, patientRef, onInsert }) {
         else if (e.key === "Escape") setOpen(false);
     };
 
-    const avail = sel ? SECTIONS.filter(([, , f]) => (sel[f] || "").trim()) : [];
+    const isLegacy = sel?.source_type === "LEGACY_TABDIAGTEXT";
+    const avail = sel && !isLegacy ? SECTIONS.filter(([, , f]) => (sel[f] || "").trim()) : [];
+    /* Legacy tabDiagText has no authoritative S/O/A/P destination — the physician picks the section explicitly. */
+    const insertLegacy = (section) => {
+        const text = (sel.template_text || "").trim();
+        if (!text) return;
+        onInsert({ [section]: text });
+        api.post(`/internal/visits/${visitId}/helper-used`, { helper_id: sel.id, sections_inserted: [section] }).catch(() => {});
+        toast.success(`Inserted into ${section[0].toUpperCase()} from ${sel.name}`);
+    };
     const insert = (keys) => {
         const payload = Object.fromEntries(avail.filter(([k]) => keys.includes(k)).map(([k, , f]) => [k, sel[f].trim()]));
         if (!Object.keys(payload).length) return;
@@ -80,8 +89,12 @@ export function SoapHelperTool({ visitId, patientRef, onInsert }) {
                                 <li key={r.id} role="option" aria-selected={i === hi} onMouseDown={() => pick(r)} onMouseEnter={() => setHi(i)}
                                     data-testid={`helper-option-${r.key}`}
                                     className={`px-2 py-1 cursor-pointer flex items-center gap-2 ${i === hi ? "bg-visita-bg" : ""}`}>
-                                    <span className="font-semibold truncate">{r.name}</span>
-                                    <span className="ml-auto flex gap-0.5 text-[9px] font-bold text-slate-500">
+                                    <span className="min-w-0 flex-1">
+                                        <span className="font-semibold truncate block">{r.name}</span>
+                                        {r.source_type === "LEGACY_TABDIAGTEXT" && r.pmhx_description && r.pmhx_description.toLowerCase() !== (r.name || "").toLowerCase() && <span className="block text-[10px] text-slate-500 truncate">{r.pmhx_description}</span>}
+                                    </span>
+                                    <span className="ml-auto flex gap-0.5 text-[9px] font-bold text-slate-500 shrink-0">
+                                        {r.source_type === "LEGACY_TABDIAGTEXT" && <span className="px-1 bg-amber-50 text-amber-800 rounded-sm" title="Legacy tabDiagText template">TXT</span>}
                                         {r.has_subjective && <span className="px-1 bg-slate-100 rounded-sm">S</span>}
                                         {r.has_objective && <span className="px-1 bg-slate-100 rounded-sm">O</span>}
                                         {r.has_plan && <span className="px-1 bg-slate-100 rounded-sm">P</span>}
@@ -105,6 +118,13 @@ export function SoapHelperTool({ visitId, patientRef, onInsert }) {
                         </div>
                         {!collapsed && (
                             <div className="px-2 py-1.5 space-y-1.5 max-h-48 overflow-y-auto">
+                                {isLegacy && (
+                                    <div className="text-[11px] text-slate-700 whitespace-pre-wrap leading-snug" data-testid="helper-preview-legacy">
+                                        {sel.template_text}
+                                        {sel.pmhx_description && <div className="text-[10px] text-slate-400 mt-0.5">PMHx: {sel.pmhx_description}</div>}
+                                        <div className="text-[10px] text-slate-400 mt-0.5">Legacy tabDiagText #{sel.legacy_id} · choose the section to insert into</div>
+                                    </div>
+                                )}
                                 {avail.map(([k, letter, f]) => (
                                     <div key={k} className="flex gap-1.5 text-[11px]" data-testid={`helper-preview-${k}`}>
                                         <span className="inline-flex shrink-0 w-4 h-4 items-center justify-center rounded-sm bg-slate-500 text-white text-[10px] font-bold">{letter}</span>
@@ -114,6 +134,10 @@ export function SoapHelperTool({ visitId, patientRef, onInsert }) {
                             </div>
                         )}
                         <div className="flex flex-wrap gap-1 px-2 py-1.5 border-t border-slate-200" data-testid="helper-insert-actions">
+                            {isLegacy && [["subjective", "S"], ["objective", "O"], ["assessment", "A"], ["plan", "P"]].map(([k, letter]) => (
+                                <button key={k} type="button" onClick={() => insertLegacy(k)} data-testid={`helper-insert-${k}`}
+                                    className="h-6 px-2 text-[11px] font-semibold rounded-sm border border-visita-ribbon text-visita-ribbon hover:bg-visita-bg">Insert → {letter}</button>
+                            ))}
                             {avail.map(([k, letter]) => (
                                 <button key={k} type="button" onClick={() => insert([k])} data-testid={`helper-insert-${k}`}
                                     className="h-6 px-2 text-[11px] font-semibold rounded-sm border border-visita-ribbon text-visita-ribbon hover:bg-visita-bg">Insert {letter}</button>

@@ -29,6 +29,7 @@ export function DiagnosisSearch({ patientRef }) {
                 <input value={q} onChange={(e) => { setQ(e.target.value); }} placeholder="Search diagnosis…" data-testid="diagnosis-search-input"
                     className="w-full h-7 pl-7 pr-2 text-xs rounded-sm border border-slate-300 bg-white focus:outline-none focus:ring-2 focus:ring-cyan-500" />
             </div>
+            {q.trim().length >= 2 && !items.length && <div className="mt-1 text-[10px] text-slate-400 italic" data-testid="diagnosis-no-results">No diagnosis source connected yet — SOAP phrases live in SOAP Temp.</div>}
             {items.length > 0 && (
                 <ul className="mt-1 max-h-40 overflow-y-auto border border-slate-200 rounded-sm divide-y divide-slate-100 text-xs" data-testid="diagnosis-results">
                     {items.map((d) => (

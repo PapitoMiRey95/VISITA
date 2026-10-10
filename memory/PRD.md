@@ -700,3 +700,10 @@ PROD FOLLOW-UPS (need explicit GO, scripts not yet written): stamp practice_id o
 - Server-authoritative accumulated timer on `visits`: timer_state RUNNING|PAUSED, elapsed_seconds, running_since, paused_at (legacy visits = RUNNING since started_at). Audit: visit_timer_stopped / visit_timer_resumed.
 - Exit while RUNNING → dialog "Visit timer is currently running." [Stay] / [Stop Visit & Exit]. Re-enter with open visit → redirect to same visit (no duplicate).
 - Files: backend/visits.py, server.py (ready/stop/resume/get), frontend encounter/{EncounterPage,SafetyHeader,StartEncounter,VisitToggle}.jsx, App.js route. Tests: iteration_82 + tests/test_visit_toggle_phase2a5.py (9/9); timer tick bug (skew recomputed per render) fixed after test.
+
+## Phase 2A3.3 — Smart Vitals Workflow (2026-10-10, PREVIEW ONLY, NOT deployed)
+- Fast-entry order BP SYS → BP DIA → HR → HEIGHT (m) → WEIGHT (kg) → Temp → HC (when shown); Next/Enter auto-advances; keypad unchanged. Height entered/displayed in metres, stored canonically as `height_cm` (1.70 → 170); legacy cm records display as m.
+- Backend visits.py: `head_circumference_cm` (20–70) added to VITAL_FIELDS; `weight_lb` derived server-side with `bmi`.
+- CALCULATED area: BMI (server) · Weight lb · Ideal Weight = "Formula pending confirmation" (NO historical Caleb/Access source present in workspace; formula NOT guessed). AUTO badges distinguish derived values. Last-value context line vs most recent prior visit.
+- HC inline only for patients < 3y; adults via "+ More vitals". QUICK TO OBJECTIVE: ↓BP / ↓Weight-BMI / ↓All Vitals append-only via existing SOAP insertText autosave (e.g. "BP 128/82 mmHg; HR 72 bpm; Ht 1.70 m; Wt 90 kg (198 lb); BMI 31.1."). Structured vitals remain source of truth.
+- Vitals fields laid out sideways (agentic edit). Tests: iteration_83 all green + tests/test_vitals_phase2a33.py (6/6).

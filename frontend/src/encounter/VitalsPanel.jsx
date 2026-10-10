@@ -162,20 +162,21 @@ export function VitalsPanel({ visitId, patientRef, initial, dob, onInsertObjecti
                 </div>
             </div>
             <div className="p-2">
-                <div className="grid grid-cols-[auto_1fr] gap-x-2 gap-y-1 items-center text-xs" data-testid="vitals-fields">
+                {/* Measured vitals laid out sideways (left→right) in the same fast-entry order as the keypad */}
+                <div className="flex flex-wrap items-end gap-x-2 gap-y-1 text-xs" data-testid="vitals-fields">
                     {VITAL_FIELDS.filter(({ k }) => k !== "head_circumference_cm" || showHC).map(({ k, label, unit, w, pair, hint }) => (
-                        <div key={k} className="contents">
-                            <span className="font-bold text-slate-700 whitespace-nowrap" title={hint ? `Access: ${hint}` : undefined}>{label}</span>
-                            <span className="flex items-center gap-1 whitespace-nowrap">
+                        <div key={k} className="flex flex-col gap-0.5" data-testid={`vital-cell-${k}`}>
+                            <span className="text-[10px] font-bold uppercase tracking-wide text-slate-600 leading-none whitespace-nowrap" title={hint ? `Access: ${hint}` : undefined}>{label}</span>
+                            <span className="flex items-center gap-0.5 whitespace-nowrap">
                                 {renderInput(k, w)}
                                 {pair && (<><span className="text-slate-400">/</span>{renderInput(pair, w)}</>)}
-                                <span className="text-slate-500">{unit}</span>
+                                <span className="text-[10px] text-slate-500">{unit}</span>
                             </span>
                         </div>
                     ))}
                     {!showHC && (
                         <button type="button" onClick={() => setMoreOpen(true)} data-testid="vitals-more-btn"
-                            className="col-span-2 justify-self-start inline-flex items-center gap-0.5 text-[10px] font-semibold text-visita-ribbon hover:underline">
+                            className="inline-flex items-center gap-0.5 h-7 text-[10px] font-semibold text-visita-ribbon hover:underline whitespace-nowrap">
                             <Plus className="w-3 h-3" /> More vitals (Head circ.)
                         </button>
                     )}

@@ -1,0 +1,31 @@
+{
+  "summary": "Phase 2A3.3 Smart Vitals Workflow — ALL GREEN end-to-end. BACKEND: existing suites test_visits_phase2a1.py (script, ALL PASS), test_visits_phase2a2.py (10/10), test_recent_vitals_phase2a32.py (8/8) + new test_vitals_phase2a33.py (6/6: head_circumference_cm shape, out-of-range 400, in-range 200 + persistence, bmi+weight_lb computed on save, clear-height nulls BMI while preserving weight_lb, HC boundaries 20/70 ok and 19.9 rejected). FRONTEND physician PAGUAYO on /internal/encounter/6db10ab1-7fb0-467c-8b66-3b149c8082cc (VIS-000016, PAUSED, patient_ref directory:b1f63b1d-...): (1) Fast entry order confirmed label-by-label: Entering: BP SYS → BP DIA → HR → HEIGHT (m) → WEIGHT (kg) → TEMP. (2) Height entered as 1.70 m, stored canonically as height_cm=170 (verified via DB and GET). After full sequence vitals-state=saved; BMI=31.1 AUTO, Weight 198.4 lb AUTO; Ideal Weight 'Formula pending confirmation'. (3) Physical keyboard Enter from vital-heart_rate advances focus to HEIGHT (m) — verified. (4) Head circ hidden by default on adult; vitals-more-btn present and clicking reveals vital-head_circumference_cm; typing 46 autosaves (vitals-state=saved); backend PATCH {head_circumference_cm:100} returns 400 and {head_circumference_cm:46} returns 200 (pytest). (5) Quick-to-Objective: with existing 'Existing objective text' typed into soap-objective (autosave=saved), quick-obj-bp appended '\\n\\nBP 128/82 mmHg.'; quick-obj-weight appended '\\n\\nWt 90 kg (198 lb); BMI 31.1.'; quick-obj-all appended '\\n\\nBP 128/82 mmHg; HR 72 bpm; Ht 1.70 m; Wt 90 kg (198 lb); BMI 31.1.' (blank-line separated, append-only, existing text preserved at start). (6) Disabled-state logic: clearing weight → quick-obj-weight disabled; clearing diastolic_bp → quick-obj-bp disabled AND quick-obj-all title omits BP (observed title 'HR 72 bpm; Ht 1.70 m.'). (7) Clearing height → vital-bmi reads 'Needs height + weight' (no fake BMI) while vital-weight-lb still shows '198.4 lb'. (8) Reload persistence: height input shows '1.70', weight shows '90'. (9) No page-level overflow at 1920x1080 nor 1366x768 (scrollWidth==innerWidth, scrollHeight==innerHeight). (10) DB IN_PROGRESS count for directory:b1f63b1d-... equals 1 (VIS-000016 only). Right-column PMHx/Medications/PSHx/Allergies/Studies, Issue/Plan History, SOAP Helper and PAUSED timer strip all render. Keypad green styling intact (number-bank 10-19 over 0-9 with utility column dot/⌫/clear/Next).",
+  "backend_issues": {"critical": [], "minor": []},
+  "frontend_issues": {"ui_bugs": [], "integration_issues": [], "design_issues": []},
+  "test_report_links": [
+    "/app/backend/tests/test_vitals_phase2a33.py",
+    "/app/backend/tests/test_visits_phase2a2.py",
+    "/app/backend/tests/test_recent_vitals_phase2a32.py",
+    "/app/backend/tests/test_visits_phase2a1.py",
+    "/app/test_reports/pytest/vitals_phase2a33.xml",
+    "/app/test_reports/pytest/vitals_phase2a33_new.xml"
+  ],
+  "action_items": [],
+  "critical_code_review_comments": [
+    "VitalsPanel.vitalsToObjective: builds snippet strictly from current structured values — nothing fabricated; BP requires both systolic AND diastolic (else dropped from the snippet). Matches contract.",
+    "VitalsPanel: height is entered/displayed in metres (fixed(2)) but written to API as height_cm via mToCm — single canonical unit on server (height_cm=170). GET returns height_cm which the input prefills via cmToM. Clean round-trip.",
+    "VitalsPanel: showHC = pediatric || moreOpen || form.head_circumference_cm !== '' — ensures existing HC values are visible even in adults; '+ More vitals (Head circ.)' button appears only when hidden. Correct.",
+    "visits.VITAL_RANGES['head_circumference_cm'] = (20.0, 70.0); validate_vitals enforces via ValueError that the route maps to HTTP 400. Verified by test_head_circ_out_of_range and test_head_circ_lower_boundary (19.9 rejected, 20 and 70 accepted).",
+    "save_vitals computes bmi and weight_lb server-side on every merge and returns them in the PATCH response under 'vitals' — frontend reads data.vitals.bmi directly after save. No client-side BMI fallback (good — avoids drift).",
+    "Clearing height sets BMI null while weight_lb stays (depends only on weight) — exactly what the Calculated area reflects (vital-bmi shows 'Needs height + weight', vital-weight-lb still shows 198.4 lb).",
+    "Quick-to-Objective buttons disable via !text (empty snippet) — if BP incomplete, bp button is disabled; if no weight, weight button disabled; All button degrades gracefully (title shows remaining values). Append uses insertText({objective}) which blank-line-separates — verified."
+  ],
+  "updated_files": ["/app/backend/tests/test_vitals_phase2a33.py"],
+  "success_rate": {"backend": "100% (6/6 new + 18/18 existing phase2a2+recent + script passes)", "frontend": "100% of in-scope checks"},
+  "test_credentials": "Physician PAGUAYO / Newman2013_!",
+  "seed_data_creation": "VIS-000016 (6db10ab1-7fb0-467c-8b66-3b149c8082cc) ends test state: PAUSED, IN_PROGRESS, vitals {systolic_bp:128, diastolic_bp:82, heart_rate:72, height_cm:170, weight_kg:90, bmi:31.1, weight_lb:198.4}, head_circumference_cm cleared (null). SOAP.objective now contains appended quick-to-objective lines from this run; adjust by main agent if a clean sentinel is required for next iteration.",
+  "retest_needed": false,
+  "should_main_agent_self_test": false,
+  "context_for_next_testing_agent": "Phase 2A3.3 fully green. Test ids used: vital-{systolic_bp,diastolic_bp,heart_rate,height_cm,weight_kg,temperature_c,head_circumference_cm}, vital-bmi, vital-weight-lb, vital-ideal-weight, auto-badge, vitals-state (data-state=saved), vitals-more-btn, rapid-entry-target, rapid-entry-keypad, keypad-{0-19,dot,backspace,clear,next}, quick-obj-{bp,weight,all}, vitals-last-context, soap-objective, autosave-state, last3-visits/last3-empty, vitals-panel, vitals-calculated, vitals-fields. All head_circumference range checks in backend verified; backend contract (save_vitals returns bmi+weight_lb) stable. SOAP objective of VIS-000016 contains leftover quick-to-objective lines from this run.",
+  "rca of the issue": "N/A — no defects detected."
+}

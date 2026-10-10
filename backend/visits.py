@@ -124,10 +124,11 @@ async def save_soap(db, visit, patch: dict, user):
     return sorted(changed), await db[COLL].find_one({"id": visit["id"]}, {"_id": 0})
 
 
-VITAL_FIELDS = ("systolic_bp", "diastolic_bp", "heart_rate", "temperature_c", "weight_kg", "height_cm")
+VITAL_FIELDS = ("systolic_bp", "diastolic_bp", "heart_rate", "temperature_c", "weight_kg", "height_cm", "head_circumference_cm")
 VITAL_RANGES = {"systolic_bp": (40, 300), "diastolic_bp": (20, 200), "heart_rate": (20, 300),
-                "temperature_c": (25.0, 45.0), "weight_kg": (0.5, 500.0), "height_cm": (20.0, 272.0)}
-EMPTY_VITALS = {**{k: None for k in VITAL_FIELDS}, "bmi": None, "updated_at": None, "updated_by": None}
+                "temperature_c": (25.0, 45.0), "weight_kg": (0.5, 500.0), "height_cm": (20.0, 272.0),
+                "head_circumference_cm": (20.0, 70.0)}
+EMPTY_VITALS = {**{k: None for k in VITAL_FIELDS}, "bmi": None, "weight_lb": None, "updated_at": None, "updated_by": None}
 
 
 def validate_vitals(patch: dict) -> dict:
@@ -155,6 +156,10 @@ def compute_bmi(weight_kg, height_cm):
     return round(weight_kg / ((height_cm / 100) ** 2), 1)
 
 
+def compute_weight_lb(weight_kg):
+    return round(weight_kg * 2.20462, 1) if weight_kg else None
+
+
 async def save_vitals(db, visit, patch: dict, user):
     cur = {**EMPTY_VITALS, **(visit.get("vitals") or {})}
     changed = {k: v for k, v in validate_vitals(patch).items() if v != cur.get(k)}
@@ -162,7 +167,7 @@ async def save_vitals(db, visit, patch: dict, user):
         return [], visit
     merged = {**cur, **changed}
     now = _now()
-    merged.update({"bmi": compute_bmi(merged["weight_kg"], merged["height_cm"]), "updated_at": now,
+    merged.update({"bmi": compute_bmi(merged["weight_kg"], merged["height_cm"]), "weight_lb": compute_weight_lb(merged["weight_kg"]), "updated_at": now,
                    "updated_by": {"id": user["id"], "name": user.get("name")}})
     await db[COLL].update_one({"id": visit["id"], "status": IN_PROGRESS},
                               {"$set": {"vitals": merged, "updated_at": now, "updated_by": merged["updated_by"]}})

@@ -38,6 +38,7 @@ import data_hygiene as hygiene_mod
 import visits as visits_mod
 import soap_helpers as helpers_mod
 import clinical_history as history_mod
+import diagnosis_catalog as diag_mod
 import storage
 from db import (APPT_PATIENT_STATUS, BLD_ACTIVE, BLD_PATIENT_STATUS, IMG_ACTIVE,
                 IMG_PATIENT_STATUS, MSG_ACTIVE, MSG_PATIENT_STATUS, RX_ACTIVE,
@@ -7602,13 +7603,30 @@ async def allergies_patch(patient_ref: str, record_id: str, body: dict, user: di
 
 # ============= SOAP HELPERS (read/search for Encounter use) — Phase 2A3 =============
 @api.get("/internal/soap-helpers")
-async def soap_helpers_search(search: str = "", patient_ref: Optional[str] = None,
+async def soap_helpers_search(search: str = "", patient_ref: Optional[str] = None, visit_id: Optional[str] = None,
                               user: dict = Depends(require_roles(*VISIT_WRITE_ROLES))):
+    """Templates filtered by patient sex AND the canonical Visit's encounter_type (visit_id) — suggestions only."""
     sex = None
     if patient_ref:
         ident = await visits_mod.resolve_identity(db, patient_ref, None, None)
         sex = helpers_mod.patient_sex(ident)
-    return {"helpers": await helpers_mod.search(db, user, search, sex), "patient_sex": sex}
+    encounter_type = None
+    if visit_id:
+        v = await _get_visit_scoped(visit_id, user)
+        encounter_type = v.get("encounter_type")
+    prof = helpers_mod.profile_for(encounter_type)
+    return {"helpers": await helpers_mod.search(db, user, search, sex, encounter_type=encounter_type), "patient_sex": sex,
+            "encounter_type": encounter_type, "template_profile": {"key": prof["key"], "label": prof["label"], "show": list(prof["show"])}}
+
+
+# ============= DIAGNOSIS TEXT CATALOG (tabDiagText) — search only, selection is explicit =============
+@api.get("/internal/diagnosis-catalog/search")
+async def diagnosis_catalog_search(q: str = "", patient_ref: Optional[str] = None, user: dict = Depends(require_roles(*CLINIC_ROLES))):
+    sex = None
+    if patient_ref:
+        ident = await visits_mod.resolve_identity(db, patient_ref, None, None)
+        sex = helpers_mod.patient_sex(ident)
+    return {"items": await diag_mod.search(db, q, sex), "patient_sex": sex}
 
 
 @api.get("/internal/soap-helpers/{helper_id}")
@@ -9109,6 +9127,7 @@ async def startup():
     await slots_mod.ensure_indexes(db)
     await visits_mod.ensure_indexes(db)
     await history_mod.ensure_indexes(db)
+    await diag_mod.ensure_indexes(db)
     try:
         storage.init_storage()
         logger.info("Storage initialized")

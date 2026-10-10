@@ -1,0 +1,115 @@
+{
+  "schema": "vien.encounter_template_profiles.v1",
+  "purpose": "Filter SOAP templates/helpers by the selected Visit type while preserving existing SOAP text.",
+  "safety_rules": [
+    "Encounter type selects which templates are suggested; it must never auto-document a clinical finding.",
+    "Template insertion is always physician initiated.",
+    "Changing/filtering templates must never delete or overwrite existing SOAP text.",
+    "Physical-exam templates should not be suggested for Telephone or Proxy encounters.",
+    "Video may show visual-observation templates but not hands-on exam findings unless explicitly selected by the physician."
+  ],
+  "recommended_soap_helper_extension": {
+    "encounter_types": [
+      "ANY",
+      "REGULAR_IN_CLINIC",
+      "TELEPHONE",
+      "VIDEO",
+      "PROXY",
+      "PHYSICAL"
+    ],
+    "template_category": "string",
+    "source_legacy_table": "string|null",
+    "source_legacy_id": "number|null"
+  },
+  "profiles": [
+    {
+      "encounter_type": "REGULAR_IN_CLINIC",
+      "label": "Regular / In-Clinic",
+      "show_template_types": [
+        "ANY",
+        "REGULAR_IN_CLINIC",
+        "PHYSICAL"
+      ],
+      "hide_template_types": [
+        "TELEPHONE",
+        "VIDEO",
+        "PROXY"
+      ],
+      "suggested_manual_templates": []
+    },
+    {
+      "encounter_type": "PHYSICAL",
+      "label": "Physical",
+      "show_template_types": [
+        "ANY",
+        "PHYSICAL"
+      ],
+      "hide_template_types": [
+        "TELEPHONE",
+        "VIDEO",
+        "PROXY"
+      ],
+      "suggested_manual_templates": []
+    },
+    {
+      "encounter_type": "TELEPHONE",
+      "label": "Telephone",
+      "show_template_types": [
+        "ANY",
+        "TELEPHONE"
+      ],
+      "hide_template_types": [
+        "PHYSICAL",
+        "VIDEO",
+        "PROXY"
+      ],
+      "suggested_manual_templates": [
+        {
+          "name": "Telephone — Sounds well",
+          "objective_text": "Sounds well over telephone.",
+          "auto_insert": false
+        }
+      ]
+    },
+    {
+      "encounter_type": "VIDEO",
+      "label": "Video",
+      "show_template_types": [
+        "ANY",
+        "VIDEO"
+      ],
+      "hide_template_types": [
+        "PHYSICAL",
+        "TELEPHONE",
+        "PROXY"
+      ],
+      "suggested_manual_templates": [
+        {
+          "name": "Video — Looks well",
+          "objective_text": "Looks well on video.",
+          "auto_insert": false
+        }
+      ]
+    },
+    {
+      "encounter_type": "PROXY",
+      "label": "Proxy",
+      "show_template_types": [
+        "ANY",
+        "PROXY"
+      ],
+      "hide_template_types": [
+        "PHYSICAL",
+        "TELEPHONE",
+        "VIDEO"
+      ],
+      "suggested_manual_templates": [
+        {
+          "name": "Proxy — No physical exam",
+          "objective_text": "No physical examination performed.",
+          "auto_insert": false
+        }
+      ]
+    }
+  ]
+}

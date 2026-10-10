@@ -15,18 +15,20 @@ export function SoapHelperTool({ visitId, patientRef, onInsert }) {
     const [sel, setSel] = useState(null);
     const [collapsed, setCollapsed] = useState(false);
     const [patientSex, setPatientSex] = useState(null);
+    const [profile, setProfile] = useState(null);
     const timer = useRef(null);
     const box = useRef(null);
 
     useEffect(() => {
         clearTimeout(timer.current);
         timer.current = setTimeout(() => {
-            api.get("/internal/soap-helpers", { params: { search: q, patient_ref: patientRef } })
-                .then(({ data }) => { setResults(data.helpers); setPatientSex(data.patient_sex); setHi(0); })
+            // visit_id lets the server filter by the CANONICAL visit encounter_type (no separate frontend type state)
+            api.get("/internal/soap-helpers", { params: { search: q, patient_ref: patientRef, visit_id: visitId || undefined } })
+                .then(({ data }) => { setResults(data.helpers); setPatientSex(data.patient_sex); setProfile(data.template_profile); setHi(0); })
                 .catch(() => setResults([]));
         }, 250);
         return () => clearTimeout(timer.current);
-    }, [q, patientRef]);
+    }, [q, patientRef, visitId]);
 
     useEffect(() => {
         const h = (e) => { if (box.current && !box.current.contains(e.target)) setOpen(false); };
@@ -62,8 +64,9 @@ export function SoapHelperTool({ visitId, patientRef, onInsert }) {
     return (
         <section className="bg-white border border-slate-300 rounded-sm" data-testid="soap-helper-tool">
             <div className="flex items-center gap-1.5 px-2 py-1 border-b border-slate-200 text-[11px] font-bold uppercase tracking-wide text-slate-600">
-                <Wand2 className="w-3.5 h-3.5" /> SOAP Temp.
-                {patientSex === null && <span className="ml-auto normal-case font-medium text-[10px] text-slate-400" title="Patient sex not on record — only unfiltered templates are shown" data-testid="helper-sex-unknown">sex-filtered templates hidden</span>}
+                <Wand2 className="w-3.5 h-3.5 shrink-0" /> <span className="whitespace-nowrap">SOAP Temp.</span>
+                {profile && <span className="ml-1 whitespace-nowrap normal-case tracking-normal font-semibold text-[10px] px-1 rounded-sm bg-visita-bg text-visita-ribbon border border-slate-300" data-testid="template-profile" data-profile={profile.key || "GENERAL"}>{profile.label}</span>}
+                {patientSex === null && <span className="ml-auto normal-case font-medium text-[10px] text-slate-400 truncate" title="Patient sex not on record — only unfiltered templates are shown" data-testid="helper-sex-unknown">sex-filtered hidden</span>}
             </div>
             <div className="p-2 space-y-2">
                 <div className="relative" ref={box}>

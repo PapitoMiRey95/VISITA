@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
-import { DoorOpen, Hospital, Phone, Video, Users, HeartPulse } from "lucide-react";
+import { DoorOpen, Hospital, Phone, Video, Users } from "lucide-react";
 import { api } from "../lib/api";
 import { formatDateTime } from "../lib/date";
 import { Button } from "../components/ui/button";
@@ -11,7 +11,6 @@ export const ENCOUNTER_TYPES = [
     { value: "TELEPHONE", label: "Telephone", Icon: Phone },
     { value: "VIDEO", label: "Video", Icon: Video },
     { value: "PROXY", label: "Proxy", Icon: Users },
-    { value: "PHYSICAL", label: "Physical", Icon: HeartPulse },
 ];
 export const encounterTypeLabel = (v) => ENCOUNTER_TYPES.find((t) => t.value === v)?.label || v || "—";
 

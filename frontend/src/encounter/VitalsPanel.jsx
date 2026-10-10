@@ -100,6 +100,7 @@ export function VitalsPanel({ visitId, patientRef, initial, onInsertObjective })
         if (key === "⌫") setField(k, cur.slice(0, -1));
         else if (key === "C") setField(k, "");
         else if (key === ".") { if (DECIMAL_OK[k] && !cur.includes(".")) setField(k, cur ? cur + "." : "0."); }
+        else if (key === "0." || key === "1.") { if (DECIMAL_OK[k] && !cur.includes(".")) setField(k, cur + key); }
         else setField(k, cur + key);
         inputs.current[k]?.focus();
     };
@@ -152,8 +153,12 @@ export function VitalsPanel({ visitId, patientRef, initial, onInsertObjective })
                         {Array.from({ length: 10 }, (_, i) => String(10 + i)).map((d) => <Key key={d} label={d} onClick={() => keypad(d)} testid={`keypad-${d}`} className="rounded-none border-0" />)}
                         {Array.from({ length: 10 }, (_, i) => String(i)).map((d) => <Key key={d} label={d} onClick={() => keypad(d)} testid={`keypad-${d}`} className="rounded-none border-0" />)}
                     </div>
-                    <div className="grid grid-cols-2 gap-px shrink-0 bg-[#14532d] border border-[#14532d] rounded-sm overflow-hidden" data-testid="utility-keys">
-                        <Key label="." onClick={() => keypad(".")} testid="keypad-dot" tone="utility" className={`w-8 rounded-tl-sm ${active && !DECIMAL_OK[active] ? "opacity-40" : ""}`} />
+                    <div className="grid grid-cols-3 gap-px shrink-0 bg-[#14532d] border border-[#14532d] rounded-sm overflow-hidden" data-testid="utility-keys">
+                        {["0.", "1."].map((d) => (
+                            <Key key={d} label={d} onClick={() => keypad(d)} testid={`keypad-${d === "0." ? "0dot" : "1dot"}`} tone="utility" disabled={Boolean(active && !DECIMAL_OK[active])}
+                                className={`w-8 border-0 rounded-none ${active && !DECIMAL_OK[active] ? "opacity-40 cursor-not-allowed" : ""}`} />
+                        ))}
+                        <Key label="." onClick={() => keypad(".")} testid="keypad-dot" tone="utility" disabled={Boolean(active && !DECIMAL_OK[active])} className={`w-8 border-0 rounded-none ${active && !DECIMAL_OK[active] ? "opacity-40 cursor-not-allowed" : ""}`} />
                         <Key onClick={() => keypad("⌫")} testid="keypad-backspace" aria-label="Backspace" tone="utility" className="w-8 border-0 rounded-none"><Delete className="w-4 h-4 mx-auto" /></Key>
                         <Key onClick={() => keypad("C")} testid="keypad-clear" aria-label="Clear field" tone="utility" className="w-8 border-0 rounded-none"><Eraser className="w-3.5 h-3.5 mx-auto" /></Key>
                         <Key onClick={next} testid="keypad-next" tone="primary" className="w-8 border-0 rounded-none" aria-label="Next field"><CornerDownLeft className="w-4 h-4 mx-auto" /></Key>

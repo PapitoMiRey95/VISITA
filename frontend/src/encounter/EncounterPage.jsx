@@ -178,7 +178,7 @@ function Workspace({ shell, visit, setVisit }) {
     return (
         <div className="h-screen bg-visita-bg flex flex-col" data-testid="encounter-mode" data-timer-state={timerState}>
             <SafetyHeader visit={shell} typeLabel={visit ? encounterTypeLabel(visit.encounter_type) : "Not started"} onExit={onExit} exiting={exiting} />
-            <main className="flex-1 min-h-0 grid grid-cols-[minmax(0,1.15fr)_minmax(290px,0.72fr)_minmax(270px,0.95fr)] gap-0 p-0 bg-white border-t border-black">
+            <main className="flex-1 min-h-0 grid grid-cols-[minmax(0,1.25fr)_minmax(272px,0.62fr)_minmax(270px,1fr)] gap-0 p-0 bg-white border-t border-black">
                 <div className="min-h-0 flex flex-col border-r border-black" data-testid="encounter-left">
                     <fieldset disabled={!visit} className="contents"><div className="flex-[3] min-h-0"><SoapColumn soap={soap} onChange={onChange} onBlur={onBlur} /></div></fieldset>
                     <div className="flex-[1.15] min-h-[120px] border-t border-black [&>section]:border-0 [&>section]:rounded-none"><IssuePlanHistory patientRef={patientRef} currentVisitId={visit?.id} /></div>

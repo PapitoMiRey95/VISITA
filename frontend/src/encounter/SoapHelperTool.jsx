@@ -62,18 +62,18 @@ export function SoapHelperTool({ visitId, patientRef, onInsert }) {
     return (
         <section className="bg-white border border-slate-300 rounded-sm" data-testid="soap-helper-tool">
             <div className="flex items-center gap-1.5 px-2 py-1 border-b border-slate-200 text-[11px] font-bold uppercase tracking-wide text-slate-600">
-                <Wand2 className="w-3.5 h-3.5" /> SOAP helper
-                {patientSex === null && <span className="ml-auto normal-case font-medium text-[10px] text-slate-400" title="Patient sex not on record — only unfiltered helpers are shown" data-testid="helper-sex-unknown">sex-filtered helpers hidden</span>}
+                <Wand2 className="w-3.5 h-3.5" /> SOAP Temp.
+                {patientSex === null && <span className="ml-auto normal-case font-medium text-[10px] text-slate-400" title="Patient sex not on record — only unfiltered templates are shown" data-testid="helper-sex-unknown">sex-filtered templates hidden</span>}
             </div>
             <div className="p-2 space-y-2">
                 <div className="relative" ref={box}>
                     <Search className="absolute left-2 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-slate-400" />
                     <input value={q} onChange={(e) => { setQ(e.target.value); setOpen(true); }} onFocus={() => setOpen(true)} onKeyDown={onKey}
-                        placeholder="Search / select helper…" data-testid="helper-search" role="combobox" aria-expanded={open}
+                        placeholder="Search / select template…" data-testid="helper-search" role="combobox" aria-expanded={open}
                         className="w-full h-7 pl-7 pr-2 text-xs rounded-sm border border-slate-300 bg-white focus:outline-none focus:ring-2 focus:ring-cyan-500 focus:border-visita-ribbon" />
                     {open && (
                         <ul className="absolute z-30 mt-0.5 w-full max-h-56 overflow-y-auto bg-white border border-slate-300 rounded-sm shadow-lg text-xs" role="listbox" data-testid="helper-results">
-                            {!results.length ? <li className="px-2 py-1.5 text-slate-400 italic" data-testid="helper-no-results">No helpers found.</li> : results.map((r, i) => (
+                            {!results.length ? <li className="px-2 py-1.5 text-slate-400 italic" data-testid="helper-no-results">No templates found.</li> : results.map((r, i) => (
                                 <li key={r.id} role="option" aria-selected={i === hi} onMouseDown={() => pick(r)} onMouseEnter={() => setHi(i)}
                                     data-testid={`helper-option-${r.key}`}
                                     className={`px-2 py-1 cursor-pointer flex items-center gap-2 ${i === hi ? "bg-visita-bg" : ""}`}>
@@ -98,7 +98,7 @@ export function SoapHelperTool({ visitId, patientRef, onInsert }) {
                             <button type="button" className="ml-auto text-slate-500 hover:text-slate-800" onClick={() => setCollapsed((c) => !c)} data-testid="helper-preview-toggle" aria-label="Toggle preview">
                                 {collapsed ? <ChevronDown className="w-3.5 h-3.5" /> : <ChevronUp className="w-3.5 h-3.5" />}
                             </button>
-                            <button type="button" className="text-slate-500 hover:text-slate-800" onClick={() => setSel(null)} data-testid="helper-preview-close" aria-label="Clear helper"><X className="w-3.5 h-3.5" /></button>
+                            <button type="button" className="text-slate-500 hover:text-slate-800" onClick={() => setSel(null)} data-testid="helper-preview-close" aria-label="Clear template"><X className="w-3.5 h-3.5" /></button>
                         </div>
                         {!collapsed && (
                             <div className="px-2 py-1.5 space-y-1.5 max-h-48 overflow-y-auto">

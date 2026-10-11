@@ -16,6 +16,7 @@ export function SoapHelperTool({ visitId, patientRef, onInsert }) {
     const [collapsed, setCollapsed] = useState(false);
     const [patientSex, setPatientSex] = useState(null);
     const [profile, setProfile] = useState(null);
+    const [sexHidden, setSexHidden] = useState(0);
     const timer = useRef(null);
     const box = useRef(null);
 
@@ -24,7 +25,7 @@ export function SoapHelperTool({ visitId, patientRef, onInsert }) {
         timer.current = setTimeout(() => {
             // visit_id lets the server filter by the CANONICAL visit encounter_type (no separate frontend type state)
             api.get("/internal/soap-helpers", { params: { search: q, patient_ref: patientRef, visit_id: visitId || undefined } })
-                .then(({ data }) => { setResults(data.helpers); setPatientSex(data.patient_sex); setProfile(data.template_profile); setHi(0); })
+                .then(({ data }) => { setResults(data.helpers); setPatientSex(data.patient_sex); setProfile(data.template_profile); setSexHidden(data.sex_hidden_count || 0); setHi(0); })
                 .catch(() => setResults([]));
         }, 250);
         return () => clearTimeout(timer.current);
@@ -85,7 +86,11 @@ export function SoapHelperTool({ visitId, patientRef, onInsert }) {
                         className="w-full h-7 pl-7 pr-2 text-xs rounded-sm border border-slate-300 bg-white focus:outline-none focus:ring-2 focus:ring-cyan-500 focus:border-visita-ribbon" />
                     {open && (
                         <ul className="absolute z-30 mt-0.5 w-full max-h-56 overflow-y-auto bg-white border border-slate-300 rounded-sm shadow-lg text-xs" role="listbox" data-testid="helper-results">
-                            {!results.length ? <li className="px-2 py-1.5 text-slate-400 italic" data-testid="helper-no-results">No templates found.</li> : results.map((r, i) => (
+                            {!results.length ? (
+                                sexHidden > 0
+                                    ? <li className="px-2 py-1.5 text-[11px] text-amber-800 bg-amber-50" data-testid="helper-sex-hidden-empty">Patient sex unavailable — sex-specific templates hidden ({sexHidden})</li>
+                                    : <li className="px-2 py-1.5 text-slate-400 italic" data-testid="helper-no-results">No templates found.</li>
+                            ) : results.map((r, i) => (
                                 <li key={r.id} role="option" aria-selected={i === hi} onMouseDown={() => pick(r)} onMouseEnter={() => setHi(i)}
                                     data-testid={`helper-option-${r.key}`}
                                     className={`px-2 py-1 cursor-pointer flex items-center gap-2 ${i === hi ? "bg-visita-bg" : ""}`}>
@@ -106,9 +111,9 @@ export function SoapHelperTool({ visitId, patientRef, onInsert }) {
                     )}
                 </div>
 
-                {patientSex === null && (
+                {patientSex === null && sexHidden > 0 && (
                     <div className="text-[10px] text-amber-700 bg-amber-50 border border-amber-200 rounded-sm px-2 py-0.5" data-testid="helper-sex-unknown">
-                        Patient sex unavailable — sex-specific templates hidden
+                        Patient sex unavailable — sex-specific templates hidden ({sexHidden})
                     </div>
                 )}
                 {sel && (

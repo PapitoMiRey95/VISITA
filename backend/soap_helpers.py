@@ -57,7 +57,8 @@ def compact(h: dict) -> dict:
             "synthetic_sample": bool(h.get("synthetic_sample"))}
 
 
-async def search(db, user: dict, q: str, sex: str | None, limit: int = 30, encounter_type: str | None = None) -> list:
+async def search(db, user: dict, q: str, sex: str | None, limit: int = 60, encounter_type: str | None = None) -> dict:
+    """Returns {items, sex_hidden_count}. sex_hidden_count = type-eligible templates hidden ONLY because patient sex is UNKNOWN."""
     f = scope_filter(user)
     show = profile_for(encounter_type)["show"]
     if q:
@@ -66,7 +67,10 @@ async def search(db, user: dict, q: str, sex: str | None, limit: int = 30, encou
         f = {"$and": [f, {"$or": [{"name": rx}, {"key": rx}, {"description": rx}, {"subjective_text": rx}, {"objective_text": rx},
                                   {"plan_text": rx}, {"template_text": rx}, {"pmhx_description": rx}]}]}
     rows = await db[COLL].find(f, {"_id": 0}).to_list(400)
-    # sex filter: ANY/null always; MALE/FEMALE only when the patient's authoritative sex matches; unknown -> ANY only
+    # encounter-type filter first: suggestions only — never touches the note
+    rows = [h for h in rows if visible_for(h, show)]
+    # sex filter: ANY/null always; MALE/FEMALE only when the patient's authoritative sex matches; UNKNOWN -> hidden (never guessed)
+    sex_hidden = 0 if sex else sum(1 for h in rows if (h.get("sex_filter") or "ANY") != "ANY")
     rows = [h for h in rows if (h.get("sex_filter") or "ANY") == "ANY" or (sex and h.get("sex_filter") == sex)]
     ql = (q or "").strip().lower()
     specific = tuple(t for t in show if t != "ANY")
@@ -80,9 +84,7 @@ async def search(db, user: dict, q: str, sex: str | None, limit: int = 30, encou
         src_rank = 0 if any(t in specific for t in (h.get("encounter_types") or [])) else 1 if (h.get("source_type") or SOURCE_VIEN) == SOURCE_VIEN else 2
         return (text_rank, src_rank, fav_rank, n)
     rows.sort(key=rank)
-    # encounter-type filter: suggestions only — never touches the note
-    rows = [h for h in rows if visible_for(h, show)]
-    return [compact(h) for h in rows[:limit]]
+    return {"items": [compact(h) for h in rows[:limit]], "sex_hidden_count": sex_hidden}
 
 
 async def get(db, user: dict, helper_id: str):

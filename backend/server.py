@@ -7615,7 +7615,8 @@ async def soap_helpers_search(search: str = "", patient_ref: Optional[str] = Non
         v = await _get_visit_scoped(visit_id, user)
         encounter_type = v.get("encounter_type")
     prof = helpers_mod.profile_for(encounter_type)
-    return {"helpers": await helpers_mod.search(db, user, search, sex, encounter_type=encounter_type), "patient_sex": sex,
+    res = await helpers_mod.search(db, user, search, sex, encounter_type=encounter_type)
+    return {"helpers": res["items"], "sex_hidden_count": res["sex_hidden_count"], "patient_sex": sex,
             "encounter_type": encounter_type, "template_profile": {"key": prof["key"], "label": prof["label"], "show": list(prof["show"])}}
 
 

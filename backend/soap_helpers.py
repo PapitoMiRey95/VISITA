@@ -31,10 +31,17 @@ def visible_for(h: dict, show: tuple) -> bool:
 SEX_MAP = {"male": "MALE", "m": "MALE", "female": "FEMALE", "f": "FEMALE"}
 
 
+DIRECTORY_SEX_CODE = {"1": "MALE", "2": "FEMALE"}  # OHIP/Access directory sex_code standard
+
+
 def patient_sex(identity) -> str | None:
-    """Authoritative portal `patients.sex` only ('Male'/'Female'); anything else -> None (never guessed)."""
+    """Portal `patients.sex` ('Male'/'Female') first; else the Access directory `sex_code` (1=Male, 2=Female).
+    Anything else -> None (never guessed)."""
     raw = ((identity or {}).get("portal") or {}).get("sex")
-    return SEX_MAP.get(str(raw).strip().lower()) if raw else None
+    if raw and SEX_MAP.get(str(raw).strip().lower()):
+        return SEX_MAP[str(raw).strip().lower()]
+    code = ((identity or {}).get("directory") or {}).get("sex_code")
+    return DIRECTORY_SEX_CODE.get(str(code).strip()) if code is not None else None
 
 
 def scope_filter(user: dict) -> dict:
@@ -47,7 +54,8 @@ SOURCE_LEGACY, SOURCE_VIEN = "LEGACY_TABDIAGTEXT", "VIEN_SOAP_TEMPLATE"
 
 def compact(h: dict) -> dict:
     return {"id": h["id"], "key": h.get("key"), "name": h.get("name"), "sex_filter": h.get("sex_filter") or "ANY",
-            "source_type": h.get("source_type") or SOURCE_VIEN, "legacy_id": h.get("legacy_id"),
+            "source_type": h.get("source_type") or SOURCE_VIEN, "legacy_id": h.get("legacy_id"), "legacy_id_raw": h.get("legacy_id_raw"),
+            "description": h.get("description"), "favorite": bool(h.get("favorite")),
             "has_template_text": bool((h.get("template_text") or "").strip()), "pmhx_description": h.get("pmhx_description"),
             "encounter_types": h.get("encounter_types") or ["ANY"], "template_category": h.get("template_category"),
             "yes_no_mode": bool(h.get("yes_no_mode")), "has_subjective": bool((h.get("subjective_text") or "").strip()),
@@ -60,20 +68,23 @@ async def search(db, user: dict, q: str, sex: str | None, limit: int = 30, encou
     show = profile_for(encounter_type)["show"]
     if q:
         rx = {"$regex": re.escape(q.strip()), "$options": "i"}
-        # Key / Text (name, template_text) / PMHxDescript
-        f = {"$and": [f, {"$or": [{"name": rx}, {"key": rx}, {"template_text": rx}, {"pmhx_description": rx}]}]}
-    rows = await db[COLL].find(f, {"_id": 0, "subjective_text": 0, "objective_text": 0, "plan_text": 0}).to_list(400)
+        # Nombre / Description first-class; S/O/P bodies also searchable
+        f = {"$and": [f, {"$or": [{"name": rx}, {"key": rx}, {"description": rx}, {"subjective_text": rx}, {"objective_text": rx},
+                                  {"plan_text": rx}, {"template_text": rx}, {"pmhx_description": rx}]}]}
+    rows = await db[COLL].find(f, {"_id": 0}).to_list(400)
     # sex filter: ANY/null always; MALE/FEMALE only when the patient's authoritative sex matches; unknown -> ANY only
     rows = [h for h in rows if (h.get("sex_filter") or "ANY") == "ANY" or (sex and h.get("sex_filter") == sex)]
     ql = (q or "").strip().lower()
     specific = tuple(t for t in show if t != "ANY")
 
     def rank(h):
-        n, k = (h.get("name") or "").lower(), (h.get("key") or "").lower()
-        text_rank = 0 if ql and (n.startswith(ql) or k.startswith(ql)) else 1 if ql and (ql in n or ql in k) else 2
+        n, k, d = (h.get("name") or "").lower(), (h.get("key") or "").lower(), (h.get("description") or "").lower()
+        text_rank = (0 if ql and (n.startswith(ql) or k.startswith(ql) or d.startswith(ql)) else 1 if ql and (ql in n or ql in k)
+                     else 2 if ql and ql in d else 3)
+        fav_rank = 0 if h.get("favorite") else 1
         # visit-type-specific VIen templates surface first, then general VIen, then legacy tabDiagText
         src_rank = 0 if any(t in specific for t in (h.get("encounter_types") or [])) else 1 if (h.get("source_type") or SOURCE_VIEN) == SOURCE_VIEN else 2
-        return (text_rank, src_rank, n)
+        return (text_rank, src_rank, fav_rank, n)
     rows.sort(key=rank)
     # encounter-type filter: suggestions only — never touches the note
     rows = [h for h in rows if visible_for(h, show)]

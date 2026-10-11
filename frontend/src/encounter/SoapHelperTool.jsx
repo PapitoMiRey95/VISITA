@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from "react";
-import { Search, Wand2, X, ChevronDown, ChevronUp } from "lucide-react";
+import { Search, Wand2, X, ChevronDown, ChevronUp, Star } from "lucide-react";
 import { toast } from "sonner";
 import { api, formatErr } from "../lib/api";
 
@@ -91,8 +91,8 @@ export function SoapHelperTool({ visitId, patientRef, onInsert }) {
                                     data-testid={`helper-option-${r.key}`}
                                     className={`px-2 py-1 cursor-pointer flex items-center gap-2 ${i === hi ? "bg-visita-bg" : ""}`}>
                                     <span className="min-w-0 flex-1">
-                                        <span className="font-semibold truncate block">{r.name}</span>
-                                        {r.source_type === "LEGACY_TABDIAGTEXT" && r.pmhx_description && r.pmhx_description.toLowerCase() !== (r.name || "").toLowerCase() && <span className="block text-[10px] text-slate-500 truncate">{r.pmhx_description}</span>}
+                                        <span className="font-semibold truncate block">{r.favorite && <Star className="inline w-3 h-3 -mt-0.5 mr-0.5 text-amber-500" fill="currentColor" data-testid="helper-favorite" />}{r.name}</span>
+                                        {r.description && <span className="block text-[10px] text-slate-500 truncate" data-testid="helper-description">{r.description}</span>}
                                     </span>
                                     <span className="ml-auto flex gap-0.5 text-[9px] font-bold text-slate-500 shrink-0">
                                         {r.source_type === "LEGACY_TABDIAGTEXT" && <span className="px-1 bg-amber-50 text-amber-800 rounded-sm" title="Legacy tabDiagText template">TXT</span>}
@@ -110,7 +110,8 @@ export function SoapHelperTool({ visitId, patientRef, onInsert }) {
                 {sel && (
                     <div className="border border-slate-200 rounded-sm bg-slate-50" data-testid="helper-preview">
                         <div className="flex items-center gap-1 px-2 py-1 border-b border-slate-200">
-                            <span className="text-xs font-bold text-slate-800 truncate" data-testid="helper-preview-name">{sel.name}</span>
+                            <span className="text-xs font-bold text-slate-800 truncate" data-testid="helper-preview-name">{sel.favorite && <Star className="inline w-3 h-3 -mt-0.5 mr-0.5 text-amber-500" fill="currentColor" />}{sel.name}</span>
+                            {sel.source_type === "LEGACY_TABHXTMPSOAP_F" && <span className="text-[9px] font-bold px-1 rounded-sm bg-slate-100 text-slate-600 shrink-0" title={`Access tabHxTmpSOAP_F · ID ${sel.legacy_id_raw}`}>ACCESS</span>}
                             {sel.synthetic_sample && <span className="text-[9px] font-bold px-1 rounded-sm bg-amber-100 text-amber-800">SYNTHETIC</span>}
                             <button type="button" className="ml-auto text-slate-500 hover:text-slate-800" onClick={() => setCollapsed((c) => !c)} data-testid="helper-preview-toggle" aria-label="Toggle preview">
                                 {collapsed ? <ChevronDown className="w-3.5 h-3.5" /> : <ChevronUp className="w-3.5 h-3.5" />}
@@ -119,6 +120,7 @@ export function SoapHelperTool({ visitId, patientRef, onInsert }) {
                         </div>
                         {!collapsed && (
                             <div className="px-2 py-1.5 space-y-1.5 max-h-48 overflow-y-auto">
+                                {sel.description && <div className="text-[10px] text-slate-500 italic" data-testid="helper-preview-description">{sel.description}</div>}
                                 {isLegacy && (
                                     <div className="text-[11px] text-slate-700 whitespace-pre-wrap leading-snug" data-testid="helper-preview-legacy">
                                         {sel.template_text}

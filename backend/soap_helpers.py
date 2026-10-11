@@ -31,17 +31,11 @@ def visible_for(h: dict, show: tuple) -> bool:
 SEX_MAP = {"male": "MALE", "m": "MALE", "female": "FEMALE", "f": "FEMALE"}
 
 
-DIRECTORY_SEX_CODE = {"1": "MALE", "2": "FEMALE"}  # OHIP/Access directory sex_code standard
-
-
 def patient_sex(identity) -> str | None:
-    """Portal `patients.sex` ('Male'/'Female') first; else the Access directory `sex_code` (1=Male, 2=Female).
-    Anything else -> None (never guessed)."""
+    """Authoritative portal `patients.sex` only ('Male'/'Female'); anything else -> None (never guessed).
+    NOTE: directory `sex_code` (raw '1'/'2') is intentionally NOT used — no canonical VIen mapping exists yet (pending confirmation)."""
     raw = ((identity or {}).get("portal") or {}).get("sex")
-    if raw and SEX_MAP.get(str(raw).strip().lower()):
-        return SEX_MAP[str(raw).strip().lower()]
-    code = ((identity or {}).get("directory") or {}).get("sex_code")
-    return DIRECTORY_SEX_CODE.get(str(code).strip()) if code is not None else None
+    return SEX_MAP.get(str(raw).strip().lower()) if raw else None
 
 
 def scope_filter(user: dict) -> dict:

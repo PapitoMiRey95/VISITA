@@ -60,7 +60,7 @@ async def main(path):
         res = await db.soap_helpers.update_one(
             {"source_type": SOURCE_TYPE, "import_key": r["import_key"], "practice_id": practice["id"]},
             {"$set": {**r, "key": r["name"], "source_type": SOURCE_TYPE, "legacy_source": "tabHxTmpSOAP_F", "active": True, "updated_at": now},
-             "$setOnInsert": {"id": str(uuid.uuid4()), "practice_id": practice["id"], "physician_user_id": None, "encounter_types": ["ANY"],
+             "$setOnInsert": {"id": str(uuid.uuid4()), "practice_id": practice["id"], "physician_user_id": None, "encounter_types": ["REGULAR_IN_CLINIC", "PHYSICAL"],
                               "yes_no_mode": False, "created_at": now, "created_by": {"id": "import", "name": "tabHxTmpSOAP_F import"}}},
             upsert=True)
         counts["imported" if res.upserted_id else "updated"] += 1

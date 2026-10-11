@@ -28,14 +28,14 @@ def profile_for(encounter_type: str | None) -> dict:
 def visible_for(h: dict, show: tuple) -> bool:
     types = h.get("encounter_types") or ["ANY"]
     return any(t in show for t in types)
-SEX_MAP = {"male": "MALE", "m": "MALE", "female": "FEMALE", "f": "FEMALE"}
 
 
 def patient_sex(identity) -> str | None:
-    """Authoritative portal `patients.sex` only ('Male'/'Female'); anything else -> None (never guessed).
-    NOTE: directory `sex_code` (raw '1'/'2') is intentionally NOT used — no canonical VIen mapping exists yet (pending confirmation)."""
-    raw = ((identity or {}).get("portal") or {}).get("sex")
-    return SEX_MAP.get(str(raw).strip().lower()) if raw else None
+    """Canonical resolver (patient_sex.resolve_patient_sex); UNKNOWN -> None so only unfiltered templates show."""
+    from patient_sex import resolve_patient_sex, UNKNOWN
+    ident = identity or {}
+    v = resolve_patient_sex(ident.get("portal"), ident.get("directory"))
+    return None if v == UNKNOWN else v
 
 
 def scope_filter(user: dict) -> dict:

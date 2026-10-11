@@ -76,7 +76,6 @@ export function SoapHelperTool({ visitId, patientRef, onInsert }) {
             <div className="flex items-center gap-1.5 px-2 py-1 border-b border-slate-200 text-[11px] font-bold uppercase tracking-wide text-slate-600">
                 <Wand2 className="w-3.5 h-3.5 shrink-0" /> <span className="whitespace-nowrap">SOAP Temp.</span>
                 {profile && <span className="ml-1 whitespace-nowrap normal-case tracking-normal font-semibold text-[10px] px-1 rounded-sm bg-visita-bg text-visita-ribbon border border-slate-300" data-testid="template-profile" data-profile={profile.key || "GENERAL"}>{profile.label}</span>}
-                {patientSex === null && <span className="ml-auto normal-case font-medium text-[10px] text-slate-400 truncate" title="Patient sex not on record — only unfiltered templates are shown" data-testid="helper-sex-unknown">sex-filtered hidden</span>}
             </div>
             <div className="p-2 space-y-2">
                 <div className="relative" ref={box}>
@@ -107,6 +106,11 @@ export function SoapHelperTool({ visitId, patientRef, onInsert }) {
                     )}
                 </div>
 
+                {patientSex === null && (
+                    <div className="text-[10px] text-amber-700 bg-amber-50 border border-amber-200 rounded-sm px-2 py-0.5" data-testid="helper-sex-unknown">
+                        Patient sex unavailable — sex-specific templates hidden
+                    </div>
+                )}
                 {sel && (
                     <div className="border border-slate-200 rounded-sm bg-slate-50" data-testid="helper-preview">
                         <div className="flex items-center gap-1 px-2 py-1 border-b border-slate-200">

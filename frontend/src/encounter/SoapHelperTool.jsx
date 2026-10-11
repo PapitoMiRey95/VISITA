@@ -53,22 +53,23 @@ export function SoapHelperTool({ visitId, patientRef, onInsert }) {
     };
 
     const isLegacy = sel?.source_type === "LEGACY_TABDIAGTEXT";
-    const avail = sel && !isLegacy ? SECTIONS.filter(([, , f]) => (sel[f] || "").trim()) : [];
-    /* Legacy tabDiagText has no authoritative S/O/A/P destination — the physician picks the section explicitly. */
-    const insertLegacy = (section) => {
-        const text = (sel.template_text || "").trim();
-        if (!text) return;
-        onInsert({ [section]: text });
-        api.post(`/internal/visits/${visitId}/helper-used`, { helper_id: sel.id, sections_inserted: [section] }).catch(() => {});
-        toast.success(`Inserted into ${section[0].toUpperCase()} from ${sel.name}`);
+    /* Content available per section. Legacy tabDiagText = one undifferentiated Text: physician picks Sbj/Obj/Pln; SOP disabled.
+       VIen structured templates = their own subjective/objective/plan components; SOP distributes each to its field. */
+    const legacyText = isLegacy ? (sel.template_text || "").trim() : "";
+    const content = !sel ? {} : isLegacy
+        ? Object.fromEntries(SECTIONS.map(([k]) => [k, legacyText]))
+        : Object.fromEntries(SECTIONS.map(([k, , f]) => [k, (sel[f] || "").trim()]).filter(([, t]) => t));
+    const avail = SECTIONS.filter(([k]) => content[k]);
+    const sopEnabled = Boolean(sel) && !isLegacy && avail.length > 0;
+    const doInsert = (payload) => {
+        const keys = Object.keys(payload);
+        if (!keys.length) return;
+        onInsert(payload); // append-only, same autosave path
+        api.post(`/internal/visits/${visitId}/helper-used`, { helper_id: sel.id, sections_inserted: keys }).catch(() => {});
+        toast.success(`Appended to ${keys.map((k) => ({ subjective: "Sbj", objective: "Obj", plan: "Pln" })[k]).join(" + ")} from ${sel.name}`);
     };
-    const insert = (keys) => {
-        const payload = Object.fromEntries(avail.filter(([k]) => keys.includes(k)).map(([k, , f]) => [k, sel[f].trim()]));
-        if (!Object.keys(payload).length) return;
-        onInsert(payload);
-        api.post(`/internal/visits/${visitId}/helper-used`, { helper_id: sel.id, sections_inserted: Object.keys(payload) }).catch(() => {});
-        toast.success(`Inserted ${Object.keys(payload).map((k) => k[0].toUpperCase()).join(", ")} from ${sel.name}`);
-    };
+    const insertOne = (k) => doInsert(content[k] ? { [k]: content[k] } : {});
+    const insertSOP = () => { if (sopEnabled) doInsert(Object.fromEntries(avail.map(([k]) => [k, content[k]]))); };
 
     return (
         <section className="bg-white border border-slate-300 rounded-sm" data-testid="soap-helper-tool">
@@ -122,30 +123,26 @@ export function SoapHelperTool({ visitId, patientRef, onInsert }) {
                                     <div className="text-[11px] text-slate-700 whitespace-pre-wrap leading-snug" data-testid="helper-preview-legacy">
                                         {sel.template_text}
                                         {sel.pmhx_description && <div className="text-[10px] text-slate-400 mt-0.5">PMHx: {sel.pmhx_description}</div>}
-                                        <div className="text-[10px] text-slate-400 mt-0.5">Legacy tabDiagText #{sel.legacy_id} · choose the section to insert into</div>
+                                        <div className="text-[10px] text-slate-400 mt-0.5">Legacy tabDiagText #{sel.legacy_id} · choose Sbj, Obj or Pln</div>
                                     </div>
                                 )}
-                                {avail.map(([k, letter, f]) => (
+                                {!isLegacy && avail.map(([k, letter]) => (
                                     <div key={k} className="flex gap-1.5 text-[11px]" data-testid={`helper-preview-${k}`}>
                                         <span className="inline-flex shrink-0 w-4 h-4 items-center justify-center rounded-sm bg-slate-500 text-white text-[10px] font-bold">{letter}</span>
-                                        <span className="whitespace-pre-wrap text-slate-700 leading-snug">{sel[f].trim()}</span>
+                                        <span className="whitespace-pre-wrap text-slate-700 leading-snug">{content[k]}</span>
                                     </div>
                                 ))}
                             </div>
                         )}
                         <div className="flex flex-wrap gap-1 px-2 py-1.5 border-t border-slate-200" data-testid="helper-insert-actions">
-                            {isLegacy && [["subjective", "S"], ["objective", "O"], ["assessment", "A"], ["plan", "P"]].map(([k, letter]) => (
-                                <button key={k} type="button" onClick={() => insertLegacy(k)} data-testid={`helper-insert-${k}`}
-                                    className="h-6 px-2 text-[11px] font-semibold rounded-sm border border-visita-ribbon text-visita-ribbon hover:bg-visita-bg">Insert → {letter}</button>
+                            {[["subjective", "Sbj", "Append to Subjective"], ["objective", "Obj", "Append to Objective"], ["plan", "Pln", "Append to Plan"]].map(([k, lbl, tip]) => (
+                                <button key={k} type="button" onClick={() => insertOne(k)} disabled={!content[k]} title={content[k] ? tip : "Template has no content for this section"}
+                                    data-testid={`helper-insert-${k}`}
+                                    className="h-6 min-w-[44px] px-2 text-[11px] font-bold rounded-sm border border-visita-ribbon text-visita-ribbon hover:bg-visita-bg disabled:opacity-40 disabled:cursor-not-allowed">{lbl}</button>
                             ))}
-                            {avail.map(([k, letter]) => (
-                                <button key={k} type="button" onClick={() => insert([k])} data-testid={`helper-insert-${k}`}
-                                    className="h-6 px-2 text-[11px] font-semibold rounded-sm border border-visita-ribbon text-visita-ribbon hover:bg-visita-bg">Insert {letter}</button>
-                            ))}
-                            {avail.length > 1 && (
-                                <button type="button" onClick={() => insert(avail.map(([k]) => k))} data-testid="helper-insert-all"
-                                    className="h-6 px-2 text-[11px] font-bold rounded-sm bg-visita-ribbon text-white hover:bg-[#162c49]">Insert All</button>
-                            )}
+                            <button type="button" onClick={insertSOP} disabled={!sopEnabled} data-testid="helper-insert-sop" data-enabled={sopEnabled ? "true" : "false"}
+                                title={sopEnabled ? `Append ${avail.map(([, l]) => l).join(" + ")} to their sections` : "SOP requires a template with Subjective, Objective and/or Plan components."}
+                                className="h-6 min-w-[48px] px-2 text-[11px] font-bold rounded-sm bg-visita-ribbon text-white hover:bg-[#162c49] disabled:opacity-40 disabled:cursor-not-allowed disabled:hover:bg-visita-ribbon">SOP</button>
                             <span className="ml-auto self-center text-[10px] text-slate-400">Appends — never replaces your text</span>
                         </div>
                     </div>

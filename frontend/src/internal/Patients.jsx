@@ -103,6 +103,7 @@ export default function Patients() {
             health_card_issue_date: selected.health_card_issue_date || "",
             health_card_expiry_date: selected.health_card_expiry_date || "",
             visita_patient_id: selected.visita_patient_id || "",
+            sex: selected.sex || "",
         });
         setEditing(true);
     };
@@ -317,6 +318,16 @@ export default function Patients() {
                                     <div><Label className="text-xs">Last Name(s)</Label><Input data-testid="edit-last-name" value={form.last_name} onChange={(e) => setForm({ ...form, last_name: e.target.value })} /></div>
                                     <div><Label className="text-xs">Date of Birth</Label><Input type="date" data-testid="edit-dob" value={form.date_of_birth || ""} onChange={(e) => setForm({ ...form, date_of_birth: e.target.value })} /></div>
                                     <div><Label className="text-xs">VISITA PIN</Label><Input data-testid="edit-pin" value={form.visita_patient_id} onChange={(e) => setForm({ ...form, visita_patient_id: e.target.value })} /></div>
+                                    <div>
+                                        <Label className="text-xs">Sex {!selected.sex && <span className="text-amber-700 font-normal">(not provided by patient)</span>}</Label>
+                                        <select data-testid="edit-sex" value={form.sex || ""} onChange={(e) => setForm({ ...form, sex: e.target.value })}
+                                            className="flex h-9 w-full rounded-sm border border-slate-300 bg-white px-3 text-sm focus:outline-none focus:ring-2 focus:ring-cyan-500">
+                                            <option value="">— Not specified —</option>
+                                            <option value="Female">Female</option>
+                                            <option value="Male">Male</option>
+                                            <option value="X">X</option>
+                                        </select>
+                                    </div>
                                 </div>
                             </div>
                             <div>
@@ -360,6 +371,7 @@ export default function Patients() {
                     <Row label="VISITA PIN / ID" testid="snap-pin"><span className="inline-flex items-center gap-1"><IdCard className="w-3.5 h-3.5 text-slate-400" />{selected.visita_patient_id || "Not assigned"}</span></Row>
                     <Row label="DOB" testid="snap-dob">{formatDate(selected.date_of_birth)}</Row>
                     <Row label="Age" testid="snap-age">{selected.age != null ? `${selected.age}` : "—"}</Row>
+                    <Row label="Sex" testid="snap-sex">{selected.sex || <span className="text-amber-700">Not recorded — add via Edit Patient Information</span>}</Row>
                     <Row label="Home Phone" testid="snap-home">{selected.home_phone ? <span className="inline-flex items-center gap-1"><Phone className="w-3.5 h-3.5 text-slate-400" />{selected.home_phone}</span> : null}</Row>
                     <Row label="Cell Phone" testid="snap-cell">{selected.cell_phone ? <span className="inline-flex items-center gap-1"><Phone className="w-3.5 h-3.5 text-slate-400" />{selected.cell_phone}</span> : null}</Row>
                     <Row label="Email" testid="snap-email">{selected.email || null}</Row>

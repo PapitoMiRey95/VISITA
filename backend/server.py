@@ -5011,7 +5011,7 @@ def _directory_snapshot(d: dict) -> dict:
         "visita_patient_id": d.get("visita_patient_id"),
         "date_of_birth": d.get("date_of_birth"), "age": _age_from_dob(d.get("date_of_birth")),
         "home_phone": d.get("home_phone"), "cell_phone": d.get("cell_phone"),
-        "email": d.get("email"),
+        "email": d.get("email"), "sex": d.get("sex"),
         "address": d.get("address"), "unit": d.get("unit"),
         "city": d.get("city"), "province": d.get("province"), "postal_code": d.get("postal_code"),
         "address_full": address_full,
@@ -5041,7 +5041,7 @@ def _portal_patient_snapshot(p: dict) -> dict:
         "visita_patient_id": p.get("visita_patient_id"),  # None -> UI shows "Not assigned"
         "date_of_birth": p.get("date_of_birth"), "age": _age_from_dob(p.get("date_of_birth")),
         "home_phone": p.get("home_phone"), "cell_phone": p.get("phone"),
-        "email": p.get("email"),
+        "email": p.get("email"), "sex": p.get("sex"),
         "address": p.get("address"), "unit": p.get("unit"),
         "city": p.get("city"), "province": p.get("province"), "postal_code": p.get("postal_code"),
         "country": p.get("country"),
@@ -8818,6 +8818,17 @@ class InternalPatientEditBody(BaseModel):
     health_card_issue_date: Optional[str] = None
     health_card_expiry_date: Optional[str] = None
     visita_patient_id: Optional[str] = None
+    sex: Optional[str] = None  # "Male" | "Female" | "X" | "" (clear)
+
+
+def _sex_value(body) -> tuple[bool, Optional[str]]:
+    """Staff-entered sex. Returns (provided, value|None). Only canonical portal values accepted."""
+    if body.sex is None:
+        return False, None
+    v = body.sex.strip()
+    if v and v not in ("Male", "Female", "X"):
+        raise HTTPException(status_code=400, detail="Sex must be Male, Female or X.")
+    return True, (v or None)
 
 
 _EMAIL_RE = re.compile(r"^[^@\s]+@[^@\s]+\.[^@\s]+$")
@@ -8877,6 +8888,9 @@ async def internal_edit_patient(patient_id: str, body: InternalPatientEditBody,
             track("email", new_email)
     if body.phone is not None:
         track("phone", identity_mod.normalize_phone(body.phone))
+    provided, sex_val = _sex_value(body)
+    if provided:
+        track("sex", sex_val)
     # Health card: normalize together when either number or version is being set.
     if body.health_card_number is not None or body.health_card_version is not None:
         try:
@@ -8965,7 +8979,15 @@ async def internal_edit_directory(directory_id: str, body: InternalPatientEditBo
         track("home_phone", identity_mod.normalize_phone(body.home_phone) if body.home_phone.strip() else None)
     if body.phone is not None:
         track("cell_phone", identity_mod.normalize_phone(body.phone))
-    if body.health_card_number is not None or body.health_card_version is not None:
+    provided, sex_val = _sex_value(body)
+    if provided:
+        track("sex", sex_val)  # explicit canonical sex on the directory record (raw legacy sex_code untouched)
+    hc_num_in = re.sub(r"\D", "", body.health_card_number or "") if body.health_card_number is not None else None
+    hc_ver_in = re.sub(r"[^A-Za-z]", "", body.health_card_version or "").upper() if body.health_card_version is not None else None
+    hc_unchanged = ((hc_num_in is None or hc_num_in == re.sub(r"\D", "", d.get("health_card_number") or ""))
+                    and (hc_ver_in is None or hc_ver_in == (d.get("health_card_version_code") or "").upper()))
+    # Legacy directory rows may lack a version code; only validate when the health card is actually being changed.
+    if (body.health_card_number is not None or body.health_card_version is not None) and not hc_unchanged:
         try:
             num, ver = identity_mod.normalize_health_card(
                 body.health_card_number if body.health_card_number is not None else d.get("health_card_number"),

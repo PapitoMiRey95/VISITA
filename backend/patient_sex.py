@@ -1,5 +1,5 @@
 """Canonical patient-sex resolver (shared by clinical modules). Returns MALE | FEMALE | UNKNOWN — never guesses.
-Priority: portal `patients.sex` -> authoritative directory sex -> UNKNOWN.
+Priority: portal `patients.sex` -> staff-entered directory `sex` -> mapped directory sex_code -> UNKNOWN.
 
 Directory `sex_code` is stored raw ('1' / '2' from the Access tblPatient export). Its meaning is NOT yet proven from
 VIen data (no linked patient has both portal sex and directory sex_code), so the mapping below is intentionally EMPTY.
@@ -14,6 +14,9 @@ def resolve_patient_sex(portal: dict | None, directory: dict | None) -> str:
     raw = (portal or {}).get("sex")
     if raw and PORTAL_SEX.get(str(raw).strip().lower()):
         return PORTAL_SEX[str(raw).strip().lower()]
+    draw = (directory or {}).get("sex")  # explicit staff-entered canonical value on the directory record
+    if draw and PORTAL_SEX.get(str(draw).strip().lower()):
+        return PORTAL_SEX[str(draw).strip().lower()]
     code = (directory or {}).get("sex_code")
     if code is not None and DIRECTORY_SEX_CODE.get(str(code).strip()):
         return DIRECTORY_SEX_CODE[str(code).strip()]

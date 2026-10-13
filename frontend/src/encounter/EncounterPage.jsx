@@ -82,11 +82,11 @@ function CenterControls({ visit, patientRef, state, savedAt, onInsert, toggle, t
             <fieldset disabled={!visit} className="flex flex-col min-w-0 [&>section]:border-0 [&>section]:border-t [&>section]:border-black [&>section:first-child]:border-t-0 [&>section]:rounded-none" data-testid="center-tools">
                 <SoapHelperTool visitId={visit?.id} patientRef={patientRef} onInsert={onInsert} />
             </fieldset>
-            <MetricsGrid patientRef={patientRef} refreshKey={metricsTick} />
             <fieldset disabled={!visit} className="flex flex-col min-w-0 [&>section]:border-0 [&>section]:rounded-none" data-testid="center-tools-vitals">
                 <VitalsPanel key={visit?.id || "ready"} visitId={visit?.id} patientRef={patientRef} initial={visit?.vitals}
                     onInsertObjective={(text) => onInsert({ objective: text })} onSaved={() => setMetricsTick((t) => t + 1)} />
             </fieldset>
+            <MetricsGrid patientRef={patientRef} refreshKey={metricsTick} />
             <div className="bg-white px-2 py-1.5" data-testid="lower-visit-toggle-wrap">{toggle}</div>
             <DiagnosisSearch patientRef={patientRef} />
             <div className="px-2 py-2 text-[11px] text-slate-400" data-testid="rapid-entry-reserved">

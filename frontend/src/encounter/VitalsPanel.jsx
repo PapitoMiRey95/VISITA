@@ -5,13 +5,13 @@ import { formatDate } from "../lib/date";
 
 /* Dr. Aguayo Access vitals row — EXACT visible labels/order. Editable = physician-measured; ro = derived automatically. */
 export const VITAL_ROW = [
-    { k: "systolic_bp", label: "Sst", tip: "Systolic", w: "w-12", Icon: Activity },
-    { k: "diastolic_bp", label: "Dst", tip: "Diastolic", w: "w-12", Icon: Activity },
-    { k: "heart_rate", label: "Bpm", tip: "Heart rate", w: "w-12", Icon: HeartPulse },
-    { k: "height_cm", label: "Hgt", tip: "Height (m)", w: "w-14", Icon: Ruler },
-    { k: "bmi", label: "BMI", tip: "Body mass index (auto)", w: "w-12", ro: true, Icon: Gauge, breakBefore: true },
-    { k: "weight_kg", label: "WK", tip: "Weight kilos", w: "w-14", Icon: Weight },
+    { k: "systolic_bp", label: "Sst", tip: "Systolic", w: "w-11", Icon: Activity },
+    { k: "diastolic_bp", label: "Dst", tip: "Diastolic", w: "w-11", Icon: Activity },
+    { k: "heart_rate", label: "Bpm", tip: "Heart rate", w: "w-11", Icon: HeartPulse },
+    { k: "height_cm", label: "Hgt", tip: "Height (m)", w: "w-12", Icon: Ruler },
+    { k: "weight_kg", label: "WK", tip: "Weight kilos", w: "w-12", Icon: Weight },
     { k: "weight_lb", label: "WL", tip: "Weight pounds (auto)", w: "w-14", ro: true, Icon: Weight },
+    { k: "bmi", label: "BMI", tip: "Body mass index (auto)", w: "w-12", ro: true, Icon: Gauge, breakBefore: true },
     { k: "iwk", label: "IWK", tip: "Ideal weight kilos — formula not yet confirmed", w: "w-12", ro: true, Icon: Target },
     { k: "iwl", label: "IWL", tip: "Ideal weight pounds — formula not yet confirmed", w: "w-12", ro: true, Icon: Target },
     { k: "temperature_c", label: "°C", tip: "Temperature", w: "w-12", Icon: Thermometer },
@@ -167,7 +167,7 @@ export function VitalsPanel({ visitId, patientRef, initial, onInsertObjective })
             </div>
             <div className="p-2">
                 {/* Access vitals row: Sst Dst Bpm WK WL Hgt BMI IWK IWL °C HC — derived cells are read-only AUTO */}
-                <div className="flex flex-wrap items-end gap-x-1.5 gap-y-1 text-xs" data-testid="vitals-fields">
+                <div className="flex flex-wrap items-end gap-x-1 gap-y-1 text-xs" data-testid="vitals-fields">
                     {VITAL_ROW.map(({ k, label, tip, w, ro, Icon, breakBefore }) => (<Fragment key={k}>
                         {breakBefore && <div className="basis-full h-0" aria-hidden="true" />}
                         <div className="flex flex-col gap-0.5" data-testid={`vital-cell-${k}`} data-readonly={ro ? "true" : undefined}>

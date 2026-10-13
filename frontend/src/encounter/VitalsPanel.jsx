@@ -180,7 +180,7 @@ export function VitalsPanel({ visitId, patientRef, initial, onInsertObjective })
                         </div>
                         {k === "heart_rate" && onInsertObjective && (() => { const text = vitalsToObjective(current, "bp"); return (
                             <button type="button" disabled={!text} onClick={() => onInsertObjective(text)} data-testid="quick-obj-bp" title={text ? `${text} → Objective` : "BP incomplete"}
-                                className="self-end inline-flex items-center gap-0.5 h-7 px-1.5 rounded-sm border border-slate-300 bg-white text-[11px] font-semibold text-slate-700 hover:bg-visita-bg hover:border-visita-ribbon disabled:opacity-40 disabled:cursor-not-allowed">
+                                className="self-end inline-flex items-center gap-0.5 h-7 px-1.5 rounded-sm border border-[#14532d] bg-[#15803d] text-[11px] font-bold text-white hover:bg-[#16a34a] active:bg-[#166534] disabled:opacity-40 disabled:cursor-not-allowed">
                                 <ArrowDownToLine className="w-3 h-3" /> BP
                             </button>
                         ); })()}
@@ -202,7 +202,7 @@ export function VitalsPanel({ visitId, patientRef, initial, onInsertObjective })
                                 return (
                                     <button key={w} type="button" disabled={!text} onClick={() => { onInsertObjective(text); }} data-testid={tid}
                                         title={text || (w === "bp" ? "BP incomplete" : "No values recorded yet")}
-                                        className="inline-flex items-center gap-1 h-6 px-2 rounded-sm border border-slate-300 bg-white text-[11px] font-semibold text-slate-700 hover:bg-visita-bg hover:border-visita-ribbon disabled:opacity-40 disabled:cursor-not-allowed">
+                                        className="inline-flex items-center gap-1 h-6 px-2 rounded-sm border border-[#14532d] bg-[#15803d] text-[11px] font-bold text-white hover:bg-[#16a34a] active:bg-[#166534] disabled:opacity-40 disabled:cursor-not-allowed">
                                         <ArrowDownToLine className="w-3 h-3" /> {lbl}
                                     </button>
                                 );

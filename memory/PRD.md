@@ -734,3 +734,11 @@ PROD FOLLOW-UPS (need explicit GO, scripts not yet written): stamp practice_id o
 - Controls: ↓ BP (beside Bpm) → "Sst: {S}; Dst: {D}; bpm: {B};" (all vitals left of the button; bpm omitted if empty) ; ↓ △ (end of vitals row, tooltip "Send dimensions to Objective") → "Sst; Dst; bpm; Hgt(cm); Wgt Kg; Wgt Lb; Id W Kg; Id W Lb;" (no BMI, no °C/HC/Lgt). Removed ↓ WK/BMI, ↓ All Vitals, and the QUICK TO OBJECTIVE heading.
 - Insertion = PREPEND via useSoapAutosave.prependGenerated(); generated line recognised only when first Objective line is purely "Label: num;" tokens from fixed vocabulary → identical=no-op, changed=replace; physician text never edited. Same SOAP autosave path.
 - Files: frontend/src/encounter/VitalsPanel.jsx, useSoapAutosave.js, EncounterPage.jsx; test src/encounter/__tests__/dimensions.test.js.
+
+## Phase 2A4.1 — Diagnosis Core (Jun 2026, PREVIEW ONLY, verified)
+- Catalog: `diagnosis_catalog` from tabDiagCode.xlsx (814 rows; source_type LEGACY_TABDIAGCODE; unique (source_type, legacy_id_raw); fields id, legacy_id_raw, diagnosis_code, diagnosis_text verbatim, active). 1 row "*** Not in use ***" → active=false (hidden from search). Importer `backend/import_tabdiagcode.py` idempotent (2nd run: 0 inserted/814 updated). Exact code+text duplicates (18) kept internally, collapsed in search display only.
+- `diagnosis_text_catalog` (tabDiagText) left untouched but NO LONGER used by Diagnosis search.
+- API: GET /internal/diagnosis-catalog/search?q (text partial-word + code prefix); GET /internal/visits/{id}/diagnoses/previous (DISTINCT dx from same-practice canonical visits over all linked refs, ranked last-used then count); PUT/DELETE /internal/visits/{id}/diagnoses/primary (physician only).
+- Visit schema: `visits.diagnoses[]` = [{id, catalog_id, diagnosis_text, diagnosis_code, legacy_id_raw, source CATALOG|PATIENT_HISTORY, is_primary, selected_at, selected_by}] — one primary for now. Never writes SOAP; no "(idem)"; no auto-assignment.
+- UI: `DiagnosisSearch.jsx` in existing center slot — focus shows PREVIOUS FOR THIS PATIENT (code · Last used date), typing shows ALL DIAGNOSES; selection shows text + Code with Change / ✕.
+- Visits never close yet (no sign-off) → "previous" verified with temporary synthetic COMPLETED visits (removed).

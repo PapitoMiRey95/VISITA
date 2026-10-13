@@ -88,7 +88,7 @@ function CenterControls({ visit, patientRef, state, savedAt, onInsert, onPrepend
             </fieldset>
             <MetricsGrid patientRef={patientRef} refreshKey={metricsTick} />
             <div className="bg-white px-2 py-1.5" data-testid="lower-visit-toggle-wrap">{toggle}</div>
-            <DiagnosisSearch patientRef={patientRef} />
+            <DiagnosisSearch visitId={visit?.id} initial={visit?.diagnoses} />
             <div className="px-2 py-2 text-[11px] text-slate-400" data-testid="rapid-entry-reserved">
                 <div className="font-bold uppercase tracking-wide text-[10px] text-slate-500">Service</div>
                 <div className="italic">Reserved for Service selector (next phase).</div>

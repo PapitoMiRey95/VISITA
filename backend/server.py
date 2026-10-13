@@ -39,6 +39,7 @@ import visits as visits_mod
 import soap_helpers as helpers_mod
 import clinical_history as history_mod
 import diagnosis_catalog as diag_mod
+import diagnosis as dx_mod
 import metrics as metrics_mod
 import storage
 from db import (APPT_PATIENT_STATUS, BLD_ACTIVE, BLD_PATIENT_STATUS, IMG_ACTIVE,
@@ -7631,14 +7632,43 @@ async def soap_helpers_search(search: str = "", patient_ref: Optional[str] = Non
             "encounter_type": encounter_type, "template_profile": {"key": prof["key"], "label": prof["label"], "show": list(prof["show"])}}
 
 
-# ============= DIAGNOSIS TEXT CATALOG (tabDiagText) — search only, selection is explicit =============
+# ============= DIAGNOSIS (tabDiagCode catalog + structured per-Visit diagnosis) — explicit selection only =============
 @api.get("/internal/diagnosis-catalog/search")
-async def diagnosis_catalog_search(q: str = "", patient_ref: Optional[str] = None, user: dict = Depends(require_roles(*CLINIC_ROLES))):
-    sex = None
-    if patient_ref:
-        ident = await visits_mod.resolve_identity(db, patient_ref, None, None)
-        sex = helpers_mod.patient_sex(ident)
-    return {"items": await diag_mod.search(db, q, sex), "patient_sex": sex}
+async def diagnosis_catalog_search(q: str = "", user: dict = Depends(require_roles(*CLINIC_ROLES))):
+    return {"items": await dx_mod.search(db, q)}
+
+
+@api.get("/internal/visits/{visit_id}/diagnoses/previous")
+async def visit_previous_diagnoses(visit_id: str, user: dict = Depends(require_roles(*VISIT_READ_ROLES))):
+    v = await _get_visit_scoped(visit_id, user)
+    ident = await visits_mod.resolve_identity(db, v["patient_ref"], v.get("patient_id"), v.get("directory_id"))
+    refs = visits_mod.all_refs(ident) if ident else [v["patient_ref"]]
+    return {"items": await dx_mod.previous_for_patient(db, v["practice_id"], refs, exclude_visit_id=v["id"])}
+
+
+class DiagnosisSelectBody(BaseModel):
+    catalog_id: str
+    source: str = "CATALOG"
+
+
+@api.put("/internal/visits/{visit_id}/diagnoses/primary")
+async def visit_set_primary_diagnosis(visit_id: str, body: DiagnosisSelectBody, user: dict = Depends(require_roles(*VISIT_WRITE_ROLES))):
+    v = await _get_visit_scoped(visit_id, user)
+    if body.source not in ("CATALOG", "PATIENT_HISTORY"):
+        raise HTTPException(status_code=422, detail="Invalid source.")
+    dx = await dx_mod.set_primary(db, v, body.catalog_id, body.source, user)
+    if dx is None:
+        raise HTTPException(status_code=404, detail="Diagnosis not found in catalog.")
+    await audit("visit_diagnosis_set", "visit", v["id"], user, meta={"catalog_id": body.catalog_id, "source": body.source})
+    return {"diagnoses": dx}
+
+
+@api.delete("/internal/visits/{visit_id}/diagnoses/primary")
+async def visit_clear_primary_diagnosis(visit_id: str, user: dict = Depends(require_roles(*VISIT_WRITE_ROLES))):
+    v = await _get_visit_scoped(visit_id, user)
+    await dx_mod.clear(db, v, user)
+    await audit("visit_diagnosis_cleared", "visit", v["id"], user)
+    return {"diagnoses": []}
 
 
 @api.get("/internal/soap-helpers/{helper_id}")
@@ -9162,6 +9192,7 @@ async def startup():
     await visits_mod.ensure_indexes(db)
     await history_mod.ensure_indexes(db)
     await diag_mod.ensure_indexes(db)
+    await dx_mod.ensure_indexes(db)
     try:
         storage.init_storage()
         logger.info("Storage initialized")

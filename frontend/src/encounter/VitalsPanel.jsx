@@ -40,7 +40,7 @@ export function vitalsToObjective(v, which) {
     const bpComplete = v.systolic_bp != null && v.diastolic_bp != null;
     if (which === "bp") {
         if (!bpComplete) return "";
-        push("Sst", v.systolic_bp); push("Dst", v.diastolic_bp);
+        push("Sst", v.systolic_bp); push("Dst", v.diastolic_bp); push("bpm", v.heart_rate);
     } else {
         if (bpComplete) { push("Sst", v.systolic_bp); push("Dst", v.diastolic_bp); }
         push("bpm", v.heart_rate);

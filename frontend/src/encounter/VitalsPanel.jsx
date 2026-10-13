@@ -1,24 +1,24 @@
 import { Fragment, useEffect, useRef, useState } from "react";
-import { HeartPulse, Delete, CornerDownLeft, Eraser, ArrowDownToLine } from "lucide-react";
+import { HeartPulse, Delete, CornerDownLeft, Eraser, ArrowDownToLine, Activity, Ruler, Weight, Gauge, Target, Thermometer, CircleDot } from "lucide-react";
 import { api, formatErr } from "../lib/api";
 import { formatDate } from "../lib/date";
 
 /* Dr. Aguayo Access vitals row — EXACT visible labels/order. Editable = physician-measured; ro = derived automatically. */
 export const VITAL_ROW = [
-    { k: "systolic_bp", label: "Sst", tip: "Systolic", w: "w-12" },
-    { k: "diastolic_bp", label: "Dst", tip: "Diastolic", w: "w-12" },
-    { k: "heart_rate", label: "Bpm", tip: "Heart rate", w: "w-12" },
-    { k: "weight_kg", label: "WK", tip: "Weight kilos", w: "w-14" },
-    { k: "weight_lb", label: "WL", tip: "Weight pounds (auto)", w: "w-14", ro: true },
-    { k: "height_cm", label: "Hgt", tip: "Height (m)", w: "w-14" },
-    { k: "bmi", label: "BMI", tip: "Body mass index (auto)", w: "w-12", ro: true },
-    { k: "iwk", label: "IWK", tip: "Ideal weight kilos — formula not yet confirmed", w: "w-12", ro: true },
-    { k: "iwl", label: "IWL", tip: "Ideal weight pounds — formula not yet confirmed", w: "w-12", ro: true },
-    { k: "temperature_c", label: "°C", tip: "Temperature", w: "w-12" },
-    { k: "head_circumference_cm", label: "HC", tip: "Head circumference (cm)", w: "w-12" },
+    { k: "systolic_bp", label: "Sst", tip: "Systolic", w: "w-12", Icon: Activity },
+    { k: "diastolic_bp", label: "Dst", tip: "Diastolic", w: "w-12", Icon: Activity },
+    { k: "heart_rate", label: "Bpm", tip: "Heart rate", w: "w-12", Icon: HeartPulse },
+    { k: "height_cm", label: "Hgt", tip: "Height (m)", w: "w-14", Icon: Ruler },
+    { k: "weight_kg", label: "WK", tip: "Weight kilos", w: "w-14", Icon: Weight },
+    { k: "weight_lb", label: "WL", tip: "Weight pounds (auto)", w: "w-14", ro: true, Icon: Weight },
+    { k: "bmi", label: "BMI", tip: "Body mass index (auto)", w: "w-12", ro: true, Icon: Gauge },
+    { k: "iwk", label: "IWK", tip: "Ideal weight kilos — formula not yet confirmed", w: "w-12", ro: true, Icon: Target },
+    { k: "iwl", label: "IWL", tip: "Ideal weight pounds — formula not yet confirmed", w: "w-12", ro: true, Icon: Target },
+    { k: "temperature_c", label: "°C", tip: "Temperature", w: "w-12", Icon: Thermometer },
+    { k: "head_circumference_cm", label: "HC", tip: "Head circumference (cm)", w: "w-12", Icon: CircleDot },
 ];
-/* Editable navigation only — Next/Enter skips WL/BMI/IWK/IWL: Sst → Dst → Bpm → WK → Hgt → °C → HC */
-const ORDER = ["systolic_bp", "diastolic_bp", "heart_rate", "weight_kg", "height_cm", "temperature_c", "head_circumference_cm"];
+/* Editable navigation only — Next/Enter skips WL/BMI/IWK/IWL: Sst → Dst → Bpm → Hgt → WK → °C → HC */
+const ORDER = ["systolic_bp", "diastolic_bp", "heart_rate", "height_cm", "weight_kg", "temperature_c", "head_circumference_cm"];
 const TARGET_LABEL = Object.fromEntries(VITAL_ROW.map((f) => [f.k, f.label]));
 const DECIMAL_OK = { temperature_c: true, weight_kg: true, height_cm: true, head_circumference_cm: true };
 const toStr = (v) => (v === null || v === undefined ? "" : String(v));
@@ -168,9 +168,11 @@ export function VitalsPanel({ visitId, patientRef, initial, onInsertObjective })
             <div className="p-2">
                 {/* Access vitals row: Sst Dst Bpm WK WL Hgt BMI IWK IWL °C HC — derived cells are read-only AUTO */}
                 <div className="flex flex-wrap items-end gap-x-1.5 gap-y-1 text-xs" data-testid="vitals-fields">
-                    {VITAL_ROW.map(({ k, label, tip, w, ro }) => (<Fragment key={k}>
+                    {VITAL_ROW.map(({ k, label, tip, w, ro, Icon }) => (<Fragment key={k}>
                         <div className="flex flex-col gap-0.5" data-testid={`vital-cell-${k}`} data-readonly={ro ? "true" : undefined}>
-                            <span className={`text-[10px] font-bold leading-none whitespace-nowrap ${ro ? "text-slate-400" : "text-slate-700"}`} title={tip}>{label}</span>
+                            <span className={`inline-flex items-center gap-0.5 text-[10px] font-bold leading-none whitespace-nowrap ${ro ? "text-slate-400" : "text-slate-700"}`} title={tip}>
+                                <Icon className={`w-3 h-3 ${ro ? "text-slate-300" : "text-[#15803d]"}`} />{label}
+                            </span>
                             {ro ? (
                                 <span title={tip} data-testid={`vital-${k}`} data-auto={derived[k] != null ? "true" : undefined}
                                     className={`${w} h-7 px-1.5 inline-flex items-center justify-end rounded-sm border border-dashed border-slate-300 bg-slate-50 font-mono text-sm ${derived[k] != null ? "text-visita-ribbon font-semibold" : "text-slate-300"}`}>

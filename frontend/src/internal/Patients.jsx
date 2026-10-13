@@ -16,6 +16,8 @@ import MedicalRecord from "./MedicalRecord";
 import { StartEncounterButton, patientRefOf } from "../encounter/StartEncounter";
 import { VisitHistory } from "../encounter/VisitHistory";
 
+const ANNUAL_MONTHS = ["January", "February", "March", "April", "May", "June", "July", "August", "September", "October", "November", "December"];
+
 const HC_BADGE = {
     VALID: "bg-emerald-100 text-emerald-700",
     EXPIRING_SOON: "bg-amber-100 text-amber-800",
@@ -104,9 +106,16 @@ export default function Patients() {
             health_card_expiry_date: selected.health_card_expiry_date || "",
             visita_patient_id: selected.visita_patient_id || "",
             sex: selected.sex || "",
+            annual_exam_month: annual?.annual_exam_month || "",
         });
         setEditing(true);
     };
+    const isPhysician = user?.role === "physician";
+    const [annual, setAnnual] = useState(null);
+    useEffect(() => {
+        if (!selected) { setAnnual(null); return; }
+        api.get(`/internal/patients/${patientRefOf(selected)}/annual-exam-month`).then(({ data }) => setAnnual(data)).catch(() => setAnnual(null));
+    }, [selected]);
 
     const saveEdit = async () => {
         setBusy(true);
@@ -115,6 +124,10 @@ export default function Patients() {
                 await api.patch(`/internal/patients/${selected.patient_id}`, form);
             } else {
                 await api.patch(`/internal/patient-directory/${selected.directory_id || selected.id}`, form);
+            }
+            if (isPhysician && annual?.editable && (form.annual_exam_month || null) !== (annual.annual_exam_month || null)) {
+                const { data } = await api.put(`/internal/patients/${patientRefOf(selected)}/annual-exam-month`, { annual_exam_month: form.annual_exam_month || null });
+                setAnnual(data);
             }
             toast.success("Patient information updated.");
             setEditing(false); await reloadSelected();
@@ -328,6 +341,16 @@ export default function Patients() {
                                             <option value="X">X</option>
                                         </select>
                                     </div>
+                                    {isPhysician && annual?.editable && (
+                                        <div>
+                                            <Label className="text-xs">Annual Exam Month</Label>
+                                            <select data-testid="edit-annual-exam-month" value={form.annual_exam_month || ""} onChange={(e) => setForm({ ...form, annual_exam_month: e.target.value })}
+                                                className="flex h-9 w-full rounded-sm border border-slate-300 bg-white px-3 text-sm focus:outline-none focus:ring-2 focus:ring-cyan-500">
+                                                <option value="">—</option>
+                                                {ANNUAL_MONTHS.map((m) => <option key={m} value={m}>{m}</option>)}
+                                            </select>
+                                        </div>
+                                    )}
                                 </div>
                             </div>
                             <div>
@@ -371,6 +394,7 @@ export default function Patients() {
                     <Row label="VISITA PIN / ID" testid="snap-pin"><span className="inline-flex items-center gap-1"><IdCard className="w-3.5 h-3.5 text-slate-400" />{selected.visita_patient_id || "Not assigned"}</span></Row>
                     <Row label="DOB" testid="snap-dob">{formatDate(selected.date_of_birth)}</Row>
                     <Row label="Age" testid="snap-age">{selected.age != null ? `${selected.age}` : "—"}</Row>
+                    {annual && <Row label="Annual Exam Month" testid="snap-annual-exam-month">{annual.annual_exam_month || <span className="text-slate-400">—</span>}</Row>}
                     <Row label="Sex" testid="snap-sex">{selected.sex || <span className="text-amber-700">Not recorded — add via Edit Patient Information</span>}</Row>
                     <Row label="Home Phone" testid="snap-home">{selected.home_phone ? <span className="inline-flex items-center gap-1"><Phone className="w-3.5 h-3.5 text-slate-400" />{selected.home_phone}</span> : null}</Row>
                     <Row label="Cell Phone" testid="snap-cell">{selected.cell_phone ? <span className="inline-flex items-center gap-1"><Phone className="w-3.5 h-3.5 text-slate-400" />{selected.cell_phone}</span> : null}</Row>

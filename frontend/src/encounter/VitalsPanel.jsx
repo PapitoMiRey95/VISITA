@@ -28,24 +28,25 @@ const kgToLb = (kg) => (kg ? Math.round(kg * 2.20462 * 10) / 10 : null);
 const fmt1 = (n) => (n === null || n === undefined ? null : Number(n).toFixed(1).replace(/\.0$/, ""));
 
 /* Builds the compact Objective snippet from CURRENT structured values only — nothing fabricated. */
+/* Objective text in Dr. Aguayo's "Label: value;" style — only CURRENT structured values, nothing fabricated.
+   e.g. ↓BP → "Sst: 170; Dst: 75; bpm: 62;" */
 export function vitalsToObjective(v, which) {
     const parts = [];
-    const bp = v.systolic_bp != null && v.diastolic_bp != null ? `BP ${v.systolic_bp}/${v.diastolic_bp}` : null;
-    const wk = v.weight_kg != null ? `WK ${fmt1(v.weight_kg)}` : null;
-    const wl = v.weight_kg != null ? `WL ${Math.round(kgToLb(v.weight_kg))}` : null;
-    const bmi = v.bmi != null ? `BMI ${v.bmi}` : null;
-    if (which === "bp") { if (bp) parts.push(bp); }
-    else if (which === "weight") { if (wk) parts.push(wk, wl); if (bmi) parts.push(bmi); }
-    else {
-        if (bp) parts.push(bp);
-        if (v.heart_rate != null) parts.push(`Bpm ${v.heart_rate}`);
-        if (v.height_cm != null) parts.push(`Hgt ${cmToM(v.height_cm)}`);
-        if (wk) parts.push(wk, wl);
-        if (bmi) parts.push(bmi);
-        if (v.temperature_c != null) parts.push(`°C ${fmt1(v.temperature_c)}`);
-        if (v.head_circumference_cm != null) parts.push(`HC ${fmt1(v.head_circumference_cm)}`);
+    const push = (label, val) => { if (val !== null && val !== undefined && val !== "") parts.push(`${label}: ${val};`); };
+    const bpComplete = v.systolic_bp != null && v.diastolic_bp != null;
+    if (which === "bp") {
+        if (!bpComplete) return "";
+        push("Sst", v.systolic_bp); push("Dst", v.diastolic_bp); push("bpm", v.heart_rate);
+    } else if (which === "weight") {
+        push("WK", fmt1(v.weight_kg)); if (v.weight_kg != null) push("WL", Math.round(kgToLb(v.weight_kg))); push("BMI", v.bmi);
+    } else {
+        if (bpComplete) { push("Sst", v.systolic_bp); push("Dst", v.diastolic_bp); }
+        push("bpm", v.heart_rate);
+        if (v.height_cm != null) push("Hgt", cmToM(v.height_cm));
+        push("WK", fmt1(v.weight_kg)); if (v.weight_kg != null) push("WL", Math.round(kgToLb(v.weight_kg))); push("BMI", v.bmi);
+        push("°C", fmt1(v.temperature_c)); push("HC", fmt1(v.head_circumference_cm));
     }
-    return parts.length ? `${parts.join("; ")}.` : "";
+    return parts.join(" ");
 }
 
 export function VitalsPanel({ visitId, patientRef, initial, onInsertObjective }) {

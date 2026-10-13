@@ -1,11 +1,18 @@
 """Longitudinal METRICS summary (Phase 2A3.4). Vital metrics from canonical visit vitals; lab metrics PENDING
-(no structured numeric lab source exists in VIen yet — exam_results is document-based). Arithmetic means only."""
+(no structured numeric lab source exists in VIen yet — exam_results is document-based). Arithmetic means only.
+eAG formula CONFIRMED from Access Form_frmPatientInfo.cls: Round(((HGA1C * 28.7) - 46.7) / 18, 2). Derived from HgA1C only."""
 from datetime import datetime, timedelta, timezone
+
+
+def eag_from_hga1c(hga1c):
+    """Canonical Dr. Aguayo eAG: ((HgA1C × 28.7) − 46.7) / 18, 2dp. Never stored independently."""
+    return round(((hga1c * 28.7) - 46.7) / 18, 2) if isinstance(hga1c, (int, float)) else None
+
 
 VITAL_METRICS = [("Sst", "systolic_bp", "Systolic BP"), ("Dst", "diastolic_bp", "Diastolic BP"), ("Bpm", "heart_rate", "Heart rate"),
                  ("Kg", "weight_kg", "Weight (kg)"), ("Lbs", "weight_lb", "Weight (lb) = kg × 2.20462")]
 LAB_METRICS = [("Hg", "Hemoglobin"), ("WBC", "White blood cells"), ("PLT", "Platelets"), ("eGFR", "Estimated GFR"), ("FBS", "Fasting blood sugar"),
-               ("HgA1C", "Hemoglobin A1c"), ("eAG", "Estimated average glucose (formula pending — not in supplied source)"), ("LDL", "LDL cholesterol"),
+               ("HgA1C", "Hemoglobin A1c"), ("eAG", "Estimated average glucose = ((HgA1C × 28.7) − 46.7) / 18 (formula CONFIRMED; awaiting structured HgA1C)"), ("LDL", "LDL cholesterol"),
                ("T/HDL", "Total / HDL cholesterol ratio"), ("TSH", "Thyroid stimulating hormone"), ("PSA", "Prostate specific antigen")]
 
 
@@ -15,18 +22,20 @@ def _mean(vals):
 
 
 def daily_observations(visits: list) -> list:
-    """Access tblDim intent: ONE dimensions snapshot per calendar day = LAST successfully persisted vitals that day."""
+    """ONE snapshot per clinical calendar day. Observation date = visit.started_at (canonical clinical timestamp);
+    vitals.updated_at is ONLY the same-day tie-breaker (last persisted reading that day wins)."""
     by_day = {}
     for v in visits:
         vit = v.get("vitals") or {}
-        obs_at = vit.get("updated_at") or v.get("started_at")
-        if not obs_at:
+        obs_at = v.get("started_at")
+        if not obs_at or not vit:
             continue
+        edited_at = vit.get("updated_at") or obs_at
         day = obs_at[:10]
-        if day not in by_day or obs_at > by_day[day]["observed_at"]:
+        if day not in by_day or edited_at > by_day[day]["edited_at"]:
             row = {k: vit.get(k) for _, k, _ in VITAL_METRICS if k != "weight_lb"}
             row["weight_lb"] = round(row["weight_kg"] * 2.20462, 2) if isinstance(row.get("weight_kg"), (int, float)) else None
-            by_day[day] = {"day": day, "observed_at": obs_at, "visit_id": v.get("id"), **row}
+            by_day[day] = {"day": day, "observed_at": obs_at, "edited_at": edited_at, "visit_id": v.get("id"), **row}
     return sorted(by_day.values(), key=lambda r: r["observed_at"])
 
 

@@ -1,5 +1,5 @@
 import { Fragment, useEffect, useRef, useState } from "react";
-import { HeartPulse, Delete, CornerDownLeft, Eraser, ArrowDownToLine, Activity, Ruler, Weight, Gauge, Target, Thermometer, CircleDot } from "lucide-react";
+import { HeartPulse, Delete, CornerDownLeft, Eraser, ArrowDownToLine, Activity, Ruler, Weight, Gauge, Target, Thermometer, CircleDot, Triangle } from "lucide-react";
 import { api, formatErr } from "../lib/api";
 
 /* Dr. Aguayo Access vitals row — EXACT visible labels/order. Editable = physician-measured; ro = derived automatically. */
@@ -30,24 +30,24 @@ const kgToLb = (kg) => (kg ? Math.round(kg * 2.20462 * 100) / 100 : null);  // W
 const idealKg = (height_cm) => (height_cm ? Math.round(24 * (height_cm / 100) ** 2 * 100) / 100 : null);  // IWK = 24 × Hgt(m)²
 const fmt1 = (n) => (n === null || n === undefined ? null : Number(n).toFixed(1).replace(/\.0$/, ""));
 
-/* Builds the compact Objective snippet from CURRENT structured values only — nothing fabricated. */
-/* Objective text in Dr. Aguayo's "Label: value;" style — only CURRENT structured values, nothing fabricated.
-   e.g. ↓BP → "Sst: 170; Dst: 75; bpm: 62;" */
+/* Access Dimensions → Objective. CURRENT structured values only — nothing fabricated, missing values omitted.
+   bp  → "Sst: 170; Dst: 75;"
+   all → "Sst: 170; Dst: 75; bpm: 62; Hgt: 168; Wgt Kg: 78; Wgt Lb: 171.96; Id W Kg: 67.74; Id W Lb: 149.34;"
+   Hgt in Objective is Access-style cm (168) even though the UI entry is metres (1.68). BMI intentionally NOT included. */
 export function vitalsToObjective(v, which) {
     const parts = [];
-    const push = (label, val) => { if (val !== null && val !== undefined && val !== "") parts.push(`${label}: ${val};`); };
+    const push = (label, val) => { if (val !== null && val !== undefined && val !== "" && !Number.isNaN(val)) parts.push(`${label}: ${val};`); };
     const bpComplete = v.systolic_bp != null && v.diastolic_bp != null;
     if (which === "bp") {
         if (!bpComplete) return "";
-        push("Sst", v.systolic_bp); push("Dst", v.diastolic_bp); push("bpm", v.heart_rate);
-    } else if (which === "weight") {
-        push("WK", fmt1(v.weight_kg)); if (v.weight_kg != null) push("WL", Math.round(kgToLb(v.weight_kg))); push("BMI", v.bmi);
+        push("Sst", v.systolic_bp); push("Dst", v.diastolic_bp);
     } else {
         if (bpComplete) { push("Sst", v.systolic_bp); push("Dst", v.diastolic_bp); }
         push("bpm", v.heart_rate);
-        if (v.height_cm != null) push("Hgt", cmToM(v.height_cm));
-        push("WK", fmt1(v.weight_kg)); if (v.weight_kg != null) push("WL", Math.round(kgToLb(v.weight_kg))); push("BMI", v.bmi);
-        push("°C", fmt1(v.temperature_c)); push("HC", fmt1(v.head_circumference_cm));
+        push("Hgt", v.height_cm);
+        push("Wgt Kg", v.weight_kg); push("Wgt Lb", kgToLb(v.weight_kg));
+        const iwk = idealKg(v.height_cm);
+        push("Id W Kg", iwk); push("Id W Lb", iwk != null ? kgToLb(iwk) : null);
     }
     return parts.join(" ");
 }
@@ -193,30 +193,19 @@ export function VitalsPanel({ visitId, patientRef, initial, onInsertObjective, o
                                 <ArrowDownToLine className="w-3 h-3" /> BP
                             </button>
                         ); })()}
+                        {k === "length_cm" && onInsertObjective && (() => { const text = vitalsToObjective(current, "all"); return (
+                            <button type="button" disabled={!text} onClick={() => onInsertObjective(text)} data-testid="quick-obj-dimensions" aria-label="Send dimensions to Objective"
+                                title={text ? `Send dimensions to Objective\n${text}` : "No values recorded yet"}
+                                className="self-end inline-flex items-center gap-0.5 h-7 px-1.5 rounded-sm border border-[#14532d] bg-[#15803d] text-[11px] font-bold text-white hover:bg-[#16a34a] active:bg-[#166534] disabled:opacity-40 disabled:cursor-not-allowed">
+                                <ArrowDownToLine className="w-3 h-3" /><Triangle className="w-3 h-3" />
+                            </button>
+                        ); })()}
                     </Fragment>))}
                 </div>
                 {lastCtx && (
                     <div className="mt-1 text-[10px] text-slate-600 leading-tight" data-testid="vitals-last-context">
                         <span className="text-slate-400">Last:</span> {lastCtx.last} <span className="text-slate-300">·</span> <span className="text-slate-400">Today:</span> {lastCtx.today}
                         {lastCtx.change && <> <span className="text-slate-300">·</span> <span className={`font-semibold ${lastCtx.change.startsWith("+") ? "text-amber-700" : "text-emerald-700"}`}>{lastCtx.change}</span></>}
-                    </div>
-                )}
-                {/* QUICK → OBJECTIVE: append-only documentation convenience; structured vitals stay authoritative */}
-                {onInsertObjective && (
-                    <div className="mt-1.5 border-t border-dashed border-slate-200 pt-1" data-testid="quick-objective">
-                        <div className="text-[10px] font-bold uppercase tracking-wide text-slate-500 leading-none mb-1">Quick to Objective</div>
-                        <div className="flex gap-1">
-                            {[["weight", "WK / BMI", "quick-obj-weight"], ["all", "All Vitals", "quick-obj-all"]].map(([w, lbl, tid]) => {
-                                const text = vitalsToObjective(current, w);
-                                return (
-                                    <button key={w} type="button" disabled={!text} onClick={() => { onInsertObjective(text); }} data-testid={tid}
-                                        title={text || (w === "bp" ? "BP incomplete" : "No values recorded yet")}
-                                        className="inline-flex items-center gap-1 h-6 px-2 rounded-sm border border-[#14532d] bg-[#15803d] text-[11px] font-bold text-white hover:bg-[#16a34a] active:bg-[#166534] disabled:opacity-40 disabled:cursor-not-allowed">
-                                        <ArrowDownToLine className="w-3 h-3" /> {lbl}
-                                    </button>
-                                );
-                            })}
-                        </div>
                     </div>
                 )}
             </div>

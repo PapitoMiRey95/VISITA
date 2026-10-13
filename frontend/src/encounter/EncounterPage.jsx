@@ -66,7 +66,7 @@ function SoapColumn({ soap, onChange, onBlur }) {
     );
 }
 
-function CenterControls({ visit, patientRef, state, savedAt, onInsert, toggle, timerStrip }) {
+function CenterControls({ visit, patientRef, state, savedAt, onInsert, onPrepend, toggle, timerStrip }) {
     const [metricsTick, setMetricsTick] = useState(0);
     return (
         <div className="flex flex-col bg-white [&>*]:border-0 [&>*]:border-t [&>*]:border-black [&>*:first-child]:border-t-0 [&>*]:rounded-none" data-testid="encounter-center">
@@ -84,7 +84,7 @@ function CenterControls({ visit, patientRef, state, savedAt, onInsert, toggle, t
             </fieldset>
             <fieldset disabled={!visit} className="flex flex-col min-w-0 [&>section]:border-0 [&>section]:rounded-none" data-testid="center-tools-vitals">
                 <VitalsPanel key={visit?.id || "ready"} visitId={visit?.id} patientRef={patientRef} initial={visit?.vitals}
-                    onInsertObjective={(text) => onInsert({ objective: text })} onSaved={() => setMetricsTick((t) => t + 1)} />
+                    onInsertObjective={(text) => onPrepend("objective", text)} onSaved={() => setMetricsTick((t) => t + 1)} />
             </fieldset>
             <MetricsGrid patientRef={patientRef} refreshKey={metricsTick} />
             <div className="bg-white px-2 py-1.5" data-testid="lower-visit-toggle-wrap">{toggle}</div>
@@ -137,7 +137,7 @@ function Workspace({ shell, visit, setVisit }) {
     const timer = visit ? { timer_state: visit.timer_state, elapsed_seconds: visit.elapsed_seconds, running_since: visit.running_since } : null;
     const timerState = visit ? visit.timer_state : "READY";
     const elapsed = useElapsed(timer, shell.server_time);
-    const { soap, onChange, onBlur, insertText, state, savedAt, flush } = useSoapAutosave(visit?.id, { ...(visit?.soap || {}), last_saved_at: visit?.last_saved_at });
+    const { soap, onChange, onBlur, insertText, prependGenerated, state, savedAt, flush } = useSoapAutosave(visit?.id, { ...(visit?.soap || {}), last_saved_at: visit?.last_saved_at });
 
     const applyTimer = (data) => setVisit((v) => ({ ...v, timer_state: data.timer_state, elapsed_seconds: data.elapsed_seconds,
         running_since: data.running_since, paused_at: data.paused_at, server_time: data.server_time }));
@@ -190,7 +190,7 @@ function Workspace({ shell, visit, setVisit }) {
                     <fieldset disabled={!visit} className="contents"><div className="flex-[3] min-h-0"><SoapColumn soap={soap} onChange={onChange} onBlur={onBlur} /></div></fieldset>
                     <div className="flex-[1.15] min-h-[120px] border-t border-black [&>section]:border-0 [&>section]:rounded-none"><IssuePlanHistory patientRef={patientRef} currentVisitId={visit?.id} /></div>
                 </div>
-                <div className="min-h-0 overflow-y-auto border-r border-black"><CenterControls visit={visit} patientRef={patientRef} state={state} savedAt={savedAt} onInsert={insertText} toggle={toggle("visit-toggle-lower", true, true)}
+                <div className="min-h-0 overflow-y-auto border-r border-black"><CenterControls visit={visit} patientRef={patientRef} state={state} savedAt={savedAt} onInsert={insertText} onPrepend={prependGenerated} toggle={toggle("visit-toggle-lower", true, true)}
                     timerStrip={<VisitTimerStrip timerState={timerState} elapsed={elapsed} toggle={toggle("visit-toggle-top", true)} />} /></div>
                 <div className="min-h-0 overflow-y-auto [&_[data-testid=encounter-context]]:gap-0 [&_[data-testid=encounter-context]>*]:border-0 [&_[data-testid=encounter-context]>*]:border-b [&_[data-testid=encounter-context]>*]:border-black [&_[data-testid=encounter-context]>*]:rounded-none [&_[data-testid=encounter-context]>*]:ring-0"><ContextColumn ctx={shell.context} patientRef={patientRef} /></div>
             </main>

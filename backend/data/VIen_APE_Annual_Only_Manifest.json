@@ -1,0 +1,77 @@
+{
+  "package": "VIen Visit New — Annual Exam Month only",
+  "source_file": "tblAPE.xlsx",
+  "source_sheet": "tblAPE",
+  "scope": "VISIT_NEW_ONLY",
+  "included_source_fields": [
+    "ItemNo",
+    "MCP",
+    "APE"
+  ],
+  "explicitly_excluded_from_this_phase": [
+    "APENotes",
+    "AbdDate",
+    "MamDate",
+    "BMDDate",
+    "ThyDate",
+    "PAPDate",
+    "OGDDate",
+    "ColDate",
+    "EyeDate",
+    "BWDate",
+    "CardioDate",
+    "FITDate",
+    "CAIDate",
+    "PhyDate",
+    "Language",
+    "RxDate"
+  ],
+  "reason_for_exclusion": "Those fields belong to other future VIen sections/workflows. Do not import or expose them during Visit New Annual/Dx/Service/Billing work.",
+  "counts": {
+    "raw_tblAPE_rows": 1791,
+    "normalized_annual_profiles": 1214,
+    "annual_month_conflicts": 1,
+    "nonstandard_legacy_identifiers": 9,
+    "rows_missing_MCP_excluded": 1,
+    "profiles_needing_review": 9
+  },
+  "identity_contract": {
+    "import_key": "LEGACY_TBLAPE_ANNUAL|legacy_mcp_raw",
+    "map_only_to_existing_canonical_VIen_patient": true,
+    "do_not_create_patients": true,
+    "do_not_fuzzy_match": true
+  },
+  "annual_exam_contract": {
+    "field": "annual_exam_month",
+    "valid_values": [
+      "January",
+      "February",
+      "March",
+      "April",
+      "May",
+      "June",
+      "July",
+      "August",
+      "September",
+      "October",
+      "November",
+      "December"
+    ],
+    "meaning": "Annual Physical Exam month",
+    "do_not_auto_set_from_visit_date": true,
+    "conflict_rule": "leave annual_exam_month blank and flag review; never guess"
+  },
+  "phase_boundary": {
+    "allowed_now": [
+      "Annual month display/edit under existing Diagnosis area",
+      "canonical patient mapping",
+      "audit of Annual month changes"
+    ],
+    "deferred": [
+      "all preventive/screening dates",
+      "lab shortcuts/results",
+      "screen admin",
+      "other Access tabs"
+    ]
+  }
+}

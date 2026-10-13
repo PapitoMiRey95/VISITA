@@ -7573,6 +7573,44 @@ async def conditions_list(patient_ref: str, user: dict = Depends(require_roles(*
     return await _history_list("conditions", patient_ref, user)
 
 
+# ============= ANNUAL EXAM MONTH (Visit New) — canonical on patient_directory; never auto-set from visit date =============
+ANNUAL_MONTHS = ("January", "February", "March", "April", "May", "June", "July", "August", "September", "October", "November", "December")
+
+
+def _annual_out(ident):
+    d = ident.get("directory") or {}
+    return {"patient_ref": ident["patient_ref"], "annual_exam_month": d.get("annual_exam_month"), "editable": bool(ident.get("directory_id")),
+            "source": (d.get("annual_exam_month_source") or {}).get("source_type"), "updated_at": d.get("annual_exam_month_updated_at")}
+
+
+@api.get("/internal/patients/{patient_ref}/annual-exam-month")
+async def annual_exam_month_get(patient_ref: str, user: dict = Depends(require_roles(*HISTORY_READ_ROLES))):
+    ident = await _visit_identity_or_400(patient_ref, None, None)
+    return _annual_out(ident)
+
+
+class AnnualMonthBody(BaseModel):
+    annual_exam_month: Optional[str] = None
+
+
+@api.put("/internal/patients/{patient_ref}/annual-exam-month")
+async def annual_exam_month_set(patient_ref: str, body: AnnualMonthBody, user: dict = Depends(require_roles(*VISIT_WRITE_ROLES))):
+    ident = await _visit_identity_or_400(patient_ref, None, None)
+    if not ident.get("directory_id"):
+        raise HTTPException(status_code=409, detail="Patient has no canonical directory record yet; Annual month cannot be stored.")
+    if body.annual_exam_month is not None and body.annual_exam_month not in ANNUAL_MONTHS:
+        raise HTTPException(status_code=422, detail="Invalid month.")
+    before = (ident.get("directory") or {}).get("annual_exam_month")
+    now = datetime.now(timezone.utc).isoformat()
+    actor = {"id": user["id"], "name": user.get("name")}
+    await db.patient_directory.update_one({"id": ident["directory_id"]}, {"$set": {
+        "annual_exam_month": body.annual_exam_month, "annual_exam_month_updated_at": now, "annual_exam_month_updated_by": actor,
+        "annual_exam_month_source": {"source_type": "PHYSICIAN_EDIT", "at": now, "by": actor}, "updated_at": now}})
+    await audit("annual_exam_month_set", "patient_directory", ident["directory_id"], user, meta={"from": before, "to": body.annual_exam_month, "patient_ref": ident["patient_ref"]})
+    ident["directory"] = await db.patient_directory.find_one({"id": ident["directory_id"]}, {"_id": 0})
+    return _annual_out(ident)
+
+
 @api.post("/internal/patients/{patient_ref}/conditions")
 async def conditions_create(patient_ref: str, body: dict, user: dict = Depends(require_roles(*VISIT_WRITE_ROLES))):
     return await _history_create("conditions", patient_ref, body, user)

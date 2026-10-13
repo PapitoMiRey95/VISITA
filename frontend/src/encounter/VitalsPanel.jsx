@@ -176,6 +176,13 @@ export function VitalsPanel({ visitId, patientRef, initial, onInsertObjective, o
                 <div className="flex flex-wrap items-end gap-x-1 gap-y-1 text-xs" data-testid="vitals-fields">
                     {VITAL_ROW.map(({ k, label, tip, w, ro, Icon, breakBefore }) => (<Fragment key={k}>
                         {breakBefore && <div className="basis-full h-0" aria-hidden="true" />}
+                        {k === "bmi" && onInsertObjective && (() => { const text = vitalsToObjective(current, "all"); return (
+                            <button type="button" disabled={!text} onClick={() => onInsertObjective(text)} data-testid="quick-obj-dimensions" aria-label="Send dimensions to Objective"
+                                title={text ? `Send dimensions to Objective\n${text}` : "No values recorded yet"}
+                                className="self-end inline-flex items-center gap-0.5 h-7 px-1.5 rounded-sm border border-[#14532d] bg-[#15803d] text-[11px] font-bold text-white hover:bg-[#16a34a] active:bg-[#166534] disabled:opacity-40 disabled:cursor-not-allowed">
+                                <ArrowDownToLine className="w-3 h-3" /><Triangle className="w-3 h-3" />
+                            </button>
+                        ); })()}
                         <div className="flex flex-col gap-0.5" data-testid={`vital-cell-${k}`} data-readonly={ro ? "true" : undefined}>
                             <span className={`inline-flex items-center gap-0.5 text-[10px] font-bold leading-none whitespace-nowrap ${ro ? "text-slate-400" : "text-slate-700"}`} title={tip}>
                                 <Icon className={`w-3 h-3 ${ro ? "text-slate-300" : "text-[#15803d]"}`} />{label}
@@ -191,13 +198,6 @@ export function VitalsPanel({ visitId, patientRef, initial, onInsertObjective, o
                             <button type="button" disabled={!text} onClick={() => onInsertObjective(text)} data-testid="quick-obj-bp" title={text ? `${text} → Objective` : "BP incomplete"}
                                 className="self-end inline-flex items-center gap-0.5 h-7 px-1.5 rounded-sm border border-[#14532d] bg-[#15803d] text-[11px] font-bold text-white hover:bg-[#16a34a] active:bg-[#166534] disabled:opacity-40 disabled:cursor-not-allowed">
                                 <ArrowDownToLine className="w-3 h-3" /> BP
-                            </button>
-                        ); })()}
-                        {k === "length_cm" && onInsertObjective && (() => { const text = vitalsToObjective(current, "all"); return (
-                            <button type="button" disabled={!text} onClick={() => onInsertObjective(text)} data-testid="quick-obj-dimensions" aria-label="Send dimensions to Objective"
-                                title={text ? `Send dimensions to Objective\n${text}` : "No values recorded yet"}
-                                className="self-end inline-flex items-center gap-0.5 h-7 px-1.5 rounded-sm border border-[#14532d] bg-[#15803d] text-[11px] font-bold text-white hover:bg-[#16a34a] active:bg-[#166534] disabled:opacity-40 disabled:cursor-not-allowed">
-                                <ArrowDownToLine className="w-3 h-3" /><Triangle className="w-3 h-3" />
                             </button>
                         ); })()}
                     </Fragment>))}

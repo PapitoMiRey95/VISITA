@@ -1,0 +1,64 @@
+{
+  "package_version": "1.0",
+  "purpose": "Authoritative import package for VIen diagnosis_catalog from Dr. Aguayo Access tabDiagCode",
+  "recommended_import_file": "VIen_Diagnosis_Catalog_Import.csv",
+  "source_file": "tabDiagCode(1).xlsx",
+  "source_table": "tabDiagCode",
+  "source_type": "LEGACY_TABDIAGCODE",
+  "identity_rule": "legacy_id_raw is authoritative source identity; import_key = LEGACY_TABDIAGCODE|legacy_id_raw",
+  "normal_search_fields": [
+    "diagnosis_text",
+    "diagnosis_code"
+  ],
+  "do_not_use_as_unique_key": "diagnosis_code",
+  "display_duplicate_rule": "Preserve every source row internally. UI may suppress only exact duplicate diagnosis_text + diagnosis_code pairs.",
+  "inactive_rule": "Rows whose source diagnosis explicitly contains 'Not in use' are active=false and hidden from normal search.",
+  "no_silent_corrections": "Do not rewrite diagnosis wording, spelling, capitalization, codes, or merge clinically similar records.",
+  "counts": {
+    "source_rows": 814,
+    "active_rows": 813,
+    "inactive_rows": 1,
+    "distinct_legacy_ids": 814,
+    "distinct_codes_nonblank": 322,
+    "distinct_diagnosis_texts": 794,
+    "exact_duplicate_pair_groups": 18,
+    "exact_duplicate_pair_rows": 36,
+    "same_text_multiple_code_groups": 2,
+    "missing_code_rows": 1,
+    "review_flag_rows": 42
+  },
+  "review_reason_counts": {
+    "EXACT_DUPLICATE_SOURCE_ROW": 36,
+    "SAME_TEXT_MULTIPLE_CODES": 4,
+    "INACTIVE_SOURCE_NOT_IN_USE": 1,
+    "MISSING_CODE": 1
+  },
+  "known_anomalies": [
+    {
+      "legacy_id_raw": "671",
+      "diagnosis_code": "331",
+      "reason": "Explicit *** Not in use *** source record; active=false."
+    },
+    {
+      "legacy_id_raw": "679",
+      "diagnosis_code": "",
+      "reason": "Missing diagnosis code; preserve row and flag for review."
+    },
+    {
+      "diagnosis_text": "Breast mastitis cystic, breast fibro-adenosis, cystic dis chronic",
+      "codes": [
+        "611",
+        "610"
+      ],
+      "reason": "Same text has two codes; do not auto-merge."
+    },
+    {
+      "diagnosis_text": "GU ON uterus ca",
+      "codes": [
+        "179",
+        "610"
+      ],
+      "reason": "Same text has two codes; do not auto-correct or merge without physician review."
+    }
+  ]
+}

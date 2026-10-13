@@ -7,6 +7,7 @@ from datetime import datetime, timezone
 COLL = "diagnosis_catalog"
 SOURCE_TYPE = "LEGACY_TABDIAGCODE"
 NOT_IN_USE = re.compile(r"not in use", re.I)
+REVIEW_META = ("import_key", "exact_duplicate_count", "same_text_multi_code", "review_flag", "review_reason")
 
 
 def _now():
@@ -19,20 +20,30 @@ async def ensure_indexes(db):
 
 
 async def import_rows(db, rows: list) -> dict:
-    """Idempotent upsert keyed on (source_type, legacy_id_raw). Text/code preserved verbatim. rows = [(ID, Code, Diagnosis)]."""
+    """Idempotent upsert keyed on (source_type, legacy_id_raw). Text/code preserved verbatim.
+    rows = dicts {legacy_id_raw, diagnosis_code, diagnosis_text, active?, review metadata?} (normalized package) or
+    raw tuples (ID, Code, Diagnosis). `active` defaults to the 'Not in use' rule when not supplied."""
     now = _now()
-    counts = {"total": 0, "inserted": 0, "updated": 0, "inactive": 0, "skipped_blank": 0}
-    for legacy_id, code, text in rows:
+    counts = {"total": 0, "inserted": 0, "updated": 0, "inactive": 0, "review_flagged": 0, "skipped_blank": 0}
+    for r in rows:
         counts["total"] += 1
-        if legacy_id is None or text is None or not str(text).strip():
+        if not isinstance(r, dict):
+            r = {"legacy_id_raw": r[0], "diagnosis_code": r[1], "diagnosis_text": r[2]}
+        legacy_id, code, text = r.get("legacy_id_raw"), r.get("diagnosis_code"), r.get("diagnosis_text")
+        if legacy_id in (None, "") or text is None or not str(text).strip():
             counts["skipped_blank"] += 1
             continue
         text = str(text)
-        active = not NOT_IN_USE.search(text)
+        active = r["active"] if isinstance(r.get("active"), bool) else not NOT_IN_USE.search(text)
         if not active:
             counts["inactive"] += 1
-        doc = {"legacy_id_raw": int(legacy_id), "diagnosis_code": str(code).strip() if code is not None else None,
-               "diagnosis_text": text, "active": active, "updated_at": now}
+        if r.get("review_flag"):
+            counts["review_flagged"] += 1
+        code = str(code).strip() if code not in (None, "") else None
+        doc = {"legacy_id_raw": int(legacy_id), "diagnosis_code": code, "diagnosis_text": text, "active": active, "updated_at": now}
+        for k in REVIEW_META:
+            if k in r:
+                doc[k] = r[k]
         res = await db[COLL].update_one({"source_type": SOURCE_TYPE, "legacy_id_raw": int(legacy_id)},
                                         {"$set": doc, "$setOnInsert": {"id": str(uuid.uuid4()), "source_type": SOURCE_TYPE, "created_at": now}}, upsert=True)
         counts["inserted" if res.upserted_id else "updated"] += 1

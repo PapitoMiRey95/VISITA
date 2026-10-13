@@ -1,7 +1,6 @@
 import { Fragment, useEffect, useRef, useState } from "react";
 import { HeartPulse, Delete, CornerDownLeft, Eraser, ArrowDownToLine, Activity, Ruler, Weight, Gauge, Target, Thermometer, CircleDot } from "lucide-react";
 import { api, formatErr } from "../lib/api";
-import { formatDate } from "../lib/date";
 
 /* Dr. Aguayo Access vitals row — EXACT visible labels/order. Editable = physician-measured; ro = derived automatically. */
 export const VITAL_ROW = [
@@ -12,19 +11,23 @@ export const VITAL_ROW = [
     { k: "weight_kg", label: "WK", tip: "Weight kilos", w: "w-12", Icon: Weight },
     { k: "weight_lb", label: "WL", tip: "Weight pounds (auto)", w: "w-14", ro: true, Icon: Weight },
     { k: "bmi", label: "BMI", tip: "Body mass index (auto)", w: "w-12", ro: true, Icon: Gauge, breakBefore: true },
-    { k: "iwk", label: "IWK", tip: "Ideal weight kilos — formula not yet confirmed", w: "w-12", ro: true, Icon: Target },
-    { k: "iwl", label: "IWL", tip: "Ideal weight pounds — formula not yet confirmed", w: "w-12", ro: true, Icon: Target },
+    { k: "iwk", label: "IWK", tip: "Ideal weight kilos = 24 × Hgt² (auto)", w: "w-14", ro: true, Icon: Target },
+    { k: "iwl", label: "IWL", tip: "Ideal weight pounds = IWK × 2.20462 (auto)", w: "w-14", ro: true, Icon: Target },
     { k: "temperature_c", label: "°C", tip: "Temperature", w: "w-12", Icon: Thermometer },
     { k: "head_circumference_cm", label: "HC", tip: "Head circumference (cm)", w: "w-12", Icon: CircleDot },
+    { k: "length_cm", label: "Lgt", tip: "Length (cm) — pediatric", w: "w-12", Icon: Ruler },
 ];
 /* Editable navigation only — Next/Enter skips WL/BMI/IWK/IWL: Sst → Dst → Bpm → Hgt → WK → °C → HC */
-const ORDER = ["systolic_bp", "diastolic_bp", "heart_rate", "height_cm", "weight_kg", "temperature_c", "head_circumference_cm"];
+const ORDER = ["systolic_bp", "diastolic_bp", "heart_rate", "height_cm", "weight_kg", "temperature_c", "head_circumference_cm", "length_cm"];
 const TARGET_LABEL = Object.fromEntries(VITAL_ROW.map((f) => [f.k, f.label]));
-const DECIMAL_OK = { temperature_c: true, weight_kg: true, height_cm: true, head_circumference_cm: true };
+const DECIMAL_OK = { temperature_c: true, weight_kg: true, height_cm: true, head_circumference_cm: true, length_cm: true };
 const toStr = (v) => (v === null || v === undefined ? "" : String(v));
 const cmToM = (cm) => (cm === null || cm === undefined ? "" : (Number(cm) / 100).toFixed(2));
-const mToCm = (m) => (m === "" ? null : Math.round(Number(m) * 1000) / 10);
-const kgToLb = (kg) => (kg ? Math.round(kg * 2.20462 * 10) / 10 : null);
+/* Hgt is entered in METRES. Guard: a cm-style value (>= 20, e.g. 176) is treated as cm -> 1.76, never 176 -> 17600 cm. */
+const normHgtM = (m) => { const n = Number(m); return Number.isFinite(n) && n >= 20 ? (n / 100).toFixed(2) : m; };
+const mToCm = (m) => (m === "" ? null : Math.round(Number(normHgtM(m)) * 1000) / 10);
+const kgToLb = (kg) => (kg ? Math.round(kg * 2.20462 * 100) / 100 : null);  // WL = WK × 2.20462
+const idealKg = (height_cm) => (height_cm ? Math.round(24 * (height_cm / 100) ** 2 * 100) / 100 : null);  // IWK = 24 × Hgt(m)²
 const fmt1 = (n) => (n === null || n === undefined ? null : Number(n).toFixed(1).replace(/\.0$/, ""));
 
 /* Builds the compact Objective snippet from CURRENT structured values only — nothing fabricated. */
@@ -49,7 +52,7 @@ export function vitalsToObjective(v, which) {
     return parts.join(" ");
 }
 
-export function VitalsPanel({ visitId, patientRef, initial, onInsertObjective }) {
+export function VitalsPanel({ visitId, patientRef, initial, onInsertObjective, onSaved }) {
     const [form, setForm] = useState(() => Object.fromEntries(ORDER.map((k) => [k, k === "height_cm" ? cmToM(initial?.[k]) : toStr(initial?.[k])])));
     const [bmi, setBmi] = useState(initial?.bmi ?? null);
     const [state, setState] = useState("idle");
@@ -69,8 +72,9 @@ export function VitalsPanel({ visitId, patientRef, initial, onInsertObjective })
     }, [patientRef, visitId]);
 
     const save = async () => {
-        const cur = formRef.current;
+        let cur = formRef.current;
         const patch = {};
+        if (cur.height_cm !== "" && normHgtM(cur.height_cm) !== cur.height_cm) { cur = { ...cur, height_cm: normHgtM(cur.height_cm) }; formRef.current = cur; setForm(cur); }
         ORDER.forEach((k) => { if (cur[k] !== saved.current[k]) patch[k] = cur[k] === "" ? null : k === "height_cm" ? mToCm(cur[k]) : Number(cur[k]); });
         if (!Object.keys(patch).length) return;
         if (Object.values(patch).some((v) => v !== null && Number.isNaN(v))) { setState("failed"); setErr("Enter numbers only."); return; }
@@ -79,7 +83,7 @@ export function VitalsPanel({ visitId, patientRef, initial, onInsertObjective })
             const { data } = await api.patch(`/internal/visits/${visitId}/vitals`, patch);
             Object.keys(patch).forEach((k) => { saved.current[k] = cur[k]; });
             setBmi(data.vitals.bmi);
-            setState("saved");
+            onSaved?.(); setState("saved");
         } catch (e) { setState("failed"); setErr(formatErr(e)); }
     };
     const schedule = () => { clearTimeout(timer.current); timer.current = setTimeout(save, 1500); };
@@ -118,7 +122,8 @@ export function VitalsPanel({ visitId, patientRef, initial, onInsertObjective })
     const current = { systolic_bp: num("systolic_bp"), diastolic_bp: num("diastolic_bp"), heart_rate: num("heart_rate"), temperature_c: num("temperature_c"),
         weight_kg: num("weight_kg"), height_cm: form.height_cm === "" ? null : mToCm(form.height_cm), head_circumference_cm: num("head_circumference_cm"), bmi };
     const weightLb = kgToLb(current.weight_kg);
-    const derived = { weight_lb: weightLb, bmi, iwk: null, iwl: null }; // IWK/IWL: formula NOT confirmed — intentionally empty
+    const iwk = idealKg(current.height_cm);
+    const derived = { weight_lb: weightLb, bmi, iwk, iwl: iwk != null ? kgToLb(iwk) : null }; // Access VBA: BMI=WK/Hgt², IWK=24×Hgt², ×2.20462
     const prev = recent?.[0];
     const lastCtx = prev && (prev.weight_kg != null || prev.bmi != null) && (current.weight_kg != null || bmi != null) ? {
         last: [prev.weight_kg != null && `WK ${fmt1(prev.weight_kg)}`, prev.bmi != null && `BMI ${prev.bmi}`].filter(Boolean).join(" · "),
@@ -216,30 +221,6 @@ export function VitalsPanel({ visitId, patientRef, initial, onInsertObjective })
                 )}
             </div>
             {err && <div className="px-2 pb-1.5 text-[11px] text-red-700" data-testid="vitals-error">{err}</div>}
-            {/* Last 3 visits — read-only */}
-            <div className="border-t border-slate-200 px-2 py-1.5" data-testid="last3-visits">
-                <div className="text-[10px] font-bold uppercase tracking-wide text-slate-500 mb-1">Last 3 visits</div>
-                {!recent ? <div className="text-[11px] text-slate-400">Loading…</div> : !recent.length ? (
-                    <div className="text-[11px] text-slate-400 italic" data-testid="last3-empty">No prior vitals recorded.</div>
-                ) : (
-                    <table className="text-[11px] tabular-nums w-full" data-testid="last3-table">
-                        <thead><tr className="text-slate-500">
-                            <th className="text-left font-semibold w-9"></th>
-                            {recent.map((r) => <th key={r.visit_id} className="text-right font-semibold" title={`${formatDate(r.started_at?.slice(0, 10))} · ${r.ref_number}`} data-testid={`last3-col-${r.ref_number}`}>{shortDate(r.started_at)}</th>)}
-                        </tr></thead>
-                        <tbody>
-                            {[["BP", (r) => (r.systolic_bp != null || r.diastolic_bp != null ? `${r.systolic_bp ?? "—"}/${r.diastolic_bp ?? "—"}` : "—")],
-                              ["Bpm", (r) => r.heart_rate], ["WK", (r) => r.weight_kg], ["Hgt", (r) => (r.height_cm != null ? cmToM(r.height_cm) : null)], ["BMI", (r) => r.bmi], ["°C", (r) => r.temperature_c],
-                              ...(recent.some((r) => r.head_circumference_cm != null) ? [["HC", (r) => r.head_circumference_cm]] : [])].map(([lbl, fn]) => (
-                                <tr key={lbl} className="border-t border-slate-100">
-                                    <td className="font-bold text-slate-600 py-px">{lbl}</td>
-                                    {recent.map((r) => <td key={r.visit_id} className="text-right py-px text-slate-800">{fn(r) ?? "—"}</td>)}
-                                </tr>
-                            ))}
-                        </tbody>
-                    </table>
-                )}
-            </div>
         </section>
     );
 }

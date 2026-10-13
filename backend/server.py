@@ -39,6 +39,7 @@ import visits as visits_mod
 import soap_helpers as helpers_mod
 import clinical_history as history_mod
 import diagnosis_catalog as diag_mod
+import metrics as metrics_mod
 import storage
 from db import (APPT_PATIENT_STATUS, BLD_ACTIVE, BLD_PATIENT_STATUS, IMG_ACTIVE,
                 IMG_PATIENT_STATUS, MSG_ACTIVE, MSG_PATIENT_STATUS, RX_ACTIVE,
@@ -7487,6 +7488,16 @@ async def visit_issue_plan_history(patient_ref: str, search: str = "", exclude: 
         {"visit_id": r["id"], "ref_number": r.get("ref_number"), "date": (r.get("started_at") or "")[:10], "status": r.get("status"),
          "encounter_type": r.get("encounter_type"), "physician_name": r.get("physician_name"),
          "issue": (r.get("soap") or {}).get("assessment") or "", "plan": (r.get("soap") or {}).get("plan") or ""} for r in rows]}
+
+
+@api.get("/internal/patients/{patient_ref}/metrics-summary")
+async def patient_metrics_summary(patient_ref: str, user: dict = Depends(require_roles(*VISIT_READ_ROLES))):
+    """Longitudinal METRICS (Recent / 3 mo / 12 mo / global means) from canonical visit vitals; daily-deduplicated."""
+    ident = await _visit_identity_or_400(patient_ref, None, None)
+    q = {"practice_id": user.get("practice_id"), "patient_ref": {"$in": visits_mod.all_refs(ident)},
+         "$or": [{f"vitals.{k}": {"$ne": None}} for k in visits_mod.VITAL_FIELDS]}
+    rows = await db[visits_mod.COLL].find(q, {"_id": 0, "id": 1, "started_at": 1, "vitals": 1}).to_list(2000)
+    return {"patient_ref": ident["patient_ref"], **metrics_mod.summarize(rows)}
 
 
 @api.get("/internal/patients/{patient_ref}/recent-vitals")

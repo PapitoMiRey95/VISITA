@@ -55,8 +55,8 @@ def test_bmi_and_weight_lb_computed(h):
                                         "diastolic_bp": 82, "heart_rate": 72})
     assert r.status_code == 200, r.text
     v = r.json()["vitals"]
-    assert v["bmi"] == 31.1
-    assert v["weight_lb"] == 198.4
+    assert v["bmi"] == 31.14
+    assert v["weight_lb"] == 198.42
     assert v["height_cm"] == 170
 
 
@@ -66,7 +66,7 @@ def test_clear_height_bmi_null_weight_lb_preserved(h):
     assert r.status_code == 200
     v = r.json()["vitals"]
     assert v["bmi"] is None
-    assert v["weight_lb"] == 198.4
+    assert v["weight_lb"] == 198.42
     # restore
     requests.patch(f"{BASE_URL}/api/internal/visits/{VISIT_ID}/vitals",
                    headers=h, json={"height_cm": 170})

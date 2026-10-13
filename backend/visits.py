@@ -124,10 +124,10 @@ async def save_soap(db, visit, patch: dict, user):
     return sorted(changed), await db[COLL].find_one({"id": visit["id"]}, {"_id": 0})
 
 
-VITAL_FIELDS = ("systolic_bp", "diastolic_bp", "heart_rate", "temperature_c", "weight_kg", "height_cm", "head_circumference_cm")
+VITAL_FIELDS = ("systolic_bp", "diastolic_bp", "heart_rate", "temperature_c", "weight_kg", "height_cm", "head_circumference_cm", "length_cm")
 VITAL_RANGES = {"systolic_bp": (40, 300), "diastolic_bp": (20, 200), "heart_rate": (20, 300),
                 "temperature_c": (25.0, 45.0), "weight_kg": (0.5, 500.0), "height_cm": (20.0, 272.0),
-                "head_circumference_cm": (20.0, 70.0)}
+                "head_circumference_cm": (20.0, 70.0), "length_cm": (20.0, 130.0)}
 EMPTY_VITALS = {**{k: None for k in VITAL_FIELDS}, "bmi": None, "weight_lb": None, "updated_at": None, "updated_by": None}
 
 
@@ -153,11 +153,11 @@ def validate_vitals(patch: dict) -> dict:
 def compute_bmi(weight_kg, height_cm):
     if not weight_kg or not height_cm:
         return None
-    return round(weight_kg / ((height_cm / 100) ** 2), 1)
+    return round(weight_kg / ((height_cm / 100) ** 2), 2)  # Access: BMI = WK / Hgt(m)^2
 
 
 def compute_weight_lb(weight_kg):
-    return round(weight_kg * 2.20462, 1) if weight_kg else None
+    return round(weight_kg * 2.20462, 2) if weight_kg else None
 
 
 async def save_vitals(db, visit, patch: dict, user):

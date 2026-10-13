@@ -14,6 +14,7 @@ import { useSoapAutosave } from "./useSoapAutosave";
 import { encounterTypeLabel, EncounterTypeDialog } from "./StartEncounter";
 import { VisitToggle } from "./VisitToggle";
 import { DiagnosisSearch } from "./DiagnosisSearch";
+import { MetricsGrid } from "./MetricsGrid";
 import { VitalsPanel } from "./VitalsPanel";
 import { IssuePlanHistory } from "./IssuePlanHistory";
 import { SoapHelperTool } from "./SoapHelperTool";
@@ -66,6 +67,7 @@ function SoapColumn({ soap, onChange, onBlur }) {
 }
 
 function CenterControls({ visit, patientRef, state, savedAt, onInsert, toggle, timerStrip }) {
+    const [metricsTick, setMetricsTick] = useState(0);
     return (
         <div className="flex flex-col bg-white [&>*]:border-0 [&>*]:border-t [&>*]:border-black [&>*:first-child]:border-t-0 [&>*]:rounded-none" data-testid="encounter-center">
             {timerStrip}
@@ -79,8 +81,11 @@ function CenterControls({ visit, patientRef, state, savedAt, onInsert, toggle, t
             </div>
             <fieldset disabled={!visit} className="flex flex-col min-w-0 [&>section]:border-0 [&>section]:border-t [&>section]:border-black [&>section:first-child]:border-t-0 [&>section]:rounded-none" data-testid="center-tools">
                 <SoapHelperTool visitId={visit?.id} patientRef={patientRef} onInsert={onInsert} />
+            </fieldset>
+            <MetricsGrid patientRef={patientRef} refreshKey={metricsTick} />
+            <fieldset disabled={!visit} className="flex flex-col min-w-0 [&>section]:border-0 [&>section]:rounded-none" data-testid="center-tools-vitals">
                 <VitalsPanel key={visit?.id || "ready"} visitId={visit?.id} patientRef={patientRef} initial={visit?.vitals}
-                    onInsertObjective={(text) => onInsert({ objective: text })} />
+                    onInsertObjective={(text) => onInsert({ objective: text })} onSaved={() => setMetricsTick((t) => t + 1)} />
             </fieldset>
             <div className="bg-white px-2 py-1.5" data-testid="lower-visit-toggle-wrap">{toggle}</div>
             <DiagnosisSearch patientRef={patientRef} />

@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from "react";
+import { Fragment, useEffect, useRef, useState } from "react";
 import { HeartPulse, Delete, CornerDownLeft, Eraser, ArrowDownToLine } from "lucide-react";
 import { api, formatErr } from "../lib/api";
 import { formatDate } from "../lib/date";
@@ -168,8 +168,8 @@ export function VitalsPanel({ visitId, patientRef, initial, onInsertObjective })
             <div className="p-2">
                 {/* Access vitals row: Sst Dst Bpm WK WL Hgt BMI IWK IWL °C HC — derived cells are read-only AUTO */}
                 <div className="flex flex-wrap items-end gap-x-1.5 gap-y-1 text-xs" data-testid="vitals-fields">
-                    {VITAL_ROW.map(({ k, label, tip, w, ro }) => (
-                        <div key={k} className="flex flex-col gap-0.5" data-testid={`vital-cell-${k}`} data-readonly={ro ? "true" : undefined}>
+                    {VITAL_ROW.map(({ k, label, tip, w, ro }) => (<Fragment key={k}>
+                        <div className="flex flex-col gap-0.5" data-testid={`vital-cell-${k}`} data-readonly={ro ? "true" : undefined}>
                             <span className={`text-[10px] font-bold leading-none whitespace-nowrap ${ro ? "text-slate-400" : "text-slate-700"}`} title={tip}>{label}</span>
                             {ro ? (
                                 <span title={tip} data-testid={`vital-${k}`} data-auto={derived[k] != null ? "true" : undefined}
@@ -178,7 +178,13 @@ export function VitalsPanel({ visitId, patientRef, initial, onInsertObjective })
                                 </span>
                             ) : renderInput(k, w)}
                         </div>
-                    ))}
+                        {k === "heart_rate" && onInsertObjective && (() => { const text = vitalsToObjective(current, "bp"); return (
+                            <button type="button" disabled={!text} onClick={() => onInsertObjective(text)} data-testid="quick-obj-bp" title={text ? `${text} → Objective` : "BP incomplete"}
+                                className="self-end inline-flex items-center gap-0.5 h-7 px-1.5 rounded-sm border border-slate-300 bg-white text-[11px] font-semibold text-slate-700 hover:bg-visita-bg hover:border-visita-ribbon disabled:opacity-40 disabled:cursor-not-allowed">
+                                <ArrowDownToLine className="w-3 h-3" /> BP
+                            </button>
+                        ); })()}
+                    </Fragment>))}
                 </div>
                 {lastCtx && (
                     <div className="mt-1 text-[10px] text-slate-600 leading-tight" data-testid="vitals-last-context">
@@ -191,7 +197,7 @@ export function VitalsPanel({ visitId, patientRef, initial, onInsertObjective })
                     <div className="mt-1.5 border-t border-dashed border-slate-200 pt-1" data-testid="quick-objective">
                         <div className="text-[10px] font-bold uppercase tracking-wide text-slate-500 leading-none mb-1">Quick to Objective</div>
                         <div className="flex gap-1">
-                            {[["bp", "BP", "quick-obj-bp"], ["weight", "WK / BMI", "quick-obj-weight"], ["all", "All Vitals", "quick-obj-all"]].map(([w, lbl, tid]) => {
+                            {[["weight", "WK / BMI", "quick-obj-weight"], ["all", "All Vitals", "quick-obj-all"]].map(([w, lbl, tid]) => {
                                 const text = vitalsToObjective(current, w);
                                 return (
                                     <button key={w} type="button" disabled={!text} onClick={() => { onInsertObjective(text); }} data-testid={tid}

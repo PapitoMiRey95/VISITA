@@ -15,7 +15,7 @@ import { encounterTypeLabel, EncounterTypeDialog } from "./StartEncounter";
 import { VisitToggle } from "./VisitToggle";
 import { DiagnosisSearch } from "./DiagnosisSearch";
 import { AnnualExamMonth } from "./AnnualExamMonth";
-import { ServiceSelector, CodingRow, CodingBand } from "./ServiceSelector";
+import { ServiceSelector, CodingBand } from "./ServiceSelector";
 import { MetricsGrid } from "./MetricsGrid";
 import { VitalsPanel } from "./VitalsPanel";
 import { IssuePlanHistory } from "./IssuePlanHistory";
@@ -96,7 +96,6 @@ function CenterControls({ visit, patientRef, state, savedAt, onInsert, onPrepend
             <DiagnosisSearch visitId={visit?.id} initial={visit?.diagnoses} onChange={setDx} />
             <AnnualExamMonth patientRef={patientRef} canEdit={!!visit} />
             <ServiceSelector visitId={visit?.id} initial={visit?.service} onChange={setSvc} />
-            <CodingRow service={svc} diagnosis={dx} />
             <div className="bg-white px-2 py-1.5" data-testid="lower-visit-toggle-wrap">{toggle}</div>
         </div>
     );

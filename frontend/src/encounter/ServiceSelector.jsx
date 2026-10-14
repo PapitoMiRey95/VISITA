@@ -92,21 +92,6 @@ export function ServiceSelector({ visitId, initial, onChange }) {
     );
 }
 
-/* Access-style structured summary row: Sr | Dx | Sr Nº | Dx Nº (read-only, never free text, never "(idem)"). */
-export function CodingRow({ service, diagnosis }) {
-    const cells = [["Sr", service?.primary?.service_description], ["Dx", diagnosis?.diagnosis_text], ["Sr Nº", srNumber(service)], ["Dx Nº", diagnosis?.diagnosis_code]];
-    return (
-        <div className="grid grid-cols-[1fr_1fr_auto_auto] gap-x-3 px-2 py-1 text-[11px] bg-slate-50" data-testid="coding-row">
-            {cells.map(([k, v]) => (
-                <div key={k} className="min-w-0">
-                    <div className="text-[9px] font-bold uppercase tracking-wide text-slate-500">{k}</div>
-                    <div className={`truncate ${v ? "font-semibold text-slate-900" : "text-slate-400"} ${k.includes("Nº") ? "font-mono" : ""}`} data-testid={`coding-${k.replace(/\s|º/g, "").toLowerCase()}`} title={v || ""}>{v || "—"}</div>
-                </div>
-            ))}
-        </div>
-    );
-}
-
 /* Access-fidelity A band: single horizontal line of labelled boxes — Sr | Dx | Sr Nº | Dx Nº. Read-only structured summary. */
 export function CodingBand({ service, diagnosis }) {
     const cells = [["Sr", service?.primary?.service_description, "flex-[1.3]"], ["Dx", diagnosis?.diagnosis_text, "flex-[1.3]"], ["Sr Nº", srNumber(service), "w-44"], ["Dx Nº", diagnosis?.diagnosis_code, "w-20"]];

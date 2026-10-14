@@ -15,7 +15,7 @@ import { encounterTypeLabel, EncounterTypeDialog } from "./StartEncounter";
 import { VisitToggle } from "./VisitToggle";
 import { DiagnosisSearch } from "./DiagnosisSearch";
 import { AnnualExamMonth } from "./AnnualExamMonth";
-import { ServiceSelector, CodingRow } from "./ServiceSelector";
+import { ServiceSelector, CodingRow, CodingBand } from "./ServiceSelector";
 import { MetricsGrid } from "./MetricsGrid";
 import { VitalsPanel } from "./VitalsPanel";
 import { IssuePlanHistory } from "./IssuePlanHistory";
@@ -54,25 +54,27 @@ function Panel({ title, Icon, children, testid }) {
 
 const Empty = ({ children }) => <div className="text-xs text-slate-400 italic">{children}</div>;
 
-function SoapColumn({ soap, onChange, onBlur }) {
+function SoapColumn({ soap, onChange, onBlur, service, diagnosis }) {
+    const ta = (k, label, cls) => (
+        <Textarea value={soap[k]} onChange={(e) => onChange(k, e.target.value)} onBlur={onBlur} data-testid={`soap-${k}`} aria-label={label} title={label}
+            className={`resize-none text-sm bg-white overflow-auto border-0 rounded-none shadow-none focus-visible:ring-0 focus-visible:ring-offset-0 focus-visible:bg-cyan-50/40 ${cls}`} />
+    );
     return (
         <div className="flex flex-col min-h-0 h-full divide-y divide-black bg-white" data-testid="soap-column">
-            {SOAP.map(({ k, label }) => (
-                <label key={k} className="flex flex-col flex-1 min-h-0">
-                    <Textarea value={soap[k]} onChange={(e) => onChange(k, e.target.value)} onBlur={onBlur}
-                        data-testid={`soap-${k}`} aria-label={label} title={label}
-                        className="flex-1 min-h-[72px] resize-none text-sm bg-white overflow-auto border-0 rounded-none shadow-none focus-visible:ring-0 focus-visible:ring-offset-0 focus-visible:bg-cyan-50/40" />
-                </label>
-            ))}
+            <label className="flex flex-col flex-1 min-h-0">{ta("subjective", "Subjective", "flex-1 min-h-[72px]")}</label>
+            <label className="flex flex-col flex-1 min-h-0">{ta("objective", "Objective", "flex-1 min-h-[72px]")}</label>
+            {/* A = Assessment: compact Access-style coding band (Sr | Dx | Sr Nº | Dx Nº) + one-line assessment text */}
+            <div className="shrink-0" data-testid="soap-assessment-band">
+                <CodingBand service={service} diagnosis={diagnosis} />
+                <label className="block border-t border-slate-300">{ta("assessment", "Assessment", "h-7 min-h-0 py-1 leading-tight")}</label>
+            </div>
+            <label className="flex flex-col flex-1 min-h-0">{ta("plan", "Plan", "flex-1 min-h-[72px]")}</label>
         </div>
     );
 }
 
-function CenterControls({ visit, patientRef, state, savedAt, onInsert, onPrepend, toggle, timerStrip }) {
+function CenterControls({ visit, patientRef, state, savedAt, onInsert, onPrepend, toggle, timerStrip, dx, setDx, svc, setSvc }) {
     const [metricsTick, setMetricsTick] = useState(0);
-    const [dx, setDx] = useState(visit?.diagnoses?.[0] || null);
-    const [svc, setSvc] = useState(visit?.service || null);
-    useEffect(() => { setDx(visit?.diagnoses?.[0] || null); setSvc(visit?.service || null); }, [visit?.id]); // eslint-disable-line react-hooks/exhaustive-deps
     return (
         <div className="flex flex-col bg-white [&>*]:border-0 [&>*]:border-t [&>*]:border-black [&>*:first-child]:border-t-0 [&>*]:rounded-none" data-testid="encounter-center">
             {timerStrip}
@@ -143,6 +145,10 @@ function Workspace({ shell, visit, setVisit }) {
     const elapsed = useElapsed(timer, shell.server_time);
     const { soap, onChange, onBlur, insertText, prependGenerated, state, savedAt, flush } = useSoapAutosave(visit?.id, { ...(visit?.soap || {}), last_saved_at: visit?.last_saved_at });
 
+    const [dx, setDx] = useState(null);
+    const [svc, setSvc] = useState(null);
+    useEffect(() => { setDx(visit?.diagnoses?.[0] || null); setSvc(visit?.service || null); }, [visit?.id]); // eslint-disable-line react-hooks/exhaustive-deps
+
     const applyTimer = (data) => setVisit((v) => ({ ...v, timer_state: data.timer_state, elapsed_seconds: data.elapsed_seconds,
         running_since: data.running_since, paused_at: data.paused_at, server_time: data.server_time }));
     const stop = async () => { const { data } = await api.post(`/internal/visits/${visit.id}/stop`); applyTimer(data); return data; };
@@ -191,10 +197,10 @@ function Workspace({ shell, visit, setVisit }) {
             <SafetyHeader visit={shell} typeLabel={visit ? encounterTypeLabel(visit.encounter_type) : "Not started"} onExit={onExit} exiting={exiting} />
             <main className="flex-1 min-h-0 grid grid-cols-[minmax(0,1.25fr)_minmax(272px,0.62fr)_minmax(270px,1fr)] gap-0 p-0 bg-white border-t border-black">
                 <div className="min-h-0 flex flex-col border-r border-black" data-testid="encounter-left">
-                    <fieldset disabled={!visit} className="contents"><div className="flex-[3] min-h-0"><SoapColumn soap={soap} onChange={onChange} onBlur={onBlur} /></div></fieldset>
+                    <fieldset disabled={!visit} className="contents"><div className="flex-[3] min-h-0"><SoapColumn soap={soap} onChange={onChange} onBlur={onBlur} service={svc} diagnosis={dx} /></div></fieldset>
                     <div className="flex-[1.15] min-h-[120px] border-t border-black [&>section]:border-0 [&>section]:rounded-none"><IssuePlanHistory patientRef={patientRef} currentVisitId={visit?.id} /></div>
                 </div>
-                <div className="min-h-0 overflow-y-auto border-r border-black"><CenterControls visit={visit} patientRef={patientRef} state={state} savedAt={savedAt} onInsert={insertText} onPrepend={prependGenerated} toggle={toggle("visit-toggle-lower", true, true)}
+                <div className="min-h-0 overflow-y-auto border-r border-black"><CenterControls visit={visit} patientRef={patientRef} state={state} savedAt={savedAt} onInsert={insertText} onPrepend={prependGenerated} toggle={toggle("visit-toggle-lower", true, true)} dx={dx} setDx={setDx} svc={svc} setSvc={setSvc}
                     timerStrip={<VisitTimerStrip timerState={timerState} elapsed={elapsed} toggle={toggle("visit-toggle-top", true)} />} /></div>
                 <div className="min-h-0 overflow-y-auto [&_[data-testid=encounter-context]]:gap-0 [&_[data-testid=encounter-context]>*]:border-0 [&_[data-testid=encounter-context]>*]:border-b [&_[data-testid=encounter-context]>*]:border-black [&_[data-testid=encounter-context]>*]:rounded-none [&_[data-testid=encounter-context]>*]:ring-0"><ContextColumn ctx={shell.context} patientRef={patientRef} /></div>
             </main>

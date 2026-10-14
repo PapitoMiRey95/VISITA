@@ -106,3 +106,19 @@ export function CodingRow({ service, diagnosis }) {
         </div>
     );
 }
+
+/* Access-fidelity A band: single horizontal line of labelled boxes — Sr | Dx | Sr Nº | Dx Nº. Read-only structured summary. */
+export function CodingBand({ service, diagnosis }) {
+    const cells = [["Sr", service?.primary?.service_description, "flex-[1.3]"], ["Dx", diagnosis?.diagnosis_text, "flex-[1.3]"], ["Sr Nº", srNumber(service), "w-44"], ["Dx Nº", diagnosis?.diagnosis_code, "w-20"]];
+    return (
+        <div className="flex items-stretch h-6 text-[11px] bg-slate-100 divide-x divide-slate-400 border-b border-slate-400" data-testid="coding-band">
+            {cells.map(([k, v, w]) => (
+                <div key={k} className={`flex items-stretch min-w-0 ${w}`}>
+                    <span className="px-1 flex items-center bg-slate-200 text-[10px] font-semibold text-slate-700 whitespace-nowrap border-r border-slate-400">{k}</span>
+                    <span className={`flex-1 min-w-0 px-1.5 flex items-center truncate bg-white ${v ? "text-slate-900 font-medium" : "text-slate-400"} ${k.includes("Nº") ? "font-mono" : ""}`}
+                        title={v || ""} data-testid={`band-${k.replace(/\s|º/g, "").toLowerCase()}`}>{v || "—"}</span>
+                </div>
+            ))}
+        </div>
+    );
+}

@@ -41,14 +41,13 @@ const STATUS_TEXT = { READY: "READY · NOT STARTED", RUNNING: "IN PROGRESS", PAU
 
 /* Center-column visit timer strip: status · timer · primary Start/Stop/Resume toggle (sits above SOAP Helper). */
 export function VisitTimerStrip({ timerState, elapsed, toggle }) {
-    /* Start/Stop/Resume lives ONLY in the lower center button; `toggle` is optional here. */
     return (
         <div className="flex flex-wrap items-center gap-2 px-2 py-1.5 bg-white border border-slate-300 rounded-sm" data-testid="visit-timer-strip">
             <span className={`px-2 py-0.5 rounded-sm text-[10px] font-bold tracking-wide whitespace-nowrap ${STATUS_STYLE[timerState] || STATUS_STYLE.READY}`} data-testid="encounter-status" data-timer-state={timerState}>
                 {STATUS_TEXT[timerState] || timerState}
             </span>
             <span className="font-mono text-xl leading-none tabular-nums px-2 py-1 rounded-sm bg-white text-slate-900 border border-slate-300" data-testid="encounter-timer">{elapsed}</span>
-            {toggle && <div className="ml-auto min-w-[150px] flex-1 [&>button]:w-full">{toggle}</div>}
+            <div className="ml-auto min-w-[150px] flex-1 [&>button]:w-full">{toggle}</div>
         </div>
     );
 }

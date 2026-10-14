@@ -193,7 +193,7 @@ function Workspace({ shell, visit, setVisit }) {
                     <div className="flex-[1.15] min-h-[120px] border-t border-black [&>section]:border-0 [&>section]:rounded-none"><IssuePlanHistory patientRef={patientRef} currentVisitId={visit?.id} /></div>
                 </div>
                 <div className="min-h-0 overflow-y-auto border-r border-black"><CenterControls visit={visit} patientRef={patientRef} state={state} savedAt={savedAt} onInsert={insertText} onPrepend={prependGenerated} toggle={toggle("visit-toggle-lower", true, true)}
-                    timerStrip={<VisitTimerStrip timerState={timerState} elapsed={elapsed} />} /></div>
+                    timerStrip={<VisitTimerStrip timerState={timerState} elapsed={elapsed} toggle={toggle("visit-toggle-top", true)} />} /></div>
                 <div className="min-h-0 overflow-y-auto [&_[data-testid=encounter-context]]:gap-0 [&_[data-testid=encounter-context]>*]:border-0 [&_[data-testid=encounter-context]>*]:border-b [&_[data-testid=encounter-context]>*]:border-black [&_[data-testid=encounter-context]>*]:rounded-none [&_[data-testid=encounter-context]>*]:ring-0"><ContextColumn ctx={shell.context} patientRef={patientRef} /></div>
             </main>
             <EncounterTypeDialog open={typeOpen} busy={busy} onCancel={() => setTypeOpen(false)} onContinue={onStartContinue} />

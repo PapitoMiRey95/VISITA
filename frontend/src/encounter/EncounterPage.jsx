@@ -230,7 +230,8 @@ function Workspace({ shell, visit, setVisit }) {
                     timerStrip={<VisitTimerStrip timerState={timerState} elapsed={elapsed} toggle={toggle("visit-toggle-top", true)} signedInfo={signedInfo} />} /></div>
                 <div className="min-h-0 overflow-y-auto [&_[data-testid=encounter-context]]:gap-0 [&_[data-testid=encounter-context]>*]:border-0 [&_[data-testid=encounter-context]>*]:border-b [&_[data-testid=encounter-context]>*]:border-black [&_[data-testid=encounter-context]>*]:rounded-none [&_[data-testid=encounter-context]>*]:ring-0"><ContextColumn ctx={shell.context} patientRef={patientRef} /></div>
             </main>
-            <EncounterTypeDialog open={typeOpen} busy={busy} onCancel={() => setTypeOpen(false)} onContinue={onStartContinue} />
+            <EncounterTypeDialog open={typeOpen} busy={busy} onCancel={() => setTypeOpen(false)} onContinue={onStartContinue}
+                patient={{ name: `${(shell.patient_snapshot?.last_name || "").toUpperCase()}, ${shell.patient_snapshot?.first_name || ""}`.replace(/^, /, ""), pin: shell.visita_patient_id }} />
             <Dialog open={exitWarn} onOpenChange={setExitWarn}>
                 <DialogContent className="max-w-sm" data-testid="exit-running-dialog">
                     <DialogHeader>

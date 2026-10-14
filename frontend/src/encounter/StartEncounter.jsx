@@ -21,7 +21,7 @@ export function patientRefOf(p) {
 }
 
 /* Single encounter-type picker. Opened ONLY when a NEW visit is being started. Nothing is created until Continue. */
-export function EncounterTypeDialog({ open, busy, onCancel, onContinue }) {
+export function EncounterTypeDialog({ open, busy, onCancel, onContinue, patient }) {
     const [type, setType] = useState("IN_CLINIC");
     useEffect(() => { if (open) setType("IN_CLINIC"); }, [open]);
     return (
@@ -29,6 +29,12 @@ export function EncounterTypeDialog({ open, busy, onCancel, onContinue }) {
             <DialogContent className="max-w-md" data-testid="encounter-type-dialog">
                 <DialogHeader>
                     <DialogTitle>Select Encounter Type</DialogTitle>
+                    {patient && (
+                        <div className="text-sm leading-tight" data-testid="encounter-type-patient">
+                            <div className="font-bold text-slate-900">{patient.name}</div>
+                            <div className="text-xs text-slate-600">PIN <span className="font-mono font-semibold" data-testid="encounter-type-patient-pin">{patient.pin || "Not assigned"}</span></div>
+                        </div>
+                    )}
                     <DialogDescription>Choose how this visit is taking place. Nothing is created until you press Continue.</DialogDescription>
                 </DialogHeader>
                 <div className="grid grid-cols-1 gap-1.5" role="radiogroup">

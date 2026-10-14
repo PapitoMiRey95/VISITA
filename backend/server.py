@@ -7305,6 +7305,19 @@ async def _get_visit_scoped(visit_id: str, user: dict) -> dict:
     return v
 
 
+async def _get_visit_for_write(visit_id: str, user: dict) -> dict:
+    """Scoped visit that is still IN_PROGRESS. Stopped/signed visits reject every clinical mutation (409 VISIT_LOCKED / VISIT_SIGNED)."""
+    v = await _get_visit_scoped(visit_id, user)
+    if v.get("status") != visits_mod.IN_PROGRESS:
+        raise HTTPException(status_code=409, detail=visits_mod.lock_error(v))
+    return v
+
+
+def _lifecycle_meta(v: dict, user: dict, **extra) -> dict:
+    return {"visit_id": v["id"], "ref_number": v.get("ref_number"), "patient_ref": v.get("patient_ref"), "practice_id": v.get("practice_id"),
+            "actor_id": user["id"], "actor_name": user.get("name"), "actor_role": user.get("role"), "server_time": now_iso(), **extra}
+
+
 async def _visit_context(ident) -> dict:
     pid, did = ident.get("patient_id"), ident.get("directory_id")
     ids = [x for x in (pid, did) if x]
@@ -7380,6 +7393,8 @@ async def visit_create(body: VisitCreateBody, user: dict = Depends(require_roles
     await audit("visit_created", "visit", v["id"], user, new_status=v["status"],
                 meta={"ref_number": v["ref_number"], "patient_ref": v["patient_ref"], "encounter_type": v["encounter_type"],
                       "appointment_id": v["appointment_id"], "source": v["source"]})
+    await audit("visit_started", "visit", v["id"], user, new_status=v["status"],
+                meta=_lifecycle_meta(v, user, started_at=v["started_at"], encounter_type=v["encounter_type"], resulting_status=v["status"]))
     return v
 
 
@@ -7394,9 +7409,7 @@ async def visit_get(visit_id: str, user: dict = Depends(require_roles(*VISIT_REA
 
 @api.patch("/internal/visits/{visit_id}/soap")
 async def visit_save_soap(visit_id: str, body: VisitSoapBody, user: dict = Depends(require_roles(*VISIT_WRITE_ROLES))):
-    v = await _get_visit_scoped(visit_id, user)
-    if v.get("status") != visits_mod.IN_PROGRESS:
-        raise HTTPException(status_code=409, detail="Encounter is not in progress.")
+    v = await _get_visit_for_write(visit_id, user)
     changed, v2 = await visits_mod.save_soap(db, v, body.model_dump(), user)
     if changed:
         await audit("visit_soap_saved", "visit", v["id"], user,
@@ -7407,9 +7420,7 @@ async def visit_save_soap(visit_id: str, body: VisitSoapBody, user: dict = Depen
 
 @api.patch("/internal/visits/{visit_id}/vitals")
 async def visit_save_vitals(visit_id: str, body: dict, user: dict = Depends(require_roles(*VISIT_WRITE_ROLES))):
-    v = await _get_visit_scoped(visit_id, user)
-    if v.get("status") != visits_mod.IN_PROGRESS:
-        raise HTTPException(status_code=409, detail="Encounter is not in progress.")
+    v = await _get_visit_for_write(visit_id, user)
     unknown = set(body) - set(visits_mod.VITAL_FIELDS)
     if unknown:
         raise HTTPException(status_code=400, detail=f"Unknown vitals field(s): {', '.join(sorted(unknown))}")
@@ -7435,29 +7446,48 @@ async def visit_exit(visit_id: str, user: dict = Depends(require_roles(*VISIT_WR
 
 @api.post("/internal/visits/{visit_id}/stop")
 async def visit_stop(visit_id: str, user: dict = Depends(require_roles(*VISIT_WRITE_ROLES))):
-    """Stop (pause) active visit timing only. Keeps visit IN_PROGRESS, SOAP/vitals untouched, nothing signed or locked."""
-    v = await _get_visit_scoped(visit_id, user)
-    if v.get("status") != visits_mod.IN_PROGRESS:
-        raise HTTPException(status_code=409, detail="Encounter is not in progress.")
+    """FINAL stop: freezes time, locks all clinical editing, status READY_TO_SIGN. Irreversible (no resume). Does NOT sign."""
+    v = await _get_visit_for_write(visit_id, user)
     before = visits_mod.timer_of(v)["timer_state"]
-    t = await visits_mod.timer_stop(db, v, user)
-    if before != t["timer_state"]:
-        await audit("visit_timer_stopped", "visit", visit_id, user, old_status=before, new_status=t["timer_state"],
-                    meta={"ref_number": v.get("ref_number"), "elapsed_seconds": t["elapsed_seconds"]})
-    return {"id": visit_id, "status": v["status"], **t, "server_time": now_iso()}
+    sets = await visits_mod.stop_final(db, v, user)
+    if not sets:
+        raise HTTPException(status_code=409, detail=visits_mod.lock_error(await _get_visit_scoped(visit_id, user)))
+    await audit("visit_stopped", "visit", visit_id, user, old_status=v["status"], new_status=sets["status"],
+                meta=_lifecycle_meta(v, user, stopped_at=sets["stopped_at"], elapsed_seconds=sets["elapsed_seconds"], timer_before=before, resulting_status=sets["status"]))
+    return {"id": visit_id, "status": sets["status"], "stopped_at": sets["stopped_at"], **{k: sets[k] for k in visits_mod.TIMER_FIELDS}, "server_time": now_iso()}
 
 
 @api.post("/internal/visits/{visit_id}/resume")
 async def visit_resume(visit_id: str, user: dict = Depends(require_roles(*VISIT_WRITE_ROLES))):
-    v = await _get_visit_scoped(visit_id, user)
-    if v.get("status") != visits_mod.IN_PROGRESS:
-        raise HTTPException(status_code=409, detail="Encounter is not in progress.")
+    """Compatibility only for legacy PAUSED visits that are still IN_PROGRESS. Stopped/signed visits can never be resumed."""
+    v = await _get_visit_for_write(visit_id, user)
     before = visits_mod.timer_of(v)["timer_state"]
     t = await visits_mod.timer_resume(db, v, user)
     if before != t["timer_state"]:
         await audit("visit_timer_resumed", "visit", visit_id, user, old_status=before, new_status=t["timer_state"],
                     meta={"ref_number": v.get("ref_number"), "elapsed_seconds": t["elapsed_seconds"]})
     return {"id": visit_id, "status": v["status"], **t, "resumed_at": now_iso(), "server_time": now_iso()}
+
+
+@api.post("/internal/visits/{visit_id}/sign")
+async def visit_sign(visit_id: str, user: dict = Depends(require_roles("physician"))):
+    """Physician-only. READY_TO_SIGN -> SIGNED using the authenticated identity; stores immutable snapshot + sha256 hash."""
+    v = await _get_visit_scoped(visit_id, user)
+    if v.get("status") == visits_mod.SIGNED:
+        raise HTTPException(status_code=409, detail=visits_mod.lock_error(v))
+    if v.get("status") != visits_mod.READY_TO_SIGN:
+        raise HTTPException(status_code=409, detail={"code": "VISIT_NOT_STOPPED", "status": v.get("status"), "message": "Stop the visit before signing."})
+    if v.get("physician_user_id") != user["id"]:
+        raise HTTPException(status_code=403, detail="Only the encounter physician can sign this visit.")
+    prof = await db.professionals.find_one({"linked_user_id": user["id"]}, {"_id": 0, "id": 1})
+    sets = await visits_mod.sign(db, v, user, (prof or {}).get("id"))
+    if not sets:
+        raise HTTPException(status_code=409, detail=visits_mod.lock_error(await _get_visit_scoped(visit_id, user)))
+    await audit("visit_signed", "visit", visit_id, user, old_status=v["status"], new_status=sets["status"],
+                meta=_lifecycle_meta(v, user, signed_at=sets["signed_at"], signed_by=sets["signed_by"], signed_snapshot_version=sets["signed_snapshot_version"],
+                                     signed_snapshot_hash=sets["signed_snapshot_hash"], resulting_status=sets["status"]))
+    return {"id": visit_id, "status": sets["status"], "signed_at": sets["signed_at"], "signed_by": sets["signed_by"],
+            "signed_snapshot_version": sets["signed_snapshot_version"], "signed_snapshot_hash": sets["signed_snapshot_hash"], "server_time": now_iso()}
 
 
 @api.get("/internal/patients/{patient_ref}/visits")
@@ -7692,7 +7722,7 @@ class DiagnosisSelectBody(BaseModel):
 
 @api.put("/internal/visits/{visit_id}/diagnoses/primary")
 async def visit_set_primary_diagnosis(visit_id: str, body: DiagnosisSelectBody, user: dict = Depends(require_roles(*VISIT_WRITE_ROLES))):
-    v = await _get_visit_scoped(visit_id, user)
+    v = await _get_visit_for_write(visit_id, user)
     if body.source not in ("CATALOG", "PATIENT_HISTORY"):
         raise HTTPException(status_code=422, detail="Invalid source.")
     dx = await dx_mod.set_primary(db, v, body.catalog_id, body.source, user)
@@ -7704,7 +7734,7 @@ async def visit_set_primary_diagnosis(visit_id: str, body: DiagnosisSelectBody, 
 
 @api.delete("/internal/visits/{visit_id}/diagnoses/primary")
 async def visit_clear_primary_diagnosis(visit_id: str, user: dict = Depends(require_roles(*VISIT_WRITE_ROLES))):
-    v = await _get_visit_scoped(visit_id, user)
+    v = await _get_visit_for_write(visit_id, user)
     await dx_mod.clear(db, v, user)
     await audit("visit_diagnosis_cleared", "visit", v["id"], user)
     return {"diagnoses": []}
@@ -7722,7 +7752,7 @@ class ServiceSelectBody(BaseModel):
 
 @api.post("/internal/visits/{visit_id}/service/select")
 async def visit_service_select(visit_id: str, body: ServiceSelectBody, user: dict = Depends(require_roles(*VISIT_WRITE_ROLES))):
-    v = await _get_visit_scoped(visit_id, user)
+    v = await _get_visit_for_write(visit_id, user)
     svc = await svc_mod.select(db, v, body.catalog_id, user)
     if svc is None:
         raise HTTPException(status_code=404, detail="Service not found in catalog.")
@@ -7732,7 +7762,7 @@ async def visit_service_select(visit_id: str, body: ServiceSelectBody, user: dic
 
 @api.delete("/internal/visits/{visit_id}/service/primary")
 async def visit_service_clear_primary(visit_id: str, user: dict = Depends(require_roles(*VISIT_WRITE_ROLES))):
-    v = await _get_visit_scoped(visit_id, user)
+    v = await _get_visit_for_write(visit_id, user)
     svc = await svc_mod.remove(db, v, None, user)
     await audit("visit_service_clear_primary", "visit", v["id"], user)
     return {"service": svc}
@@ -7740,7 +7770,7 @@ async def visit_service_clear_primary(visit_id: str, user: dict = Depends(requir
 
 @api.delete("/internal/visits/{visit_id}/service/additional/{catalog_id}")
 async def visit_service_remove_additional(visit_id: str, catalog_id: str, user: dict = Depends(require_roles(*VISIT_WRITE_ROLES))):
-    v = await _get_visit_scoped(visit_id, user)
+    v = await _get_visit_for_write(visit_id, user)
     svc = await svc_mod.remove(db, v, catalog_id, user)
     await audit("visit_service_remove_additional", "visit", v["id"], user, meta={"catalog_id": catalog_id})
     return {"service": svc}
@@ -7762,7 +7792,7 @@ class HelperUsedBody(BaseModel):
 @api.post("/internal/visits/{visit_id}/helper-used")
 async def visit_helper_used(visit_id: str, body: HelperUsedBody, user: dict = Depends(require_roles(*VISIT_WRITE_ROLES))):
     """Audit-only: records that a helper's text was explicitly inserted. Note text itself flows through PATCH /soap."""
-    v = await _get_visit_scoped(visit_id, user)
+    v = await _get_visit_for_write(visit_id, user)
     h = await helpers_mod.get(db, user, body.helper_id)
     if not h:
         raise HTTPException(status_code=404, detail="Helper not found.")

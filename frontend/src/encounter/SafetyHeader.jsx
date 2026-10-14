@@ -36,13 +36,15 @@ function Item({ label, value, testid, className = "" }) {
     );
 }
 
-const STATUS_STYLE = { READY: "bg-slate-200 text-slate-700", RUNNING: "bg-emerald-100 text-emerald-800", PAUSED: "bg-amber-100 text-amber-800" };
-const STATUS_TEXT = { READY: "READY · NOT STARTED", RUNNING: "IN PROGRESS", PAUSED: "PAUSED" };
+const STATUS_STYLE = { READY: "bg-slate-200 text-slate-700", RUNNING: "bg-emerald-100 text-emerald-800", PAUSED: "bg-amber-100 text-amber-800",
+    STOPPED: "bg-amber-100 text-amber-900 border border-amber-400", SIGNED: "bg-visita-ribbon text-white" };
+const STATUS_TEXT = { READY: "READY · NOT STARTED", RUNNING: "IN PROGRESS", PAUSED: "PAUSED (LEGACY)", STOPPED: "VISIT STOPPED — READY TO SIGN", SIGNED: "SIGNED · READ ONLY" };
 
 /* Center-column visit timer strip: status · timer · primary Start/Stop/Resume toggle (sits above SOAP Helper). */
-export function VisitTimerStrip({ timerState, elapsed, toggle }) {
+export function VisitTimerStrip({ timerState, elapsed, toggle, signedInfo }) {
     return (
         <div className="flex flex-wrap items-center gap-2 px-2 py-1.5 bg-white border border-slate-300 rounded-sm" data-testid="visit-timer-strip">
+            {signedInfo && <span className="basis-full text-[10px] text-slate-600 leading-tight" data-testid="encounter-signed-info">{signedInfo}</span>}
             <span className={`px-2 py-0.5 rounded-sm text-[10px] font-bold tracking-wide whitespace-nowrap ${STATUS_STYLE[timerState] || STATUS_STYLE.READY}`} data-testid="encounter-status" data-timer-state={timerState}>
                 {STATUS_TEXT[timerState] || timerState}
             </span>

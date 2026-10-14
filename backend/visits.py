@@ -4,6 +4,8 @@ ONE collection `visits`. patient_ref is stable for life: "directory:<id>" when a
 identity exists (directly or via patients.matched_directory_id), else "patient:<portal id>".
 One IN_PROGRESS visit per (practice_id, patient_ref, physician_user_id) — DB-enforced.
 """
+import hashlib
+import json
 import uuid
 from datetime import datetime, timezone
 from typing import Optional
@@ -11,8 +13,10 @@ from typing import Optional
 from pymongo.errors import DuplicateKeyError
 
 COLL = "visits"
-IN_PROGRESS = "IN_PROGRESS"
-RUNNING, PAUSED = "RUNNING", "PAUSED"
+IN_PROGRESS, READY_TO_SIGN, SIGNED = "IN_PROGRESS", "READY_TO_SIGN", "SIGNED"
+LOCKED_STATUSES = (READY_TO_SIGN, SIGNED)  # no clinical mutation allowed server-side
+RUNNING, PAUSED, STOPPED = "RUNNING", "PAUSED", "STOPPED"
+SNAPSHOT_VERSION = 1
 TIMER_FIELDS = ("timer_state", "elapsed_seconds", "running_since", "paused_at")
 ENCOUNTER_TYPES = ("IN_CLINIC", "TELEPHONE", "VIDEO", "PROXY", "ADMIN", "PHYSICAL")
 SOAP_FIELDS = ("subjective", "objective", "assessment", "plan")
@@ -177,7 +181,7 @@ async def save_vitals(db, visit, patch: dict, user):
 def history_row(v: dict) -> dict:
     return {"id": v["id"], "ref_number": v.get("ref_number"), "encounter_type": v.get("encounter_type"),
             "status": v.get("status"), "started_at": v.get("started_at"), "last_saved_at": v.get("last_saved_at"),
-            "exited_at": v.get("exited_at"), "physician_name": v.get("physician_name"),
+            "exited_at": v.get("exited_at"), "stopped_at": v.get("stopped_at"), "signed_at": v.get("signed_at"), "physician_name": v.get("physician_name"),
             "appointment_ref": v.get("appointment_ref"), "reason": v.get("reason"), **timer_of(v),
             "has_vitals": any((v.get("vitals") or {}).get(k) is not None for k in VITAL_FIELDS)}
 
@@ -214,3 +218,52 @@ async def timer_resume(db, visit, user):
         t = {**t, "timer_state": RUNNING, "running_since": now, "paused_at": None}
     await db[COLL].update_one({"id": visit["id"]}, {"$set": {**t, **sets}})
     return t
+
+
+# ---------------- Final lifecycle: IN_PROGRESS -> READY_TO_SIGN (stop, irreversible) -> SIGNED (immutable snapshot) ----------------
+def lock_error(visit: dict):
+    """Consistent 409 payload for any mutation attempted on a stopped/signed visit."""
+    code = "VISIT_SIGNED" if visit.get("status") == SIGNED else "VISIT_LOCKED"
+    return {"code": code, "status": visit.get("status"), "message": "This visit is locked and can no longer be modified." if code == "VISIT_LOCKED"
+            else "This visit is signed. Corrections require an auditable addendum."}
+
+
+async def stop_final(db, visit, user):
+    """Irreversible STOP: fold running time, freeze elapsed, status READY_TO_SIGN. Resume is no longer possible."""
+    t = timer_of(visit)
+    now = _now()
+    elapsed = int(t["elapsed_seconds"] or 0) + (_secs_since(t["running_since"] or now) if t["timer_state"] == RUNNING else 0)
+    sets = {"status": READY_TO_SIGN, "stopped_at": now, "timer_state": STOPPED, "elapsed_seconds": elapsed, "running_since": None,
+            "paused_at": None, "updated_at": now, "updated_by": {"id": user["id"], "name": user.get("name")}}
+    res = await db[COLL].update_one({"id": visit["id"], "status": IN_PROGRESS}, {"$set": sets})
+    return sets if res.modified_count else None
+
+
+SNAPSHOT_KEYS = ("id", "ref_number", "practice_id", "patient_ref", "patient_id", "directory_id", "visita_patient_id", "patient_snapshot",
+                 "encounter_type", "reason", "appointment_id", "appointment_ref", "started_at", "stopped_at", "elapsed_seconds",
+                 "soap", "vitals", "diagnoses", "service", "physician_user_id", "professional_id", "physician_name")
+
+
+def canonical_json(obj) -> str:
+    """Deterministic representation: sorted keys, compact separators, ASCII-escaped — hashed with SHA-256."""
+    return json.dumps(obj, sort_keys=True, separators=(",", ":"), ensure_ascii=True, default=str)
+
+
+def build_snapshot(visit: dict, signed_by: dict, signed_at: str) -> dict:
+    snap = {k: visit.get(k) for k in SNAPSHOT_KEYS}
+    snap["signed_at"], snap["signed_by"], snap["snapshot_version"] = signed_at, signed_by, SNAPSHOT_VERSION
+    return snap
+
+
+async def sign(db, visit, user, professional_id):
+    """READY_TO_SIGN -> SIGNED with immutable snapshot + sha256 of canonical JSON. Authenticated identity only."""
+    now = _now()
+    signed_by = {"user_id": user["id"], "physician_user_id": visit.get("physician_user_id"), "professional_id": professional_id,
+                 "physician_name": user.get("name"), "role": user.get("role")}
+    snap = build_snapshot(visit, signed_by, now)
+    digest = hashlib.sha256(canonical_json(snap).encode("utf-8")).hexdigest()
+    sets = {"status": SIGNED, "signed_at": now, "signed_by": signed_by, "signed_snapshot": snap, "signed_snapshot_version": SNAPSHOT_VERSION,
+            "signed_snapshot_hash": f"sha256:{digest}", "addenda": visit.get("addenda") or [],
+            "updated_at": now, "updated_by": {"id": user["id"], "name": user.get("name")}}
+    res = await db[COLL].update_one({"id": visit["id"], "status": READY_TO_SIGN}, {"$set": sets})
+    return sets if res.modified_count else None

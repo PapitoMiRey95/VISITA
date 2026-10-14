@@ -63,10 +63,9 @@ function SoapColumn({ soap, onChange, onBlur, service, diagnosis }) {
         <div className="flex flex-col min-h-0 h-full divide-y divide-black bg-white" data-testid="soap-column">
             <label className="flex flex-col flex-1 min-h-0">{ta("subjective", "Subjective", "flex-1 min-h-[72px]")}</label>
             <label className="flex flex-col flex-1 min-h-0">{ta("objective", "Objective", "flex-1 min-h-[72px]")}</label>
-            {/* A = Assessment: compact Access-style coding band (Sr | Dx | Sr Nº | Dx Nº) + one-line assessment text */}
+            {/* A = Assessment: compact Access-style coding band only (Sr | Dx | Sr Nº | Dx Nº) */}
             <div className="shrink-0" data-testid="soap-assessment-band">
                 <CodingBand service={service} diagnosis={diagnosis} />
-                <label className="block border-t border-slate-300">{ta("assessment", "Assessment", "h-7 min-h-0 py-1 leading-tight")}</label>
             </div>
             <label className="flex flex-col flex-1 min-h-0">{ta("plan", "Plan", "flex-1 min-h-[72px]")}</label>
         </div>

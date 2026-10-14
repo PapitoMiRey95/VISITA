@@ -41,6 +41,8 @@ export function vitalsToObjective(v, which) {
     if (which === "bp") {
         if (!bpComplete) return "";
         push("Sst", v.systolic_bp); push("Dst", v.diastolic_bp); push("bpm", v.heart_rate);
+    } else if (which === "weight") {
+        push("Wgt Kg", v.weight_kg); push("Wgt Lb", kgToLb(v.weight_kg));
     } else {
         if (bpComplete) { push("Sst", v.systolic_bp); push("Dst", v.diastolic_bp); }
         push("bpm", v.heart_rate);
@@ -197,10 +199,10 @@ export function VitalsPanel({ visitId, patientRef, initial, onInsertObjective, o
                         {k === "weight_kg" && onInsertObjective && (() => {
                             /* Access cmdCalcWeight: requires valid WK → WL = round(WK × 2.20462, 2) (already derived live) → PopDims(True) */
                             const ok = isFinite(parseFloat(current.weight_kg)) && parseFloat(current.weight_kg) > 0;
-                            const text = ok ? vitalsToObjective(current, "all") : "";
+                            const text = ok ? vitalsToObjective(current, "weight") : "";
                             return (
-                            <button type="button" disabled={!text} onClick={() => onInsertObjective(text)} data-testid="quick-obj-weight" aria-label="Calculate weight (WL) and send dimensions to Objective"
-                                title={ok ? `WL = ${kgToLb(parseFloat(current.weight_kg))} lb\nSend dimensions to Objective` : "Enter a valid WK first"}
+                            <button type="button" disabled={!text} onClick={() => onInsertObjective(text)} data-testid="quick-obj-weight" aria-label="Send WK and WL to Objective"
+                                title={ok ? `${text} → Objective` : "Enter a valid WK first"}
                                 className="self-end inline-flex items-center gap-0 h-7 px-1 rounded-sm border border-[#14532d] bg-[#15803d] text-[11px] font-bold text-white hover:bg-[#16a34a] active:bg-[#166534] disabled:opacity-40 disabled:cursor-not-allowed">
                                 <Asterisk className="w-3 h-3" /><ArrowDownToLine className="w-3 h-3" /><Weight className="w-3 h-3" />
                             </button>

@@ -19,3 +19,4 @@ test("generated-line detection never matches physician text", () => {
     expect(isGeneratedLine("Patient reports Sst: 170 at home")).toBe(false);
     expect(isGeneratedLine("Lungs clear.")).toBe(false);
 });
+test("weight button → WK + WL only", () => expect(vitalsToObjective(v, "weight")).toBe("Wgt Kg: 78; Wgt Lb: 171.96;"));

@@ -1,15 +1,15 @@
 import { Fragment, useEffect, useRef, useState } from "react";
-import { HeartPulse, Delete, CornerDownLeft, Eraser, ArrowDownToLine, Activity, Ruler, Weight, Gauge, Target, Thermometer, CircleDot, Triangle } from "lucide-react";
+import { HeartPulse, Delete, CornerDownLeft, Eraser, ArrowDownToLine, Activity, Ruler, Weight, Gauge, Target, Thermometer, CircleDot, Triangle, Asterisk } from "lucide-react";
 import { api, formatErr } from "../lib/api";
 
 /* Dr. Aguayo Access vitals row — EXACT visible labels/order. Editable = physician-measured; ro = derived automatically. */
 export const VITAL_ROW = [
-    { k: "systolic_bp", label: "Sst", tip: "Systolic", w: "w-11", Icon: Activity },
-    { k: "diastolic_bp", label: "Dst", tip: "Diastolic", w: "w-11", Icon: Activity },
-    { k: "heart_rate", label: "Bpm", tip: "Heart rate", w: "w-11", Icon: HeartPulse },
-    { k: "height_cm", label: "Hgt", tip: "Height (m)", w: "w-12", Icon: Ruler },
-    { k: "weight_kg", label: "WK", tip: "Weight kilos", w: "w-12", Icon: Weight },
-    { k: "weight_lb", label: "WL", tip: "Weight pounds (auto)", w: "w-14", ro: true, Icon: Weight },
+    { k: "systolic_bp", label: "Sst", tip: "Systolic", w: "w-10", Icon: Activity },
+    { k: "diastolic_bp", label: "Dst", tip: "Diastolic", w: "w-10", Icon: Activity },
+    { k: "heart_rate", label: "Bpm", tip: "Heart rate", w: "w-10", Icon: HeartPulse },
+    { k: "height_cm", label: "Hgt", tip: "Height (m)", w: "w-11", Icon: Ruler },
+    { k: "weight_kg", label: "WK", tip: "Weight kilos", w: "w-10", Icon: Weight },
+    { k: "weight_lb", label: "WL", tip: "Weight pounds (auto)", w: "w-[3.4rem]", ro: true, Icon: Weight },
     { k: "bmi", label: "BMI", tip: "Body mass index (auto)", w: "w-12", ro: true, Icon: Gauge, breakBefore: true },
     { k: "iwk", label: "IWK", tip: "Ideal weight kilos = 24 × Hgt² (auto)", w: "w-14", ro: true, Icon: Target },
     { k: "iwl", label: "IWL", tip: "Ideal weight pounds = IWK × 2.20462 (auto)", w: "w-14", ro: true, Icon: Target },
@@ -194,9 +194,20 @@ export function VitalsPanel({ visitId, patientRef, initial, onInsertObjective, o
                                 </span>
                             ) : renderInput(k, w)}
                         </div>
+                        {k === "weight_kg" && onInsertObjective && (() => {
+                            /* Access cmdCalcWeight: requires valid WK → WL = round(WK × 2.20462, 2) (already derived live) → PopDims(True) */
+                            const ok = isFinite(parseFloat(current.weight_kg)) && parseFloat(current.weight_kg) > 0;
+                            const text = ok ? vitalsToObjective(current, "all") : "";
+                            return (
+                            <button type="button" disabled={!text} onClick={() => onInsertObjective(text)} data-testid="quick-obj-weight" aria-label="Calculate weight (WL) and send dimensions to Objective"
+                                title={ok ? `WL = ${kgToLb(parseFloat(current.weight_kg))} lb\nSend dimensions to Objective` : "Enter a valid WK first"}
+                                className="self-end inline-flex items-center gap-0 h-7 px-1 rounded-sm border border-[#14532d] bg-[#15803d] text-[11px] font-bold text-white hover:bg-[#16a34a] active:bg-[#166534] disabled:opacity-40 disabled:cursor-not-allowed">
+                                <Asterisk className="w-3 h-3" /><ArrowDownToLine className="w-3 h-3" /><Weight className="w-3 h-3" />
+                            </button>
+                        ); })()}
                         {k === "heart_rate" && onInsertObjective && (() => { const text = vitalsToObjective(current, "bp"); return (
                             <button type="button" disabled={!text} onClick={() => onInsertObjective(text)} data-testid="quick-obj-bp" title={text ? `${text} → Objective` : "BP incomplete"}
-                                className="self-end inline-flex items-center gap-0.5 h-7 px-1.5 rounded-sm border border-[#14532d] bg-[#15803d] text-[11px] font-bold text-white hover:bg-[#16a34a] active:bg-[#166534] disabled:opacity-40 disabled:cursor-not-allowed">
+                                className="self-end inline-flex items-center gap-0.5 h-7 px-1 rounded-sm border border-[#14532d] bg-[#15803d] text-[11px] font-bold text-white hover:bg-[#16a34a] active:bg-[#166534] disabled:opacity-40 disabled:cursor-not-allowed">
                                 <ArrowDownToLine className="w-3 h-3" /> BP
                             </button>
                         ); })()}

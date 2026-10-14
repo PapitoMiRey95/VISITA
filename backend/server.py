@@ -7407,6 +7407,14 @@ async def visit_get(visit_id: str, user: dict = Depends(require_roles(*VISIT_REA
     return {**v, "vitals": {**visits_mod.EMPTY_VITALS, **(v.get("vitals") or {})}, **visits_mod.timer_of(v), "context": ctx, "server_time": now_iso()}
 
 
+@api.get("/internal/visits/{visit_id}/record")
+async def visit_record(visit_id: str, user: dict = Depends(require_roles(*VISIT_READ_ROLES))):
+    """Visit Hx read-only record. GET only — there are no historical mutation endpoints."""
+    v = await _get_visit_scoped(visit_id, user)
+    await audit("visit_read", "visit", v["id"], user, meta={"patient_ref": v["patient_ref"], "ref_number": v.get("ref_number"), "via": "visit_hx"})
+    return visits_mod.read_only_record(v)
+
+
 @api.patch("/internal/visits/{visit_id}/soap")
 async def visit_save_soap(visit_id: str, body: VisitSoapBody, user: dict = Depends(require_roles(*VISIT_WRITE_ROLES))):
     v = await _get_visit_for_write(visit_id, user)
@@ -7491,9 +7499,11 @@ async def visit_sign(visit_id: str, user: dict = Depends(require_roles("physicia
 
 
 @api.get("/internal/patients/{patient_ref}/visits")
-async def visit_history(patient_ref: str, user: dict = Depends(require_roles(*VISIT_READ_ROLES))):
+async def visit_history(patient_ref: str, exclude_visit_id: Optional[str] = None, user: dict = Depends(require_roles(*VISIT_READ_ROLES))):
     ident = await _visit_identity_or_400(patient_ref, None, None)
     q = {"practice_id": user.get("practice_id"), "patient_ref": {"$in": visits_mod.all_refs(ident)}}
+    if exclude_visit_id:
+        q["id"] = {"$ne": exclude_visit_id}
     if user["role"] == "physician":
         q["physician_user_id"] = user["id"]
     rows = await db[visits_mod.COLL].find(q, {"_id": 0}).sort("started_at", -1).to_list(200)

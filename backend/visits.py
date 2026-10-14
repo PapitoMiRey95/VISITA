@@ -178,8 +178,14 @@ async def save_vitals(db, visit, patch: dict, user):
     return sorted(changed), await db[COLL].find_one({"id": visit["id"]}, {"_id": 0})
 
 
+def primary_dx(v: dict):
+    src = v.get("signed_snapshot") if v.get("status") == SIGNED and v.get("signed_snapshot") else v
+    d = (src.get("diagnoses") or [None])[0]
+    return {"diagnosis_text": d.get("diagnosis_text"), "diagnosis_code": d.get("diagnosis_code")} if d else None
+
+
 def history_row(v: dict) -> dict:
-    return {"id": v["id"], "ref_number": v.get("ref_number"), "encounter_type": v.get("encounter_type"),
+    return {"id": v["id"], "ref_number": v.get("ref_number"), "encounter_type": v.get("encounter_type"), "primary_dx": primary_dx(v),
             "status": v.get("status"), "started_at": v.get("started_at"), "last_saved_at": v.get("last_saved_at"),
             "exited_at": v.get("exited_at"), "stopped_at": v.get("stopped_at"), "signed_at": v.get("signed_at"), "physician_name": v.get("physician_name"),
             "appointment_ref": v.get("appointment_ref"), "reason": v.get("reason"), **timer_of(v),
@@ -267,3 +273,15 @@ async def sign(db, visit, user, professional_id):
             "updated_at": now, "updated_by": {"id": user["id"], "name": user.get("name")}}
     res = await db[COLL].update_one({"id": visit["id"], "status": READY_TO_SIGN}, {"$set": sets})
     return sets if res.modified_count else None
+
+
+RECORD_KEYS = ("id", "ref_number", "encounter_type", "reason", "started_at", "stopped_at", "elapsed_seconds", "physician_name", "soap", "vitals", "diagnoses", "service", "patient_snapshot")
+
+
+def read_only_record(v: dict) -> dict:
+    """Visit Hx: SIGNED -> signed_snapshot is authoritative; otherwise the stored live fields. Never fabricates."""
+    signed = v.get("status") == SIGNED and bool(v.get("signed_snapshot"))
+    src = v["signed_snapshot"] if signed else v
+    return {"source": "SIGNED_SNAPSHOT" if signed else "LIVE", "status": v.get("status"), "signed_at": v.get("signed_at"), "signed_by": v.get("signed_by"),
+            "signed_snapshot_version": v.get("signed_snapshot_version"), "signed_snapshot_hash": v.get("signed_snapshot_hash"),
+            "record": {k: src.get(k) for k in RECORD_KEYS}}

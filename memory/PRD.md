@@ -765,3 +765,9 @@ PROD FOLLOW-UPS (need explicit GO, scripts not yet written): stamp practice_id o
 - UI: VisitToggle START → STOP VISIT (confirm) → SIGN VISIT (confirm) → SIGNED (disabled); status strip "VISIT STOPPED — READY TO SIGN" / "SIGNED · READ ONLY" + signed info line; all center tools in disabled fieldsets, SOAP textareas readOnly, LOCKED badge; exit dialog no longer offers Stop. Resume kept server-side ONLY for legacy PAUSED IN_PROGRESS visits (no UI button).
 - Existing Preview visits NOT rewritten: 16 IN_PROGRESS/RUNNING, 14 IN_PROGRESS/PAUSED (legacy), 6 IN_PROGRESS/no timer, 5 COMPLETED (legacy). New visits allowed once prior is READY_TO_SIGN/SIGNED (unique index only on IN_PROGRESS).
 - Future: ADDENDUM = visits.addenda[] {id, text, author{id,name}, created_at, refers_to signed_snapshot_hash} + audit visit_addendum_added; no unlock/overwrite.
+
+## Encounter Navigation + Visit Hx (Jun 2026, PREVIEW ONLY, verified)
+- `EncounterTabs.jsx` (reusable shell, ENCOUNTER_TABS list) rendered inside SafetyHeader under patient row: Visit New | Visit Hx | PMHx / PSHx / Risks (placeholder "— next phase"). Visit New stays MOUNTED (hidden) when other tabs shown → timer/lifecycle/autosave unaffected.
+- `VisitHx.jsx`: READ-ONLY list (Date | Dx | Visit Ref, newest first, filter by dx/ref/date/code) + detail (meta, signature line, S/O/CodingBand/P, vitals, dx/service). Zero mutation controls.
+- Backend: GET /internal/patients/{ref}/visits now returns primary_dx + accepts exclude_visit_id (current visit excluded); new GET /internal/visits/{id}/record → read_only_record(): SIGNED → signed_snapshot authoritative (source SIGNED_SNAPSHOT) else LIVE fields; legacy COMPLETED shown as-is, no fake signature. Audits visit_read via visit_hx. No historical PUT/PATCH/POST/DELETE.
+- Note: QA sample visit VIS-000004 (ROMERO CUAHUEY) was stopped+signed during testing and remains SIGNED.

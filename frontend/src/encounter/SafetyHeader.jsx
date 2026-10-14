@@ -54,7 +54,7 @@ export function VisitTimerStrip({ timerState, elapsed, toggle, signedInfo }) {
     );
 }
 
-export function SafetyHeader({ visit, typeLabel, onExit, exiting }) {
+export function SafetyHeader({ visit, typeLabel, onExit, exiting, tabs }) {
     const s = visit.patient_snapshot || {};
     const age = s.date_of_birth ? Math.floor((Date.now() - new Date(s.date_of_birth).getTime()) / 31557600000) : null;
     const ohip = s.health_card_display
@@ -97,6 +97,7 @@ export function SafetyHeader({ visit, typeLabel, onExit, exiting }) {
                 <span><span className="text-white/55 uppercase text-[10px] tracking-wide mr-1">Encounter</span>{typeLabel}</span>
                 <span><span className="text-white/55 uppercase text-[10px] tracking-wide mr-1">Physician</span>{visit.physician_name}</span>
             </div>
+            {tabs}
         </header>
     );
 }

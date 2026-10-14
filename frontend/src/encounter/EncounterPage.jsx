@@ -16,6 +16,8 @@ import { VisitToggle } from "./VisitToggle";
 import { DiagnosisSearch } from "./DiagnosisSearch";
 import { AnnualExamMonth } from "./AnnualExamMonth";
 import { ServiceSelector, CodingBand } from "./ServiceSelector";
+import { EncounterTabs } from "./EncounterTabs";
+import { VisitHx } from "./VisitHx";
 import { MetricsGrid } from "./MetricsGrid";
 import { VitalsPanel } from "./VitalsPanel";
 import { IssuePlanHistory } from "./IssuePlanHistory";
@@ -147,6 +149,7 @@ function Workspace({ shell, visit, setVisit }) {
     const [typeOpen, setTypeOpen] = useState(false);
     const [exitWarn, setExitWarn] = useState(false);
     const [confirm, setConfirm] = useState(null); // "stop" | "sign"
+    const [tab, setTab] = useState("visit_new"); // Visit New stays MOUNTED while other tabs show → timer/lifecycle/autosave untouched
     const [busy, setBusy] = useState(false);
     const patientRef = shell.patient_ref;
     const locked = !!visit && visit.status !== "IN_PROGRESS";
@@ -214,8 +217,11 @@ function Workspace({ shell, visit, setVisit }) {
 
     return (
         <div className="h-screen bg-visita-bg flex flex-col" data-testid="encounter-mode" data-timer-state={timerState} data-visit-status={visit?.status || "NOT_STARTED"} data-locked={locked}>
-            <SafetyHeader visit={shell} typeLabel={visit ? encounterTypeLabel(visit.encounter_type) : "Not started"} onExit={onExit} exiting={exiting} />
-            <main className="flex-1 min-h-0 grid grid-cols-[minmax(0,1.25fr)_minmax(272px,0.62fr)_minmax(270px,1fr)] gap-0 p-0 bg-white border-t border-black">
+            <SafetyHeader visit={shell} typeLabel={visit ? encounterTypeLabel(visit.encounter_type) : "Not started"} onExit={onExit} exiting={exiting}
+                tabs={<EncounterTabs value={tab} onChange={setTab} />} />
+            {tab === "visit_hx" && <div className="flex-1 min-h-0 border-t border-black" data-testid="encounter-tab-panel-visit_hx"><VisitHx patientRef={patientRef} currentVisitId={visit?.id} active /></div>}
+            {tab === "pmhx" && <div className="flex-1 min-h-0 border-t border-black bg-white p-6 text-sm text-slate-500 italic" data-testid="encounter-tab-panel-pmhx">PMHx / PSHx / Risks — next phase</div>}
+            <main className={`flex-1 min-h-0 grid grid-cols-[minmax(0,1.25fr)_minmax(272px,0.62fr)_minmax(270px,1fr)] gap-0 p-0 bg-white border-t border-black ${tab === "visit_new" ? "" : "hidden"}`} data-testid="encounter-tab-panel-visit_new">
                 <div className="min-h-0 flex flex-col border-r border-black" data-testid="encounter-left">
                     <fieldset disabled={!visit} className="contents"><div className="flex-[3] min-h-0"><SoapColumn soap={soap} onChange={onChange} onBlur={onBlur} service={svc} diagnosis={dx} readOnly={locked} /></div></fieldset>
                     <div className="flex-[1.15] min-h-[120px] border-t border-black [&>section]:border-0 [&>section]:rounded-none"><IssuePlanHistory patientRef={patientRef} currentVisitId={visit?.id} /></div>

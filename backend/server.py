@@ -3566,6 +3566,29 @@ async def _update_request(coll, entity, item_id, body: UpdateBody, user, status_
 
 
 # ----------------------------- Prescriptions -----------------------------
+async def _attach_pins(rows: list) -> list:
+    """Backfill each queue row's patient PIN (visita_patient_id) from portal patient or directory so staff/physician can see it."""
+    pids = {r.get("patient_id") for r in rows if r.get("patient_id")}
+    dids = {r.get("directory_id") for r in rows if r.get("directory_id")}
+    pin_map = {}
+    if pids:
+        async for p in db.patients.find({"id": {"$in": list(pids)}}, {"_id": 0, "id": 1, "visita_patient_id": 1, "matched_directory_id": 1}):
+            if p.get("visita_patient_id"):
+                pin_map[p["id"]] = p["visita_patient_id"]
+            elif p.get("matched_directory_id"):
+                dids.add(p["matched_directory_id"]); pin_map.setdefault(("via", p["id"]), p["matched_directory_id"])
+    if dids:
+        async for d in db.patient_directory.find({"id": {"$in": list(dids)}}, {"_id": 0, "id": 1, "visita_patient_id": 1}):
+            if d.get("visita_patient_id"):
+                pin_map[d["id"]] = d["visita_patient_id"]
+    for r in rows:
+        if not r.get("visita_patient_id"):
+            via = pin_map.get(("via", r.get("patient_id")))
+            r["visita_patient_id"] = pin_map.get(r.get("patient_id")) or pin_map.get(r.get("directory_id")) or (pin_map.get(via) if via else None) \
+                or (r.get("patient_snapshot") or {}).get("visita_patient_id")
+    return rows
+
+
 @api.get("/internal/prescriptions")
 async def rx_queue(q: Optional[str] = None, status: Optional[str] = None, user: dict = Depends(require_roles(*CLINIC_ROLES))):
     query = dict(pscope(user))
@@ -3578,23 +3601,7 @@ async def rx_queue(q: Optional[str] = None, status: Optional[str] = None, user: 
         query["internal_status"] = {"$nin": ["voided"]}
     query.update(_search_filter(q, ["patient_name", "medication_name", "ref_number"]))
     rows = await db.prescription_requests.find(query, {"_id": 0}).sort("created_at", -1).to_list(500)
-    # Backfill each row's patient PIN (visita_patient_id) so the queue can show it.
-    pids = {r.get("patient_id") for r in rows if r.get("patient_id")}
-    dids = {r.get("directory_id") for r in rows if r.get("directory_id")}
-    pin_map = {}
-    if pids:
-        async for p in db.patients.find({"id": {"$in": list(pids)}}, {"_id": 0, "id": 1, "visita_patient_id": 1}):
-            if p.get("visita_patient_id"):
-                pin_map[p["id"]] = p["visita_patient_id"]
-    if dids:
-        async for d in db.patient_directory.find({"id": {"$in": list(dids)}}, {"_id": 0, "id": 1, "visita_patient_id": 1}):
-            if d.get("visita_patient_id"):
-                pin_map[d["id"]] = d["visita_patient_id"]
-    for r in rows:
-        if not r.get("visita_patient_id"):
-            r["visita_patient_id"] = pin_map.get(r.get("patient_id")) or pin_map.get(r.get("directory_id")) \
-                or (r.get("patient_snapshot") or {}).get("visita_patient_id")
-    return rows
+    return await _attach_pins(rows)
 
 
 @api.patch("/internal/prescriptions/{item_id}")
@@ -3726,7 +3733,7 @@ async def img_queue(q: Optional[str] = None, status: Optional[str] = None, user:
     elif status:
         query["internal_status"] = status
     query.update(_search_filter(q, ["patient_name", "body_part", "ref_number"]))
-    return await db.imaging_requests.find(query, {"_id": 0}).sort("created_at", -1).to_list(500)
+    return await _attach_pins(await db.imaging_requests.find(query, {"_id": 0}).sort("created_at", -1).to_list(500))
 
 
 @api.patch("/internal/imaging/{item_id}")
@@ -3744,7 +3751,7 @@ async def bld_queue(q: Optional[str] = None, status: Optional[str] = None, user:
     elif status:
         query["internal_status"] = status
     query.update(_search_filter(q, ["patient_name", "reason", "ref_number"]))
-    return await db.bloodwork_requests.find(query, {"_id": 0}).sort("created_at", -1).to_list(500)
+    return await _attach_pins(await db.bloodwork_requests.find(query, {"_id": 0}).sort("created_at", -1).to_list(500))
 
 
 @api.patch("/internal/bloodwork/{item_id}")
@@ -4141,7 +4148,7 @@ async def msg_queue(q: Optional[str] = None, status: Optional[str] = None, user:
     elif status:
         query["status"] = status
     query.update(_search_filter(q, ["patient_name", "subject", "ref_number", "body"]))
-    return await db.patient_messages.find(query, {"_id": 0}).sort("created_at", -1).to_list(500)
+    return await _attach_pins(await db.patient_messages.find(query, {"_id": 0}).sort("created_at", -1).to_list(500))
 
 
 @api.patch("/internal/messages/{item_id}")

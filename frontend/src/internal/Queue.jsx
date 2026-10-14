@@ -125,6 +125,7 @@ export default function Queue({ title, subtitle, endpoint, patchBase, searchPlac
                         <>
                             <DialogHeader>
                                 <DialogTitle className="text-lg">{selected.ref_number} · {formatCombinedName(selected.patient_name)}</DialogTitle>
+                                <div className="text-sm font-semibold text-slate-700" data-testid="detail-pin">PIN <span className="font-mono">{selected.visita_patient_id || "Not assigned"}</span></div>
                                 <p className="text-xs text-slate-500" data-testid="detail-received">Request received: {selected.created_at ? formatDate(selected.created_at) : "—"}</p>
                             </DialogHeader>
                             <div className="space-y-3 text-sm">

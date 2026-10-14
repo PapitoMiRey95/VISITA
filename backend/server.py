@@ -40,6 +40,7 @@ import soap_helpers as helpers_mod
 import clinical_history as history_mod
 import diagnosis_catalog as diag_mod
 import diagnosis as dx_mod
+import service_coding as svc_mod
 import metrics as metrics_mod
 import storage
 from db import (APPT_PATIENT_STATUS, BLD_ACTIVE, BLD_PATIENT_STATUS, IMG_ACTIVE,
@@ -7709,6 +7710,42 @@ async def visit_clear_primary_diagnosis(visit_id: str, user: dict = Depends(requ
     return {"diagnoses": []}
 
 
+# ============= SERVICE / CODING (tabBillCode catalog → visits.service) — explicit selection only, no fees =============
+@api.get("/internal/service-catalog")
+async def service_catalog_list(user: dict = Depends(require_roles(*CLINIC_ROLES))):
+    return {"items": await svc_mod.list_active(db)}
+
+
+class ServiceSelectBody(BaseModel):
+    catalog_id: str
+
+
+@api.post("/internal/visits/{visit_id}/service/select")
+async def visit_service_select(visit_id: str, body: ServiceSelectBody, user: dict = Depends(require_roles(*VISIT_WRITE_ROLES))):
+    v = await _get_visit_scoped(visit_id, user)
+    svc = await svc_mod.select(db, v, body.catalog_id, user)
+    if svc is None:
+        raise HTTPException(status_code=404, detail="Service not found in catalog.")
+    await audit("visit_service_select", "visit", v["id"], user, meta={"catalog_id": body.catalog_id})
+    return {"service": svc}
+
+
+@api.delete("/internal/visits/{visit_id}/service/primary")
+async def visit_service_clear_primary(visit_id: str, user: dict = Depends(require_roles(*VISIT_WRITE_ROLES))):
+    v = await _get_visit_scoped(visit_id, user)
+    svc = await svc_mod.remove(db, v, None, user)
+    await audit("visit_service_clear_primary", "visit", v["id"], user)
+    return {"service": svc}
+
+
+@api.delete("/internal/visits/{visit_id}/service/additional/{catalog_id}")
+async def visit_service_remove_additional(visit_id: str, catalog_id: str, user: dict = Depends(require_roles(*VISIT_WRITE_ROLES))):
+    v = await _get_visit_scoped(visit_id, user)
+    svc = await svc_mod.remove(db, v, catalog_id, user)
+    await audit("visit_service_remove_additional", "visit", v["id"], user, meta={"catalog_id": catalog_id})
+    return {"service": svc}
+
+
 @api.get("/internal/soap-helpers/{helper_id}")
 async def soap_helper_get(helper_id: str, user: dict = Depends(require_roles(*VISIT_WRITE_ROLES))):
     h = await helpers_mod.get(db, user, helper_id)
@@ -9231,6 +9268,7 @@ async def startup():
     await history_mod.ensure_indexes(db)
     await diag_mod.ensure_indexes(db)
     await dx_mod.ensure_indexes(db)
+    await svc_mod.ensure_indexes(db)
     try:
         storage.init_storage()
         logger.info("Storage initialized")

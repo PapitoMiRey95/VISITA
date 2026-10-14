@@ -15,6 +15,7 @@ import { encounterTypeLabel, EncounterTypeDialog } from "./StartEncounter";
 import { VisitToggle } from "./VisitToggle";
 import { DiagnosisSearch } from "./DiagnosisSearch";
 import { AnnualExamMonth } from "./AnnualExamMonth";
+import { ServiceSelector, CodingRow } from "./ServiceSelector";
 import { MetricsGrid } from "./MetricsGrid";
 import { VitalsPanel } from "./VitalsPanel";
 import { IssuePlanHistory } from "./IssuePlanHistory";
@@ -69,6 +70,9 @@ function SoapColumn({ soap, onChange, onBlur }) {
 
 function CenterControls({ visit, patientRef, state, savedAt, onInsert, onPrepend, toggle, timerStrip }) {
     const [metricsTick, setMetricsTick] = useState(0);
+    const [dx, setDx] = useState(visit?.diagnoses?.[0] || null);
+    const [svc, setSvc] = useState(visit?.service || null);
+    useEffect(() => { setDx(visit?.diagnoses?.[0] || null); setSvc(visit?.service || null); }, [visit?.id]); // eslint-disable-line react-hooks/exhaustive-deps
     return (
         <div className="flex flex-col bg-white [&>*]:border-0 [&>*]:border-t [&>*]:border-black [&>*:first-child]:border-t-0 [&>*]:rounded-none" data-testid="encounter-center">
             {timerStrip}
@@ -88,12 +92,10 @@ function CenterControls({ visit, patientRef, state, savedAt, onInsert, onPrepend
                     onInsertObjective={(text) => onPrepend("objective", text)} onSaved={() => setMetricsTick((t) => t + 1)} />
             </fieldset>
             <MetricsGrid patientRef={patientRef} refreshKey={metricsTick} />
-            <DiagnosisSearch visitId={visit?.id} initial={visit?.diagnoses} />
+            <DiagnosisSearch visitId={visit?.id} initial={visit?.diagnoses} onChange={setDx} />
             <AnnualExamMonth patientRef={patientRef} canEdit={!!visit} />
-            <div className="px-2 py-2 text-[11px] text-slate-400" data-testid="rapid-entry-reserved">
-                <div className="font-bold uppercase tracking-wide text-[10px] text-slate-500">Service</div>
-                <div className="italic">Reserved for Service selector (next phase).</div>
-            </div>
+            <ServiceSelector visitId={visit?.id} initial={visit?.service} onChange={setSvc} />
+            <CodingRow service={svc} diagnosis={dx} />
             <div className="bg-white px-2 py-1.5" data-testid="lower-visit-toggle-wrap">{toggle}</div>
         </div>
     );

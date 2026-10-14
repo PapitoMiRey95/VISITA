@@ -5,7 +5,7 @@ import { formatDate } from "../lib/date";
 
 /* Phase 2A4.1 — Diagnosis (tabDiagCode catalog). Selection is EXPLICIT and stored structurally on the Visit
    (visits.diagnoses[], one primary for now). Never writes SOAP. Previous-for-this-patient is a shortcut, never auto-assigned. */
-export function DiagnosisSearch({ visitId, initial }) {
+export function DiagnosisSearch({ visitId, initial, onChange }) {
     const [q, setQ] = useState("");
     const [items, setItems] = useState([]);
     const [previous, setPrevious] = useState([]);
@@ -39,12 +39,12 @@ export function DiagnosisSearch({ visitId, initial }) {
         setErr("");
         try {
             const { data } = await api.put(`/internal/visits/${visitId}/diagnoses/primary`, { catalog_id: catalogId, source });
-            setSel(data.diagnoses[0] || null); setQ(""); setItems([]); setOpen(false);
+            setSel(data.diagnoses[0] || null); onChange?.(data.diagnoses[0] || null); setQ(""); setItems([]); setOpen(false);
         } catch (e) { setErr(formatErr(e)); }
     };
     const clear = async () => {
         setErr("");
-        try { await api.delete(`/internal/visits/${visitId}/diagnoses/primary`); setSel(null); } catch (e) { setErr(formatErr(e)); }
+        try { await api.delete(`/internal/visits/${visitId}/diagnoses/primary`); setSel(null); onChange?.(null); } catch (e) { setErr(formatErr(e)); }
     };
 
     const Row = ({ d, source, meta, testid }) => (

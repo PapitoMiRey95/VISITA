@@ -1,0 +1,65 @@
+{
+  "package": "VIen Visit New — Service Catalog normalized import",
+  "source_file": "tabBillCode(1).xlsx",
+  "source_sheet": "tabBillCode",
+  "source_type": "LEGACY_TABBILLCODE",
+  "source_rows": 29,
+  "distinct_service_codes": 28,
+  "identity_contract": {
+    "identity": "(source_type, legacy_id_raw)",
+    "import_key": "LEGACY_TABBILLCODE|legacy_id_raw",
+    "service_code_is_not_unique_identity": true,
+    "reason": "A903A occurs in two distinct source rows with different descriptions."
+  },
+  "field_mapping": {
+    "Code": "service_code / Sr Nº",
+    "BillText": "service_description / Sr",
+    "Fees": "legacy_fee_reference only; not an approved current operational fee",
+    "Favourite": "physician favourite/ranking hint",
+    "ID": "legacy_id_raw"
+  },
+  "selection_behavior_contract": {
+    "REPLACE_PRIMARY": "Default Access cmbBillCode_Click behavior: selected BillText replaces Sr and selected Code replaces Sr Nº.",
+    "APPEND_CODE": "Proven Access special-case behavior for Q150 and K055: append code to existing Sr Nº rather than replacing the primary service description/code.",
+    "APPEND_CODE_values": [
+      "Q150",
+      "K055"
+    ],
+    "when_no_primary_exists": "Preserve the selected add-on code without inventing a primary service."
+  },
+  "visit_model_recommendation": {
+    "service": {
+      "primary": "optional structured selected service",
+      "additional_codes": "ordered list of structured add-on selections"
+    },
+    "display_row": "Sr | Dx | Sr Nº | Dx Nº",
+    "sr_display": "primary.service_description or —",
+    "sr_number_display": "primary.service_code followed by ;additional service codes in selection order",
+    "dx_display": "existing primary diagnosis_text",
+    "dx_number_display": "existing primary diagnosis_code"
+  },
+  "safety": {
+    "preserve_codes_and_descriptions_verbatim": true,
+    "do_not_merge_same_code_different_text_rows": true,
+    "do_not_use_legacy_fee_reference_as_current_fee": true,
+    "do_not_mix_with_uninsured_direct_billing_services": true,
+    "do_not_generate_visit_bill_number_in_this_phase": true,
+    "do_not_auto_assign_service_from_encounter_type": true,
+    "do_not_change_diagnosis_architecture": true
+  },
+  "known_source_evidence": [
+    "cmbBillCode_Click: default selection sets txtBillCodeDesc = Column(0) and txtBillCode = Column(1).",
+    "cmbBillCode_Click: Q150 and K055 append to txtBillCode instead of replacing primary service fields.",
+    "txtBMI_Click / txtBMI_DblClick legacy shortcuts explicitly set Regular Assmnt + A007A.",
+    "Visit screenshot confirms final row Sr | Dx | Sr Nº | Dx Nº.",
+    "Vst Bill Nº is separate and deferred."
+  ],
+  "review_flag_counts": {
+    "DATED_DESCRIPTION": 2,
+    "SAME_CODE_MULTIPLE_TEXT": 2,
+    "ZERO_LEGACY_FEE": 3,
+    "EMBEDDED_MULTIPLIER": 3,
+    "NONSTANDARD_CODE_FORMAT": 7,
+    "LOCAL_ADMIN_CODE": 1
+  }
+}

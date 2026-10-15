@@ -12,9 +12,9 @@ PAGE_MAX = 200
 
 
 async def ensure_indexes(db):
-    for keys in ([("created_at", -1)], [("practice_id", 1), ("created_at", -1)], [("entity_id", 1), ("created_at", -1)],
-                 [("actor_id", 1), ("created_at", -1)], [("action", 1), ("created_at", -1)], [("meta.patient_ref", 1), ("created_at", -1)]):
-        await db.audit_logs.create_index(keys)
+    """NON-CRITICAL performance indexes (see index_bootstrap.AUDIT_INDEXES). Never gates readiness."""
+    import index_bootstrap as ib
+    return await ib.ensure_audit_indexes_background(db)
 
 
 async def _scope(db, user):

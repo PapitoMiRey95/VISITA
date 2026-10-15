@@ -39,9 +39,10 @@ def week_start(ds: str) -> str:
 
 
 async def ensure_indexes(db):
-    await db[LOCKS].create_index([("practice_id", 1), ("patient_key", 1), ("date", 1)], unique=True)
-    await db[LOCKS].create_index("appointment_id")
-    await db[FLAGS].create_index([("practice_id", 1), ("patient_key", 1), ("week_start", 1), ("type", 1)], unique=True)
+    import index_bootstrap as ib
+    await ib.ensure_missing(db, LOCKS, [{"keys": [("practice_id", 1), ("patient_key", 1), ("date", 1)], "unique": True},
+                                        {"keys": [("appointment_id", 1)]}])
+    await ib.ensure_missing(db, FLAGS, [{"keys": [("practice_id", 1), ("patient_key", 1), ("week_start", 1), ("type", 1)], "unique": True}])
 
 
 async def identity(db, patient_id=None, directory_id=None) -> dict:

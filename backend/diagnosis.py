@@ -15,8 +15,9 @@ def _now():
 
 
 async def ensure_indexes(db):
-    await db[COLL].create_index([("source_type", 1), ("legacy_id_raw", 1)], unique=True)
-    await db[COLL].create_index([("active", 1), ("diagnosis_text", 1)])
+    import index_bootstrap as ib
+    await ib.ensure_missing(db, COLL, [{"keys": [("source_type", 1), ("legacy_id_raw", 1)], "unique": True},
+                                       {"keys": [("active", 1), ("diagnosis_text", 1)]}])
 
 
 async def import_rows(db, rows: list) -> dict:

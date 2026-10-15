@@ -39,8 +39,9 @@ def canonical_fields(date_str: str, time_str: str) -> dict:
 
 
 async def ensure_indexes(db):
-    await db[COLL].create_index([("practice_id", 1), ("slot_start", 1)], unique=True)
-    await db[COLL].create_index("appointment_id")
+    import index_bootstrap as ib
+    await ib.ensure_missing(db, COLL, [{"keys": [("practice_id", 1), ("slot_start", 1)], "unique": True},
+                                       {"keys": [("appointment_id", 1)]}])
 
 
 async def reserve(db, practice_id, date_str, time_str, appointment_id, state, actor=None):

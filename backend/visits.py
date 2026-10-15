@@ -37,11 +37,11 @@ def _now():
 
 
 async def ensure_indexes(db):
-    await db[COLL].create_index(
-        [("practice_id", 1), ("patient_ref", 1), ("physician_user_id", 1)],
-        unique=True, name="one_active_visit",
-        partialFilterExpression={"status": IN_PROGRESS})
-    await db[COLL].create_index([("practice_id", 1), ("patient_ref", 1), ("started_at", -1)])
+    import index_bootstrap as ib
+    await ib.ensure_missing(db, COLL, [
+        {"keys": [("practice_id", 1), ("patient_ref", 1), ("physician_user_id", 1)], "unique": True,
+         "name": "one_active_visit", "partialFilterExpression": {"status": IN_PROGRESS}},
+        {"keys": [("practice_id", 1), ("patient_ref", 1), ("started_at", -1)]}])
 
 
 def parse_ref(patient_ref: str):

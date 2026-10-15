@@ -47,6 +47,7 @@ import metrics as metrics_mod
 import names as names_mod
 import identity_cleanup as cleanup_mod
 import appt_guard as guard_mod
+import index_bootstrap as ib_mod
 import storage
 from db import (APPT_PATIENT_STATUS, BLD_ACTIVE, BLD_PATIENT_STATUS, IMG_ACTIVE,
                 IMG_PATIENT_STATUS, MSG_ACTIVE, MSG_PATIENT_STATUS, RX_ACTIVE,
@@ -8911,6 +8912,28 @@ async def admin_create_synthetic_patients(body: SyntheticPatientsBody, user: dic
     return {"patients": out, "marker": SYNTHETIC_MARKER}
 
 
+class AuditIndexMaintenanceBody(BaseModel):
+    token: str
+    apply: bool = False
+
+
+@api.post("/internal/admin/maintenance/audit-indexes")
+async def admin_audit_index_maintenance(body: AuditIndexMaintenanceBody, user: dict = Depends(require_roles("admin"))):
+    """Admin + MAINTENANCE_TOKEN gated. Builds ONLY the predefined approved audit_logs performance
+    indexes (index_bootstrap.AUDIT_INDEXES). dry-run (default) lists EXISTS/MISSING; apply creates
+    missing ones only (EXISTS/CREATED/FAILED). Never drops/alters existing indexes; no generic commands."""
+    expected = os.environ.get("MAINTENANCE_TOKEN", "")
+    if not expected or not secrets.compare_digest(body.token, expected):
+        raise HTTPException(status_code=403, detail="Invalid maintenance token.")
+    if body.apply:
+        results = await ib_mod.ensure_missing(db, "audit_logs", ib_mod.AUDIT_INDEXES, timeout=120)
+    else:
+        results = await ib_mod.plan(db, "audit_logs", ib_mod.AUDIT_INDEXES)
+    await audit("audit_index_maintenance", "audit_logs", "indexes", user,
+                meta={"mode": "apply" if body.apply else "dry_run", "results": results})
+    return {"mode": "apply" if body.apply else "dry_run", "collection": "audit_logs", "results": results}
+
+
 @api.post("/internal/admin/data-hygiene")
 async def admin_data_hygiene(body: DataHygieneBody, user: dict = Depends(require_roles("admin"))):
     """TEMPORARY maintenance endpoint: admin + MAINTENANCE_TOKEN gated, scoped to an explicit
@@ -9748,19 +9771,19 @@ async def _bootstrap_step(name, coro_factory, timeout=120) -> bool:
 
 
 async def _ensure_core_indexes():
-    await db.users.create_index("email", unique=True)
-    await db.patients.create_index("id")
+    await ib_mod.ensure_missing(db, "users", [{"keys": [("email", 1)], "unique": True}])
+    await ib_mod.ensure_missing(db, "patients", [{"keys": [("id", 1)]}])
     # One canonical self-owned profile per user (null linked_user_id excluded).
-    await db.professional_profiles.create_index(
-        "linked_user_id", unique=True,
-        partialFilterExpression={"linked_user_id": {"$type": "string"}})
-    await db.referrals.create_index([("ready_to_fax", 1), ("faxed", 1)])
+    await ib_mod.ensure_missing(db, "professional_profiles", [{"keys": [("linked_user_id", 1)], "unique": True,
+                                                              "partialFilterExpression": {"linked_user_id": {"$type": "string"}}}])
+    await ib_mod.ensure_missing(db, "referrals", [{"keys": [("ready_to_fax", 1), ("faxed", 1)]}])
 
 
 async def _mongo_ping():
     await db.command("ping")
 
 
+# listIndexes-first everywhere: ensure_missing() creates ONLY absent indexes, never alters existing ones.
 # CRITICAL steps gate readiness: Mongo reachable + every integrity index (incl. the unique
 # double-booking / same-day / one-active-visit guards) + create-if-missing seed.
 CRITICAL_STEPS = [
@@ -9770,9 +9793,12 @@ CRITICAL_STEPS = [
     ("slots_indexes", lambda: slots_mod.ensure_indexes(db)), ("appt_guard_indexes", lambda: guard_mod.ensure_indexes(db)),
     ("visits_indexes", lambda: visits_mod.ensure_indexes(db)), ("history_indexes", lambda: history_mod.ensure_indexes(db)),
     ("diag_catalog_indexes", lambda: diag_mod.ensure_indexes(db)), ("diagnosis_indexes", lambda: dx_mod.ensure_indexes(db)),
-    ("service_indexes", lambda: svc_mod.ensure_indexes(db)), ("audit_indexes", lambda: audit_mod.ensure_indexes(db)),
+    ("service_indexes", lambda: svc_mod.ensure_indexes(db)),
     ("seed", lambda: seed_all(db, authlib)),
 ]
+# NON-CRITICAL (never gate readiness): audit_logs performance indexes, object-storage warm-up.
+NON_CRITICAL_STEPS = [("audit_indexes", lambda: audit_mod.ensure_indexes(db), 150),
+                      ("storage", lambda: asyncio.to_thread(storage.init_storage), 8)]
 
 
 async def _bootstrap():
@@ -9793,7 +9819,8 @@ async def _bootstrap():
             BOOTSTRAP["ready"] = True
             break
         await asyncio.sleep(15)
-    await _bootstrap_step("storage", lambda: asyncio.to_thread(storage.init_storage), timeout=8)
+    for name, factory, timeout in NON_CRITICAL_STEPS:
+        await _bootstrap_step(name, factory, timeout=timeout)
     BOOTSTRAP["status"] = "complete"
     logger.info(f"Startup complete — ready after {BOOTSTRAP['attempts']} attempt(s); bootstrap {BOOTSTRAP['steps']}")
 

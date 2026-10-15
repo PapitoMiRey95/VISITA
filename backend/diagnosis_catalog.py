@@ -9,8 +9,8 @@ PRESERVE = ("key", "text", "note", "coded", "source_gender", "sex_filter", "pmhx
 
 
 async def ensure_indexes(db):
-    await db[COLL].create_index([("legacy_source", 1), ("legacy_id", 1)], unique=True)
-    await db[COLL].create_index([("key", 1)])
+    import index_bootstrap as ib
+    await ib.ensure_missing(db, COLL, [{"keys": [("legacy_source", 1), ("legacy_id", 1)], "unique": True}, {"keys": [("key", 1)]}])
 
 
 async def import_package(db, pkg: dict) -> dict:

@@ -35,9 +35,10 @@ def _now():
 
 
 async def ensure_indexes(db):
+    import index_bootstrap as ib
     for d in DOMAINS.values():
-        await db[d["coll"]].create_index([("practice_id", 1), ("patient_ref", 1), ("status", 1)])
-        await db[d["coll"]].create_index("id", unique=True)
+        await ib.ensure_missing(db, d["coll"], [{"keys": [("practice_id", 1), ("patient_ref", 1), ("status", 1)]},
+                                                {"keys": [("id", 1)], "unique": True}])
 
 
 def _clean(domain, body: dict, partial: bool) -> dict:

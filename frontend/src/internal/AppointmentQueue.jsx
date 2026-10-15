@@ -1,7 +1,7 @@
 import { useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { toast } from "sonner";
-import { Search, CalendarClock, UserX, Phone, CheckCircle2, XCircle } from "lucide-react";
+import { Search, CalendarClock, UserX, Phone, CheckCircle2, XCircle, AlertTriangle } from "lucide-react";
 import { api, formatErr } from "../lib/api";
 import { formatLastFirst, formatCombinedName } from "../lib/name";
 import { useInvalidate } from "./hooks";
@@ -16,6 +16,7 @@ import { InternalNotes } from "./InternalNotes";
 import { ApptTypeBadge } from "../components/ApptTypeBadge";
 import { ApptTypeEditor } from "../components/ApptTypeEditor";
 import { formatDate, formatDateTime } from "../lib/date";
+import AppointmentReviews, { useAppointmentReviews } from "./AppointmentReviews";
 
 const timeLabel = (t) => {
     if (!t) return "";
@@ -55,6 +56,8 @@ export default function AppointmentQueue() {
         enabled: view !== "queue",
     });
     const [feeBusy, setFeeBusy] = useState(null);
+    const reviewsQ = useAppointmentReviews();
+    const reviewCount = (reviewsQ.data?.week_flags?.length || 0) + (reviewsQ.data?.same_day_duplicates?.length || 0);
 
     const issueNoShowFee = async (row) => {
         if (!window.confirm(`Issue a $40 no-show fee invoice to ${formatCombinedName(row.patient_name)}?`)) return;
@@ -130,15 +133,18 @@ export default function AppointmentQueue() {
             <p className="text-sm text-slate-500 mb-3">Verified patients book directly — appointments are confirmed instantly. Use the Calendar to change or cancel a booking.</p>
 
             <div className="flex gap-1 mb-3 border-b border-slate-200 flex-wrap">
-                {[["bookings", "Recent Bookings"], ["legacy", `Legacy pending requests (${legacy.length})`], ["no_show", "No-Shows"], ["reschedule", "Reschedule Requested"]].map(([v, l]) => (
+                {[["bookings", "Recent Bookings"], ["legacy", `Legacy pending requests (${legacy.length})`], ["no_show", "No-Shows"], ["reschedule", "Reschedule Requested"], ["review", `Review (${reviewCount})`]].map(([v, l]) => (
                     <button key={v} data-testid={`appt-tab-${v}`} onClick={() => setView(v)}
-                        className={`px-3 py-2 text-sm font-semibold -mb-px border-b-2 ${view === v ? "border-visita-green text-visita-greenDark" : "border-transparent text-slate-500 hover:text-slate-700"} ${v === "legacy" && legacy.length ? "text-amber-700" : ""}`}>
+                        className={`px-3 py-2 text-sm font-semibold -mb-px border-b-2 ${view === v ? "border-visita-green text-visita-greenDark" : "border-transparent text-slate-500 hover:text-slate-700"} ${(v === "legacy" && legacy.length) || (v === "review" && reviewCount) ? "text-amber-700" : ""}`}>
                         {v === "no_show" && <UserX className="w-4 h-4 inline mr-1" />}
                         {v === "reschedule" && <CalendarClock className="w-4 h-4 inline mr-1" />}
+                        {v === "review" && <AlertTriangle className="w-4 h-4 inline mr-1" />}
                         {l}
                     </button>
                 ))}
             </div>
+
+            {view === "review" && <AppointmentReviews data={reviewsQ.data} loading={reviewsQ.isLoading} />}
 
             {view === "no_show" && <FollowupTable testid="no-show-table" rows={followupsQ.data?.no_shows || []} emptyText="No patients flagged as no-show."
                 onIssueFee={issueNoShowFee} onRemoveFee={removeNoShowFee} feeBusy={feeBusy} />}

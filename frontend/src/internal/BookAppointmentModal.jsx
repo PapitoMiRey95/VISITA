@@ -9,6 +9,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle } from "../components/
 import { Button } from "../components/ui/button";
 import { Input } from "../components/ui/input";
 import { Label } from "../components/ui/label";
+import { SameDayOverride, isSameDayConflict } from "./SameDayOverride";
 
 // Slot picker driven by the SAME availability engine as the patient portal (/availability/slots).
 // mode="book": create a confirmed appointment from a source request.
@@ -18,6 +19,8 @@ export default function BookAppointmentModal({ open, onClose, onDone, mode = "bo
     const [chosen, setChosen] = useState(null);
     const [day, setDay] = useState(null);
     const [busy, setBusy] = useState(false);
+    const [conflict, setConflict] = useState(null);
+    const [overrideReason, setOverrideReason] = useState("");
 
     const slotsQ = useQuery({
         queryKey: ["slots-book"],
@@ -33,7 +36,7 @@ export default function BookAppointmentModal({ open, onClose, onDone, mode = "bo
     const dates = Object.keys(byDate).sort();
     const activeDay = day && byDate[day] ? day : dates[0];
 
-    const submit = async () => {
+    const submit = async (override = false) => {
         if (!chosen) { toast.error("Please select an available time."); return; }
         setBusy(true);
         try {
@@ -41,8 +44,9 @@ export default function BookAppointmentModal({ open, onClose, onDone, mode = "bo
                 await api.post("/internal/book-appointment", {
                     source_type: sourceType, source_id: source.id, reason: reason || undefined,
                     date: chosen.date, time: chosen.time, label: chosen.label, display: chosen.display,
+                    ...(override ? { override_same_day: true, override_reason: overrideReason.trim() } : {}),
                 });
-                toast.success("Appointment booked and patient notified.");
+                toast.success(override ? "Appointment booked with same-day override (audited)." : "Appointment booked and patient notified.");
             } else {
                 await api.patch(`/internal/appointments/${source.id}`, {
                     action: "change_time", confirmed_date: chosen.date, confirmed_time: chosen.time,
@@ -53,6 +57,7 @@ export default function BookAppointmentModal({ open, onClose, onDone, mode = "bo
             onDone?.();
             onClose?.();
         } catch (e) {
+            if (mode === "book" && isSameDayConflict(e)) { setConflict(e.response.data.detail); return; }
             toast.error(formatErr(e));
             if (e?.response?.status === 409) { setChosen(null); slotsQ.refetch(); }
         } finally { setBusy(false); }
@@ -110,10 +115,15 @@ export default function BookAppointmentModal({ open, onClose, onDone, mode = "bo
                         )}
                     </div>
                     {chosen && <div className="text-xs text-slate-600" data-testid="book-chosen">Selected: <b>{chosen.display}</b></div>}
-                    <Button disabled={busy || !chosen} onClick={submit} data-testid="book-confirm"
-                        className="w-full bg-visita-green hover:bg-visita-greenDark text-white">
-                        {mode === "book" ? "Confirm & Book Appointment" : "Confirm New Time"}
-                    </Button>
+                    {conflict ? (
+                        <SameDayOverride conflict={conflict} reason={overrideReason} setReason={setOverrideReason} busy={busy}
+                            onConfirm={() => submit(true)} onCancel={() => { setConflict(null); setChosen(null); }} />
+                    ) : (
+                        <Button disabled={busy || !chosen} onClick={() => submit(false)} data-testid="book-confirm"
+                            className="w-full bg-visita-green hover:bg-visita-greenDark text-white">
+                            {mode === "book" ? "Confirm & Book Appointment" : "Confirm New Time"}
+                        </Button>
+                    )}
                 </div>
             </DialogContent>
         </Dialog>

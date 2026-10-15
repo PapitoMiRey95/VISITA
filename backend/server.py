@@ -45,6 +45,7 @@ import audit_view as audit_mod
 import metrics as metrics_mod
 import names as names_mod
 import identity_cleanup as cleanup_mod
+import appt_guard as guard_mod
 import storage
 from db import (APPT_PATIENT_STATUS, BLD_ACTIVE, BLD_PATIENT_STATUS, IMG_ACTIVE,
                 IMG_PATIENT_STATUS, MSG_ACTIVE, MSG_PATIENT_STATUS, RX_ACTIVE,
@@ -426,6 +427,8 @@ class BookApptBody(BaseModel):
     time: str
     label: Optional[str] = None
     display: Optional[str] = None
+    override_same_day: bool = False
+    override_reason: Optional[str] = None
 
 
 class ImportApptItem(BaseModel):
@@ -606,6 +609,45 @@ async def _reserve_or_409(practice_id, ds, t24, appt_id, state, actor):
         return await slots_mod.reserve(db, practice_id, ds, t24, appt_id, state, actor)
     except slots_mod.SlotTaken:
         raise HTTPException(status_code=409, detail=slots_mod.SLOT_TAKEN_MSG)
+
+
+async def _guard_new_booking(practice_id, ident, ds, appt_id, actor, source, override=False, override_reason=None):
+    """Patient-level same-day rule for a NEW appointment. Portal callers never pass override.
+    Returns the override record (or None) to stamp on the appointment."""
+    try:
+        await guard_mod.check_same_day(db, practice_id, ident, ds, actor=actor, source=source)
+    except guard_mod.SameDayExists as e:
+        if source == "portal":
+            raise HTTPException(status_code=409, detail=guard_mod.portal_detail(e.existing))
+        if not override:
+            raise HTTPException(status_code=409, detail=guard_mod.staff_detail(e.existing))
+        reason = (override_reason or "").strip()
+        if not reason:
+            raise HTTPException(status_code=400, detail={"code": "OVERRIDE_REASON_REQUIRED",
+                                                         "message": "A reason is required to book a second same-day appointment."})
+        rec = {"reason": reason, "by": actor.get("name"), "by_role": actor.get("role"), "at": now_iso(),
+               "existing_appointment_ids": [d["id"] for d in e.existing]}
+        await audit("appointment_same_day_override", "appointment", appt_id, actor,
+                    meta={"date": ds, "patient_key": ident["key"], **rec})
+        return rec
+    try:
+        await guard_mod.acquire_day_lock(db, practice_id, ident["key"], ds, appt_id)
+    except guard_mod.SameDayExists:
+        await audit("appointment_same_day_blocked", "patient", ident["key"], actor,
+                    meta={"date": ds, "source": source, "concurrent": True})
+        detail = guard_mod.portal_detail([]) if source == "portal" else guard_mod.staff_detail([])
+        raise HTTPException(status_code=409, detail=detail)
+    return None
+
+
+async def _guard_move(practice_id, ident, appt_id, new_ds, actor, source):
+    """Same-day rule for RESCHEDULING an existing appointment (never counts itself)."""
+    try:
+        await guard_mod.check_same_day(db, practice_id, ident, new_ds, exclude_id=appt_id, actor=actor, source=source)
+        await guard_mod.move_day_lock(db, practice_id, ident["key"], appt_id, new_ds)
+    except guard_mod.SameDayExists as e:
+        detail = guard_mod.portal_detail(e.existing) if source == "portal" else guard_mod.staff_detail(e.existing)
+        raise HTTPException(status_code=409, detail=detail)
 
 
 def _confirmed_fields(ds, t24, label=None, display=None):
@@ -1625,7 +1667,13 @@ async def create_appointment(body: AppointmentBody, ctx: PortalCtx = Depends(por
     # kept only for defensive safety and is never reached for verified patients.
     auto_confirm = PORTAL_AUTO_CONFIRM and p.get("verification_status") == "verified"
     lock_state = slots_mod.CONFIRMED if auto_confirm else slots_mod.HELD
-    await _reserve_or_409(practice_id, ds, t24, appt_id, lock_state, actor)
+    ident = await guard_mod.identity(db, patient_id=p["id"])
+    await _guard_new_booking(practice_id, ident, ds, appt_id, ctx.audit_actor(), "portal")
+    try:
+        await _reserve_or_409(practice_id, ds, t24, appt_id, lock_state, actor)
+    except HTTPException:
+        await guard_mod.release_day_lock(db, appt_id)
+        raise
     ref = await next_ref("APT")
     appt_type = body.appointment_type if body.appointment_type in ("IN_CLINIC", "TELEPHONE") else None
     label = opt.get("label") or avail_mod._label(avail_mod._to_min(t24))
@@ -1659,6 +1707,7 @@ async def create_appointment(body: AppointmentBody, ctx: PortalCtx = Depends(por
     await db.appointment_requests.insert_one({**doc})
     await audit("create", "appointment", doc["id"], ctx.audit_actor(), new_status=status,
                 meta=ctx.audit_meta({"slot": f"{ds} {t24}", "auto_confirmed": auto_confirm}))
+    await guard_mod.refresh_week_flags(db, practice_id, ident, [ds], ctx.audit_actor())
     doc.pop("_id", None)
     try:
         if auto_confirm:
@@ -1729,6 +1778,7 @@ async def patient_cancel_appointment(item_id: str, ctx: PortalCtx = Depends(port
             raise HTTPException(status_code=403, detail=WITHIN_24H_MSG)
     actor = "delegate" if ctx.is_delegate else "patient"
     await slots_mod.release(db, item_id)
+    await guard_mod.release_day_lock(db, item_id)
     await db.appointment_requests.update_one({"id": item_id}, {
         "$set": {"status": "cancelled", "cancelled_by": actor, "cancelled_at": now_iso(),
                  "slot_state": None,
@@ -1739,6 +1789,7 @@ async def patient_cancel_appointment(item_id: str, ctx: PortalCtx = Depends(port
     await audit("patient_cancel", "appointment", item_id,
                 ctx.audit_actor(), old_status=st, new_status="cancelled", meta=ctx.audit_meta({"slot_freed": True}))
     fresh = await db.appointment_requests.find_one({"id": item_id}, {"_id": 0})
+    await guard_mod.refresh_for_appointment(db, fresh, actor=ctx.audit_actor())
     await notify_svc.appointment_cancelled(db, fresh)
     return {"ok": True}
 
@@ -1772,12 +1823,15 @@ async def patient_reschedule_appointment(item_id: str, body: PatientRescheduleBo
     avail = await get_availability_doc()
     _validate_bookable(avail, body.date, time24)
     actor = "delegate" if ctx.is_delegate else "patient"
+    ident = await guard_mod.identity(db, patient_id=p["id"])
+    await _guard_move(appt.get("practice_id"), ident, item_id, body.date, ctx.audit_actor(), "portal")
+    old_ds, old_t = _appt_when(appt)
     try:
         await slots_mod.move(db, appt.get("practice_id"), item_id, body.date, time24, slots_mod.CONFIRMED, actor,
                              duration=int(avail.get("appointment_duration") or 30))
     except slots_mod.SlotTaken:
+        await guard_mod.move_day_lock(db, appt.get("practice_id"), ident["key"], item_id, old_ds)
         raise HTTPException(status_code=409, detail=slots_mod.SLOT_TAKEN_MSG)
-    old_ds, old_t = _appt_when(appt)
     await db.appointment_requests.update_one({"id": item_id}, {
         "$set": {"status": "confirmed", **_confirmed_fields(body.date, time24, body.label, body.display),
                  "slot_state": slots_mod.CONFIRMED, "rescheduled_by": actor,
@@ -1787,6 +1841,7 @@ async def patient_reschedule_appointment(item_id: str, body: PatientRescheduleBo
     await audit("patient_reschedule", "appointment", item_id,
                 ctx.audit_actor(), new_status="confirmed", meta=ctx.audit_meta())
     fresh = await db.appointment_requests.find_one({"id": item_id}, {"_id": 0})
+    await guard_mod.refresh_week_flags(db, appt.get("practice_id"), ident, [old_ds, body.date], ctx.audit_actor())
     await notify_svc.appointment_rescheduled(db, fresh)
     return {"ok": True}
 
@@ -2012,6 +2067,8 @@ class CalendarBookBody(BaseModel):
     label: Optional[str] = None
     reason: Optional[str] = None
     appointment_type: Optional[str] = "Office visit"
+    override_same_day: bool = False
+    override_reason: Optional[str] = None
 
 
 @api.post("/internal/calendar/book")
@@ -2024,6 +2081,7 @@ async def calendar_book(body: CalendarBookBody, user: dict = Depends(require_rol
         appt_patient_id = d.get("linked_patient_id") or d["id"]
         appt_directory_id = d["id"]
         patient_name = f"{d.get('last_name','')}, {d.get('first_name','')}".strip(", ")
+        ident = await guard_mod.identity(db, directory_id=d["id"])
     elif body.patient_id:
         p = await db.patients.find_one({"id": body.patient_id})
         if not p:
@@ -2033,19 +2091,27 @@ async def calendar_book(body: CalendarBookBody, user: dict = Depends(require_rol
         appt_patient_id = p["id"]
         appt_directory_id = p.get("matched_directory_id")
         patient_name = f"{p.get('last_name','')}, {p.get('first_name','')}".strip(", ")
+        ident = await guard_mod.identity(db, patient_id=p["id"])
     else:
         raise HTTPException(status_code=400, detail="A patient must be selected.")
     time24 = avail_mod._norm_time(body.time)
     avail = await get_availability_doc()
     _validate_bookable(avail, body.date, time24)
     appt_id = str(uuid.uuid4())
-    await _reserve_or_409(user.get("practice_id"), body.date, time24, appt_id, slots_mod.CONFIRMED, user["name"])
+    override = await _guard_new_booking(user.get("practice_id"), ident, body.date, appt_id, user, "calendar",
+                                        body.override_same_day, body.override_reason)
+    try:
+        await _reserve_or_409(user.get("practice_id"), body.date, time24, appt_id, slots_mod.CONFIRMED, user["name"])
+    except HTTPException:
+        await guard_mod.release_day_lock(db, appt_id)
+        raise
     ref = await next_ref("APT")
     appt = {
         "id": appt_id, "ref_number": ref, "patient_id": appt_patient_id,
         "practice_id": user.get("practice_id"),
         "directory_id": appt_directory_id, "patient_name": patient_name,
         "reason": body.reason or "Office visit", "appointment_type": body.appointment_type,
+        "same_day_override": override,
         "duration": avail.get("appointment_duration"), "preferred_options": [],
         "status": "confirmed", "slot_state": slots_mod.CONFIRMED,
         **_confirmed_fields(body.date, time24, body.label),
@@ -2057,7 +2123,8 @@ async def calendar_book(body: CalendarBookBody, user: dict = Depends(require_rol
     }
     await db.appointment_requests.insert_one({**appt})
     await audit("calendar_book", "appointment", appt["id"], user, new_status="confirmed",
-                meta={"slot": f"{body.date} {time24}", "direct_booking": True})
+                meta={"slot": f"{body.date} {time24}", "direct_booking": True, "same_day_override": bool(override)})
+    await guard_mod.refresh_week_flags(db, user.get("practice_id"), ident, [body.date], user)
     try:
         await notify_svc.appointment_confirmed(db, appt)
     except Exception as e:
@@ -4104,14 +4171,23 @@ async def book_appointment(body: BookApptBody, user: dict = Depends(require_role
     avail = await get_availability_doc()
     _validate_bookable(avail, body.date, time24)
     appt_id = str(uuid.uuid4())
-    await _reserve_or_409(user.get("practice_id"), body.date, time24, appt_id, slots_mod.CONFIRMED, user["name"])
+    practice_id = source.get("practice_id") or user.get("practice_id")
+    ident = await guard_mod.identity(db, patient_id=source["patient_id"])
+    override = await _guard_new_booking(practice_id, ident, body.date, appt_id, user, "request_booking",
+                                        body.override_same_day, body.override_reason)
+    try:
+        await _reserve_or_409(user.get("practice_id"), body.date, time24, appt_id, slots_mod.CONFIRMED, user["name"])
+    except HTTPException:
+        await guard_mod.release_day_lock(db, appt_id)
+        raise
 
     ref = await next_ref("APT")
     display = body.display or f"{fmt_date_display(body.date)} · {body.label or body.time}"
     appt = {
         "id": appt_id, "ref_number": ref, "patient_id": source["patient_id"],
-        "practice_id": source.get("practice_id") or user.get("practice_id"),
+        "practice_id": practice_id,
         "patient_name": source.get("patient_name"),
+        "same_day_override": override,
         "reason": body.reason or f"Follow-up for {body.source_type} request {source.get('ref_number')}",
         "patient_note": None, "preferred_options": [],
         "preferred_date": body.date, "preferred_time": body.label or body.time,
@@ -4131,7 +4207,8 @@ async def book_appointment(body: BookApptBody, user: dict = Depends(require_role
         "appointment_booked": True, "updated_at": now_iso(),
     }})
     await audit("book_appointment", "appointment", appt["id"], user, new_status="confirmed",
-                meta={"source_type": body.source_type, "source_id": body.source_id})
+                meta={"source_type": body.source_type, "source_id": body.source_id, "same_day_override": bool(override)})
+    await guard_mod.refresh_week_flags(db, practice_id, ident, [body.date], user)
     await notify_patient(source["patient_id"], "Appointment booked",
                          f"An appointment with Dr. Aguayo has been booked for {display}. "
                          "Please log in to your Patient Portal for details.")
@@ -4240,6 +4317,15 @@ def _last_history_at(a: dict, status: str):
     return None, None
 
 
+@api.get("/internal/appointments/reviews")
+async def appointment_reviews(user: dict = Depends(require_roles(*CLINIC_ROLES))):
+    """Staff review surface: OPEN weekly multiple-appointment flags + existing same-day
+    active duplicates (read-only; nothing is auto-cancelled or moved)."""
+    pid = user.get("practice_id")
+    return {"week_flags": await guard_mod.open_flags(db, pid),
+            "same_day_duplicates": await guard_mod.same_day_duplicates(db, pid)}
+
+
 @api.get("/internal/appointments/followups")
 async def appt_followups(user: dict = Depends(require_roles("staff", "admin"))):
     """Follow-up lists: patients flagged no-show, and patients the clinic asked
@@ -4320,6 +4406,8 @@ async def appt_update(item_id: str, body: UpdateBody, user: dict = Depends(requi
     history_note = None
     notify = None  # confirmed | time_changed | cancelled | declined
     cur_ds, cur_t = _appt_when(doc)
+    ident = await guard_mod.identity(db, patient_id=doc.get("patient_id"), directory_id=doc.get("directory_id")) \
+        if (doc.get("patient_id") or doc.get("directory_id")) else None
 
     if body.action == "approve":
         if old != "requested":
@@ -4330,11 +4418,15 @@ async def appt_update(item_id: str, body: UpdateBody, user: dict = Depends(requi
             raise HTTPException(status_code=400, detail="This request has no held time. Use Change Time to pick one.")
         avail = await get_availability_doc()
         _validate_bookable(avail, ds, t24, allow_past=True)
+        if ident:
+            await _guard_move(pid_scope, ident, item_id, ds, user, "staff")
         try:
             # Same slot as the hold -> state flips HELD->CONFIRMED; a different slot is reserved first.
             await slots_mod.move(db, pid_scope, item_id, ds, t24, slots_mod.CONFIRMED, user["name"],
                                  duration=int(avail.get("appointment_duration") or 30))
         except slots_mod.SlotTaken:
+            if ident and cur_ds:
+                await guard_mod.move_day_lock(db, pid_scope, ident["key"], item_id, cur_ds)
             raise HTTPException(status_code=409, detail=slots_mod.SLOT_TAKEN_MSG)
         updates.update({"status": "confirmed", "slot_state": slots_mod.CONFIRMED,
                         **_confirmed_fields(ds, t24, None, body.confirmed_display),
@@ -4349,10 +4441,14 @@ async def appt_update(item_id: str, body: UpdateBody, user: dict = Depends(requi
             raise HTTPException(status_code=400, detail="Select a new time.")
         avail = await get_availability_doc()
         _validate_bookable(avail, ds, t24)
+        if ident:
+            await _guard_move(pid_scope, ident, item_id, ds, user, "staff")
         try:
             await slots_mod.move(db, pid_scope, item_id, ds, t24, slots_mod.CONFIRMED, user["name"],
                                  duration=int(avail.get("appointment_duration") or 30))
         except slots_mod.SlotTaken:
+            if ident and cur_ds:
+                await guard_mod.move_day_lock(db, pid_scope, ident["key"], item_id, cur_ds)
             raise HTTPException(status_code=409, detail=slots_mod.SLOT_TAKEN_MSG)
         updates.update({"status": "confirmed", "slot_state": slots_mod.CONFIRMED,
                         **_confirmed_fields(ds, t24, None, body.confirmed_display),
@@ -4370,6 +4466,7 @@ async def appt_update(item_id: str, body: UpdateBody, user: dict = Depends(requi
         if not reason:
             raise HTTPException(status_code=400, detail="A cancellation reason is required.")
         free_slot = True if body.free_slot is None else bool(body.free_slot)
+        await guard_mod.release_day_lock(db, item_id)
         if free_slot:
             await slots_mod.release(db, item_id)
         else:
@@ -4393,6 +4490,7 @@ async def appt_update(item_id: str, body: UpdateBody, user: dict = Depends(requi
             raise HTTPException(status_code=400, detail="Only a requested appointment can be declined.")
         reason = (body.cancel_reason or body.staff_note or "").strip()
         await slots_mod.release(db, item_id)
+        await guard_mod.release_day_lock(db, item_id)
         updates.update({"status": "declined", "staff_note": body.staff_note or reason or None, "slot_state": None,
                         "declined_by": user["name"], "declined_at": now_iso(), "completed_at": now_iso(),
                         "cancellation": {"reason": reason or "Declined by clinic", "free_slot": True,
@@ -4442,6 +4540,16 @@ async def appt_update(item_id: str, body: UpdateBody, user: dict = Depends(requi
                 meta={"action": body.action, "note": history_note} if body.action else None)
 
     fresh = await db.appointment_requests.find_one({"id": item_id}, {"_id": 0})
+    if ident and body.action in ("approve", "change_time", "reschedule", "cancel", "decline", "complete", "no_show", "undo_status"):
+        new_ds = _appt_when(fresh)[0]
+        if body.action == "undo_status" and new_ds:
+            try:
+                await guard_mod.acquire_day_lock(db, pid_scope, ident["key"], new_ds, item_id)
+            except guard_mod.SameDayExists:
+                pass
+        elif body.action in ("complete", "no_show"):
+            await guard_mod.release_day_lock(db, item_id)
+        await guard_mod.refresh_week_flags(db, pid_scope, ident, [cur_ds, new_ds], user)
     if not fresh.get("patient_id"):
         return fresh
     if notify == "confirmed":
@@ -9541,6 +9649,7 @@ async def startup():
     # Slot reservation layer: unique (practice_id, slot_start) is the final double-booking guard.
     # Index only — NO data backfill at startup (see backfill_slot_locks.py).
     await slots_mod.ensure_indexes(db)
+    await guard_mod.ensure_indexes(db)
     await visits_mod.ensure_indexes(db)
     await history_mod.ensure_indexes(db)
     await diag_mod.ensure_indexes(db)

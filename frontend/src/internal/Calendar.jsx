@@ -14,6 +14,7 @@ import { StatusPill } from "./statusPill";
 import { ApptTypeBadge } from "../components/ApptTypeBadge";
 import BookAppointmentModal from "./BookAppointmentModal";
 import CancelAppointmentDialog from "./CancelAppointmentDialog";
+import { SameDayOverride, isSameDayConflict } from "./SameDayOverride";
 import { InternalNotes } from "./InternalNotes";
 
 // Operational view: only what still affects today's schedule. History (cancelled+freed,
@@ -477,22 +478,28 @@ function BookSlotDialog({ slot, onClose, onDone }) {
     const [patient, setPatient] = useState(null);
     const [reason, setReason] = useState("");
     const [busy, setBusy] = useState(false);
+    const [conflict, setConflict] = useState(null);
+    const [overrideReason, setOverrideReason] = useState("");
 
     const search = async (e) => {
         e.preventDefault();
         try { setResults((await api.get("/internal/patient-lookup", { params: { q } })).data); }
         catch (err) { toast.error(formatErr(err)); }
     };
-    const submit = async () => {
+    const submit = async (override = false) => {
         setBusy(true);
         try {
             const body = { date: slot.date, time: slot.time, label: slot.label, reason: reason || null };
             if (patient.source === "portal") body.patient_id = patient.patient_id || patient.id;
             else body.directory_id = patient.directory_id || patient.id;
+            if (override) { body.override_same_day = true; body.override_reason = overrideReason.trim(); }
             await api.post("/internal/calendar/book", body);
-            toast.success("Appointment booked and patient notified.");
+            toast.success(override ? "Appointment booked with same-day override (audited)." : "Appointment booked and patient notified.");
             onDone(); onClose();
-        } catch (e) { toast.error(formatErr(e)); } finally { setBusy(false); }
+        } catch (e) {
+            if (isSameDayConflict(e)) { setConflict(e.response.data.detail); return; }
+            toast.error(formatErr(e));
+        } finally { setBusy(false); }
     };
 
     return (
@@ -522,7 +529,12 @@ function BookSlotDialog({ slot, onClose, onDone }) {
                     <div className="space-y-3 text-sm">
                         <div>Patient: <b>{formatLastFirst(patient.last_name, patient.first_name)}</b> <button className="text-xs text-slate-400 ml-2" onClick={() => setPatient(null)}>change</button></div>
                         <Input value={reason} onChange={(e) => setReason(e.target.value)} placeholder="Reason (optional)" data-testid="cal-book-reason" />
-                        <Button disabled={busy} onClick={submit} className="w-full bg-visita-green hover:bg-visita-greenDark text-white" data-testid="cal-book-confirm">Confirm & Book</Button>
+                        {conflict ? (
+                            <SameDayOverride conflict={conflict} reason={overrideReason} setReason={setOverrideReason} busy={busy}
+                                onConfirm={() => submit(true)} onCancel={onClose} />
+                        ) : (
+                            <Button disabled={busy} onClick={() => submit(false)} className="w-full bg-visita-green hover:bg-visita-greenDark text-white" data-testid="cal-book-confirm">Confirm & Book</Button>
+                        )}
                     </div>
                 )}
             </DialogContent>

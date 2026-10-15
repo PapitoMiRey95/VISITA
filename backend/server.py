@@ -43,6 +43,7 @@ import diagnosis as dx_mod
 import service_coding as svc_mod
 import audit_view as audit_mod
 import metrics as metrics_mod
+import names as names_mod
 import storage
 from db import (APPT_PATIENT_STATUS, BLD_ACTIVE, BLD_PATIENT_STATUS, IMG_ACTIVE,
                 IMG_PATIENT_STATUS, MSG_ACTIVE, MSG_PATIENT_STATUS, RX_ACTIVE,
@@ -4962,6 +4963,7 @@ async def verifications(user: dict = Depends(require_roles(*CLINIC_ROLES))):
     for p in pending:
         out.append({
             "id": p["id"], "first_name": p["first_name"], "last_name": p["last_name"],
+            "middle_name": p.get("middle_name"), "second_last_name": p.get("second_last_name"), "full_name": names_mod.full_display_name(p),
             "date_of_birth": p["date_of_birth"], "phone": p.get("phone"), "email": p.get("email"),
             "patient_type": p["patient_type"], "province": p.get("province"), "country": p.get("country"),
             "extra_info": p.get("extra_info"), "created_at": p["created_at"],
@@ -4981,6 +4983,7 @@ async def verifications_history(user: dict = Depends(require_roles(*CLINIC_ROLES
     ).sort("verified_at", -1).limit(100).to_list(100)
     return [{
         "id": p["id"], "first_name": p["first_name"], "last_name": p["last_name"],
+        "middle_name": p.get("middle_name"), "second_last_name": p.get("second_last_name"), "full_name": names_mod.full_display_name(p),
         "patient_type": p["patient_type"],
         "verification_status": p.get("verification_status"),
         "visita_patient_id": p.get("visita_patient_id"),
@@ -5018,7 +5021,7 @@ def _directory_snapshot(d: dict) -> dict:
         "patient_id": d.get("linked_patient_id"),
         "directory_id": d["id"],
         "first_name": d.get("first_name"), "last_name": d.get("last_name"),
-        "full_name": f"{d.get('last_name','')}, {d.get('first_name','')}".strip(", "),
+        "full_name": names_mod.full_display_name(d),
         "visita_patient_id": d.get("visita_patient_id"),
         "date_of_birth": d.get("date_of_birth"), "age": _age_from_dob(d.get("date_of_birth")),
         "home_phone": d.get("home_phone"), "cell_phone": d.get("cell_phone"),
@@ -5048,7 +5051,7 @@ def _portal_patient_snapshot(p: dict) -> dict:
         "directory_id": p.get("matched_directory_id"),
         "first_name": p.get("first_name"), "last_name": p.get("last_name"),
         "middle_name": p.get("middle_name"), "second_last_name": p.get("second_last_name"),
-        "full_name": f"{p.get('last_name','')}, {p.get('first_name','')}".strip(", "),
+        "full_name": names_mod.full_display_name(p),
         "visita_patient_id": p.get("visita_patient_id"),  # None -> UI shows "Not assigned"
         "date_of_birth": p.get("date_of_birth"), "age": _age_from_dob(p.get("date_of_birth")),
         "home_phone": p.get("home_phone"), "cell_phone": p.get("phone"),
@@ -5337,6 +5340,7 @@ async def identity_links(user: dict = Depends(require_roles(*CLINIC_ROLES))):
                 continue
         out.append({
             "id": p["id"], "first_name": p["first_name"], "last_name": p["last_name"],
+            "middle_name": p.get("middle_name"), "second_last_name": p.get("second_last_name"), "full_name": names_mod.full_display_name(p),
             "date_of_birth": p.get("date_of_birth"), "phone": p.get("phone"), "email": p.get("email"),
             "patient_type": p.get("patient_type"),
             "verification_status": p.get("verification_status"),
@@ -6410,7 +6414,7 @@ def _pharmacy_patient_identity(d: dict) -> dict:
     return {
         "id": d["id"],
         "first_name": d.get("first_name"), "last_name": d.get("last_name"),
-        "full_name": f"{d.get('last_name','')}, {d.get('first_name','')}".strip(", "),
+        "full_name": names_mod.full_display_name(d),
         "visita_patient_id": d.get("visita_patient_id"),
         "date_of_birth": d.get("date_of_birth"),
         "home_phone": d.get("home_phone"), "cell_phone": d.get("cell_phone"),

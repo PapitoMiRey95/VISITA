@@ -9,7 +9,7 @@ import { Button } from "../components/ui/button";
 import { Input } from "../components/ui/input";
 import { Label } from "../components/ui/label";
 import { formatDate, formatDateTime } from "../lib/date";
-import { formatLastFirst } from "../lib/name";
+import { formatPatientName } from "../lib/name";
 import MatchComparison from "./MatchComparison";
 
 const TYPE = { ohip: "OHIP", private: "Private / Uninsured", tourist: "Tourist / Visitor", uninsured: "Private / Uninsured" };
@@ -52,7 +52,7 @@ function CandidateLine({ c, onLink, linking }) {
     return (
         <div data-testid="identity-candidate" className="text-xs text-slate-700 bg-emerald-50 border border-emerald-100 rounded-sm px-2 py-1.5 mb-1 flex items-center justify-between gap-2">
             <div>
-                <span className="font-semibold">{formatLastFirst(c.last_name, c.first_name)}</span>
+                <span className="font-semibold">{formatPatientName(c)}</span>
                 {" · "}DOB {formatDate(c.date_of_birth)} · HC {c.health_card_masked || "—"}
                 {c.visita_patient_id ? <> · <span className="font-semibold">VISITA #{c.visita_patient_id}</span></> : ""}
                 {c.city ? ` · ${c.city}` : ""} {c.province || ""}
@@ -125,7 +125,7 @@ function IdentityLinks({ canDecide }) {
                     <div className="grid md:grid-cols-2 gap-4">
                         <div className="text-sm space-y-0.5">
                             <div className="text-xs uppercase tracking-wide text-slate-400 mb-1">Portal registration</div>
-                            <div className="font-bold text-slate-800 text-base" data-testid="identity-portal-name">{formatLastFirst(p.last_name, p.first_name)}</div>
+                            <div className="font-bold text-slate-800 text-base" data-testid="identity-portal-name">{formatPatientName(p)}</div>
                             <div className="text-slate-600">DOB: {formatDate(p.date_of_birth)} · {TYPE[p.patient_type] || p.patient_type}</div>
                             <div className="text-slate-600">Phone: {p.phone} · Email: {p.email}</div>
                             {p.health_card_masked && <div className="text-slate-600">Health Card: {p.health_card_masked}</div>}
@@ -167,7 +167,7 @@ function VerifiedHistory() {
                                     {rejected ? <UserX className="w-3.5 h-3.5" /> : <ShieldCheck className="w-3.5 h-3.5" />}
                                     {rejected ? "Rejected" : "Verified"}
                                 </span>
-                                <span className="font-bold text-slate-800 text-base">{formatLastFirst(p.last_name, p.first_name)}</span>
+                                <span className="font-bold text-slate-800 text-base">{formatPatientName(p)}</span>
                             </div>
                             <div className="text-slate-600">
                                 Patient registration · {TYPE[p.patient_type] || p.patient_type}
@@ -271,7 +271,7 @@ export default function Verifications() {
                                         {REVIEW[p.review_queue][0]}
                                     </span>
                                 )}
-                                <div className="font-bold text-slate-800 text-base" data-testid="verification-name">{formatLastFirst(p.last_name, p.first_name)}</div>
+                                <div className="font-bold text-slate-800 text-base" data-testid="verification-name">{formatPatientName(p)}</div>
                                 <div className="text-slate-600">DOB: {formatDate(p.date_of_birth)} · {TYPE[p.patient_type] || p.patient_type}</div>
                                 <RelationshipBadges rel={p.relationship} />
                                 <div className="text-slate-600">Phone: {p.phone} · Email: {p.email}</div>
@@ -293,7 +293,7 @@ export default function Verifications() {
                                                 <div key={c.id}>
                                                     <div data-testid="verification-candidate" className="text-xs text-slate-600 bg-emerald-50 rounded-sm px-2 py-1 mb-1 flex items-center justify-between gap-2">
                                                         <span>
-                                                            {formatLastFirst(c.last_name, c.first_name)} · DOB {formatDate(c.date_of_birth)} · HC {c.health_card_masked || "—"}
+                                                            {formatPatientName(c)} · DOB {formatDate(c.date_of_birth)} · HC {c.health_card_masked || "—"}
                                                             {c.visita_patient_id ? ` · VISITA #${c.visita_patient_id}` : ""} · {c.city || ""} {c.province || ""}
                                                         </span>
                                                         <button type="button" data-testid={`verif-compare-${c.id}`} onClick={() => compare(p.id, c.id)}

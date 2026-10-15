@@ -24,10 +24,19 @@ export function formatLastFirst(lastName, firstName) {
 // Format from a patient-like object; falls back to full_name when parts are missing.
 // Includes optional middle_name / second_last_name when present (supplemental
 // identity fields); legacy records without them are unaffected.
+// Canonical clinical full-name formatter: "LAST NAME(S), First Name(s)". Preserves compound
+// surnames and all given names; appends middle_name / second_last_name only when they add
+// tokens not already present in the base field (never duplicates, never invents).
+const joinParts = (base, extra) => {
+    const b = (base || "").trim().split(/\s+/).filter(Boolean);
+    const e = (extra || "").trim().split(/\s+/).filter(Boolean);
+    const bu = new Set(b.map((t) => t.toUpperCase()));
+    return (e.length && e.every((t) => bu.has(t.toUpperCase())) ? b : [...b, ...e]).join(" ");
+};
 export function formatPatientName(p) {
     if (!p) return "—";
-    const last = [p.last_name, p.second_last_name].map((s) => (s || "").trim()).filter(Boolean).join(" ").toUpperCase();
-    const first = titleCaseName([p.first_name, p.middle_name].map((s) => (s || "").trim()).filter(Boolean).join(" "));
+    const last = joinParts(p.last_name, p.second_last_name).toUpperCase();
+    const first = titleCaseName(joinParts(p.first_name, p.middle_name));
     if (last && first) return `${last}, ${first}`;
     return last || first || p.full_name || "—";
 }

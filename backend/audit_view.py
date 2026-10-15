@@ -4,6 +4,8 @@ No mutation endpoints exist for audit records. Practice scoping is derived (olde
   directory patient / portal patient of the practice. Physicians additionally only see their own visits' events."""
 from datetime import datetime, timedelta, timezone
 
+from names import full_display_name
+
 MODULE = {"visit": "Visit", "patient_directory": "Patient", "patient": "Patient", "appointment_request": "Appointment", "appointment": "Appointment",
           "prescription_request": "Prescription", "referral": "Referral", "invoice": "Billing", "settings": "Settings", "user": "User"}
 PAGE_MAX = 200
@@ -44,9 +46,9 @@ async def _patient_labels(db, rows, visits):
     dids = [x.split(":", 1)[1] for x in refs if x.startswith("directory:")]
     pids = [x.split(":", 1)[1] for x in refs if x.startswith("patient:")]
     async for d in db.patient_directory.find({"id": {"$in": dids}}, {"_id": 0, "id": 1, "first_name": 1, "last_name": 1, "visita_patient_id": 1}):
-        labels[f"directory:{d['id']}"] = {"name": f"{(d.get('last_name') or '').upper()}, {d.get('first_name') or ''}", "pin": d.get("visita_patient_id")}
-    async for p in db.patients.find({"id": {"$in": pids}}, {"_id": 0, "id": 1, "first_name": 1, "last_name": 1, "visita_patient_id": 1}):
-        labels[f"patient:{p['id']}"] = {"name": f"{(p.get('last_name') or '').upper()}, {p.get('first_name') or ''}", "pin": p.get("visita_patient_id")}
+        labels[f"directory:{d['id']}"] = {"name": full_display_name(d), "pin": d.get("visita_patient_id")}
+    async for p in db.patients.find({"id": {"$in": pids}}, {"_id": 0, "id": 1, "first_name": 1, "last_name": 1, "middle_name": 1, "second_last_name": 1, "visita_patient_id": 1}):
+        labels[f"patient:{p['id']}"] = {"name": full_display_name(p), "pin": p.get("visita_patient_id")}
     return labels
 
 

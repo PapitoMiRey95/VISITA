@@ -9,6 +9,7 @@ import re
 from datetime import date, datetime
 
 from db import mask_hcn, now_iso
+from names import full_display_name
 
 ACTIVE = "ACTIVE"
 FORMER_CLOSED = "FORMER_CLOSED"
@@ -88,6 +89,7 @@ def serialize_candidate(d: dict) -> dict:
         "visita_patient_id": d.get("visita_patient_id"),
         "first_name": d.get("first_name"),
         "last_name": d.get("last_name"),
+        "full_name": full_display_name(d),
         "date_of_birth": d.get("date_of_birth"),
         "health_card_masked": mask_hcn(d.get("health_card_number")),
         "health_card_version_code": d.get("health_card_version_code"),

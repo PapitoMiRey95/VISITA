@@ -18,7 +18,7 @@ def _load_base():
 
 
 BASE = _load_base()
-STAFF = {"identifier": "staff@visita.demo", "password": "Staff2026!"}
+STAFF = {"identifier": "staff@visita.demo", "password": os.environ["TEST_STAFF_PASSWORD"]}
 
 
 @pytest.fixture(scope="module")

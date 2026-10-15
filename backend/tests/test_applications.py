@@ -25,7 +25,7 @@ def _read_frontend_env():
 
 BASE = _read_frontend_env().rstrip("/") + "/api"
 
-STAFF = ("staff@visita.demo", "Staff2026!")
+STAFF = ("staff@visita.demo", os.environ["TEST_STAFF_PASSWORD"])
 ADMIN = ("kevinrodriguez9528@gmail.com", "VisitaAdmin2026!")
 PHYS_USER = "PAGUAYO"
 PHYS_TEMP = "Aguayo#Temp2026"

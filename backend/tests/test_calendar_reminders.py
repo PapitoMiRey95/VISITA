@@ -7,8 +7,8 @@ from zoneinfo import ZoneInfo
 
 BASE = os.environ.get("REACT_APP_BACKEND_URL", "https://visita-admin.preview.emergentagent.com").rstrip("/")
 API = f"{BASE}/api"
-STAFF = ("staff@visita.demo", "Staff2026!")
-PHYS = ("PAGUAYO", "Newman2013_!")
+STAFF = ("staff@visita.demo", os.environ["TEST_STAFF_PASSWORD"])
+PHYS = ("PAGUAYO", os.environ["TEST_PHYSICIAN_PASSWORD"])
 PHYS_FALLBACK = ("PAGUAYO", "Aguayo#Perm2026!")
 MARIA = ("maria.lopez@demo.com", "Patient2026!")
 CRON_SECRET = None  # loaded lazily from backend/.env

@@ -16,7 +16,7 @@ if "REACT_APP_BACKEND_URL" not in os.environ:
         pass
 
 STAFF_EMAIL = "staff@visita.demo"
-STAFF_PW = "Staff2026!"
+STAFF_PW = os.environ["TEST_STAFF_PASSWORD"]
 PATIENT_EMAIL = "maria.lopez@demo.com"
 PATIENT_PW = "Patient2026!"
 

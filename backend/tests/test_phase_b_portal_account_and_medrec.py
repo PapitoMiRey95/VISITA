@@ -13,7 +13,7 @@ BASE_URL = os.environ.get("REACT_APP_BACKEND_URL", "https://visita-admin.preview
 API = f"{BASE_URL}/api"
 
 ADMIN = ("kevinrodriguez9528@gmail.com", "VisitaAdmin2026!")
-PHYSICIAN = ("PAGUAYO", "Newman2013_!")
+PHYSICIAN = ("PAGUAYO", os.environ["TEST_PHYSICIAN_PASSWORD"])
 PATIENT = ("maria.lopez@demo.com", "Patient2026!")
 
 MARIA_PID = "06f6ee08-58f7-4286-82f5-7c845de99ce1"

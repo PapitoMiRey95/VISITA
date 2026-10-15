@@ -7,8 +7,8 @@ from pymongo import MongoClient
 BASE = os.environ.get("REACT_APP_BACKEND_URL", "https://visita-admin.preview.emergentagent.com").rstrip("/")
 API = f"{BASE}/api"
 
-PHYS_U, PHYS_P = "PAGUAYO", "Newman2013_!"
-STAFF_U, STAFF_P = "staff@visita.demo", "Staff2026!"
+PHYS_U, PHYS_P = "PAGUAYO", os.environ["TEST_PHYSICIAN_PASSWORD"]
+STAFF_U, STAFF_P = "staff@visita.demo", os.environ["TEST_STAFF_PASSWORD"]
 ADMIN_U, ADMIN_P = "kevinrodriguez9528@gmail.com", "VisitaAdmin2026!"
 
 MARIA_PATIENT_ID = "06f6ee08-58f7-4286-82f5-7c845de99ce1"

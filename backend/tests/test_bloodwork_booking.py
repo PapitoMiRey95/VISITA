@@ -29,7 +29,7 @@ def _read_frontend_env():
 BASE_URL = (os.environ.get("REACT_APP_BACKEND_URL") or _read_frontend_env()).rstrip("/")
 API = f"{BASE_URL}/api"
 
-STAFF = {"login": "staff@visita.demo", "password": "Staff2026!"}
+STAFF = {"login": "staff@visita.demo", "password": os.environ["TEST_STAFF_PASSWORD"]}
 PATIENT = {"login": "maria.lopez@demo.com", "password": "Patient2026!"}
 PHYS = {"login": "PAGUAYO", "password": "Aguayo#Temp2026"}
 PHYS_NEW = "AguayoTest#2026Blood"

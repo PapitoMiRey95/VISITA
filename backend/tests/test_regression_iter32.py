@@ -2,7 +2,7 @@
 - appt undo_status action (revert no_show/completed -> confirmed, 400 guard)
 - physician allowed on PATCH /internal/patients/{id}
 - appointment_type endpoint (IN_CLINIC/TELEPHONE) + list serialize includes appointment_type
-- physician login (PAGUAYO / Newman2013_!)
+- physician login (PAGUAYO / $TEST_PHYSICIAN_PASSWORD)
 """
 import os
 import pytest
@@ -10,8 +10,8 @@ import requests
 
 BASE_URL = os.environ.get("REACT_APP_BACKEND_URL", "https://visita-admin.preview.emergentagent.com").rstrip("/")
 
-STAFF = {"identifier": "staff@visita.demo", "password": "Staff2026!"}
-PHYSICIAN = {"identifier": "PAGUAYO", "password": "Newman2013_!"}
+STAFF = {"identifier": "staff@visita.demo", "password": os.environ["TEST_STAFF_PASSWORD"]}
+PHYSICIAN = {"identifier": "PAGUAYO", "password": os.environ["TEST_PHYSICIAN_PASSWORD"]}
 PATIENT = {"identifier": "maria.lopez@demo.com", "password": "Patient2026!"}
 
 

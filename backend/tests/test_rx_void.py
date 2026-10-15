@@ -8,8 +8,8 @@ BASE_URL = os.environ.get("REACT_APP_BACKEND_URL", "https://visita-admin.preview
 API = f"{BASE_URL}/api"
 
 ADMIN = {"identifier": "kevinrodriguez9528@gmail.com", "password": "VisitaAdmin2026!"}
-STAFF = {"identifier": "staff@visita.demo", "password": "Staff2026!"}
-PHYS = {"identifier": "PAGUAYO", "password": "Newman2013_!"}
+STAFF = {"identifier": "staff@visita.demo", "password": os.environ["TEST_STAFF_PASSWORD"]}
+PHYS = {"identifier": "PAGUAYO", "password": os.environ["TEST_PHYSICIAN_PASSWORD"]}
 
 
 def _login(creds):

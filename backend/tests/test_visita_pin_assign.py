@@ -10,8 +10,8 @@ load_dotenv("/app/frontend/.env")
 BASE = os.environ["REACT_APP_BACKEND_URL"].rstrip("/")
 API = f"{BASE}/api"
 
-STAFF = ("staff@visita.demo", "Staff2026!")
-PHYSICIAN = ("PAGUAYO", "Newman2013_!")
+STAFF = ("staff@visita.demo", os.environ["TEST_STAFF_PASSWORD"])
+PHYSICIAN = ("PAGUAYO", os.environ["TEST_PHYSICIAN_PASSWORD"])
 
 
 def _login(identifier, password):

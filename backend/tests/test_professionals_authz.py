@@ -32,8 +32,8 @@ with open("/app/backend/.env") as f:
             DB_NAME = ln.split("=", 1)[1].strip().strip('"')
 
 ADMIN = ("kevinrodriguez9528@gmail.com", "VisitaAdmin2026!")
-PHYSICIAN = ("PAGUAYO", "Newman2013_!")
-STAFF = ("staff@visita.demo", "Staff2026!")
+PHYSICIAN = ("PAGUAYO", os.environ["TEST_PHYSICIAN_PASSWORD"])
+STAFF = ("staff@visita.demo", os.environ["TEST_STAFF_PASSWORD"])
 PHARM = ("1670dufferin", "PharmNew2026!")
 
 

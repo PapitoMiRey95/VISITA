@@ -26,8 +26,8 @@ MONGO_URL = os.environ["MONGO_URL"]
 DB_NAME = os.environ["DB_NAME"]
 
 ADMIN = ("kevinrodriguez9528@gmail.com", "VisitaAdmin2026!")
-STAFF = ("staff@visita.demo", "Staff2026!")
-PHYS  = ("PAGUAYO", "Newman2013_!")
+STAFF = ("staff@visita.demo", os.environ["TEST_STAFF_PASSWORD"])
+PHYS  = ("PAGUAYO", os.environ["TEST_PHYSICIAN_PASSWORD"])
 PATIENT_MARIA = ("maria.lopez@demo.com", "Patient2026!")
 
 CREATED_PATIENT_IDS: set = set()

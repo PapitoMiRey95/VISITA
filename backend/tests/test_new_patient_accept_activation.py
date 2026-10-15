@@ -38,7 +38,7 @@ MONGO_URL = ENV["MONGO_URL"].strip('"')
 DB_NAME = ENV["DB_NAME"].strip('"')
 
 PHY_USER = "PAGUAYO"
-PHY_PW_PRIMARY = "Newman2013_!"
+PHY_PW_PRIMARY = os.environ["TEST_PHYSICIAN_PASSWORD"]
 PHY_PW_FALLBACK = "Aguayo#Temp2026"
 
 

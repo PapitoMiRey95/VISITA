@@ -9,7 +9,7 @@ IDS = {}
 
 @pytest.fixture(scope="module")
 def staff():
-    r = requests.post(f"{BASE}/api/auth/login", json={"email": "staff@visita.demo", "password": "Staff2026!"})
+    r = requests.post(f"{BASE}/api/auth/login", json={"email": "staff@visita.demo", "password": os.environ["TEST_STAFF_PASSWORD"]})
     assert r.status_code == 200, r.text
     s = requests.Session()
     s.headers.update({"Authorization": f"Bearer {r.json()['token']}", "Content-Type": "application/json"})
@@ -144,7 +144,7 @@ def test_08_patient_lookup_collapsed_alphaville(staff):
 
 
 def test_09_regression_visit_audit():
-    r = requests.post(f"{BASE}/api/auth/login", json={"identifier": "PAGUAYO", "password": "Newman2013_!"})
+    r = requests.post(f"{BASE}/api/auth/login", json={"identifier": "PAGUAYO", "password": os.environ["TEST_PHYSICIAN_PASSWORD"]})
     if r.status_code != 200:
         pytest.skip(f"physician login failed: {r.status_code}")
     tok = r.json()["token"]

@@ -28,7 +28,7 @@ API = BASE_URL + "/api"
 MONGO_URL = os.environ["MONGO_URL"]
 DB_NAME = os.environ["DB_NAME"]
 
-STAFF = ("staff@visita.demo", "Staff2026!")
+STAFF = ("staff@visita.demo", os.environ["TEST_STAFF_PASSWORD"])
 ADMIN = ("kevinrodriguez9528@gmail.com", "VisitaAdmin2026!")
 MARIA_EMAIL = "maria.lopez@demo.com"
 MARIA_PW = "Patient2026!"

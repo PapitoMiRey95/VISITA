@@ -26,8 +26,8 @@ def _load_backend_url():
 BASE_URL = _load_backend_url()
 API = f"{BASE_URL}/api"
 
-PHYS = {"identifier": "PAGUAYO", "password": "Newman2013_!"}
-STAFF = {"identifier": "staff@visita.demo", "password": "Staff2026!"}
+PHYS = {"identifier": "PAGUAYO", "password": os.environ["TEST_PHYSICIAN_PASSWORD"]}
+STAFF = {"identifier": "staff@visita.demo", "password": os.environ["TEST_STAFF_PASSWORD"]}
 ADMIN = {"identifier": "kevinrodriguez9528@gmail.com", "password": "VisitaAdmin2026!"}
 
 

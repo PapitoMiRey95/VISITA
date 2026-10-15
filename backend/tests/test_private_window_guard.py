@@ -15,8 +15,8 @@ API = f"{BASE_URL}/api"
 
 CREDS = {
     "admin": ("kevinrodriguez9528@gmail.com", "VisitaAdmin2026!"),
-    "staff": ("staff@visita.demo", "Staff2026!"),
-    "physician": ("PAGUAYO", "Newman2013_!"),
+    "staff": ("staff@visita.demo", os.environ["TEST_STAFF_PASSWORD"]),
+    "physician": ("PAGUAYO", os.environ["TEST_PHYSICIAN_PASSWORD"]),
     "linda": ("linda.nguyen@demo.com", "Patient2026!"),
     "maria": ("maria.lopez@demo.com", "Patient2026!"),
 }

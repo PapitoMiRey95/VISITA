@@ -27,9 +27,9 @@ BASE_URL = (os.environ.get('REACT_APP_BACKEND_URL') or _read_frontend_env_url())
 API = f"{BASE_URL}/api"
 
 PHYS_USERNAME = "PAGUAYO"
-PHYS_PASSWORD = "Newman2013_!"
+PHYS_PASSWORD = os.environ["TEST_PHYSICIAN_PASSWORD"]
 STAFF_EMAIL = "staff@visita.demo"
-STAFF_PASSWORD = "Staff2026!"
+STAFF_PASSWORD = os.environ["TEST_STAFF_PASSWORD"]
 
 
 def _login(payload):

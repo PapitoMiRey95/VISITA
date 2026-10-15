@@ -27,8 +27,8 @@ _mc = MongoClient(os.environ["MONGO_URL"])
 db = _mc[os.environ["DB_NAME"]]
 
 PHYS_ID = "PAGUAYO"
-PHYS_PWS = ["Newman2013_!", "Aguayo#Temp2026", "Aguayo#Perm2026!"]
-STAFF_ID, STAFF_PW = "staff@visita.demo", "Staff2026!"
+PHYS_PWS = [os.environ["TEST_PHYSICIAN_PASSWORD"], "Aguayo#Temp2026", "Aguayo#Perm2026!"]
+STAFF_ID, STAFF_PW = "staff@visita.demo", os.environ["TEST_STAFF_PASSWORD"]
 
 SFX = uuid.uuid4().hex[:8]
 UNIQUE_DRUG = f"Zztestdrug {SFX}"  # unique so memory/med assertions are unambiguous

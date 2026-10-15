@@ -32,12 +32,12 @@ def _login(identifier, password):
 
 @pytest.fixture(scope="module")
 def phys_h():
-    return _login("PAGUAYO", "Newman2013_!")
+    return _login("PAGUAYO", os.environ["TEST_PHYSICIAN_PASSWORD"])
 
 
 @pytest.fixture(scope="module")
 def staff_h():
-    return _login("staff@visita.demo", "Staff2026!")
+    return _login("staff@visita.demo", os.environ["TEST_STAFF_PASSWORD"])
 
 
 @pytest.fixture(scope="module")

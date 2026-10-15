@@ -33,8 +33,8 @@ def login(identifier, pw):
 
 async def main():
     db = AsyncIOMotorClient(os.environ["MONGO_URL"])[os.environ["DB_NAME"]]
-    phys, pu = login("PAGUAYO", "Newman2013_!")
-    staff, _ = login("staff@visita.demo", "Staff2026!")
+    phys, pu = login("PAGUAYO", os.environ["TEST_PHYSICIAN_PASSWORD"])
+    staff, _ = login("staff@visita.demo", os.environ["TEST_STAFF_PASSWORD"])
     admin, _ = login("kevinrodriguez9528@gmail.com", "VisitaAdmin2026!")
     created = []
     try:

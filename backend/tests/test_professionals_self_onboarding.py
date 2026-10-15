@@ -42,7 +42,7 @@ def db():
 
 @pytest.fixture(scope="module")
 def physician():
-    return _login("PAGUAYO", "Newman2013_!")
+    return _login("PAGUAYO", os.environ["TEST_PHYSICIAN_PASSWORD"])
 
 
 @pytest.fixture(scope="module")

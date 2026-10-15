@@ -12,8 +12,8 @@ def _login(ident, pw):
     return {"Authorization": f"Bearer {r.json()['token']}"}
 
 
-PHYS = _login("PAGUAYO", "Newman2013_!")
-STAFF = _login("staff@visita.demo", "Staff2026!")
+PHYS = _login("PAGUAYO", os.environ["TEST_PHYSICIAN_PASSWORD"])
+STAFF = _login("staff@visita.demo", os.environ["TEST_STAFF_PASSWORD"])
 ADMIN = _login("kevinrodriguez9528@gmail.com", "VisitaAdmin2026!")
 
 

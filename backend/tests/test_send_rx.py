@@ -23,8 +23,8 @@ _mc = MongoClient(os.environ["MONGO_URL"])
 db = _mc[os.environ["DB_NAME"]]
 
 PHYS_ID = "PAGUAYO"
-PHYS_PWS = ["Newman2013_!", "Aguayo#Temp2026", "Aguayo#Perm2026!"]
-STAFF_ID, STAFF_PW = "staff@visita.demo", "Staff2026!"
+PHYS_PWS = [os.environ["TEST_PHYSICIAN_PASSWORD"], "Aguayo#Temp2026", "Aguayo#Perm2026!"]
+STAFF_ID, STAFF_PW = "staff@visita.demo", os.environ["TEST_STAFF_PASSWORD"]
 
 _created_pharmacy_object_ids = []
 _created_tx_ids = []

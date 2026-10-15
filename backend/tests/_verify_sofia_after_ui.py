@@ -32,7 +32,7 @@ for n in notes:
     print("  msg=", n.get("message"))
 
 # Re-approve via API (equivalent to re-clicking Verify)
-r = requests.post(f"{BASE_URL}/api/auth/login", json={"identifier": "staff@visita.demo", "password": "Staff2026!"}, timeout=10)
+r = requests.post(f"{BASE_URL}/api/auth/login", json={"identifier": "staff@visita.demo", "password": os.environ["TEST_STAFF_PASSWORD"]}, timeout=10)
 tok = r.json()["token"]
 r2 = requests.post(f"{BASE_URL}/api/internal/verifications/{SOFIA_ID}",
                    headers={"Authorization": f"Bearer {tok}"}, json={"decision": "verified"}, timeout=10)

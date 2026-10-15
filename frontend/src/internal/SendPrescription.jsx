@@ -5,6 +5,7 @@ import {
     UserCheck, CheckCircle2, Clock, Eye, ClipboardPaste, RotateCw, Pencil, AlertTriangle, Paperclip,
 } from "lucide-react";
 import { api, formatErr, openAttachment } from "../lib/api";
+import { useMedRows } from "../lib/medRows";
 import { formatDate, formatDateTime } from "../lib/date";
 import { Button } from "../components/ui/button";
 import { Input } from "../components/ui/input";
@@ -89,7 +90,7 @@ export default function SendPrescription() {
             .catch(() => {});
     }, [fieldSuggest]);
 
-    const [meds, setMeds] = useState([]);
+    const [meds, setMeds] = useMedRows(useState, useCallback);
     const [rx, setRx] = useState({ months: "", refills: "", note: "", _editing: false });
     const [sourceText, setSourceText] = useState("");
     const [paste, setPaste] = useState("");
@@ -162,7 +163,7 @@ export default function SendPrescription() {
                 toast.success(`Draft prepared from ${payload.pharmacy_name || "pharmacy"} request. Review, edit, then Send.`);
             } catch (err) { toast.error(formatErr(err)); }
         })();
-    }, []);
+    }, [setMeds]);
 
     const runSearch = async (e, byPin = false) => {
         e?.preventDefault();
@@ -283,7 +284,7 @@ export default function SendPrescription() {
             const fd = new FormData();
             fd.append("patient_ref", patient.directory_id || patient.patient_id);
             fd.append("pharmacy_id", pharmacyId);
-            fd.append("medications", JSON.stringify(filledMeds.map(({ _editing, _moreOpen, needs_review, newer_available, newer, ...m }) => m)));
+            fd.append("medications", JSON.stringify(filledMeds.map(({ _editing, _moreOpen, _uid, needs_review, newer_available, newer, ...m }) => m)));
             fd.append("physician_note", rx.note || "");
             if (rx.months !== "" && rx.months != null) fd.append("months", String(rx.months));
             if (rx.refills !== "" && rx.refills != null) fd.append("refills", String(rx.refills));
@@ -468,7 +469,7 @@ export default function SendPrescription() {
                                 <div className="text-sm font-semibold text-slate-700 mb-2">VIen understood</div>
                                 <div className="space-y-2">
                                     {meds.map((m, i) => (
-                                        <div key={i} data-testid="sendrx-med-card" className="border border-slate-200 rounded-sm p-3">
+                                        <div key={m._uid} data-testid="sendrx-med-card" className="border border-slate-200 rounded-sm p-3">
                                             {!m._editing ? (
                                                 <div className="flex items-start justify-between gap-3">
                                                     <div className="text-sm flex-1 min-w-0">
@@ -552,7 +553,7 @@ export default function SendPrescription() {
                                 {filledMeds.length > 0 ? (
                                     <div className="space-y-2" data-testid="sendrx-review-meds">
                                         {filledMeds.map((m, i) => (
-                                            <div key={i} data-testid="sendrx-review-med" className="border border-slate-200 rounded-sm px-3 py-2">
+                                            <div key={m._uid} data-testid="sendrx-review-med" className="border border-slate-200 rounded-sm px-3 py-2">
                                                 <div className="flex items-center gap-2 flex-wrap">
                                                     <span className="text-slate-400 text-xs font-semibold">{i + 1}.</span>
                                                     <span className="font-semibold text-slate-800">{[m.drug, m.strength].filter(Boolean).join(" ")}</span>

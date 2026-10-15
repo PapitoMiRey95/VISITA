@@ -1,7 +1,8 @@
 import { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { Stethoscope } from "lucide-react";
-import { api } from "../lib/api";
+import { api, formatErr } from "../lib/api";
+import { toast } from "sonner";
 import { formatDateTime } from "../lib/date";
 import { encounterTypeLabel } from "./StartEncounter";
 
@@ -34,7 +35,7 @@ export function VisitHistory({ patientRef, refreshKey }) {
                                 <td className="text-right">
                                     {v.status === "IN_PROGRESS" && (
                                         <button type="button" className="text-visita-ribbon font-semibold hover:underline" data-testid={`visit-open-${v.ref_number}`}
-                                            onClick={async () => { await api.post(`/internal/visits/${v.id}/resume`).catch(() => {}); nav(`/internal/encounter/${v.id}`); }}>
+                                            onClick={async () => { try { await api.post(`/internal/visits/${v.id}/resume`); nav(`/internal/encounter/${v.id}`); } catch (e) { toast.error(`Could not resume ${v.ref_number}: ${formatErr(e)}`); } }}>
                                             Resume
                                         </button>
                                     )}

@@ -14,7 +14,7 @@ BASE_URL = os.environ.get("REACT_APP_BACKEND_URL", "https://visita-admin.preview
 API = f"{BASE_URL}/api"
 
 ADMIN = ("kevinrodriguez9528@gmail.com", "VisitaAdmin2026!")
-STAFF = ("staff@visita.demo", "Staff2026!")
+STAFF = ("staff@visita.demo", os.environ["TEST_STAFF_PASSWORD"])
 PHYS = ("doctor@visita.demo", "Doctor2026!")
 MARIA = ("maria.lopez@demo.com", "Patient2026!")
 SOFIA = ("sofia.martinez@demo.com", "Patient2026!")  # pending patient

@@ -5,6 +5,7 @@ import {
     UserCheck, Pill, AlertTriangle, FileText,
 } from "lucide-react";
 import { api, formatErr, openAttachment } from "../lib/api";
+import { useMedRows } from "../lib/medRows";
 import { formatDate, formatDateTime } from "../lib/date";
 import { formatHealthCardWithVersion } from "../lib/healthCard";
 import { Button } from "../components/ui/button";
@@ -56,7 +57,7 @@ export default function PharmacyRx() {
     const [loading, setLoading] = useState(true);
 
     const [patient, setPatient] = useState(null);
-    const [meds, setMeds] = useState([]);
+    const [meds, setMeds] = useMedRows(useState, useCallback);
     const [file, setFile] = useState(null);
     const [reqNote, setReqNote] = useState("");
     const [msgPhysician, setMsgPhysician] = useState("");
@@ -172,7 +173,7 @@ export default function PharmacyRx() {
         try {
             const fd = new FormData();
             fd.append("directory_id", patient.id);
-            fd.append("medications", JSON.stringify(filledMeds.map(({ _editing, _moreOpen, needs_review, action, ...m }) => ({ ...m, action }))));
+            fd.append("medications", JSON.stringify(filledMeds.map(({ _editing, _moreOpen, _uid, needs_review, action, ...m }) => ({ ...m, action }))));
             fd.append("pharmacy_note", reqNote.trim());
             fd.append("message_to_physician", msgPhysician.trim());
             if (file) fd.append("file", file);
@@ -314,7 +315,7 @@ export default function PharmacyRx() {
                                     <div className="text-sm font-semibold text-slate-700 mb-2">Medications</div>
                                     <div className="space-y-2">
                                         {meds.map((m, i) => (
-                                            <PharmacyMedCard key={i} m={m} i={i} setMed={setMed} removeMed={removeMed} toggleEdit={toggleEdit}
+                                            <PharmacyMedCard key={m._uid} m={m} i={i} setMed={setMed} removeMed={removeMed} toggleEdit={toggleEdit}
                                                 fieldSuggest={fieldSuggest} drugOptions={drugOptions} ensureDrugSuggest={ensureDrugSuggest} />
                                         ))}
                                     </div>
@@ -342,7 +343,7 @@ export default function PharmacyRx() {
                             {filledMeds.length > 0 ? (
                                 <div className="space-y-2" data-testid="rx-review-meds">
                                     {filledMeds.map((m, i) => (
-                                        <div key={i} data-testid="rx-review-med" className="border border-slate-200 rounded-sm px-3 py-2">
+                                        <div key={m._uid} data-testid="rx-review-med" className="border border-slate-200 rounded-sm px-3 py-2">
                                             <div className="flex items-center gap-2 flex-wrap text-sm">
                                                 <span className="text-slate-400 text-xs font-semibold">{i + 1}.</span>
                                                 <span className="font-semibold text-slate-800">{[m.drug, m.strength].filter(Boolean).join(" ")}</span>

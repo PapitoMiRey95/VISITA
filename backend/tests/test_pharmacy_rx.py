@@ -16,7 +16,7 @@ import requests
 BASE_URL = os.environ["REACT_APP_BACKEND_URL"].rstrip("/")
 
 STAFF_ID = "staff@visita.demo"
-STAFF_PW = "Staff2026!"
+STAFF_PW = os.environ["TEST_STAFF_PASSWORD"]
 PHYS_ID = "PAGUAYO"
 PHYS_PW = "Aguayo#Temp2026"
 PHYS_PW_PERM = "Aguayo#Perm2026!"

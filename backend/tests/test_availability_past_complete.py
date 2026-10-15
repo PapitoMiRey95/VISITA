@@ -36,7 +36,7 @@ MONGO_URL = os.environ["MONGO_URL"]
 DB_NAME = os.environ["DB_NAME"]
 
 ADMIN = ("kevinrodriguez9528@gmail.com", "VisitaAdmin2026!")
-STAFF = ("staff@visita.demo", "Staff2026!")
+STAFF = ("staff@visita.demo", os.environ["TEST_STAFF_PASSWORD"])
 PATIENT = ("maria.lopez@demo.com", "Patient2026!")
 
 TAG = f"TEST_{uuid.uuid4().hex[:8]}"

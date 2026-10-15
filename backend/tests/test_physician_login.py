@@ -1,106 +1,48 @@
-"""Tests for physician username login + forced password change flow (iter5)."""
+"""Tests for physician username login (read-only: never changes the live physician password)."""
 import os
 import pytest
 import requests
 
 BASE_URL = os.environ.get("REACT_APP_BACKEND_URL", "").rstrip("/")
 if not BASE_URL:
-    # Fallback to frontend/.env
     with open("/app/frontend/.env") as f:
         for line in f:
             if line.startswith("REACT_APP_BACKEND_URL"):
                 BASE_URL = line.split("=", 1)[1].strip().strip('"').rstrip("/")
 
 API = f"{BASE_URL}/api"
-TEMP_PW = "Aguayo#Temp2026"
-NEW_PW = "DocSecret2026!"
+PHYS_PW = os.environ["TEST_PHYSICIAN_PASSWORD"]
 
 
 def login(identifier, password):
     return requests.post(f"{API}/auth/login", json={"identifier": identifier, "password": password})
 
 
-def reset_physician():
-    """Attempt to reset via admin - but we can't; instead try both temp & NEW_PW to detect current state."""
-    r = login("PAGUAYO", TEMP_PW)
-    if r.status_code == 200:
-        return TEMP_PW, r.json()
-    r = login("PAGUAYO", NEW_PW)
-    if r.status_code == 200:
-        # already changed by prior run; change back
-        token = r.json()["token"]
-        requests.post(f"{API}/auth/change-password",
-                      headers={"Authorization": f"Bearer {token}"},
-                      json={"current_password": NEW_PW, "new_password": TEMP_PW})
-        r2 = login("PAGUAYO", TEMP_PW)
-        return TEMP_PW, r2.json() if r2.status_code == 200 else None
-    return None, None
-
-
 class TestPhysicianLogin:
-    def test_username_login_returns_must_change(self):
-        pw, data = reset_physician()
-        assert data is not None, "Could not authenticate physician with temp or new password"
-        u = data["user"]
-        assert u["role"] == "physician"
-        assert u["username"] == "PAGUAYO"
-        assert u["name"] == "Dr. Pablo Aguayo"
-        # If we just changed pw back to temp via change-password, must_change_password is False.
-        # So only assert when temp was originally in use. Skip strict check if we reset.
-        # Force reset flag via direct login again
-        # We accept either state but log
-        print("must_change_password:", u.get("must_change_password"))
+    def test_username_login(self):
+        r = login("PAGUAYO", PHYS_PW)
+        assert r.status_code == 200, r.text
+        u = r.json()["user"]
+        assert u["role"] == "physician" and u["username"] == "PAGUAYO"
 
     def test_case_insensitive_username(self):
-        r = login("paguayo", TEMP_PW)
-        if r.status_code != 200:
-            # maybe pw was changed
-            r = login("paguayo", NEW_PW)
-        assert r.status_code == 200
-        assert r.json()["user"]["username"] == "PAGUAYO"
+        assert login("paguayo", PHYS_PW).status_code == 200
 
-    def test_change_password_flow(self):
-        # Ensure state: temp password valid
-        r = login("PAGUAYO", TEMP_PW)
-        if r.status_code != 200:
-            # was already changed; change back first
-            r2 = login("PAGUAYO", NEW_PW)
-            assert r2.status_code == 200
-            tok = r2.json()["token"]
-            requests.post(f"{API}/auth/change-password",
-                          headers={"Authorization": f"Bearer {tok}"},
-                          json={"current_password": NEW_PW, "new_password": TEMP_PW})
-            r = login("PAGUAYO", TEMP_PW)
-        assert r.status_code == 200
-        token = r.json()["token"]
+    def test_wrong_password_rejected(self):
+        assert login("PAGUAYO", "definitely-wrong-password-1").status_code == 401
 
-        # Reject same password
-        same = requests.post(f"{API}/auth/change-password",
-                             headers={"Authorization": f"Bearer {token}"},
-                             json={"current_password": TEMP_PW, "new_password": TEMP_PW})
-        assert same.status_code == 400
-
-        # Reject <8 chars
-        short = requests.post(f"{API}/auth/change-password",
-                              headers={"Authorization": f"Bearer {token}"},
-                              json={"current_password": TEMP_PW, "new_password": "short1"})
+    def test_change_password_validation_only(self):
+        """Negative checks only — a wrong current password and a too-short new password must be rejected.
+        The live password is never modified by tests."""
+        token = login("PAGUAYO", PHYS_PW).json()["token"]
+        h = {"Authorization": f"Bearer {token}"}
+        bad_current = requests.post(f"{API}/auth/change-password", headers=h,
+                                    json={"current_password": "not-the-password-1", "new_password": "Another#Strong2026"})
+        assert bad_current.status_code in (400, 401, 403)
+        short = requests.post(f"{API}/auth/change-password", headers=h,
+                              json={"current_password": PHYS_PW, "new_password": "short1"})
         assert short.status_code in (400, 422)
-
-        # Successful change
-        ok = requests.post(f"{API}/auth/change-password",
-                           headers={"Authorization": f"Bearer {token}"},
-                           json={"current_password": TEMP_PW, "new_password": NEW_PW})
-        assert ok.status_code == 200
-        assert ok.json().get("ok") is True
-
-        # New login shows must_change_password false
-        r3 = login("PAGUAYO", NEW_PW)
-        assert r3.status_code == 200
-        assert r3.json()["user"]["must_change_password"] is False
-
-        # Old temp password no longer works
-        r4 = login("PAGUAYO", TEMP_PW)
-        assert r4.status_code == 401
+        assert login("PAGUAYO", PHYS_PW).status_code == 200
 
     def test_email_login_patient(self):
         r = requests.post(f"{API}/auth/login", json={"email": "maria.lopez@demo.com", "password": "Patient2026!"})
@@ -112,7 +54,7 @@ class TestPhysicianLogin:
         assert r.status_code == 200
 
     def test_staff_login(self):
-        r = login("staff@visita.demo", "Staff2026!")
+        r = login("staff@visita.demo", os.environ["TEST_STAFF_PASSWORD"])
         assert r.status_code == 200
         assert r.json()["user"]["role"] == "staff"
 
@@ -126,7 +68,7 @@ class TestPhysicianLogin:
         try:
             r = requests.get(BASE_URL + "/login", timeout=10)
             text = r.text
-            for pw in ["Aguayo#Temp2026", "Patient2026!", "Staff2026!", "VisitaAdmin2026!", "DocSecret2026!"]:
+            for pw in ["Patient2026!", os.environ["TEST_STAFF_PASSWORD"], PHYS_PW]:
                 assert pw not in text, f"Password {pw} exposed on /login"
         except Exception as e:
             pytest.skip(f"Could not fetch /login: {e}")

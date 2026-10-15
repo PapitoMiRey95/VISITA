@@ -15,8 +15,8 @@ import requests
 
 BASE_URL = os.environ.get("REACT_APP_BACKEND_URL", "https://visita-admin.preview.emergentagent.com").rstrip("/")
 
-STAFF = {"identifier": "staff@visita.demo", "password": "Staff2026!"}
-PHYSICIAN = {"identifier": "PAGUAYO", "password": "Newman2013_!"}
+STAFF = {"identifier": "staff@visita.demo", "password": os.environ["TEST_STAFF_PASSWORD"]}
+PHYSICIAN = {"identifier": "PAGUAYO", "password": os.environ["TEST_PHYSICIAN_PASSWORD"]}
 
 
 def _login(creds):

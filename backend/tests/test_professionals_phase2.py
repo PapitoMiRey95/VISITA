@@ -20,8 +20,8 @@ if not BASE_URL:
         pass
 
 ADMIN = ("kevinrodriguez9528@gmail.com", "VisitaAdmin2026!")
-STAFF = ("staff@visita.demo", "Staff2026!")
-PHYSICIAN = ("PAGUAYO", "Newman2013_!")
+STAFF = ("staff@visita.demo", os.environ["TEST_STAFF_PASSWORD"])
+PHYSICIAN = ("PAGUAYO", os.environ["TEST_PHYSICIAN_PASSWORD"])
 PHARM = ("1670dufferin", "PharmNew2026!")
 
 

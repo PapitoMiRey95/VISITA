@@ -31,9 +31,9 @@ DEFAULT_PRACTICE_SLUG = "dr-aguayo"
 ADMIN_EMAIL = "kevinrodriguez9528@gmail.com"
 ADMIN_PASSWORD = "VisitaAdmin2026!"
 STAFF_EMAIL = "staff@visita.demo"
-STAFF_PASSWORD = "Staff2026!"
+STAFF_PASSWORD = os.environ["TEST_STAFF_PASSWORD"]
 PHYS_IDENT = "PAGUAYO"
-PHYS_PASSWORD = "Newman2013_!"
+PHYS_PASSWORD = os.environ["TEST_PHYSICIAN_PASSWORD"]
 PATIENT_EMAIL = "maria.lopez@demo.com"
 PATIENT_PASSWORD = "Patient2026!"
 

@@ -55,12 +55,12 @@ def admin_token():
 
 @pytest.fixture(scope="session")
 def staff_token():
-    return _login("staff@visita.demo", "Staff2026!")
+    return _login("staff@visita.demo", os.environ["TEST_STAFF_PASSWORD"])
 
 
 @pytest.fixture(scope="session")
 def physician_token():
-    return _login("PAGUAYO", "Newman2013_!")
+    return _login("PAGUAYO", os.environ["TEST_PHYSICIAN_PASSWORD"])
 
 
 def H(t):

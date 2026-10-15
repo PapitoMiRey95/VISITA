@@ -20,7 +20,7 @@ BASE = os.environ["REACT_APP_BACKEND_URL"].rstrip("/")
 _mongo = MongoClient(os.environ["MONGO_URL"])
 _db = _mongo[os.environ["DB_NAME"]]
 
-STAFF = {"identifier": "staff@visita.demo", "password": "Staff2026!"}
+STAFF = {"identifier": "staff@visita.demo", "password": os.environ["TEST_STAFF_PASSWORD"]}
 
 
 @pytest.fixture(scope="module")

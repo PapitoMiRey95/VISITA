@@ -10,7 +10,7 @@ VISIT_ID = "6db10ab1-7fb0-467c-8b66-3b149c8082cc"
 @pytest.fixture(scope="module")
 def phys_token():
     r = requests.post(f"{BASE_URL}/api/auth/login",
-                      json={"identifier": "PAGUAYO", "password": "Newman2013_!"})
+                      json={"identifier": "PAGUAYO", "password": os.environ["TEST_PHYSICIAN_PASSWORD"]})
     assert r.status_code == 200, r.text
     return r.json()["token"]
 

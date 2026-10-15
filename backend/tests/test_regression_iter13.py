@@ -11,7 +11,7 @@ BASE_URL = os.environ["REACT_APP_BACKEND_URL"].rstrip("/")
 CREDS = {
     "patient": ("maria.lopez@demo.com", "Patient2026!", "patient"),
     "admin": ("kevinrodriguez9528@gmail.com", "VisitaAdmin2026!", "admin"),
-    "physician": ("PAGUAYO", "Newman2013_!", "physician"),
+    "physician": ("PAGUAYO", os.environ["TEST_PHYSICIAN_PASSWORD"], "physician"),
 }
 
 

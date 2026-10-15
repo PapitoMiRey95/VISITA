@@ -39,6 +39,7 @@ import Referrals from "./internal/Referrals";
 import Verifications from "./internal/Verifications";
 import Applications from "./internal/Applications";
 import Settings from "./internal/Settings";
+import AuditCompliance from "./internal/AuditCompliance";
 import Patients from "./internal/Patients";
 import EncounterPage from "./encounter/EncounterPage";
 import Organizations from "./internal/Organizations";
@@ -154,6 +155,7 @@ function App() {
                         <Route path="providers" element={<Providers />} />
                         <Route path="professionals" element={<Professionals />} />
                         <Route path="settings" element={<Settings />} />
+                        <Route path="settings/audit" element={<AuditCompliance />} />
                     </Route>
 
                     <Route

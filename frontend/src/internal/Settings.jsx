@@ -1,6 +1,8 @@
 import { useEffect, useState, useCallback, useRef } from "react";
 import { toast } from "sonner";
-import { Plus, X, Ban, ChevronDown, ChevronRight } from "lucide-react";
+import { Plus, X, Ban, ChevronDown, ChevronRight, ShieldCheck } from "lucide-react";
+import { Link } from "react-router-dom";
+import { useAuth } from "../context/AuthContext";
 import { api, formatErr } from "../lib/api";
 import { formatDate } from "../lib/date";
 import { Button } from "../components/ui/button";
@@ -38,6 +40,7 @@ const to12 = (t) => {
 };
 
 export default function Settings() {
+    const { user } = useAuth();
     const [settings, setSettings] = useState({});
     const [templates, setTemplates] = useState({});
     const [avail, setAvail] = useState(null);
@@ -101,6 +104,14 @@ export default function Settings() {
         <div className="animate-fade-in max-w-3xl">
             <h1 className="text-2xl font-bold text-slate-900 tracking-tight">Clinic Settings, Availability & Templates</h1>
             <p className="text-sm text-slate-500 mb-4">Configure clinic info, physician availability, and default patient-facing messages.</p>
+            {["admin", "physician"].includes(user?.role) && (
+                <Link to="/internal/settings/audit" data-testid="settings-audit-link"
+                    className="flex items-center gap-3 bg-[#0f2a44] text-white border border-[#0a1f33] rounded-sm p-3 mb-4 hover:bg-[#143a5e] transition-colors">
+                    <ShieldCheck className="w-6 h-6 text-cyan-300" />
+                    <div className="flex-1"><div className="font-semibold">Audit &amp; Compliance</div><div className="text-xs text-white/70">Immutable audit log of visits, signatures and clinical changes. Read-only operational module — not a preference.</div></div>
+                    <span className="text-xs font-bold">Open →</span>
+                </Link>
+            )}
 
             <div className="bg-white border border-slate-300 rounded-sm p-4 mb-4 space-y-3">
                 <h2 className="font-semibold text-slate-700">Clinic information</h2>

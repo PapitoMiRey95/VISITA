@@ -41,6 +41,7 @@ import clinical_history as history_mod
 import diagnosis_catalog as diag_mod
 import diagnosis as dx_mod
 import service_coding as svc_mod
+import audit_view as audit_mod
 import metrics as metrics_mod
 import storage
 from db import (APPT_PATIENT_STATUS, BLD_ACTIVE, BLD_PATIENT_STATUS, IMG_ACTIVE,
@@ -7766,6 +7767,34 @@ async def visit_clear_primary_diagnosis(visit_id: str, user: dict = Depends(requ
 
 
 # ============= SERVICE / CODING (tabBillCode catalog → visits.service) — explicit selection only, no fees =============
+# ============= AUDIT & COMPLIANCE — READ ONLY (admin + physician, practice-scoped). No mutation endpoints exist. =============
+AUDIT_ROLES = ("admin", "physician")
+
+
+@api.get("/internal/audit")
+async def audit_list(date_from: Optional[str] = None, date_to: Optional[str] = None, patient_ref: Optional[str] = None, visit_ref: Optional[str] = None,
+                     actor: Optional[str] = None, action: Optional[str] = None, module: Optional[str] = None, visit_status: Optional[str] = None,
+                     page: int = 1, page_size: int = 50, user: dict = Depends(require_roles(*AUDIT_ROLES))):
+    return await audit_mod.list_events(db, user, date_from=date_from, date_to=date_to, patient_ref=patient_ref, visit_ref=visit_ref, actor=actor,
+                                       action=action, module=module, visit_status=visit_status, page=page, page_size=page_size)
+
+
+@api.get("/internal/audit/visit/{visit_id}")
+async def audit_visit_timeline(visit_id: str, user: dict = Depends(require_roles(*AUDIT_ROLES))):
+    out = await audit_mod.visit_timeline(db, user, visit_id)
+    if out is None:
+        raise HTTPException(status_code=404, detail="Not found.")
+    return out
+
+
+@api.get("/internal/audit/{audit_id}")
+async def audit_get(audit_id: str, user: dict = Depends(require_roles(*AUDIT_ROLES))):
+    out = await audit_mod.get_event(db, user, audit_id)
+    if out is None:
+        raise HTTPException(status_code=404, detail="Not found.")
+    return out
+
+
 @api.get("/internal/service-catalog")
 async def service_catalog_list(user: dict = Depends(require_roles(*CLINIC_ROLES))):
     return {"items": await svc_mod.list_active(db)}
@@ -9324,6 +9353,7 @@ async def startup():
     await diag_mod.ensure_indexes(db)
     await dx_mod.ensure_indexes(db)
     await svc_mod.ensure_indexes(db)
+    await audit_mod.ensure_indexes(db)
     try:
         storage.init_storage()
         logger.info("Storage initialized")

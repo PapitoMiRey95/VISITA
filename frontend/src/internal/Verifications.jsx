@@ -1,7 +1,7 @@
 import { useState, useEffect, useRef } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { toast } from "sonner";
-import { UserCheck, UserX, History, Link2, ShieldCheck, Search, GitMerge, Building2, GitCompare, UserPlus, AlertTriangle } from "lucide-react";
+import { UserCheck, UserX, History, Link2, ShieldCheck, Search, GitMerge, Building2, GitCompare, UserPlus, AlertTriangle, Wrench } from "lucide-react";
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from "../components/ui/alert-dialog";
 import { api, formatErr } from "../lib/api";
 import { useInvalidate } from "./hooks";
@@ -12,6 +12,7 @@ import { Label } from "../components/ui/label";
 import { formatDate, formatDateTime } from "../lib/date";
 import { formatPatientName } from "../lib/name";
 import MatchComparison from "./MatchComparison";
+import IdentityCleanup from "./IdentityCleanup";
 
 const TYPE = { ohip: "OHIP", private: "Private / Uninsured", tourist: "Tourist / Visitor", uninsured: "Private / Uninsured" };
 
@@ -268,6 +269,11 @@ export default function Verifications() {
                     className={`px-3 py-2 text-sm font-semibold -mb-px border-b-2 inline-flex items-center gap-1 ${tab === "history" ? "border-visita-green text-visita-greenDark" : "border-transparent text-slate-500 hover:text-slate-700"}`}>
                     <History className="w-4 h-4" /> Recently Verified
                 </button>
+                <button data-testid="verif-tab-cleanup" onClick={() => setTab("cleanup")}
+                    title="Historical identity reconciliation — one case at a time"
+                    className={`px-3 py-2 text-sm font-semibold -mb-px border-b-2 inline-flex items-center gap-1 ${tab === "cleanup" ? "border-visita-green text-visita-greenDark" : "border-transparent text-slate-500 hover:text-slate-700"}`}>
+                    <Wrench className="w-4 h-4" /> Identity Cleanup
+                </button>
             </div>
             {tab === "identity" && (
                 <p className="text-xs text-slate-500 -mt-2 mb-3" data-testid="verif-identity-hint">
@@ -275,7 +281,7 @@ export default function Verifications() {
                 </p>
             )}
 
-            {tab === "identity" ? <IdentityLinks canDecide={canDecide} /> : tab === "history" ? <VerifiedHistory /> : (
+            {tab === "identity" ? <IdentityLinks canDecide={canDecide} /> : tab === "history" ? <VerifiedHistory /> : tab === "cleanup" ? <IdentityCleanup /> : (
             <div className="space-y-2">
                 {items.length === 0 && <p className="text-slate-400 text-sm">No pending verifications.</p>}
                 {items.map((p) => (

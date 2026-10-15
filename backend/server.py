@@ -44,6 +44,7 @@ import service_coding as svc_mod
 import audit_view as audit_mod
 import metrics as metrics_mod
 import names as names_mod
+import identity_cleanup as cleanup_mod
 import storage
 from db import (APPT_PATIENT_STATUS, BLD_ACTIVE, BLD_PATIENT_STATUS, IMG_ACTIVE,
                 IMG_PATIENT_STATUS, MSG_ACTIVE, MSG_PATIENT_STATUS, RX_ACTIVE,
@@ -5313,6 +5314,9 @@ async def _link_portal_to_directory(p: dict, d: dict, user: dict, source: str) -
                "identity_linked": True, "identity_linked_by": user["name"], "identity_linked_at": ts, "updated_at": ts}
     if pin:
         updates["visita_patient_id"] = pin
+        if p.get("visita_patient_id") and p["visita_patient_id"] != pin:
+            # historical duplicate PIN issued by the old Verify flow: retained for reference, never recycled
+            updates["historical_visita_patient_id"] = p["visita_patient_id"]
     r2 = await db.patients.update_one(
         {"id": pid, "$or": [{"matched_directory_id": None}, {"matched_directory_id": {"$exists": False}}, {"matched_directory_id": did}]},
         {"$set": updates})
@@ -5324,6 +5328,7 @@ async def _link_portal_to_directory(p: dict, d: dict, user: dict, source: str) -
         raise HTTPException(status_code=409, detail={"code": "PORTAL_ALREADY_LINKED", "message": "Concurrent link detected; rolled back."})
     await audit("identity_linked", "patient", pid, user,
                 meta={"directory_id": did, "visita_patient_id": pin, "preserved_pin": bool(pin), "source": source,
+                      "historical_portal_pin": updates.get("historical_visita_patient_id"),
                       "resulting_identity_state": "LINKED_EXISTING"})
     return pin
 
@@ -5488,6 +5493,104 @@ async def link_patient_directory(patient_id: str, body: LinkDirectoryBody,
 
 _REL_LABEL = {"active": "Active patient", "applicant": "Applicant",
               "former": "Former patient", "inactive": "Inactive"}
+
+
+# ----------------------------- Identity Cleanup (historical reconciliation) -----------------------------
+class CleanupLinkBody(BaseModel):
+    directory_id: str
+
+
+class CleanupApplyBody(BaseModel):
+    directory_id: str
+    selections: list
+    confirm_identity_critical: bool = False
+
+
+class CleanupCompleteBody(BaseModel):
+    outcome: str = "completed"  # completed | conflict_noted
+    note: Optional[str] = None
+
+
+async def _cleanup_pair(patient_id: str, directory_id: str, user: dict):
+    p = await db.patients.find_one({"id": patient_id})
+    if not p:
+        raise HTTPException(status_code=404, detail="Portal patient not found.")
+    assert_practice(p, user)
+    d = await db.patient_directory.find_one({"id": directory_id})
+    if not d:
+        raise HTTPException(status_code=404, detail="VISITA directory record not found.")
+    return p, d
+
+
+@api.get("/internal/identity-cleanup")
+async def identity_cleanup_queue(user: dict = Depends(require_roles(*CLINIC_ROLES))):
+    """Read-only queue of historical identity cases for the caller's practice. No mutations."""
+    return await cleanup_mod.queue(db, user.get("practice_id"))
+
+
+@api.get("/internal/identity-cleanup/{patient_id}")
+async def identity_cleanup_case(patient_id: str, directory_id: Optional[str] = None,
+                                user: dict = Depends(require_roles(*CLINIC_ROLES))):
+    p = await db.patients.find_one({"id": patient_id})
+    if not p:
+        raise HTTPException(status_code=404, detail="Not found.")
+    assert_practice(p, user)
+    return await cleanup_mod.case(db, p, directory_id)
+
+
+@api.post("/internal/identity-cleanup/{patient_id}/link")
+async def identity_cleanup_link(patient_id: str, body: CleanupLinkBody, user: dict = Depends(require_roles("staff", "admin", "physician"))):
+    p, d = await _cleanup_pair(patient_id, body.directory_id, user)
+    c = await cleanup_mod.case(db, p, body.directory_id)
+    if not c["can_link"]:
+        await audit("identity_cleanup_conflict", "patient", patient_id, user,
+                    meta={"directory_id": d["id"], "class": c["class"], "blocked_reason": c["blocked_reason"], "evidence": c["evidence"]})
+        raise HTTPException(status_code=409, detail={"code": c["blocked_reason"] or c["class"],
+                                                     "message": "This case cannot be linked routinely. Additional review is required."})
+    pin = await _link_portal_to_directory(p, d, user, source="identity_cleanup")
+    await db.patients.update_one({"id": patient_id}, {"$set": {
+        "identity_outcome": "LINKED_EXISTING",
+        "identity_cleanup": {"status": "linked", "linked_at": now_iso(), "by": user["name"], "via": "identity_cleanup"}}})
+    await audit("identity_cleanup_linked", "patient", patient_id, user,
+                meta={"directory_id": d["id"], "visita_patient_id": pin, "strength": c["strength"], "evidence": c["evidence"],
+                      "resulting_identity_state": "LINKED_EXISTING"})
+    if p.get("practice_id"):
+        prior = await rel_mod.relationship_for_patient(db, p["practice_id"], patient_id=patient_id, directory_id=d["id"])
+        await rel_mod.upsert_relationship(db, practice_id=p["practice_id"], status=(prior.get("status") if prior else rel_mod.ACTIVE),
+                                          directory_id=d["id"], patient_id=patient_id, visita_patient_id=pin,
+                                          by=user["name"], source="identity_cleanup")
+    return {"ok": True, "visita_patient_id": pin, "directory_id": d["id"]}
+
+
+@api.post("/internal/identity-cleanup/{patient_id}/repair-half-link")
+async def identity_cleanup_repair(patient_id: str, body: CleanupLinkBody, user: dict = Depends(require_roles("staff", "admin", "physician"))):
+    p, d = await _cleanup_pair(patient_id, body.directory_id, user)
+    try:
+        return await cleanup_mod.repair_half_link(db, p, d, user)
+    except ValueError as e:
+        raise HTTPException(status_code=409, detail={"code": "HALF_LINK_REPAIR_BLOCKED", "message": str(e)})
+
+
+@api.post("/internal/identity-cleanup/{patient_id}/apply-fields")
+async def identity_cleanup_apply(patient_id: str, body: CleanupApplyBody, user: dict = Depends(require_roles("staff", "admin", "physician"))):
+    p, d = await _cleanup_pair(patient_id, body.directory_id, user)
+    if not (p.get("matched_directory_id") == d["id"] and d.get("linked_patient_id") == patient_id):
+        raise HTTPException(status_code=409, detail={"code": "NOT_LINKED", "message": "Demographic reconciliation requires a confirmed two-way link first."})
+    return await cleanup_mod.apply_fields(db, p, d, body.selections, body.confirm_identity_critical, user)
+
+
+@api.post("/internal/identity-cleanup/{patient_id}/complete")
+async def identity_cleanup_complete(patient_id: str, body: CleanupCompleteBody, user: dict = Depends(require_roles("staff", "admin", "physician"))):
+    p = await db.patients.find_one({"id": patient_id})
+    if not p:
+        raise HTTPException(status_code=404, detail="Not found.")
+    assert_practice(p, user)
+    status = "completed" if body.outcome == "completed" else "conflict_noted"
+    await db.patients.update_one({"id": patient_id}, {"$set": {
+        "identity_cleanup": {**(p.get("identity_cleanup") or {}), "status": status, "reviewed_at": now_iso(), "reviewed_by": user["name"], "note": body.note}}})
+    await audit("identity_cleanup_reviewed" if status == "completed" else "identity_cleanup_conflict", "patient", patient_id, user,
+                meta={"directory_id": p.get("matched_directory_id"), "outcome": status})
+    return {"ok": True, "status": status}
 
 
 async def _practice_name(practice_id):

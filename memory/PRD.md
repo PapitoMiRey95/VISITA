@@ -808,3 +808,5 @@ PROD FOLLOW-UPS (need explicit GO, scripts not yet written): stamp practice_id o
 - Real preview records untouched (ROMERO half-link, RODRIGUEZ Kevin, GOMEZ Maria dups remain in queue for staff decision).
 - NEXT: production cleanup planning; portal-account reconciliation for MULTIPLE_PORTAL_ACCOUNTS; unique index after cleanup.
 - NOTE (accepted after review, Jun 2026): ROMERO CUAHUEY, Alejandro (test-associated preview registration 977ca75a) was linked to directory c5c30d56 by an UNPLANNED testing-agent action during the prevention-phase test run (audit `identity_linked`, source identity_link_review, 2026-10-15 03:59). User accepted as-is: preview only, resolved the known half-link, no clinical data moved. NOT precedent for Production remediation. Identity Cleanup is APPROVED/FROZEN in preview. No deploy.
+
+## Code-quality triage (Jun 2026, READ-ONLY, no code changes) — see memory/code_quality_triage.md

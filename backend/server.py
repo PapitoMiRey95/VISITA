@@ -463,6 +463,7 @@ class VerifyBody(BaseModel):
     decision: str
     visita_patient_id: Optional[str] = None
     matched_patient_id: Optional[str] = None
+    confirm_new_patient: bool = False
 
 
 class ReturnRequestBody(BaseModel):
@@ -4961,6 +4962,9 @@ async def verifications(user: dict = Depends(require_roles(*CLINIC_ROLES))):
     pending = await db.patients.find({**pscope(user), "verification_status": "pending", "active_status": True}).sort("created_at", -1).to_list(500)
     out = []
     for p in pending:
+        strength, cands = (None, [])
+        if not p.get("matched_directory_id"):
+            strength, cands = await directory_mod.live_candidates(db, p)
         out.append({
             "id": p["id"], "first_name": p["first_name"], "last_name": p["last_name"],
             "middle_name": p.get("middle_name"), "second_last_name": p.get("second_last_name"), "full_name": names_mod.full_display_name(p),
@@ -4970,6 +4974,9 @@ async def verifications(user: dict = Depends(require_roles(*CLINIC_ROLES))):
             "health_card_masked": mask_hcn(p.get("health_card_number")),
             "review_queue": p.get("review_queue"),
             "directory_match": p.get("directory_match"),
+            "matched_directory_id": p.get("matched_directory_id"),
+            "identity_state": "LINK_PENDING" if p.get("matched_directory_id") else ("IDENTITY_REVIEW_REQUIRED" if cands else "NEW_PATIENT_CANDIDATE"),
+            "live_candidates": cands, "live_strength": strength,
             "relationship": await _rel_summary_for_patient(p, user),
         })
     return out
@@ -4981,16 +4988,31 @@ async def verifications_history(user: dict = Depends(require_roles(*CLINIC_ROLES
     docs = await db.patients.find(
         {**pscope(user), "verification_status": {"$in": ["verified", "rejected"]}, "verified_at": {"$exists": True, "$ne": None}}
     ).sort("verified_at", -1).limit(100).to_list(100)
-    return [{
-        "id": p["id"], "first_name": p["first_name"], "last_name": p["last_name"],
-        "middle_name": p.get("middle_name"), "second_last_name": p.get("second_last_name"), "full_name": names_mod.full_display_name(p),
-        "patient_type": p["patient_type"],
-        "verification_status": p.get("verification_status"),
-        "visita_patient_id": p.get("visita_patient_id"),
-        "linked": bool(p.get("matched_directory_id")),
-        "verified_by": p.get("verified_by"),
-        "verified_at": p.get("verified_at"),
-    } for p in docs]
+    out = []
+    for p in docs:
+        linked = bool(p.get("matched_directory_id"))
+        canon = await db.patient_directory.find_one({"id": p["matched_directory_id"]}, {"_id": 0, "first_name": 1, "last_name": 1, "visita_patient_id": 1}) if linked else None
+        if linked:
+            state = "LINKED_EXISTING"
+        elif p.get("verification_status") == "verified" and ((p.get("directory_match") or {}).get("candidates")):
+            state = "IDENTITY_REVIEW"
+        elif p.get("verification_status") == "verified":
+            state = p.get("identity_outcome") or "NEW_PATIENT"
+        else:
+            state = None
+        out.append({
+            "id": p["id"], "first_name": p["first_name"], "last_name": p["last_name"],
+            "middle_name": p.get("middle_name"), "second_last_name": p.get("second_last_name"), "full_name": names_mod.full_display_name(p),
+            "canonical_full_name": names_mod.full_display_name(canon) if canon else None,
+            "patient_type": p["patient_type"],
+            "verification_status": p.get("verification_status"),
+            "visita_patient_id": (canon or {}).get("visita_patient_id") or p.get("visita_patient_id"),
+            "linked": linked,
+            "identity_state": state,
+            "verified_by": p.get("verified_by"),
+            "verified_at": p.get("verified_at"),
+        })
+    return out
 
 
 
@@ -5136,21 +5158,31 @@ async def _search_patients_merged(qn: str, limit: int = 40, include_pin: bool = 
             if mdir in seen_dir:
                 continue
             seen_dir.add(mdir)
-            # Always show CANONICAL demographics from the patients record (current,
-            # authoritative). Backfill only the PIN/pharmacy from the linked
-            # directory record so they aren't lost. Fixes stale directory reads.
+            # CONFIRMED link ⇒ ONE clinical row using the CANONICAL directory identity
+            # (full name, PIN, DOB, directory id). Portal account only decorates it.
             d = await db.patient_directory.find_one({"id": mdir})
-            snap = _portal_patient_snapshot(p)
             if d:
-                snap["visita_patient_id"] = snap.get("visita_patient_id") or d.get("visita_patient_id")
-                snap["current_pharmacy"] = snap.get("current_pharmacy") or d.get("current_pharmacy")
-                snap["directory_id"] = d["id"]
+                snap = _directory_snapshot(d)
+                snap["patient_id"] = p["id"]
+                snap["portal_linked"] = True
+                snap["portal_patient_name"] = names_mod.full_display_name(p)
+                snap["health_card_update_pending"] = bool(p.get("pending_health_card"))
+                snap["email"] = snap.get("email") or p.get("email")
+                snap["cell_phone"] = snap.get("cell_phone") or p.get("phone")
+            else:
+                snap = _portal_patient_snapshot(p)
             results.append(snap)
             seen_pid.add(p["id"])
             continue
         if p["id"] in seen_pid:
             continue
-        results.append(_portal_patient_snapshot(p)); seen_pid.add(p["id"])
+        snap = _portal_patient_snapshot(p)
+        # Unlinked portal record with credible existing-patient evidence ⇒ IDENTITY REVIEW, not an ordinary clinical row.
+        if (p.get("directory_match") or {}).get("candidates"):
+            snap["identity_review"] = True
+            snap["identity_review_strength"] = (p.get("directory_match") or {}).get("strength")
+            snap["patient_status"] = "PORTAL_IDENTITY_REVIEW"
+        results.append(snap); seen_pid.add(p["id"])
 
     # 2) Directory records (active only; skip any already shown via a portal link).
     dir_ors = [
@@ -5253,6 +5285,49 @@ async def internal_patient_lookup_pin(pin: str, user: dict = Depends(require_rol
     return await _attach_portal_access(results)
 
 
+async def _link_portal_to_directory(p: dict, d: dict, user: dict, source: str) -> Optional[str]:
+    """Hardened two-way link portal account ⇄ canonical directory record.
+    Guards: PORTAL_ALREADY_LINKED, DIRECTORY_ALREADY_LINKED (incl. any other active
+    portal account pointing at this directory). Conditional writes + rollback so a
+    half-link is never left behind. Preserves the canonical PIN; never merges
+    clinical history or overwrites demographics. Returns the canonical PIN."""
+    pid, did = p["id"], d["id"]
+    if p.get("matched_directory_id") and p["matched_directory_id"] != did:
+        raise HTTPException(status_code=409, detail={
+            "code": "PORTAL_ALREADY_LINKED", "current_directory_id": p["matched_directory_id"],
+            "message": "This portal account is already linked to a different VISITA record. Explicit reconciliation is required."})
+    existing = d.get("linked_patient_id")
+    other = await db.patients.find_one({"id": {"$ne": pid}, "matched_directory_id": did, "active_status": True}, {"_id": 0, "id": 1})
+    if (existing and existing != pid) or other:
+        raise HTTPException(status_code=409, detail={
+            "code": "DIRECTORY_ALREADY_LINKED", "linked_patient_id": existing or other["id"],
+            "message": "This VISITA record is already linked to another portal account. Identity review is required."})
+    pin = d.get("visita_patient_id")
+    ts = now_iso()
+    r1 = await db.patient_directory.update_one(
+        {"id": did, "$or": [{"linked_patient_id": None}, {"linked_patient_id": {"$exists": False}}, {"linked_patient_id": pid}]},
+        {"$set": {"linked_patient_id": pid, "updated_at": ts}})
+    if r1.matched_count != 1:
+        raise HTTPException(status_code=409, detail={"code": "DIRECTORY_ALREADY_LINKED", "message": "Concurrent link detected; no change made."})
+    updates = {"matched_directory_id": did, "canonical_directory_id": did,
+               "identity_linked": True, "identity_linked_by": user["name"], "identity_linked_at": ts, "updated_at": ts}
+    if pin:
+        updates["visita_patient_id"] = pin
+    r2 = await db.patients.update_one(
+        {"id": pid, "$or": [{"matched_directory_id": None}, {"matched_directory_id": {"$exists": False}}, {"matched_directory_id": did}]},
+        {"$set": updates})
+    if r2.matched_count != 1:
+        # rollback directory side to its prior state so no half-link remains
+        await db.patient_directory.update_one({"id": did, "linked_patient_id": pid},
+                                              {"$set": {"linked_patient_id": existing, "updated_at": now_iso()}})
+        await audit("identity_link_rolled_back", "patient", pid, user, meta={"directory_id": did, "reason": "portal_conditional_write_failed"})
+        raise HTTPException(status_code=409, detail={"code": "PORTAL_ALREADY_LINKED", "message": "Concurrent link detected; rolled back."})
+    await audit("identity_linked", "patient", pid, user,
+                meta={"directory_id": did, "visita_patient_id": pin, "preserved_pin": bool(pin), "source": source,
+                      "resulting_identity_state": "LINKED_EXISTING"})
+    return pin
+
+
 @api.post("/internal/verifications/{patient_id}")
 async def verify_patient(patient_id: str, body: VerifyBody, user: dict = Depends(require_roles("staff", "admin"))):
     p = await db.patients.find_one({"id": patient_id})
@@ -5265,35 +5340,55 @@ async def verify_patient(patient_id: str, body: VerifyBody, user: dict = Depends
         updates["portal_status"] = "VERIFIED"
     if body.visita_patient_id:
         updates["visita_patient_id"] = body.visita_patient_id
-    # Link to a directory record (stable VISITA-id relationship)
+    # Link to a directory record (stable VISITA-id relationship) — hardened two-way link.
     link_dir_id = body.matched_patient_id or p.get("matched_directory_id")
+    identity_outcome = None
     if body.decision == "verified" and link_dir_id:
         d = await db.patient_directory.find_one({"id": link_dir_id})
-        if d:
-            updates["visita_patient_id"] = d.get("visita_patient_id") or updates.get("visita_patient_id")
-            updates["matched_directory_id"] = link_dir_id
-            await db.patient_directory.update_one({"id": link_dir_id}, {"$set": {
-                "linked_patient_id": patient_id, "updated_at": now_iso()}})
-            await audit("patient_linked", "patient", patient_id, user, meta={"directory_id": link_dir_id})
-            # Stage C — verified + linked ⇒ active relationship anchored to canonical identity.
-            if p.get("practice_id"):
-                await rel_mod.upsert_relationship(
-                    db, practice_id=p["practice_id"], status=rel_mod.ACTIVE,
-                    directory_id=link_dir_id, patient_id=patient_id,
-                    visita_patient_id=d.get("visita_patient_id"),
-                    by=user["name"], source="verification")
-    # Auto-assign a unique 4-digit VISITA PIN ONLY for a portal-only patient becoming
-    # verified with no existing PIN and no directory link. Never overwrite / never backfill.
+        if not d:
+            raise HTTPException(status_code=404, detail="VISITA directory record not found.")
+        pin = await _link_portal_to_directory(p, d, user, source="verification")
+        updates["visita_patient_id"] = pin or updates.get("visita_patient_id")
+        updates["matched_directory_id"] = link_dir_id
+        identity_outcome = "LINKED_EXISTING"
+        # Stage C — verified + linked ⇒ active relationship anchored to canonical identity.
+        if p.get("practice_id"):
+            await rel_mod.upsert_relationship(
+                db, practice_id=p["practice_id"], status=rel_mod.ACTIVE,
+                directory_id=link_dir_id, patient_id=patient_id,
+                visita_patient_id=pin, by=user["name"], source="verification")
+    # Unlinked verification: identity review must come first; new-patient must be explicit.
     final_pin = updates.get("visita_patient_id") or p.get("visita_patient_id")
-    if body.decision == "verified" and not final_pin and not link_dir_id and not p.get("matched_directory_id"):
-        new_pin = await identity_mod.assign_visita_pin(db, patient_id)
-        if new_pin is None:
-            raise HTTPException(status_code=507,
-                                detail="No 4-digit VISITA PINs remain (1000-9999 exhausted). Please contact an administrator.")
-        updates["visita_patient_id"] = new_pin
-        await audit("visita_pin_assigned", "patient", patient_id, user, meta={"visita_patient_id": new_pin})
+    if body.decision == "verified" and not link_dir_id:
+        strength, cands = await directory_mod.live_candidates(db, p)
+        if cands:
+            await audit("identity_link_required", "patient", patient_id, user,
+                        meta={"strength": strength, "candidate_directory_ids": [c["id"] for c in cands]})
+            raise HTTPException(status_code=409, detail={
+                "code": "IDENTITY_LINK_REQUIRED", "strength": strength,
+                "message": "An existing VISITA patient may match this registration. Review / link in Identity Link Review before verifying.",
+                "candidates": cands})
+        if not body.confirm_new_patient:
+            raise HTTPException(status_code=409, detail={
+                "code": "NEW_PATIENT_CONFIRMATION_REQUIRED",
+                "message": "No existing patient match requiring review was identified. Confirm 'Verify as New Patient' to create a new VIen identity / PIN."})
+        identity_outcome = "NEW_PATIENT"
+        updates["identity_outcome"] = identity_outcome
+        # Auto-assign a unique 4-digit VISITA PIN ONLY here — explicit NEW PATIENT decision.
+        if not final_pin:
+            new_pin = await identity_mod.assign_visita_pin(db, patient_id)
+            if new_pin is None:
+                raise HTTPException(status_code=507,
+                                    detail="No 4-digit VISITA PINs remain (1000-9999 exhausted). Please contact an administrator.")
+            updates["visita_patient_id"] = new_pin
+            await audit("visita_pin_assigned", "patient", patient_id, user, meta={"visita_patient_id": new_pin})
+        await audit("patient_verified_new", "patient", patient_id, user,
+                    meta={"visita_patient_id": updates.get("visita_patient_id"), "match_strength": strength, "resulting_identity_state": "NEW_PATIENT"})
+    if identity_outcome:
+        updates["identity_outcome"] = identity_outcome
     await db.patients.update_one({"id": patient_id}, {"$set": updates})
-    await audit("verify_patient", "patient", patient_id, user, new_status=body.decision)
+    await audit("verify_patient", "patient", patient_id, user, new_status=body.decision,
+                meta={"identity_outcome": identity_outcome} if identity_outcome else None)
     # Stage C — a verified portal account is an ACTIVE patient at its practice (covers
     # the portal-only case with no directory link; link case handled above). A rejected
     # account's practice relationship is marked inactive.
@@ -5328,7 +5423,7 @@ async def identity_links(user: dict = Depends(require_roles(*CLINIC_ROLES))):
         **pscope(user),
         "active_status": True,
         "identity_linked": {"$ne": True},
-        "directory_match.candidates.0": {"$exists": True},
+        "verification_status": {"$in": ["pending", "verified"]},
     }, {"_id": 0}).sort("created_at", -1).to_list(300)
     out = []
     for p in pend:
@@ -5338,6 +5433,12 @@ async def identity_links(user: dict = Depends(require_roles(*CLINIC_ROLES))):
             d = await db.patient_directory.find_one({"id": link_id}, {"_id": 0, "linked_patient_id": 1})
             if d and d.get("linked_patient_id") == p["id"]:
                 continue
+        stored = (p.get("directory_match") or {}).get("candidates", [])
+        strength = (p.get("directory_match") or {}).get("strength")
+        if not stored and not link_id:
+            strength, stored = await directory_mod.live_candidates(db, p)
+        if not stored:
+            continue
         out.append({
             "id": p["id"], "first_name": p["first_name"], "last_name": p["last_name"],
             "middle_name": p.get("middle_name"), "second_last_name": p.get("second_last_name"), "full_name": names_mod.full_display_name(p),
@@ -5346,8 +5447,8 @@ async def identity_links(user: dict = Depends(require_roles(*CLINIC_ROLES))):
             "verification_status": p.get("verification_status"),
             "visita_patient_id": p.get("visita_patient_id"),
             "health_card_masked": mask_hcn(p.get("health_card_number")),
-            "strength": (p.get("directory_match") or {}).get("strength"),
-            "candidates": (p.get("directory_match") or {}).get("candidates", []),
+            "strength": strength,
+            "candidates": stored,
             "relationship": await _rel_summary_for_patient(p, user),
         })
     return out
@@ -5370,23 +5471,8 @@ async def link_patient_directory(patient_id: str, body: LinkDirectoryBody,
     d = await db.patient_directory.find_one({"id": body.directory_id})
     if not d:
         raise HTTPException(status_code=404, detail="VISITA directory record not found.")
-    existing = d.get("linked_patient_id")
-    if existing and existing != patient_id:
-        raise HTTPException(status_code=409,
-                            detail="This VISITA record is already linked to another portal account.")
-    pin = d.get("visita_patient_id")
-    updates = {
-        "matched_directory_id": d["id"], "canonical_directory_id": d["id"],
-        "identity_linked": True, "identity_linked_by": user["name"],
-        "identity_linked_at": now_iso(), "updated_at": now_iso(),
-    }
-    if pin:
-        updates["visita_patient_id"] = pin
-    await db.patients.update_one({"id": patient_id}, {"$set": updates})
-    await db.patient_directory.update_one({"id": d["id"]}, {"$set": {
-        "linked_patient_id": patient_id, "updated_at": now_iso()}})
-    await audit("identity_linked", "patient", patient_id, user,
-                meta={"directory_id": d["id"], "visita_patient_id": pin, "preserved_pin": bool(pin)})
+    pin = await _link_portal_to_directory(p, d, user, source="identity_link_review")
+    await db.patients.update_one({"id": patient_id}, {"$set": {"identity_outcome": "LINKED_EXISTING"}})
     # Stage C — canonical linking re-anchors this practice's relationship to the
     # canonical identity. Preserve an existing status if present, else mark active.
     if p.get("practice_id"):

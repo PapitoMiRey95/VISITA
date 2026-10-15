@@ -1,7 +1,7 @@
 import { useState, useRef, useEffect } from "react";
 import { useSearchParams } from "react-router-dom";
 import { toast } from "sonner";
-import { UserSearch, Search, MapPin, Phone, IdCard, Building2, Lock, RefreshCw, Pencil, ShieldCheck, X, Copy } from "lucide-react";
+import { UserSearch, Search, MapPin, Phone, IdCard, Building2, Lock, RefreshCw, Pencil, ShieldCheck, X, Copy, AlertTriangle } from "lucide-react";
 import { api, formatErr } from "../lib/api";
 import { formatDate } from "../lib/date";
 import { formatPatientName } from "../lib/name";
@@ -29,11 +29,20 @@ const HC_LABEL = { VALID: "VALID", EXPIRING_SOON: "EXPIRING SOON", EXPIRED: "EXP
 function statusLabel(s) {
     if (!s) return "—";
     if (s === "PORTAL_PATIENT") return "VERIFIED — PORTAL PATIENT";
+    if (s === "PORTAL_IDENTITY_REVIEW") return "PORTAL — IDENTITY REVIEW";
     return String(s).replace(/_/g, " ").replace(/\b\w/g, (c) => c.toUpperCase());
 }
 
-function PortalBadge({ access, className = "" }) {
+function PortalBadge({ access, review, className = "" }) {
     const active = access === "active";
+    if (review) {
+        return (
+            <span data-testid="identity-review-badge"
+                className={`inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] font-bold uppercase tracking-wide bg-amber-100 text-amber-800 ${className}`}>
+                <AlertTriangle className="w-3 h-3" /> Portal — identity review
+            </span>
+        );
+    }
     return (
         <span
             data-testid={active ? "portal-active-badge" : "no-portal-account-badge"}
@@ -120,7 +129,7 @@ export default function Patients() {
     const saveEdit = async () => {
         setBusy(true);
         try {
-            if (selected.patient_id) {
+            if (selected.source === "portal" && selected.patient_id) {
                 await api.patch(`/internal/patients/${selected.patient_id}`, form);
             } else {
                 await api.patch(`/internal/patient-directory/${selected.directory_id || selected.id}`, form);
@@ -246,7 +255,7 @@ export default function Patients() {
                                         className={`w-full text-left px-3 py-2.5 hover:bg-slate-50 ${selected?.id === r.id ? "bg-visita-greenLight" : ""}`}>
                                         <div className="flex items-center justify-between gap-2">
                                             <div className="font-semibold text-slate-800">{formatPatientName(r)}</div>
-                                            <PortalBadge access={r.portal_access} className="flex-shrink-0" />
+                                            <PortalBadge access={r.portal_access} review={r.identity_review} className="flex-shrink-0" />
                                         </div>
                                         <div className="text-xs text-slate-500">
                                             {r.visita_patient_id ? `PIN ${r.visita_patient_id}` : "PIN Not assigned"} · DOB {formatDate(r.date_of_birth)} · {statusLabel(r.patient_status)}
@@ -270,7 +279,7 @@ export default function Patients() {
                             <h2 className="text-lg font-bold text-slate-900" data-testid="patient-name">{formatPatientName(selected)}</h2>
                             <div className="flex items-center gap-2 mt-1">
                                 <span className={`inline-block px-2 py-0.5 rounded-sm text-xs ${selected.source === "portal" ? "bg-emerald-100 text-emerald-800 font-semibold" : "bg-slate-100 text-slate-600"}`}>{statusLabel(selected.patient_status)}</span>
-                                <PortalBadge access={selected.portal_access} />
+                                <PortalBadge access={selected.portal_access} review={selected.identity_review} />
                             </div>
                         </div>
                         <div className="flex items-center justify-end flex-wrap gap-2">

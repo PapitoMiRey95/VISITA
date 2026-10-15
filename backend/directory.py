@@ -186,4 +186,49 @@ async def match_registration(db, first_name, last_name, date_of_birth, health_ca
         return {"outcome": FORMER_MATCH, "strength": strength, "matched_status": FORMER_CLOSED,
                 "ambiguous": len(former) > 1, "matched_id": former[0]["id"] if len(former) == 1 else None,
                 "candidates": [serialize_candidate(d) for d in former]}
+    rev = await review_screen(db, first_name, last_name, date_of_birth)
+    if rev:
+        return {"outcome": UNMATCHED, "strength": "review", "review_only": True, "candidates": rev}
     return {"outcome": UNMATCHED, "strength": "none", "candidates": []}
+
+
+POSSIBLE_REVIEW = "POSSIBLE_IDENTITY_REVIEW"
+
+
+def _tokens(s):
+    return [t for t in norm_name(s).split(" ") if t]
+
+
+async def review_screen(db, first_name, last_name, date_of_birth, exclude_ids=()):
+    """Conservative REVIEW-ONLY duplicate screen (never auto-links): exact DOB AND every
+    non-empty portal given-name token is an exact token of the canonical first name AND
+    every portal surname token is an exact token of the canonical last name.
+    e.g. 'Angie' + 'Guardo' ⊂ 'Angie Sophia' + 'Guardo Hernandez'. No fuzzy/phonetic logic."""
+    nd = norm_dob(date_of_birth)
+    pf, pl = _tokens(first_name), _tokens(last_name)
+    if not nd or not pf or not pl:
+        return []
+    out = []
+    async for d in db.patient_directory.find({"norm_dob": nd, "patient_status": ACTIVE}):
+        if d["id"] in exclude_ids:
+            continue
+        df, dl = set(_tokens(d.get("first_name"))), set(_tokens(d.get("last_name")))
+        if all(t in df for t in pf) and all(t in dl for t in pl):
+            out.append({**serialize_candidate(d), "match_kind": POSSIBLE_REVIEW})
+    return out
+
+
+async def live_candidates(db, p):
+    """Re-evaluate existing-patient evidence for a portal record at decision time
+    (exact HCN / exact identity via match_registration, then the review screen).
+    Returns (strength, candidates). Directory records already linked to THIS portal
+    account are not candidates."""
+    first = " ".join(x for x in [p.get("first_name"), p.get("middle_name")] if x)
+    last = " ".join(x for x in [p.get("last_name"), p.get("second_last_name")] if x)
+    match = await match_registration(db, first, last, p.get("date_of_birth"), p.get("health_card_number"))
+    cands = [c for c in match.get("candidates", []) if c.get("linked_patient_id") != p["id"]]
+    if cands:
+        return match.get("strength"), cands
+    rev = await review_screen(db, first, last, p.get("date_of_birth"))
+    rev = [c for c in rev if c.get("linked_patient_id") != p["id"]]
+    return ("review" if rev else "none"), rev

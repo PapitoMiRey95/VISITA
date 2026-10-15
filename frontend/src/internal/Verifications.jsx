@@ -1,7 +1,8 @@
 import { useState, useEffect, useRef } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { toast } from "sonner";
-import { UserCheck, UserX, History, Link2, ShieldCheck, Search, GitMerge, Building2, GitCompare } from "lucide-react";
+import { UserCheck, UserX, History, Link2, ShieldCheck, Search, GitMerge, Building2, GitCompare, UserPlus, AlertTriangle } from "lucide-react";
+import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from "../components/ui/alert-dialog";
 import { api, formatErr } from "../lib/api";
 import { useInvalidate } from "./hooks";
 import { useAuth } from "../context/AuthContext";
@@ -42,10 +43,16 @@ function RelationshipBadges({ rel }) {
     );
 }
 
-const REVIEW = {
-    ACTIVE_MATCH: ["Active match — verify & link", "bg-emerald-100 text-emerald-700"],
-    AMBIGUOUS_MATCH: ["Ambiguous match — confirm identity", "bg-amber-100 text-amber-700"],
-    UNMATCHED_CURRENT_PATIENT: ["Unmatched — staff review required", "bg-slate-100 text-slate-600"],
+const IDENTITY_STATE = {
+    LINK_PENDING: ["Existing patient matched — verify & link", "bg-emerald-100 text-emerald-700"],
+    IDENTITY_REVIEW_REQUIRED: ["Existing patient candidate — identity review required", "bg-amber-100 text-amber-800"],
+    NEW_PATIENT_CANDIDATE: ["No existing patient match detected", "bg-slate-100 text-slate-600"],
+};
+
+const HISTORY_STATE = {
+    LINKED_EXISTING: ["Linked to existing patient", "bg-emerald-100 text-emerald-700", Link2],
+    NEW_PATIENT: ["New patient", "bg-sky-100 text-sky-700", UserPlus],
+    IDENTITY_REVIEW: ["Identity review", "bg-amber-100 text-amber-800", AlertTriangle],
 };
 
 function CandidateLine({ c, onLink, linking }) {
@@ -57,6 +64,7 @@ function CandidateLine({ c, onLink, linking }) {
                 {c.visita_patient_id ? <> · <span className="font-semibold">VISITA #{c.visita_patient_id}</span></> : ""}
                 {c.city ? ` · ${c.city}` : ""} {c.province || ""}
                 {c.linked_patient_id ? <span className="ml-1 text-amber-700">(already linked)</span> : ""}
+                {c.match_kind === "POSSIBLE_IDENTITY_REVIEW" && <span className="ml-1 px-1 rounded-sm bg-amber-100 text-amber-800 font-semibold" data-testid="candidate-review-only">possible — same DOB, name contained · review only</span>}
             </div>
             <Button size="sm" disabled={linking || !!c.linked_patient_id} data-testid={`identity-link-${c.id}`}
                 onClick={() => onLink(c.id)} className="h-7 bg-visita-green hover:bg-visita-greenDark text-white shrink-0">
@@ -162,17 +170,20 @@ function VerifiedHistory() {
                 return (
                     <div key={p.id} data-testid="verification-history-item" className="bg-white border border-slate-300 rounded-sm p-3 flex items-start justify-between gap-3 flex-wrap">
                         <div className="text-sm space-y-0.5">
-                            <div className="flex items-center gap-2">
+                            <div className="flex items-center gap-2 flex-wrap">
                                 <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-sm text-xs font-semibold ${rejected ? "bg-red-100 text-red-700" : "bg-emerald-100 text-emerald-700"}`}>
                                     {rejected ? <UserX className="w-3.5 h-3.5" /> : <ShieldCheck className="w-3.5 h-3.5" />}
                                     {rejected ? "Rejected" : "Verified"}
                                 </span>
-                                <span className="font-bold text-slate-800 text-base">{formatPatientName(p)}</span>
+                                {!rejected && HISTORY_STATE[p.identity_state] && (() => { const [lbl, cls, Icon] = HISTORY_STATE[p.identity_state]; return (
+                                    <span data-testid={`history-identity-${p.identity_state}`} className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-sm text-xs font-semibold uppercase tracking-wide ${cls}`}><Icon className="w-3 h-3" /> {lbl}</span>
+                                ); })()}
+                                <span className="font-bold text-slate-800 text-base" data-testid="history-name">{p.canonical_full_name || formatPatientName(p)}</span>
+                                {p.canonical_full_name && p.canonical_full_name !== formatPatientName(p) && <span className="text-xs text-slate-400">portal: {formatPatientName(p)}</span>}
                             </div>
                             <div className="text-slate-600">
                                 Patient registration · {TYPE[p.patient_type] || p.patient_type}
                                 {p.visita_patient_id ? <> · <span className="font-semibold">VISITA #{p.visita_patient_id}</span></> : ""}
-                                {p.linked && <span className="inline-flex items-center gap-1 ml-1 text-emerald-700"><Link2 className="w-3 h-3" /> linked</span>}
                             </div>
                             <div className="text-slate-500 text-xs">
                                 By {p.verified_by || "—"} · {formatDateTime(p.verified_at)}
@@ -192,6 +203,7 @@ export default function Verifications() {
     const [tab, setTab] = useState("identity");
     const [visitaIds, setVisitaIds] = useState({});
     const [cmps, setCmps] = useState({});
+    const [confirmNew, setConfirmNew] = useState(null);
     const autoLoaded = useRef(new Set());
     const list = useQuery({ queryKey: ["queue", "/internal/verifications"], queryFn: async () => (await api.get("/internal/verifications")).data });
     const items = list.data || [];
@@ -225,12 +237,16 @@ export default function Verifications() {
         });
     }, [items]);
 
-    const decide = async (id, decision) => {
+    const decide = async (id, decision, opts = {}) => {
         try {
-            await api.post(`/internal/verifications/${id}`, { decision, visita_patient_id: visitaIds[id] || undefined });
-            toast.success(decision === "verified" ? "Patient verified." : "Patient rejected.");
+            await api.post(`/internal/verifications/${id}`, { decision, visita_patient_id: visitaIds[id] || undefined, ...opts });
+            toast.success(decision === "verified" ? (opts.confirm_new_patient ? "Verified as new patient." : "Patient verified and linked to existing record.") : "Patient rejected.");
             invalidate(); list.refetch();
-        } catch (e) { toast.error(formatErr(e)); }
+        } catch (e) {
+            const code = e?.response?.data?.detail?.code;
+            if (code === "IDENTITY_LINK_REQUIRED") { toast.warning("Existing patient may match — resolve in Identity Link Review first."); invalidate(); setTab("identity"); return; }
+            toast.error(formatErr(e));
+        }
     };
 
     return (
@@ -266,9 +282,9 @@ export default function Verifications() {
                     <div key={p.id} data-testid="verification-item" className="bg-white border border-slate-300 rounded-sm p-4">
                         <div className="flex items-start justify-between gap-3 flex-wrap">
                             <div className="text-sm space-y-0.5">
-                                {p.review_queue && REVIEW[p.review_queue] && (
-                                    <span data-testid="verification-review-badge" className={`inline-block px-2 py-0.5 rounded-sm text-xs font-semibold mb-1 ${REVIEW[p.review_queue][1]}`}>
-                                        {REVIEW[p.review_queue][0]}
+                                {IDENTITY_STATE[p.identity_state] && (
+                                    <span data-testid={`verification-identity-${p.identity_state}`} className={`inline-block px-2 py-0.5 rounded-sm text-xs font-semibold mb-1 ${IDENTITY_STATE[p.identity_state][1]}`}>
+                                        {IDENTITY_STATE[p.identity_state][0]}
                                     </span>
                                 )}
                                 <div className="font-bold text-slate-800 text-base" data-testid="verification-name">{formatPatientName(p)}</div>
@@ -280,12 +296,12 @@ export default function Verifications() {
                                 {p.country && <div className="text-slate-600">Country: {p.country}</div>}
                                 {p.extra_info && <div className="text-slate-600">Note: {p.extra_info}</div>}
 
-                                {(p.directory_match?.candidates || []).length > 0 && (
+                                {(() => { const cands = p.live_candidates?.length ? p.live_candidates : (p.directory_match?.candidates || []); const strength = p.live_candidates?.length ? p.live_strength : p.directory_match?.strength; return cands.length > 0 && (
                                     <div className="mt-2 border-t border-slate-200 pt-1.5">
                                         <div className="text-xs uppercase tracking-wide text-slate-400 mb-1">
-                                            Suggested VISITA record{(p.directory_match.candidates.length > 1) ? "s" : ""} · {p.directory_match.strength} match
+                                            Suggested VISITA record{(cands.length > 1) ? "s" : ""} · {strength} match
                                         </div>
-                                        {p.directory_match.candidates.map((c) => {
+                                        {cands.map((c) => {
                                             const key = `${p.id}:${c.id}`;
                                             const entry = cmps[key];
                                             const open = !!entry;
@@ -306,7 +322,7 @@ export default function Verifications() {
                                             );
                                         })}
                                     </div>
-                                )}
+                                ); })()}
                             </div>
                             <div className="flex flex-col gap-2 items-end">
                                 {canDecide ? (
@@ -315,10 +331,21 @@ export default function Verifications() {
                                             <Label className="text-xs">VISITA Patient ID (optional)</Label>
                                             <Input className="h-8 w-44" value={visitaIds[p.id] || ""} onChange={(e) => setVisitaIds({ ...visitaIds, [p.id]: e.target.value })} data-testid="visita-id-input" />
                                         </div>
-                                        <div className="flex gap-2">
-                                            <Button size="sm" onClick={() => decide(p.id, "verified")} data-testid="verify-approve" className="bg-visita-green hover:bg-visita-greenDark text-white"><UserCheck className="w-4 h-4 mr-1" /> Verify</Button>
+                                        <div className="flex gap-2 flex-wrap justify-end">
+                                            {p.identity_state === "IDENTITY_REVIEW_REQUIRED" && (
+                                                <Button size="sm" onClick={() => setTab("identity")} data-testid="verify-review-link" className="bg-amber-500 hover:bg-amber-600 text-white"><GitMerge className="w-4 h-4 mr-1" /> Review / Link Existing Patient</Button>
+                                            )}
+                                            {p.identity_state === "LINK_PENDING" && (
+                                                <Button size="sm" onClick={() => decide(p.id, "verified")} data-testid="verify-link-existing" className="bg-visita-green hover:bg-visita-greenDark text-white"><Link2 className="w-4 h-4 mr-1" /> Verify & Link Existing Patient</Button>
+                                            )}
+                                            {p.identity_state === "NEW_PATIENT_CANDIDATE" && (
+                                                <Button size="sm" onClick={() => setConfirmNew(p)} data-testid="verify-as-new" className="bg-visita-green hover:bg-visita-greenDark text-white"><UserPlus className="w-4 h-4 mr-1" /> Verify as New Patient</Button>
+                                            )}
                                             <Button size="sm" variant="outline" onClick={() => decide(p.id, "rejected")} data-testid="verify-reject" className="text-red-600 border-red-200"><UserX className="w-4 h-4 mr-1" /> Reject</Button>
                                         </div>
+                                        {p.identity_state === "IDENTITY_REVIEW_REQUIRED" && (
+                                            <p className="text-[11px] text-amber-800 max-w-[260px] text-right" data-testid="verify-blocked-note">Verify as new patient is blocked until the existing-patient candidate is reviewed in Identity Link Review.</p>
+                                        )}
                                     </>
                                 ) : (
                                     <span className="text-xs text-slate-400 italic">View only</span>
@@ -329,6 +356,27 @@ export default function Verifications() {
                 ))}
             </div>
             )}
+            <AlertDialog open={!!confirmNew} onOpenChange={(o) => !o && setConfirmNew(null)}>
+                <AlertDialogContent data-testid="confirm-new-patient-dialog">
+                    <AlertDialogHeader>
+                        <AlertDialogTitle>Verify as a new patient?</AlertDialogTitle>
+                        <AlertDialogDescription asChild>
+                            <div className="space-y-2 text-sm">
+                                <p className="font-semibold text-slate-800">{confirmNew ? formatPatientName(confirmNew) : ""} · DOB {confirmNew ? formatDate(confirmNew.date_of_birth) : ""}</p>
+                                <p>No existing canonical patient match requiring review was identified.</p>
+                                <p>A new VIen patient identity / VISITA PIN may be created. If this person is already a clinic patient, cancel and link them in Identity Link Review instead.</p>
+                            </div>
+                        </AlertDialogDescription>
+                    </AlertDialogHeader>
+                    <AlertDialogFooter>
+                        <AlertDialogCancel data-testid="confirm-new-cancel">Cancel</AlertDialogCancel>
+                        <AlertDialogAction data-testid="confirm-new-accept" className="bg-visita-green hover:bg-visita-greenDark"
+                            onClick={() => { const id = confirmNew.id; setConfirmNew(null); decide(id, "verified", { confirm_new_patient: true }); }}>
+                            Verify as New Patient
+                        </AlertDialogAction>
+                    </AlertDialogFooter>
+                </AlertDialogContent>
+            </AlertDialog>
         </div>
     );
 }

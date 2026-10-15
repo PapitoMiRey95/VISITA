@@ -9732,17 +9732,19 @@ app.add_middleware(
 )
 
 
-BOOTSTRAP = {"status": "pending", "steps": {}}
+BOOTSTRAP = {"status": "pending", "ready": False, "steps": {}, "attempts": 0}
 
 
-async def _bootstrap_step(name, coro, timeout=120):
-    """Run one startup step with a hard deadline; failures are logged, never fatal."""
+async def _bootstrap_step(name, coro_factory, timeout=120) -> bool:
+    """Run one startup step with a hard deadline. Returns success; never raises."""
     try:
-        await asyncio.wait_for(coro, timeout=timeout)
+        await asyncio.wait_for(coro_factory(), timeout=timeout)
         BOOTSTRAP["steps"][name] = "ok"
+        return True
     except Exception as e:
         BOOTSTRAP["steps"][name] = f"{type(e).__name__}: {e}"[:200]
-        logger.warning(f"[bootstrap] {name} skipped: {type(e).__name__}: {e}")
+        logger.warning(f"[bootstrap] {name} failed: {type(e).__name__}: {e}")
+        return False
 
 
 async def _ensure_core_indexes():
@@ -9755,33 +9757,66 @@ async def _ensure_core_indexes():
     await db.referrals.create_index([("ready_to_fax", 1), ("faxed", 1)])
 
 
+async def _mongo_ping():
+    await db.command("ping")
+
+
+# CRITICAL steps gate readiness: Mongo reachable + every integrity index (incl. the unique
+# double-booking / same-day / one-active-visit guards) + create-if-missing seed.
+CRITICAL_STEPS = [
+    ("mongo_ping", _mongo_ping), ("core_indexes", _ensure_core_indexes),
+    # Slot reservation layer: unique (practice_id, slot_start) is the final double-booking guard.
+    # Index only — NO data backfill at startup (see backfill_slot_locks.py).
+    ("slots_indexes", lambda: slots_mod.ensure_indexes(db)), ("appt_guard_indexes", lambda: guard_mod.ensure_indexes(db)),
+    ("visits_indexes", lambda: visits_mod.ensure_indexes(db)), ("history_indexes", lambda: history_mod.ensure_indexes(db)),
+    ("diag_catalog_indexes", lambda: diag_mod.ensure_indexes(db)), ("diagnosis_indexes", lambda: dx_mod.ensure_indexes(db)),
+    ("service_indexes", lambda: svc_mod.ensure_indexes(db)), ("audit_indexes", lambda: audit_mod.ensure_indexes(db)),
+    ("seed", lambda: seed_all(db, authlib)),
+]
+
+
 async def _bootstrap():
-    """Index creation, storage warm-up and create-if-missing seeding run in the BACKGROUND after
-    uvicorn has bound :8001, so no slow dependency can ever block readiness. Every step is
-    additive/idempotent; a failed step only logs (indexes are retried on the next boot)."""
+    """Runs in the BACKGROUND after uvicorn binds :8001 (liveness up immediately). Readiness
+    (/health) stays 503 until every CRITICAL step succeeds; failed steps are retried every 15s.
+    Optional services (object storage warm-up) fail-soft — storage is lazy on first use."""
     BOOTSTRAP["status"] = "running"
-    steps = [("core_indexes", _ensure_core_indexes()),
-             # Slot reservation layer: unique (practice_id, slot_start) is the final double-booking guard.
-             # Index only — NO data backfill at startup (see backfill_slot_locks.py).
-             ("slots_indexes", slots_mod.ensure_indexes(db)), ("appt_guard_indexes", guard_mod.ensure_indexes(db)),
-             ("visits_indexes", visits_mod.ensure_indexes(db)), ("history_indexes", history_mod.ensure_indexes(db)),
-             ("diag_catalog_indexes", diag_mod.ensure_indexes(db)), ("diagnosis_indexes", dx_mod.ensure_indexes(db)),
-             ("service_indexes", svc_mod.ensure_indexes(db)), ("audit_indexes", audit_mod.ensure_indexes(db)),
-             # Storage init is lazy (put/get_object call it on demand); warm-up only.
-             ("storage", asyncio.to_thread(storage.init_storage))]
-    for name, coro in steps:
-        await _bootstrap_step(name, coro, timeout=8 if name == "storage" else 120)
-    await _bootstrap_step("seed", seed_all(db, authlib), timeout=120)
+    while not BOOTSTRAP["ready"]:
+        BOOTSTRAP["attempts"] += 1
+        ok = True
+        for name, factory in CRITICAL_STEPS:
+            if BOOTSTRAP["steps"].get(name) == "ok":
+                continue
+            if not await _bootstrap_step(name, factory, timeout=120):
+                ok = False
+                break
+        if ok:
+            BOOTSTRAP["ready"] = True
+            break
+        await asyncio.sleep(15)
+    await _bootstrap_step("storage", lambda: asyncio.to_thread(storage.init_storage), timeout=8)
     BOOTSTRAP["status"] = "complete"
-    logger.info(f"Startup complete — bootstrap {BOOTSTRAP['steps']}")
+    logger.info(f"Startup complete — ready after {BOOTSTRAP['attempts']} attempt(s); bootstrap {BOOTSTRAP['steps']}")
+
+
+def _health_payload():
+    return {"status": "ok" if BOOTSTRAP["ready"] else "starting", "ready": BOOTSTRAP["ready"],
+            "bootstrap": BOOTSTRAP["status"], "attempts": BOOTSTRAP["attempts"],
+            "steps": {k: ("ok" if v == "ok" else "failed") for k, v in BOOTSTRAP["steps"].items()}, "time": now_iso()}
+
+
+@app.get("/health/live")
+async def health_live():
+    """Liveness: process is up (always 200 once uvicorn is bound)."""
+    return {"status": "alive", "time": now_iso()}
 
 
 @app.get("/health")
 @app.get("/api/health")
-async def health():
-    """Liveness/readiness for the platform probe. Always 200 once uvicorn is bound; bootstrap
-    progress is informational only (the app serves while indexes/seed finish in the background)."""
-    return {"status": "ok", "bootstrap": BOOTSTRAP["status"], "time": now_iso()}
+async def health(response: Response):
+    """Readiness: 200 only when Mongo + critical bootstrap are complete, else 503."""
+    if not BOOTSTRAP["ready"]:
+        response.status_code = 503
+    return _health_payload()
 
 
 @app.on_event("startup")

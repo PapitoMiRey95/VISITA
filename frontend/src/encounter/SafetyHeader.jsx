@@ -70,6 +70,7 @@ export function SafetyHeader({ visit, typeLabel, onExit, exiting, tabs }) {
                     <div className="text-xl font-bold leading-tight" data-testid="encounter-patient-name">
                         {(s.last_name || "").toUpperCase()}, {s.first_name}
                     </div>
+                    {s.is_synthetic && <div className="text-[10px] font-bold bg-fuchsia-600 text-white rounded px-1.5 py-0.5 mt-1 inline-block" data-testid="encounter-synthetic-badge">SYNTHETIC TEST PATIENT — NOT FOR REAL CLINICAL CARE</div>}
                 </div>
                 <Item label="PIN" value={visit.visita_patient_id || "Not assigned"} testid="encounter-pin" />
                 <Item label="DOB / Age" value={s.date_of_birth ? `${formatDate(s.date_of_birth)}${age != null ? ` · ${age}y` : ""}` : null} testid="encounter-dob" />

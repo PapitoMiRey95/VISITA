@@ -114,6 +114,9 @@ async def _send_email(db, patient_id, to, subject, html, *, kind=None, ref=None)
     the clinical action. Statuses: sent | failed | skipped_no_email."""
     to = _clean_email(to)
     status, provider_id, error = "skipped_no_email", None, None
+    if to and patient_id and (await db.patients.find_one({"id": patient_id, "is_synthetic": True}, {"_id": 1})
+                              or await db.patient_directory.find_one({"id": patient_id, "is_synthetic": True}, {"_id": 1})):
+        to, status = None, "skipped_synthetic"
     if to:
         try:
             provider_id = await email_service.send_email(to=to, subject=subject, html=html)

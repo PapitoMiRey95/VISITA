@@ -9,12 +9,15 @@ function Loader() {
     );
 }
 
-export function RoleRoute({ roles, children }) {
+export function RoleRoute({ roles, children, requireEncounter = false }) {
     const { user } = useAuth();
     if (user === null) return <Loader />;
     if (user === false) return <Navigate to="/login" replace />;
     if (user.must_change_password) return <Navigate to="/change-password" replace />;
     if (roles && !roles.includes(user.role)) {
+        return <Navigate to={homePath(user.role)} replace />;
+    }
+    if (requireEncounter && !user.encounter_enabled) {
         return <Navigate to={homePath(user.role)} replace />;
     }
     return children;

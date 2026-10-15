@@ -7,9 +7,20 @@ import storage
 from db import next_ref, now_iso
 
 
+def _is_production() -> bool:
+    """Defense-in-depth: the live site. Demo seeding / data migrations are refused here even if
+    the flags are mistakenly left enabled in the Production secrets."""
+    return "visitaemr.com" in os.environ.get("APP_BASE_URL", "").lower()
+
+
 def _flag(name: str) -> bool:
     """Truthy only when the env var is explicitly enabled (1/true/yes)."""
-    return os.environ.get(name, "").strip().lower() in ("1", "true", "yes")
+    on = os.environ.get(name, "").strip().lower() in ("1", "true", "yes")
+    if on and name in ("ALLOW_DEMO_SEEDING", "ALLOW_DATA_MIGRATIONS") and _is_production():
+        import logging
+        logging.getLogger("visita").warning(f"{name} is enabled but refused on Production (APP_BASE_URL is the live site).")
+        return False
+    return on
 
 
 def _migrations_enabled() -> bool:

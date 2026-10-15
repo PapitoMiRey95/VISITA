@@ -78,7 +78,17 @@ def serialize_user(u: dict) -> dict:
         "pharmacy_name": u.get("pharmacy_name"),
         "organization_id": u.get("organization_id"),
         "practice_id": u.get("practice_id"),
+        "encounter_enabled": encounter_pilot_allows(u),
     }
+
+
+def encounter_pilot_allows(u: dict) -> bool:
+    """Encounter/Visit pilot gate. ENCOUNTER_PILOT_USERS (comma-separated usernames/emails)
+    restricts the Encounter workstation to those users; unset = no extra restriction."""
+    allow = {x.strip().lower() for x in os.environ.get("ENCOUNTER_PILOT_USERS", "").split(",") if x.strip()}
+    if not allow:
+        return u.get("role") == "physician"
+    return u.get("role") == "physician" and bool({(u.get("username") or "").lower(), (u.get("email") or "").lower()} & allow)
 
 
 async def get_current_user(request: Request) -> dict:
@@ -109,6 +119,17 @@ def require_roles(*roles):
     async def dep(user: dict = Depends(get_current_user)) -> dict:
         if user["role"] not in roles:
             raise HTTPException(status_code=403, detail="Not authorized")
+        return user
+    return dep
+
+
+def require_visit_access(*roles):
+    """Role check + Encounter pilot allowlist (physicians outside the pilot get 403)."""
+    async def dep(user: dict = Depends(get_current_user)) -> dict:
+        if user["role"] not in roles:
+            raise HTTPException(status_code=403, detail="Not authorized")
+        if user["role"] == "physician" and not user.get("encounter_enabled"):
+            raise HTTPException(status_code=403, detail="The Encounter workstation is not enabled for your account yet.")
         return user
     return dep
 
@@ -648,6 +669,27 @@ async def _guard_move(practice_id, ident, appt_id, new_ds, actor, source):
     except guard_mod.SameDayExists as e:
         detail = guard_mod.portal_detail(e.existing) if source == "portal" else guard_mod.staff_detail(e.existing)
         raise HTTPException(status_code=409, detail=detail)
+
+
+# ----------------------------- Synthetic test patients -----------------------------
+SYNTHETIC_MARKER = "SYNTHETIC TEST PATIENT — NOT FOR REAL CLINICAL CARE"
+SYNTHETIC_BLOCK_MSG = "Blocked: this is a SYNTHETIC TEST PATIENT. External/real-world actions (Rx transmission, billing, requisitions, portal linking, notifications) are disabled."
+
+
+async def is_synthetic_patient(*ids) -> bool:
+    ids = [i for i in ids if i]
+    if not ids:
+        return False
+    if await db.patient_directory.find_one({"id": {"$in": ids}, "is_synthetic": True}, {"_id": 1}):
+        return True
+    return bool(await db.patients.find_one({"id": {"$in": ids}, "is_synthetic": True}, {"_id": 1}))
+
+
+async def block_synthetic(*ids, what: str, user: dict = None):
+    """403 for real-world side effects on synthetic test patients (audited)."""
+    if await is_synthetic_patient(*ids):
+        await audit("synthetic_side_effect_blocked", "patient", next(i for i in ids if i), user, meta={"what": what})
+        raise HTTPException(status_code=403, detail={"code": "SYNTHETIC_PATIENT", "message": SYNTHETIC_BLOCK_MSG})
 
 
 def _confirmed_fields(ds, t24, label=None, display=None):
@@ -2629,6 +2671,7 @@ async def create_invoice(body: InvoiceCreateBody, user: dict = Depends(require_r
     patient = await db.patients.find_one({"id": body.patient_id}, {"_id": 0})
     if not patient:
         raise HTTPException(status_code=404, detail="Patient account not found. Invoices can only be issued to registered portal patients.")
+    await block_synthetic(patient["id"], patient.get("matched_directory_id"), what="invoice", user=user)
     mode = body.payment_mode or "INVOICE_AFTER_SERVICE"
     if mode == "NO_PAYMENT_REQUIRED":
         raise HTTPException(status_code=400, detail="An invoice must use a payable mode.")
@@ -3715,6 +3758,7 @@ async def patient_snapshot(directory_id: str, user: dict = Depends(require_roles
             "patient_id": d.get("linked_patient_id") or d["id"],
             "source": "directory",
             "first_name": d.get("first_name"), "last_name": d.get("last_name"),
+            "is_synthetic": bool(d.get("is_synthetic")),
             "visita_patient_id": d.get("visita_patient_id"),
             "date_of_birth": d.get("date_of_birth"), "age": _age_from_dob(d.get("date_of_birth")),
             "phone": d.get("cell_phone") or d.get("home_phone"),
@@ -3754,6 +3798,7 @@ async def create_pharmacy_rx(body: PharmacyRxBody, user: dict = Depends(require_
         p = await db.patients.find_one({"id": body.patient_id})
     if not d and not p:
         raise HTTPException(status_code=404, detail="Patient not found.")
+    await block_synthetic((d or p)["id"], (d or {}).get("linked_patient_id"), what="pharmacy_rx", user=user)
     meds = [m.strip() for m in body.medications if m and m.strip()]
     if not meds:
         raise HTTPException(status_code=400, detail="Please add at least one requested medication.")
@@ -3926,6 +3971,7 @@ async def create_exam_result(body: ExamResultCreate, user: dict = Depends(requir
     patient + category/subtype are inherited (no redundant questions). With no
     confident patient, it lands in NEEDS_PATIENT_MATCH."""
     now = now_iso()
+    await block_synthetic(body.patient_id, what="exam_result", user=user)
     category, subtype = body.category, body.subtype
     source_ref, body_part, reason = None, body.body_part, body.reason
     patient_id = body.patient_id
@@ -4374,6 +4420,7 @@ async def issue_no_show_invoice(item_id: str, user: dict = Depends(require_roles
         raise HTTPException(status_code=400, detail="This appointment is not marked as a no-show.")
     if not a.get("patient_id"):
         raise HTTPException(status_code=400, detail="Link a portal patient to this appointment before billing the no-show fee.")
+    await block_synthetic(a.get("patient_id"), a.get("directory_id"), what="no_show_invoice", user=user)
     existing = await db.invoices.find_one({"appointment_id": item_id, "is_no_show": True, "status": {"$ne": "VOID"}})
     if existing:
         raise HTTPException(status_code=400, detail="A no-show invoice already exists for this appointment.")
@@ -4815,6 +4862,7 @@ async def upload_referral(
 ):
     if (file.content_type or "").lower() != "application/pdf" and not (file.filename or "").lower().endswith(".pdf"):
         raise HTTPException(status_code=400, detail="Only PDF files are accepted for referral drop-off.")
+    await block_synthetic(patient_id or None, what="referral", user=user)
     data = await file.read()
     if len(data) > MAX_PDF_BYTES:
         raise HTTPException(status_code=400, detail="File too large. Maximum size is 15 MB.")
@@ -5152,6 +5200,7 @@ def _directory_snapshot(d: dict) -> dict:
         "patient_id": d.get("linked_patient_id"),
         "directory_id": d["id"],
         "first_name": d.get("first_name"), "last_name": d.get("last_name"),
+        "is_synthetic": bool(d.get("is_synthetic")),
         "full_name": names_mod.full_display_name(d),
         "visita_patient_id": d.get("visita_patient_id"),
         "date_of_birth": d.get("date_of_birth"), "age": _age_from_dob(d.get("date_of_birth")),
@@ -5457,6 +5506,7 @@ async def verify_patient(patient_id: str, body: VerifyBody, user: dict = Depends
     link_dir_id = body.matched_patient_id or p.get("matched_directory_id")
     identity_outcome = None
     if body.decision == "verified" and link_dir_id:
+        await block_synthetic(link_dir_id, what="portal_link_verification", user=user)
         d = await db.patient_directory.find_one({"id": link_dir_id})
         if not d:
             raise HTTPException(status_code=404, detail="VISITA directory record not found.")
@@ -5649,6 +5699,7 @@ async def identity_cleanup_case(patient_id: str, directory_id: Optional[str] = N
 @api.post("/internal/identity-cleanup/{patient_id}/link")
 async def identity_cleanup_link(patient_id: str, body: CleanupLinkBody, user: dict = Depends(require_roles("staff", "admin", "physician"))):
     p, d = await _cleanup_pair(patient_id, body.directory_id, user)
+    await block_synthetic(patient_id, body.directory_id, what="identity_cleanup_link", user=user)
     c = await cleanup_mod.case(db, p, body.directory_id)
     if not c["can_link"]:
         await audit("identity_cleanup_conflict", "patient", patient_id, user,
@@ -7657,14 +7708,14 @@ async def _visit_context(ident) -> dict:
 
 
 @api.get("/internal/visits/active")
-async def visit_active(patient_ref: str, user: dict = Depends(require_roles(*VISIT_WRITE_ROLES))):
+async def visit_active(patient_ref: str, user: dict = Depends(require_visit_access(*VISIT_WRITE_ROLES))):
     ident = await _visit_identity_or_400(patient_ref, None, None)
     v = await visits_mod.find_active(db, user.get("practice_id"), ident["patient_ref"], user["id"])
     return {"active": visits_mod.history_row(v) if v else None, "patient_ref": ident["patient_ref"]}
 
 
 @api.get("/internal/visits/ready")
-async def visit_ready(patient_ref: str, user: dict = Depends(require_roles(*VISIT_WRITE_ROLES))):
+async def visit_ready(patient_ref: str, user: dict = Depends(require_visit_access(*VISIT_WRITE_ROLES))):
     """Enter-Encounter workspace shell: identity + context + this physician's open visit (if any). Creates nothing."""
     ident = await _visit_identity_or_400(patient_ref, None, None)
     v = await visits_mod.find_active(db, user.get("practice_id"), ident["patient_ref"], user["id"])
@@ -7677,7 +7728,7 @@ async def visit_ready(patient_ref: str, user: dict = Depends(require_roles(*VISI
 
 
 @api.post("/internal/visits")
-async def visit_create(body: VisitCreateBody, user: dict = Depends(require_roles(*VISIT_WRITE_ROLES))):
+async def visit_create(body: VisitCreateBody, user: dict = Depends(require_visit_access(*VISIT_WRITE_ROLES))):
     if body.encounter_type not in visits_mod.ENCOUNTER_TYPES:
         raise HTTPException(status_code=400, detail="Invalid encounter type.")
     ident = await _visit_identity_or_400(body.patient_ref, body.patient_id, body.directory_id)
@@ -7716,7 +7767,7 @@ async def visit_create(body: VisitCreateBody, user: dict = Depends(require_roles
 
 
 @api.get("/internal/visits/{visit_id}")
-async def visit_get(visit_id: str, user: dict = Depends(require_roles(*VISIT_READ_ROLES))):
+async def visit_get(visit_id: str, user: dict = Depends(require_visit_access(*VISIT_READ_ROLES))):
     v = await _get_visit_scoped(visit_id, user)
     ident = await visits_mod.resolve_identity(db, v["patient_ref"], v.get("patient_id"), v.get("directory_id"))
     ctx = await _visit_context(ident) if ident else {}
@@ -7725,7 +7776,7 @@ async def visit_get(visit_id: str, user: dict = Depends(require_roles(*VISIT_REA
 
 
 @api.get("/internal/visits/{visit_id}/record")
-async def visit_record(visit_id: str, user: dict = Depends(require_roles(*VISIT_READ_ROLES))):
+async def visit_record(visit_id: str, user: dict = Depends(require_visit_access(*VISIT_READ_ROLES))):
     """Visit Hx read-only record. GET only — there are no historical mutation endpoints."""
     v = await _get_visit_scoped(visit_id, user)
     await audit("visit_read", "visit", v["id"], user, meta={"patient_ref": v["patient_ref"], "ref_number": v.get("ref_number"), "via": "visit_hx"})
@@ -7733,7 +7784,7 @@ async def visit_record(visit_id: str, user: dict = Depends(require_roles(*VISIT_
 
 
 @api.patch("/internal/visits/{visit_id}/soap")
-async def visit_save_soap(visit_id: str, body: VisitSoapBody, user: dict = Depends(require_roles(*VISIT_WRITE_ROLES))):
+async def visit_save_soap(visit_id: str, body: VisitSoapBody, user: dict = Depends(require_visit_access(*VISIT_WRITE_ROLES))):
     v = await _get_visit_for_write(visit_id, user)
     changed, v2 = await visits_mod.save_soap(db, v, body.model_dump(), user)
     if changed:
@@ -7744,7 +7795,7 @@ async def visit_save_soap(visit_id: str, body: VisitSoapBody, user: dict = Depen
 
 
 @api.patch("/internal/visits/{visit_id}/vitals")
-async def visit_save_vitals(visit_id: str, body: dict, user: dict = Depends(require_roles(*VISIT_WRITE_ROLES))):
+async def visit_save_vitals(visit_id: str, body: dict, user: dict = Depends(require_visit_access(*VISIT_WRITE_ROLES))):
     v = await _get_visit_for_write(visit_id, user)
     unknown = set(body) - set(visits_mod.VITAL_FIELDS)
     if unknown:
@@ -7760,7 +7811,7 @@ async def visit_save_vitals(visit_id: str, body: dict, user: dict = Depends(requ
 
 
 @api.post("/internal/visits/{visit_id}/exit")
-async def visit_exit(visit_id: str, user: dict = Depends(require_roles(*VISIT_WRITE_ROLES))):
+async def visit_exit(visit_id: str, user: dict = Depends(require_visit_access(*VISIT_WRITE_ROLES))):
     v = await _get_visit_scoped(visit_id, user)
     now = now_iso()
     await db[visits_mod.COLL].update_one({"id": visit_id}, {"$set": {
@@ -7770,7 +7821,7 @@ async def visit_exit(visit_id: str, user: dict = Depends(require_roles(*VISIT_WR
 
 
 @api.post("/internal/visits/{visit_id}/stop")
-async def visit_stop(visit_id: str, user: dict = Depends(require_roles(*VISIT_WRITE_ROLES))):
+async def visit_stop(visit_id: str, user: dict = Depends(require_visit_access(*VISIT_WRITE_ROLES))):
     """FINAL stop of the encounter: freezes time, status STOPPED_UNSIGNED. Irreversible (no resume). Documentation stays editable. Does NOT sign."""
     v = await _get_visit_for_timer(visit_id, user)
     before = visits_mod.timer_of(v)["timer_state"]
@@ -7783,7 +7834,7 @@ async def visit_stop(visit_id: str, user: dict = Depends(require_roles(*VISIT_WR
 
 
 @api.post("/internal/visits/{visit_id}/resume")
-async def visit_resume(visit_id: str, user: dict = Depends(require_roles(*VISIT_WRITE_ROLES))):
+async def visit_resume(visit_id: str, user: dict = Depends(require_visit_access(*VISIT_WRITE_ROLES))):
     """Compatibility only for legacy PAUSED visits that are still IN_PROGRESS. Stopped/signed visits can never be resumed."""
     v = await _get_visit_for_timer(visit_id, user)
     before = visits_mod.timer_of(v)["timer_state"]
@@ -7795,7 +7846,7 @@ async def visit_resume(visit_id: str, user: dict = Depends(require_roles(*VISIT_
 
 
 @api.post("/internal/visits/{visit_id}/sign")
-async def visit_sign(visit_id: str, user: dict = Depends(require_roles("physician"))):
+async def visit_sign(visit_id: str, user: dict = Depends(require_visit_access("physician"))):
     """Physician-only. STOPPED_UNSIGNED -> SIGNED using the authenticated identity; snapshot = exact reviewed state at this moment."""
     v = await _get_visit_scoped(visit_id, user)
     if v.get("status") == visits_mod.SIGNED:
@@ -7816,7 +7867,7 @@ async def visit_sign(visit_id: str, user: dict = Depends(require_roles("physicia
 
 
 @api.get("/internal/patients/{patient_ref}/visits")
-async def visit_history(patient_ref: str, exclude_visit_id: Optional[str] = None, user: dict = Depends(require_roles(*VISIT_READ_ROLES))):
+async def visit_history(patient_ref: str, exclude_visit_id: Optional[str] = None, user: dict = Depends(require_visit_access(*VISIT_READ_ROLES))):
     ident = await _visit_identity_or_400(patient_ref, None, None)
     q = {"practice_id": user.get("practice_id"), "patient_ref": {"$in": visits_mod.all_refs(ident)}}
     if exclude_visit_id:
@@ -7829,7 +7880,7 @@ async def visit_history(patient_ref: str, exclude_visit_id: Optional[str] = None
 
 @api.get("/internal/patients/{patient_ref}/issue-plan-history")
 async def visit_issue_plan_history(patient_ref: str, search: str = "", exclude: Optional[str] = None,
-                                   user: dict = Depends(require_roles(*VISIT_READ_ROLES))):
+                                   user: dict = Depends(require_visit_access(*VISIT_READ_ROLES))):
     """Read-only Issue (Assessment) / Plan history across the patient's canonical identity, most recent first."""
     ident = await _visit_identity_or_400(patient_ref, None, None)
     q = {"practice_id": user.get("practice_id"), "patient_ref": {"$in": visits_mod.all_refs(ident)}}
@@ -7850,7 +7901,7 @@ async def visit_issue_plan_history(patient_ref: str, search: str = "", exclude: 
 
 
 @api.get("/internal/patients/{patient_ref}/metrics-summary")
-async def patient_metrics_summary(patient_ref: str, user: dict = Depends(require_roles(*VISIT_READ_ROLES))):
+async def patient_metrics_summary(patient_ref: str, user: dict = Depends(require_visit_access(*VISIT_READ_ROLES))):
     """Longitudinal METRICS (Recent / 3 mo / 12 mo / global means) from canonical visit vitals; daily-deduplicated."""
     ident = await _visit_identity_or_400(patient_ref, None, None)
     q = {"practice_id": user.get("practice_id"), "patient_ref": {"$in": visits_mod.all_refs(ident)},
@@ -7861,7 +7912,7 @@ async def patient_metrics_summary(patient_ref: str, user: dict = Depends(require
 
 @api.get("/internal/patients/{patient_ref}/recent-vitals")
 async def visit_recent_vitals(patient_ref: str, limit: int = 3, exclude: Optional[str] = None,
-                              user: dict = Depends(require_roles(*VISIT_READ_ROLES))):
+                              user: dict = Depends(require_visit_access(*VISIT_READ_ROLES))):
     """Compact read-only vitals of the most recent historical visits that contain vitals (newest first)."""
     ident = await _visit_identity_or_400(patient_ref, None, None)
     limit = max(1, min(limit, 10))
@@ -7952,7 +8003,7 @@ class AnnualMonthBody(BaseModel):
 
 
 @api.put("/internal/patients/{patient_ref}/annual-exam-month")
-async def annual_exam_month_set(patient_ref: str, body: AnnualMonthBody, user: dict = Depends(require_roles(*VISIT_WRITE_ROLES))):
+async def annual_exam_month_set(patient_ref: str, body: AnnualMonthBody, user: dict = Depends(require_visit_access(*VISIT_WRITE_ROLES))):
     ident = await _visit_identity_or_400(patient_ref, None, None)
     if not ident.get("directory_id"):
         raise HTTPException(status_code=409, detail="Patient has no canonical directory record yet; Annual month cannot be stored.")
@@ -7970,12 +8021,12 @@ async def annual_exam_month_set(patient_ref: str, body: AnnualMonthBody, user: d
 
 
 @api.post("/internal/patients/{patient_ref}/conditions")
-async def conditions_create(patient_ref: str, body: dict, user: dict = Depends(require_roles(*VISIT_WRITE_ROLES))):
+async def conditions_create(patient_ref: str, body: dict, user: dict = Depends(require_visit_access(*VISIT_WRITE_ROLES))):
     return await _history_create("conditions", patient_ref, body, user)
 
 
 @api.patch("/internal/patients/{patient_ref}/conditions/{record_id}")
-async def conditions_patch(patient_ref: str, record_id: str, body: dict, user: dict = Depends(require_roles(*VISIT_WRITE_ROLES))):
+async def conditions_patch(patient_ref: str, record_id: str, body: dict, user: dict = Depends(require_visit_access(*VISIT_WRITE_ROLES))):
     return await _history_patch("conditions", patient_ref, record_id, body, user)
 
 
@@ -7985,12 +8036,12 @@ async def surgeries_list(patient_ref: str, user: dict = Depends(require_roles(*H
 
 
 @api.post("/internal/patients/{patient_ref}/surgeries")
-async def surgeries_create(patient_ref: str, body: dict, user: dict = Depends(require_roles(*VISIT_WRITE_ROLES))):
+async def surgeries_create(patient_ref: str, body: dict, user: dict = Depends(require_visit_access(*VISIT_WRITE_ROLES))):
     return await _history_create("surgeries", patient_ref, body, user)
 
 
 @api.patch("/internal/patients/{patient_ref}/surgeries/{record_id}")
-async def surgeries_patch(patient_ref: str, record_id: str, body: dict, user: dict = Depends(require_roles(*VISIT_WRITE_ROLES))):
+async def surgeries_patch(patient_ref: str, record_id: str, body: dict, user: dict = Depends(require_visit_access(*VISIT_WRITE_ROLES))):
     return await _history_patch("surgeries", patient_ref, record_id, body, user)
 
 
@@ -8000,19 +8051,19 @@ async def allergies_list(patient_ref: str, user: dict = Depends(require_roles(*H
 
 
 @api.post("/internal/patients/{patient_ref}/allergies")
-async def allergies_create(patient_ref: str, body: dict, user: dict = Depends(require_roles(*VISIT_WRITE_ROLES))):
+async def allergies_create(patient_ref: str, body: dict, user: dict = Depends(require_visit_access(*VISIT_WRITE_ROLES))):
     return await _history_create("allergies", patient_ref, body, user)
 
 
 @api.patch("/internal/patients/{patient_ref}/allergies/{record_id}")
-async def allergies_patch(patient_ref: str, record_id: str, body: dict, user: dict = Depends(require_roles(*VISIT_WRITE_ROLES))):
+async def allergies_patch(patient_ref: str, record_id: str, body: dict, user: dict = Depends(require_visit_access(*VISIT_WRITE_ROLES))):
     return await _history_patch("allergies", patient_ref, record_id, body, user)
 
 
 # ============= SOAP HELPERS (read/search for Encounter use) — Phase 2A3 =============
 @api.get("/internal/soap-helpers")
 async def soap_helpers_search(search: str = "", patient_ref: Optional[str] = None, visit_id: Optional[str] = None,
-                              user: dict = Depends(require_roles(*VISIT_WRITE_ROLES))):
+                              user: dict = Depends(require_visit_access(*VISIT_WRITE_ROLES))):
     """Templates filtered by patient sex AND the canonical Visit's encounter_type (visit_id) — suggestions only."""
     sex = None
     if patient_ref:
@@ -8035,7 +8086,7 @@ async def diagnosis_catalog_search(q: str = "", user: dict = Depends(require_rol
 
 
 @api.get("/internal/visits/{visit_id}/diagnoses/previous")
-async def visit_previous_diagnoses(visit_id: str, user: dict = Depends(require_roles(*VISIT_READ_ROLES))):
+async def visit_previous_diagnoses(visit_id: str, user: dict = Depends(require_visit_access(*VISIT_READ_ROLES))):
     v = await _get_visit_scoped(visit_id, user)
     ident = await visits_mod.resolve_identity(db, v["patient_ref"], v.get("patient_id"), v.get("directory_id"))
     refs = visits_mod.all_refs(ident) if ident else [v["patient_ref"]]
@@ -8048,7 +8099,7 @@ class DiagnosisSelectBody(BaseModel):
 
 
 @api.put("/internal/visits/{visit_id}/diagnoses/primary")
-async def visit_set_primary_diagnosis(visit_id: str, body: DiagnosisSelectBody, user: dict = Depends(require_roles(*VISIT_WRITE_ROLES))):
+async def visit_set_primary_diagnosis(visit_id: str, body: DiagnosisSelectBody, user: dict = Depends(require_visit_access(*VISIT_WRITE_ROLES))):
     v = await _get_visit_for_write(visit_id, user)
     if body.source not in ("CATALOG", "PATIENT_HISTORY"):
         raise HTTPException(status_code=422, detail="Invalid source.")
@@ -8060,7 +8111,7 @@ async def visit_set_primary_diagnosis(visit_id: str, body: DiagnosisSelectBody, 
 
 
 @api.delete("/internal/visits/{visit_id}/diagnoses/primary")
-async def visit_clear_primary_diagnosis(visit_id: str, user: dict = Depends(require_roles(*VISIT_WRITE_ROLES))):
+async def visit_clear_primary_diagnosis(visit_id: str, user: dict = Depends(require_visit_access(*VISIT_WRITE_ROLES))):
     v = await _get_visit_for_write(visit_id, user)
     await dx_mod.clear(db, v, user)
     await audit("visit_diagnosis_cleared", "visit", v["id"], user)
@@ -8106,7 +8157,7 @@ class ServiceSelectBody(BaseModel):
 
 
 @api.post("/internal/visits/{visit_id}/service/select")
-async def visit_service_select(visit_id: str, body: ServiceSelectBody, user: dict = Depends(require_roles(*VISIT_WRITE_ROLES))):
+async def visit_service_select(visit_id: str, body: ServiceSelectBody, user: dict = Depends(require_visit_access(*VISIT_WRITE_ROLES))):
     v = await _get_visit_for_write(visit_id, user)
     svc = await svc_mod.select(db, v, body.catalog_id, user)
     if svc is None:
@@ -8116,7 +8167,7 @@ async def visit_service_select(visit_id: str, body: ServiceSelectBody, user: dic
 
 
 @api.delete("/internal/visits/{visit_id}/service/primary")
-async def visit_service_clear_primary(visit_id: str, user: dict = Depends(require_roles(*VISIT_WRITE_ROLES))):
+async def visit_service_clear_primary(visit_id: str, user: dict = Depends(require_visit_access(*VISIT_WRITE_ROLES))):
     v = await _get_visit_for_write(visit_id, user)
     svc = await svc_mod.remove(db, v, None, user)
     await audit("visit_service_clear_primary", "visit", v["id"], user)
@@ -8124,7 +8175,7 @@ async def visit_service_clear_primary(visit_id: str, user: dict = Depends(requir
 
 
 @api.delete("/internal/visits/{visit_id}/service/additional/{catalog_id}")
-async def visit_service_remove_additional(visit_id: str, catalog_id: str, user: dict = Depends(require_roles(*VISIT_WRITE_ROLES))):
+async def visit_service_remove_additional(visit_id: str, catalog_id: str, user: dict = Depends(require_visit_access(*VISIT_WRITE_ROLES))):
     v = await _get_visit_for_write(visit_id, user)
     svc = await svc_mod.remove(db, v, catalog_id, user)
     await audit("visit_service_remove_additional", "visit", v["id"], user, meta={"catalog_id": catalog_id})
@@ -8132,7 +8183,7 @@ async def visit_service_remove_additional(visit_id: str, catalog_id: str, user: 
 
 
 @api.get("/internal/soap-helpers/{helper_id}")
-async def soap_helper_get(helper_id: str, user: dict = Depends(require_roles(*VISIT_WRITE_ROLES))):
+async def soap_helper_get(helper_id: str, user: dict = Depends(require_visit_access(*VISIT_WRITE_ROLES))):
     h = await helpers_mod.get(db, user, helper_id)
     if not h:
         raise HTTPException(status_code=404, detail="Not found.")
@@ -8145,7 +8196,7 @@ class HelperUsedBody(BaseModel):
 
 
 @api.post("/internal/visits/{visit_id}/helper-used")
-async def visit_helper_used(visit_id: str, body: HelperUsedBody, user: dict = Depends(require_roles(*VISIT_WRITE_ROLES))):
+async def visit_helper_used(visit_id: str, body: HelperUsedBody, user: dict = Depends(require_visit_access(*VISIT_WRITE_ROLES))):
     """Audit-only: records that a helper's text was explicitly inserted. Note text itself flows through PATCH /soap."""
     v = await _get_visit_for_write(visit_id, user)
     h = await helpers_mod.get(db, user, body.helper_id)
@@ -8457,6 +8508,7 @@ async def internal_send_rx(
                     "phone": p.get("phone")}
     if not snap:
         raise HTTPException(status_code=404, detail="Patient not found.")
+    await block_synthetic(snap["patient_id"], snap.get("directory_id"), what="send_rx", user=user)
 
     # --- Pharmacy (must be a real portal account) ---
     acct = await _pharmacy_account(pharmacy_id)
@@ -8814,6 +8866,48 @@ class DataHygieneBody(BaseModel):
     operation: str  # stamp_practice_id | backfill_slot_locks
     appointment_ids: List[str]
     dry_run: bool = True
+
+
+class SyntheticPatientsBody(BaseModel):
+    token: str
+
+
+SYNTHETIC_PATIENTS = [
+    {"visita_patient_id": "TEST-F-001", "first_name": "Testfemale", "last_name": "SYNTHETIC-ZZ", "date_of_birth": "1985-03-15",
+     "sex": "Female", "sex_code": None, "health_card_number": "0000000001", "health_card_version_code": "ZZ",
+     "address": "1 Test Lane", "city": "Testville", "province": "ON", "postal_code": "A0A 0A0", "cell_phone": "000-000-0001"},
+    {"visita_patient_id": "TEST-M-001", "first_name": "Testmale", "last_name": "SYNTHETIC-ZZ", "date_of_birth": "1978-09-22",
+     "sex": "Male", "sex_code": None, "health_card_number": "0000000002", "health_card_version_code": "ZZ",
+     "address": "2 Test Lane", "city": "Testville", "province": "ON", "postal_code": "A0A 0A0", "cell_phone": "000-000-0002"},
+]
+
+
+@api.post("/internal/admin/synthetic-test-patients")
+async def admin_create_synthetic_patients(body: SyntheticPatientsBody, user: dict = Depends(require_roles("admin"))):
+    """Admin + MAINTENANCE_TOKEN gated. Creates EXACTLY two directory-only synthetic test patients
+    (create-if-missing by TEST PIN). No portal account, no email. Never touches real records."""
+    expected = os.environ.get("MAINTENANCE_TOKEN", "")
+    if not expected or not secrets.compare_digest(body.token, expected):
+        raise HTTPException(status_code=403, detail="Invalid maintenance token.")
+    out = []
+    for sp in SYNTHETIC_PATIENTS:
+        existing = await db.patient_directory.find_one({"visita_patient_id": sp["visita_patient_id"]}, {"_id": 0})
+        if existing:
+            out.append({"id": existing["id"], "visita_patient_id": sp["visita_patient_id"], "created": False})
+            continue
+        doc = {
+            "id": str(uuid.uuid4()), **sp, "email": None, "home_phone": None, "unit": None,
+            "patient_status": directory_mod.ACTIVE, "linked_patient_id": None, "practice_id": user.get("practice_id"),
+            "is_synthetic": True, "synthetic_marker": SYNTHETIC_MARKER, "notes": SYNTHETIC_MARKER,
+            "norm_first": directory_mod.norm_name(sp["first_name"]), "norm_last": directory_mod.norm_name(sp["last_name"]),
+            "norm_dob": directory_mod.norm_dob(sp["date_of_birth"]), "norm_hcn": directory_mod.norm_hcn(sp["health_card_number"]),
+            "import_source": "synthetic_test", "imported_at": now_iso(), "updated_at": now_iso(),
+        }
+        await db.patient_directory.insert_one({**doc})
+        await audit("synthetic_test_patient_created", "patient_directory", doc["id"], user,
+                    meta={"visita_patient_id": sp["visita_patient_id"], "marker": SYNTHETIC_MARKER})
+        out.append({"id": doc["id"], "visita_patient_id": sp["visita_patient_id"], "created": True})
+    return {"patients": out, "marker": SYNTHETIC_MARKER}
 
 
 @api.post("/internal/admin/data-hygiene")

@@ -280,10 +280,11 @@ export default function Patients() {
                             <div className="flex items-center gap-2 mt-1">
                                 <span className={`inline-block px-2 py-0.5 rounded-sm text-xs ${selected.source === "portal" ? "bg-emerald-100 text-emerald-800 font-semibold" : "bg-slate-100 text-slate-600"}`}>{statusLabel(selected.patient_status)}</span>
                                 <PortalBadge access={selected.portal_access} review={selected.identity_review} />
+                                {selected.is_synthetic && <span className="inline-block px-2 py-0.5 rounded-sm text-xs font-bold bg-fuchsia-100 text-fuchsia-800 border border-fuchsia-300" data-testid="synthetic-badge">SYNTHETIC TEST PATIENT — NOT FOR REAL CLINICAL CARE</span>}
                             </div>
                         </div>
                         <div className="flex items-center justify-end flex-wrap gap-2">
-                            {user?.role === "physician" && !editing && <StartEncounterButton patient={selected} />}
+                            {user?.role === "physician" && user?.encounter_enabled && !editing && <StartEncounterButton patient={selected} />}
                             {canEdit && !editing && (
                                 <Button variant="outline" size="sm" data-testid="patient-edit-btn" onClick={startEdit}>
                                     <Pencil className="w-3.5 h-3.5 mr-1" /> Edit Patient Information
@@ -427,7 +428,7 @@ export default function Patients() {
                     </p>
                     </>
                     )}
-                    {!editing && ["admin", "physician"].includes(user?.role) && (
+                    {!editing && (user?.role === "admin" || (user?.role === "physician" && user?.encounter_enabled)) && (
                         <VisitHistory patientRef={patientRefOf(selected)} />
                     )}
                     {!editing && selected.patient_id && ["admin", "physician"].includes(user?.role) && (

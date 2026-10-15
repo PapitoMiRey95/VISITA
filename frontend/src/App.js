@@ -109,7 +109,7 @@ function App() {
                     <Route
                         path="/internal/encounter"
                         element={
-                            <RoleRoute roles={["physician"]}>
+                            <RoleRoute roles={["physician"]} requireEncounter>
                                 <EncounterPage />
                             </RoleRoute>
                         }
@@ -117,7 +117,7 @@ function App() {
                     <Route
                         path="/internal/encounter/:visitId"
                         element={
-                            <RoleRoute roles={["physician"]}>
+                            <RoleRoute roles={["physician"]} requireEncounter>
                                 <EncounterPage />
                             </RoleRoute>
                         }

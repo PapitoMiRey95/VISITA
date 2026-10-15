@@ -1,0 +1,38 @@
+{
+  "summary": "FRONTEND-only E2E of appointment duplicate prevention on Preview using SYNTHETIC data only (directory patient 'ZZTEST2563, Uisynth' PIN 9256 + verified portal patient 'ZZTEST2563, Portalsynth' uisynth-2563@synthetic.test). All 4 requested flows PASS. (1) Staff Calendar: booked Oct 26 1:00 PM -> toast 'Appointment booked and patient notified.'; second booking same patient Oct 26 1:30 PM -> amber same-day-override-panel with same-day-existing 'APT-000230 · 2026 Oct - 26 13:00 · UI synth first'; same-day-override-confirm disabled for empty AND whitespace-only reason, enabled after reason; confirm -> toast 'Appointment booked with same-day override (audited).', dialog closes, 2 appts shown on Oct 26. Oct 27 booking succeeded with no panel. (2) Review tab (appt-tab-review 'Review (2)'): week-flag listed patient name, PIN 9256, week Oct 26–Nov 01, '3 appointments', dates/times/reasons; same-day-dupe listed patient with '2 appointments' and OVERRIDE badge on APT-000231 only. Cancel from Calendar (reason radio required — cancel-free-slot disabled until chosen): after cancelling Tuesday flag stayed with count 2; after cancelling the override appt -> 'Review (0)', week-flags-empty and same-day-dupes-empty shown. (3) Portal: Nov 2 1:00 PM booked ('Appointment confirmed.'); Nov 2 1:30 PM -> error toast 'You already have an appointment on this day. Only one appointment per day is allowed — please choose another day, or reschedule your existing appointment.', no override UI/text anywhere, still 1 active card; Nov 3 1:00 PM booked (2 cards). (4) Cleanup done: 5 appointment_requests, slots, day locks, review flags, notifications, users/patients/directory docs deleted; verified 0 leftovers. No real patients/appointments touched.",
+  "backend_issues": {
+    "critical": [],
+    "minor": [
+      {"endpoint": "GET /api/portal/overview", "issue": "500 KeyError 'patient_type' when a patients doc lacks patient_type (hit with my first synthetic seed). Real patients have it, so only a robustness issue — use p.get('patient_type'). Seed script fixed to include patient_type='ohip'."},
+      {"endpoint": "appt_guard.SAME_DAY_MSG (portal 409)", "issue": "Same-day block message is English-only; portal supports ES (EN/ES toggle) and formatErr shows server text verbatim. Consider returning code and translating client-side via i18n using detail.code=SAME_DAY_EXISTS."},
+      {"endpoint": "appt_guard.refresh_week_flags", "issue": "Week-flag appointment items omit same_day_override, so OVERRIDE badge is not shown in the week-flag list (only in same-day-dupe list). Add 'same_day_override' to the items projection for consistency."}
+    ]
+  },
+  "frontend_issues": {
+    "ui_bugs": [
+      {"component": "Calendar.jsx BookSlotDialog", "issue": "Code review: clicking 'change' (setPatient(null)) does not reset conflict/overrideReason state. If staff hits a same-day conflict, then changes to a different patient, the override panel (with stale 'existing' list of the previous patient) is shown instead of 'Confirm & Book', forcing an unnecessary audited override. Reset setConflict(null); setOverrideReason('') when patient changes. Not UI-verified.", "selector": "[data-testid='cal-book-dialog'] button:has-text('change')", "priority": "MEDIUM"}
+    ],
+    "integration_issues": [],
+    "design_issues": [
+      {"screen": "SameDayOverride panel", "issues": ["Existing appt time shown in 24h ('13:00') while dialog title and calendar use 12h ('1:30 PM') — use the same timeLabel formatter.", "'change' patient link is low-contrast slate-400 and has no data-testid."]},
+      {"screen": "Portal /portal/appointments", "issues": ["After a same-day 409, the blocked day remains selectable and still shows free times; consider marking days where the patient already has an active appointment (UX hint, not required)."]}
+    ]
+  },
+  "test_report_links": ["/app/backend/tests/ui_dupguard_seed.py"],
+  "action_items": [
+    "Reset conflict + overrideReason in BookSlotDialog (and verify BookAppointmentModal) when the selected patient changes",
+    "Use p.get('patient_type') in /api/portal/overview (and portal_access paths) to avoid 500 on docs missing patient_type",
+    "Optional: i18n for SAME_DAY_EXISTS portal message; include same_day_override in week-flag items; 12h time format in SameDayOverride existing list"
+  ],
+  "critical_code_review_comments": [
+    "BookSlotDialog stale conflict state on patient change (see ui_bugs)",
+    "Portal 409 message hard-coded English server-side"
+  ],
+  "updated_files": ["/app/backend/tests/ui_dupguard_seed.py (new: seed|cleanup|slots helper for synthetic UI testing)"],
+  "success_rate": {"backend": "N/A (skipped per request)", "frontend": "100% (4/4 requested flows)"},
+  "seed_data_creation": "Synthetic directory + portal patient created via /app/backend/tests/ui_dupguard_seed.py seed (tag 2563) and fully removed via 'cleanup'. Audit log entries from the test remain (immutable audit trail).",
+  "retest_needed": false,
+  "should_main_agent_self_test": true,
+  "context_for_next_testing_agent": "Use `python /app/backend/tests/ui_dupguard_seed.py seed` (state in /tmp/ui_dupguard_state.json), `slots` to list free slots, `cleanup` to remove. Synthetic portal patient password Synthetic2026!; search 'ZZTEST<tag>' in cal-book-search. Calendar navigation: cal-view-week + cal-next until cal-day contains 'YYYY Mon - DD'. Portal calendar is react-day-picker: button[name='day'], next month button[name='next-month']. Preview date at test time: 2026-10-15.",
+  "test_credentials": "staff@visita.demo / Staff2026! (from /app/memory/test_credentials.md) worked."
+}

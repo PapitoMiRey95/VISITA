@@ -816,3 +816,12 @@ PROD FOLLOW-UPS (need explicit GO, scripts not yet written): stamp practice_id o
 - Rx row identity: lib/medRows.js (useMedRows → stable `_uid`, stripped before send); SendPrescription.jsx + PharmacyRx.jsx key med cards/review rows on `_uid`. Verified: dose typed in row 2 stays with row 2 after deleting row 1.
 - VisitHistory.jsx Resume: failed resume no longer navigates; toast error shown.
 - Known pre-existing test failures unrelated: test_diag_and_template_profiles (stale SYNTH fixture expectations), identity test harnesses need fixture ids via env.
+
+## Appointment Duplicate Prevention (2026-06 fork, PREVIEW ONLY — not deployed)
+- Rules engine `/app/backend/appt_guard.py`: canonical identity (directory id <-> linked portal id, two-way), ACTIVE = requested/confirmed/rescheduled (cancelled/declined/completed/no_show never count), America/Toronto local day, Mon-Sun weeks.
+- Same-day block: record pre-check + atomic `appointment_day_locks` unique index (practice_id, patient_key, date) → only one concurrent same-day booking succeeds. 409 `{code: SAME_DAY_EXISTS}`.
+- Weekly review flag `appointment_review_flags` (type MULTIPLE_APPOINTMENTS_WEEK, OPEN/RESOLVED, history preserved). Auto-resolves when active count < 2. Surfaced in Work Hub → Appointments → "Review" tab (`appt-tab-review`) together with read-only existing same-day duplicates (nothing auto-modified).
+- Staff/physician/admin override only via `override_same_day:true` + required `override_reason` on POST /internal/calendar/book and /internal/book-appointment (UI: SameDayOverride panel). Portal never overrides. Reschedule onto a busy day blocked for everyone; same-day move allowed; appointment never counts against itself.
+- Audit actions: appointment_same_day_blocked, appointment_week_review_created/resolved, appointment_same_day_override.
+- Tests: /app/backend/tests/test_appt_dup_guard.py (8/8, scenarios A–I) + testing_agent iteration_86 (frontend flows pass).
+- NOTE: Production has known existing same-day duplicates; Review tab will surface them after deploy (user to review manually). No deploy performed.

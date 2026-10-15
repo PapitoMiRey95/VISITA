@@ -825,3 +825,12 @@ PROD FOLLOW-UPS (need explicit GO, scripts not yet written): stamp practice_id o
 - Audit actions: appointment_same_day_blocked, appointment_week_review_created/resolved, appointment_same_day_override.
 - Tests: /app/backend/tests/test_appt_dup_guard.py (8/8, scenarios A–I) + testing_agent iteration_86 (frontend flows pass).
 - NOTE: Production has known existing same-day duplicates; Review tab will surface them after deploy (user to review manually). No deploy performed.
+
+## PRODUCTION RELEASE 2026-10-15 — DEPLOYED (commit e024058, 4th attempt)
+- Live at https://visitaemr.com. Readiness /api/health 200; rollback point = prior run 1c8e6185 / image 825b53cd.
+- Startup: background bootstrap; CRITICAL (gate readiness) = mongo ping + integrity/unique indexes + create-if-missing seed; NON-CRITICAL fail-soft = audit_logs perf indexes + storage warm-up. listIndexes-first everywhere (index_bootstrap.py). seed.py refuses demo seeding/migrations on live APP_BASE_URL.
+- Encounter pilot: ENCOUNTER_PILOT_USERS=PAGUAYO (prod secret). require_visit_access + user.encounter_enabled gate UI/routes.
+- Synthetic prod patients created (directory-only, is_synthetic): TEST-F-001 (SYNTHETIC-ZZ, Testfemale, id 23032022-8353-4505-b7bd-aaa8e7b41081), TEST-M-001 (SYNTHETIC-ZZ, Testmale, id eab469e3-4c8a-4e27-a15e-ed927b257199). block_synthetic() 403s Rx/pharmacy/invoice/no-show fee/referral/exam result/portal link; emails skipped_synthetic.
+- Audit perf indexes in PROD: created_at_-1 EXISTS; other 5 still MISSING — apply via POST /api/internal/admin/maintenance/audit-indexes stalls (>100s, Cloudflare 524) → Atlas-side index build issue from new arm64 cluster; app unaffected. Platform support/Atlas check still needed.
+- Prod same-day duplicate surfaced in Review tab: TARDITTI, Juan Ramon 2026-10-19 (2) — user to review manually. No identity cleanup performed. PAGUAYO prod password untouched.
+- Preview TEST_PHYSICIAN_PASSWORD stale (user changed PAGUAYO preview pw) — physician regression tests need the new value.

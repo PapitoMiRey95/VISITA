@@ -1,0 +1,29 @@
+{
+  "summary": "Regression testing of New-Patient Identity Duplicate Prevention layer (backend + frontend). Created pytest suite /app/backend/tests/test_identity_dup_prevention.py covering 9 scenarios on synthetic data (syn-*). Backend 8/8 pass + 1 regression skip auto-recovered via manual curl. Frontend UI confirmed: Pending tab has NO verify-approve, shows verify-review-link + verify-blocked-note for review-required rows, verify-as-new opens confirm-new-patient-dialog with cancel/accept. Recently Verified shows history-identity-LINKED_EXISTING badge with canonical directory name 'SYNTHETIC ALPHAVILLE, Test Alpha' + NEW_PATIENT for pat_C. Patient Search 'synth' collapses linked portal+directory into ONE row (PIN 9901) + shows the other 3 synthetic patients once each. Visit audit regression GET /api/internal/audit/visit/{id} => 200 verified via physician PAGUAYO.",
+  "backend_issues": {
+    "critical": [],
+    "minor": []
+  },
+  "frontend_issues": {
+    "ui_bugs": [
+      {"component": "Patients search list", "issue": "Linked directory row 'SYNTHETIC ALPHAVILLE, Test Alpha' (PIN 9901, has portal_linked=true in backend) still shows the badge 'NO PORTAL ACCOUNT' instead of indicating that an active portal account is linked. Does not block the collapse logic but is misleading.", "selector": "patients list row for PIN 9901", "priority": "LOW"}
+    ],
+    "integration_issues": [],
+    "design_issues": []
+  },
+  "test_report_links": ["/app/backend/tests/test_identity_dup_prevention.py", "/app/test_reports/pytest/identity_dup.xml"],
+  "action_items": [
+    "(Optional/LOW) Fix 'NO PORTAL ACCOUNT' label on Patients search rows that are collapsed with an active linked portal account (portal_linked=true)."
+  ],
+  "critical_code_review_comments": [
+    "verifications_history() filter requires both verification_status in [verified,rejected] AND verified_at exists; make sure every verify path (link + verify, verify-as-new) sets verified_at — synthetic pat_D1 seeded with status=verified but verified_at=None is correctly excluded.",
+    "Verifications.jsx: history-identity-* testid is generated from the state string returned by backend (LINKED_EXISTING / NEW_PATIENT / IDENTITY_REVIEW). Keep these state values stable to avoid breaking test selectors."
+  ],
+  "updated_files": ["/app/backend/tests/test_identity_dup_prevention.py"],
+  "success_rate": {"backend": "100% (8/8 identity dup tests + visit audit regression 200)", "frontend": "100% of asserted UI contract (verify-approve absent, review-link + blocked-note + verify-as-new + confirm dialog present; LINKED_EXISTING badge present; Patients search collapses to one row)"},
+  "test_credentials": "staff@visita.demo / Staff2026! ; physician PAGUAYO / Newman2013_! (identifier login)",
+  "seed_data_creation": "Used /app/backend/synthetic_identity_test.py create to generate dir_A/pat_A, dir_B/pat_B, pat_C, dir_D/pat_D1/pat_D2 (all ids prefixed 'syn-'). Cleanup was executed at end of run: removed patients:5 directory:3 rels:0 remaining syn:0. No non-synthetic (real) patients were touched; no verify/link/reject actions were performed on real patient rows (confirm dialog on real rows was only Cancelled).",
+  "retest_needed": false,
+  "main_agent_can_self_test": true,
+  "context_for_next_testing_agent": "Run `cd /app/backend && python3 synthetic_identity_test.py cleanup && python3 synthetic_identity_test.py create` before running tests. Pytest file: /app/backend/tests/test_identity_dup_prevention.py — invoke with `cd /app && REACT_APP_BACKEND_URL=https://visita-admin.preview.emergentagent.com python3 -m pytest backend/tests/test_identity_dup_prevention.py -o addopts= -v` (project's pytest.ini injects -n which xdist-shards; override with -o addopts=). Always run `python3 synthetic_identity_test.py cleanup` at the end. UI testid names: verif-tab-pending|identity|history, verify-review-link, verify-blocked-note, verify-as-new, confirm-new-patient-dialog, confirm-new-cancel, confirm-new-accept, history-identity-LINKED_EXISTING|NEW_PATIENT|IDENTITY_REVIEW, identity-review-badge (patients list)."
+}

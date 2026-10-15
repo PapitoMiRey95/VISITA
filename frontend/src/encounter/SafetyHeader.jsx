@@ -38,7 +38,7 @@ function Item({ label, value, testid, className = "" }) {
 
 const STATUS_STYLE = { READY: "bg-slate-200 text-slate-700", RUNNING: "bg-emerald-100 text-emerald-800", PAUSED: "bg-amber-100 text-amber-800",
     STOPPED: "bg-amber-100 text-amber-900 border border-amber-400", SIGNED: "bg-visita-ribbon text-white" };
-const STATUS_TEXT = { READY: "READY · NOT STARTED", RUNNING: "IN PROGRESS", PAUSED: "PAUSED (LEGACY)", STOPPED: "VISIT STOPPED — READY TO SIGN", SIGNED: "SIGNED · READ ONLY" };
+const STATUS_TEXT = { READY: "READY · NOT STARTED", RUNNING: "IN PROGRESS", PAUSED: "PAUSED (LEGACY)", STOPPED: "STOPPED · UNSIGNED", SIGNED: "SIGNED · READ ONLY" };
 
 /* Center-column visit timer strip: status · timer · primary Start/Stop/Resume toggle (sits above SOAP Helper). */
 export function VisitTimerStrip({ timerState, elapsed, toggle, signedInfo }) {

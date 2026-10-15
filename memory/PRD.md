@@ -771,3 +771,8 @@ PROD FOLLOW-UPS (need explicit GO, scripts not yet written): stamp practice_id o
 - `VisitHx.jsx`: READ-ONLY list (Date | Dx | Visit Ref, newest first, filter by dx/ref/date/code) + detail (meta, signature line, S/O/CodingBand/P, vitals, dx/service). Zero mutation controls.
 - Backend: GET /internal/patients/{ref}/visits now returns primary_dx + accepts exclude_visit_id (current visit excluded); new GET /internal/visits/{id}/record → read_only_record(): SIGNED → signed_snapshot authoritative (source SIGNED_SNAPSHOT) else LIVE fields; legacy COMPLETED shown as-is, no fake signature. Audits visit_read via visit_hx. No historical PUT/PATCH/POST/DELETE.
 - Note: QA sample visit VIS-000004 (ROMERO CUAHUEY) was stopped+signed during testing and remains SIGNED.
+
+## Lifecycle correction — STOPPED_UNSIGNED (Jun 2026, PREVIEW ONLY, verified)
+- Statuses: IN_PROGRESS → STOPPED_UNSIGNED (STOP: timer frozen forever, documentation STILL editable & audited) → SIGNED (only lock point). READY_TO_SIGN kept as legacy alias (UNSIGNED_STOPPED tuple) — 5 Preview visits VIS-000037/83/85/86/87 (RODRIGUES DA CUNHA) still carry it; NOT migrated (awaiting approval; safe 1-line status rename).
+- Guards: `_get_visit_for_write` (EDITABLE_STATUSES) for soap/vitals/dx/service/helper; `_get_visit_for_timer` (IN_PROGRESS only) for stop/resume → 409 VISIT_STOPPED / VISIT_SIGNED. save_soap/save_vitals now match EDITABLE_STATUSES (bug: previously silently no-op'd after stop).
+- UI: "STOPPED · UNSIGNED" state, SIGN VISIT button, strong "Sign and lock this visit?" dialog; unsigned-visits amber banner (links) in Encounter; Visit Hx shows STOPPED · UNSIGNED + "Continue Documentation" (assigned physician only; navigates, never resumes timer).

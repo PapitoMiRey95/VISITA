@@ -13,8 +13,11 @@ from typing import Optional
 from pymongo.errors import DuplicateKeyError
 
 COLL = "visits"
-IN_PROGRESS, READY_TO_SIGN, SIGNED = "IN_PROGRESS", "READY_TO_SIGN", "SIGNED"
-LOCKED_STATUSES = (READY_TO_SIGN, SIGNED)  # no clinical mutation allowed server-side
+IN_PROGRESS, STOPPED_UNSIGNED, SIGNED = "IN_PROGRESS", "STOPPED_UNSIGNED", "SIGNED"
+READY_TO_SIGN = "READY_TO_SIGN"  # legacy alias (first Preview iteration) — treated exactly as STOPPED_UNSIGNED
+UNSIGNED_STOPPED = (STOPPED_UNSIGNED, READY_TO_SIGN)
+EDITABLE_STATUSES = (IN_PROGRESS, *UNSIGNED_STOPPED)  # documentation stays open until SIGNED
+LOCKED_STATUSES = (SIGNED,)  # only signing locks the record server-side
 RUNNING, PAUSED, STOPPED = "RUNNING", "PAUSED", "STOPPED"
 SNAPSHOT_VERSION = 1
 TIMER_FIELDS = ("timer_state", "elapsed_seconds", "running_since", "paused_at")
@@ -124,7 +127,9 @@ async def save_soap(db, visit, patch: dict, user):
     now = _now()
     sets = {f"soap.{k}": v for k, v in changed.items()}
     sets.update({"last_saved_at": now, "updated_at": now, "updated_by": {"id": user["id"], "name": user.get("name")}})
-    await db[COLL].update_one({"id": visit["id"], "status": IN_PROGRESS}, {"$set": sets, "$inc": {"save_count": 1}})
+    res = await db[COLL].update_one({"id": visit["id"], "status": {"$in": list(EDITABLE_STATUSES)}}, {"$set": sets, "$inc": {"save_count": 1}})
+    if not res.matched_count:
+        return [], visit
     return sorted(changed), await db[COLL].find_one({"id": visit["id"]}, {"_id": 0})
 
 
@@ -173,8 +178,10 @@ async def save_vitals(db, visit, patch: dict, user):
     now = _now()
     merged.update({"bmi": compute_bmi(merged["weight_kg"], merged["height_cm"]), "weight_lb": compute_weight_lb(merged["weight_kg"]), "updated_at": now,
                    "updated_by": {"id": user["id"], "name": user.get("name")}})
-    await db[COLL].update_one({"id": visit["id"], "status": IN_PROGRESS},
-                              {"$set": {"vitals": merged, "updated_at": now, "updated_by": merged["updated_by"]}})
+    res = await db[COLL].update_one({"id": visit["id"], "status": {"$in": list(EDITABLE_STATUSES)}},
+                                    {"$set": {"vitals": merged, "updated_at": now, "updated_by": merged["updated_by"]}})
+    if not res.matched_count:
+        return [], visit
     return sorted(changed), await db[COLL].find_one({"id": visit["id"]}, {"_id": 0})
 
 
@@ -228,18 +235,19 @@ async def timer_resume(db, visit, user):
 
 # ---------------- Final lifecycle: IN_PROGRESS -> READY_TO_SIGN (stop, irreversible) -> SIGNED (immutable snapshot) ----------------
 def lock_error(visit: dict):
-    """Consistent 409 payload for any mutation attempted on a stopped/signed visit."""
-    code = "VISIT_SIGNED" if visit.get("status") == SIGNED else "VISIT_LOCKED"
-    return {"code": code, "status": visit.get("status"), "message": "This visit is locked and can no longer be modified." if code == "VISIT_LOCKED"
-            else "This visit is signed. Corrections require an auditable addendum."}
+    """Consistent 409 payload: VISIT_SIGNED (record locked) or VISIT_STOPPED (encounter timer ended; documentation still open)."""
+    code = "VISIT_SIGNED" if visit.get("status") == SIGNED else "VISIT_STOPPED"
+    return {"code": code, "status": visit.get("status"), "message": "This visit is signed. Corrections require an auditable addendum." if code == "VISIT_SIGNED"
+            else "The encounter has ended; the timer cannot be changed. Documentation remains editable until signed."}
 
 
 async def stop_final(db, visit, user):
-    """Irreversible STOP: fold running time, freeze elapsed, status READY_TO_SIGN. Resume is no longer possible."""
+    """Irreversible STOP of the ENCOUNTER: fold running time, freeze elapsed, status STOPPED_UNSIGNED. Timer can never resume;
+    documentation stays editable (audited) until SIGN."""
     t = timer_of(visit)
     now = _now()
     elapsed = int(t["elapsed_seconds"] or 0) + (_secs_since(t["running_since"] or now) if t["timer_state"] == RUNNING else 0)
-    sets = {"status": READY_TO_SIGN, "stopped_at": now, "timer_state": STOPPED, "elapsed_seconds": elapsed, "running_since": None,
+    sets = {"status": STOPPED_UNSIGNED, "stopped_at": now, "timer_state": STOPPED, "elapsed_seconds": elapsed, "running_since": None,
             "paused_at": None, "updated_at": now, "updated_by": {"id": user["id"], "name": user.get("name")}}
     res = await db[COLL].update_one({"id": visit["id"], "status": IN_PROGRESS}, {"$set": sets})
     return sets if res.modified_count else None
@@ -262,7 +270,7 @@ def build_snapshot(visit: dict, signed_by: dict, signed_at: str) -> dict:
 
 
 async def sign(db, visit, user, professional_id):
-    """READY_TO_SIGN -> SIGNED with immutable snapshot + sha256 of canonical JSON. Authenticated identity only."""
+    """STOPPED_UNSIGNED -> SIGNED with immutable snapshot (exact reviewed state) + sha256 of canonical JSON. Authenticated identity only."""
     now = _now()
     signed_by = {"user_id": user["id"], "physician_user_id": visit.get("physician_user_id"), "professional_id": professional_id,
                  "physician_name": user.get("name"), "role": user.get("role")}
@@ -271,7 +279,7 @@ async def sign(db, visit, user, professional_id):
     sets = {"status": SIGNED, "signed_at": now, "signed_by": signed_by, "signed_snapshot": snap, "signed_snapshot_version": SNAPSHOT_VERSION,
             "signed_snapshot_hash": f"sha256:{digest}", "addenda": visit.get("addenda") or [],
             "updated_at": now, "updated_by": {"id": user["id"], "name": user.get("name")}}
-    res = await db[COLL].update_one({"id": visit["id"], "status": READY_TO_SIGN}, {"$set": sets})
+    res = await db[COLL].update_one({"id": visit["id"], "status": {"$in": list(UNSIGNED_STOPPED)}}, {"$set": sets})
     return sets if res.modified_count else None
 
 
@@ -282,6 +290,7 @@ def read_only_record(v: dict) -> dict:
     """Visit Hx: SIGNED -> signed_snapshot is authoritative; otherwise the stored live fields. Never fabricates."""
     signed = v.get("status") == SIGNED and bool(v.get("signed_snapshot"))
     src = v["signed_snapshot"] if signed else v
-    return {"source": "SIGNED_SNAPSHOT" if signed else "LIVE", "status": v.get("status"), "signed_at": v.get("signed_at"), "signed_by": v.get("signed_by"),
+    return {"source": "SIGNED_SNAPSHOT" if signed else "LIVE", "status": v.get("status"), "physician_user_id": v.get("physician_user_id"),
+            "signed_at": v.get("signed_at"), "signed_by": v.get("signed_by"),
             "signed_snapshot_version": v.get("signed_snapshot_version"), "signed_snapshot_hash": v.get("signed_snapshot_hash"),
             "record": {k: src.get(k) for k in RECORD_KEYS}}

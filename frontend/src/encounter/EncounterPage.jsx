@@ -5,7 +5,7 @@ import { Pill, FlaskConical } from "lucide-react";
 import { api, formatErr } from "../lib/api";
 import { useAuth } from "../context/AuthContext";
 import { PmhxSection, PshxSection, AllergySection } from "./ClinicalHistory";
-import { formatDateTime } from "../lib/date";
+import { formatDate, formatDateTime } from "../lib/date";
 import { Textarea } from "../components/ui/textarea";
 import { Button } from "../components/ui/button";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from "../components/ui/dialog";
@@ -135,10 +135,12 @@ function ContextColumn({ ctx, patientRef }) {
     );
 }
 
+const UNSIGNED_STOPPED = ["STOPPED_UNSIGNED", "READY_TO_SIGN"];
+const isStopped = (v) => !!v && UNSIGNED_STOPPED.includes(v.status);
 const lifecycleState = (visit) => {
     if (!visit) return "READY";
     if (visit.status === "SIGNED") return "SIGNED";
-    if (visit.status === "READY_TO_SIGN") return "STOPPED";
+    if (isStopped(visit)) return "STOPPED";
     return visit.timer_state || "RUNNING";
 };
 
@@ -152,7 +154,13 @@ function Workspace({ shell, visit, setVisit }) {
     const [tab, setTab] = useState("visit_new"); // Visit New stays MOUNTED while other tabs show → timer/lifecycle/autosave untouched
     const [busy, setBusy] = useState(false);
     const patientRef = shell.patient_ref;
-    const locked = !!visit && visit.status !== "IN_PROGRESS";
+    const locked = visit?.status === "SIGNED"; // ONLY signing locks the record; STOPPED_UNSIGNED stays editable
+    const [unsignedPrev, setUnsignedPrev] = useState([]);
+    useEffect(() => {
+        if (!patientRef) return;
+        api.get(`/internal/patients/${encodeURIComponent(patientRef)}/visits`, { params: visit?.id ? { exclude_visit_id: visit.id } : {} })
+            .then(({ data }) => setUnsignedPrev(data.visits.filter((r) => UNSIGNED_STOPPED.includes(r.status)))).catch(() => setUnsignedPrev([]));
+    }, [patientRef, visit?.id, visit?.status]);
     const timer = visit ? { timer_state: visit.timer_state, elapsed_seconds: visit.elapsed_seconds, running_since: visit.running_since } : null;
     const timerState = lifecycleState(visit);
     const elapsed = useElapsed(timer, shell.server_time);
@@ -177,7 +185,7 @@ function Workspace({ shell, visit, setVisit }) {
     const onToggle = () => {
         if (!visit) { setTypeOpen(true); return; }
         if (visit.status === "IN_PROGRESS") setConfirm("stop");
-        else if (visit.status === "READY_TO_SIGN") setConfirm("sign");
+        else if (isStopped(visit)) setConfirm("sign");
     };
     const onConfirm = async () => {
         const which = confirm; setConfirm(null); setBusy(true);
@@ -219,6 +227,16 @@ function Workspace({ shell, visit, setVisit }) {
         <div className="h-screen bg-visita-bg flex flex-col" data-testid="encounter-mode" data-timer-state={timerState} data-visit-status={visit?.status || "NOT_STARTED"} data-locked={locked}>
             <SafetyHeader visit={shell} typeLabel={visit ? encounterTypeLabel(visit.encounter_type) : "Not started"} onExit={onExit} exiting={exiting}
                 tabs={<EncounterTabs value={tab} onChange={setTab} />} />
+            {unsignedPrev.length > 0 && (
+                <div className="flex items-center gap-2 px-3 py-1 bg-amber-50 border-t border-amber-300 text-[11px] text-amber-900" data-testid="unsigned-visits-banner">
+                    <span className="font-bold">Unsigned documentation:</span>
+                    {unsignedPrev.map((r) => (
+                        <button key={r.id} type="button" onClick={() => nav(`/internal/encounter/${r.id}`)} data-testid={`unsigned-visit-link-${r.ref_number}`}
+                            className="underline underline-offset-2 hover:text-amber-700 font-semibold">{r.ref_number} · {formatDate(r.started_at)}</button>
+                    ))}
+                    <span className="text-amber-700">— earlier visit(s) stopped but not signed. Opening one does not restart its timer.</span>
+                </div>
+            )}
             {tab === "visit_hx" && <div className="flex-1 min-h-0 border-t border-black" data-testid="encounter-tab-panel-visit_hx"><VisitHx patientRef={patientRef} currentVisitId={visit?.id} active /></div>}
             {tab === "pmhx" && <div className="flex-1 min-h-0 border-t border-black bg-white p-6 text-sm text-slate-500 italic" data-testid="encounter-tab-panel-pmhx">PMHx / PSHx / Risks — next phase</div>}
             <main className={`flex-1 min-h-0 grid grid-cols-[minmax(0,1.25fr)_minmax(272px,0.62fr)_minmax(270px,1fr)] gap-0 p-0 bg-white border-t border-black ${tab === "visit_new" ? "" : "hidden"}`} data-testid="encounter-tab-panel-visit_new">
@@ -247,11 +265,11 @@ function Workspace({ shell, visit, setVisit }) {
             <Dialog open={!!confirm} onOpenChange={(o) => !o && setConfirm(null)}>
                 <DialogContent className="max-w-sm" data-testid={confirm === "sign" ? "sign-confirm-dialog" : "stop-confirm-dialog"}>
                     <DialogHeader>
-                        <DialogTitle>{confirm === "sign" ? "Sign this visit?" : "Stop this visit?"}</DialogTitle>
+                        <DialogTitle>{confirm === "sign" ? "Sign and lock this visit?" : "Stop this visit?"}</DialogTitle>
                         <DialogDescription>
                             {confirm === "sign"
-                                ? "By signing, you confirm this clinical record as your completed encounter note. The signed record will be locked. Later corrections must be made through an auditable addendum."
-                                : "Stopping will end the encounter and lock the clinical entry for signing. It cannot be resumed."}
+                                ? "You are confirming that you have reviewed this clinical record. After signing, the original Visit will be locked and cannot be edited. Any later correction must be made through an auditable addendum."
+                                : "Stopping ends the patient encounter and freezes the visit timer permanently — it cannot be resumed. You can still finish the documentation before signing."}
                         </DialogDescription>
                     </DialogHeader>
                     <DialogFooter>

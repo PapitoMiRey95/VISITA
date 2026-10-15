@@ -1,4 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
+import { useNavigate } from "react-router-dom";
+import { useAuth } from "../context/AuthContext";
 import { Search, ShieldCheck, History } from "lucide-react";
 import { api } from "../lib/api";
 import { formatDate, formatDateTime } from "../lib/date";
@@ -7,9 +9,10 @@ import { CodingBand } from "./ServiceSelector";
 
 /* Visit Hx — READ-ONLY historical Visit viewer. Zero mutation controls. SIGNED visits render from signed_snapshot. */
 const STATUS_BADGE = {
-    SIGNED: "bg-visita-ribbon text-white", READY_TO_SIGN: "bg-amber-100 text-amber-900", IN_PROGRESS: "bg-emerald-100 text-emerald-800", COMPLETED: "bg-slate-200 text-slate-700",
+    SIGNED: "bg-visita-ribbon text-white", STOPPED_UNSIGNED: "bg-amber-100 text-amber-900", READY_TO_SIGN: "bg-amber-100 text-amber-900", IN_PROGRESS: "bg-emerald-100 text-emerald-800", COMPLETED: "bg-slate-200 text-slate-700",
 };
-const statusLabel = (s) => ({ SIGNED: "SIGNED", READY_TO_SIGN: "STOPPED · UNSIGNED", IN_PROGRESS: "IN PROGRESS", COMPLETED: "COMPLETED (LEGACY)" }[s] || s || "—");
+const statusLabel = (s) => ({ SIGNED: "SIGNED", STOPPED_UNSIGNED: "STOPPED · UNSIGNED", READY_TO_SIGN: "STOPPED · UNSIGNED", IN_PROGRESS: "IN PROGRESS", COMPLETED: "COMPLETED (LEGACY)" }[s] || s || "—");
+const isUnsignedStopped = (s) => s === "STOPPED_UNSIGNED" || s === "READY_TO_SIGN";
 
 export function VisitHx({ patientRef, currentVisitId, active }) {
     const [rows, setRows] = useState(null);
@@ -65,7 +68,7 @@ export function VisitHx({ patientRef, currentVisitId, active }) {
             <section className="min-h-0 overflow-y-auto" data-testid="visit-hx-detail">
                 {!rec ? (
                     <div className="p-6 text-sm text-slate-400 italic" data-testid="visit-hx-none">{selId ? "Loading visit…" : "Select a previous visit to review it (read-only)."}</div>
-                ) : <HistoricalVisit data={rec} />}
+                ) : <HistoricalVisit data={rec} visitId={selId} />}
             </section>
         </div>
     );
@@ -74,8 +77,11 @@ export function VisitHx({ patientRef, currentVisitId, active }) {
 const VIT = [["Sst", "systolic_bp"], ["Dst", "diastolic_bp"], ["Bpm", "heart_rate"], ["Hgt", "height_cm"], ["WK", "weight_kg"], ["WL", "weight_lb"], ["BMI", "bmi"], ["°C", "temperature_c"], ["HC", "head_circumference_cm"], ["Lgt", "length_cm"]];
 const fmtHgt = (cm) => (cm == null ? null : (cm / 100).toFixed(2));
 
-function HistoricalVisit({ data }) {
+function HistoricalVisit({ data, visitId }) {
+    const nav = useNavigate();
+    const { user } = useAuth();
     const r = data.record || {};
+    const canContinue = isUnsignedStopped(data.status) && user?.role === "physician" && data.physician_user_id === user.id;
     const dx = (r.diagnoses || [])[0] || null;
     const vit = r.vitals || {};
     const hasVit = VIT.some(([, k]) => vit[k] != null);
@@ -94,6 +100,10 @@ function HistoricalVisit({ data }) {
                 <span>{r.physician_name}</span>
                 <span className={`px-1.5 py-px rounded-sm text-[10px] font-bold ${STATUS_BADGE[data.status] || "bg-slate-200 text-slate-700"}`} data-testid="visit-hx-status">{statusLabel(data.status)}</span>
                 <span className="ml-auto text-[10px] font-bold text-amber-800" data-testid="visit-hx-readonly">READ ONLY</span>
+                {canContinue && (
+                    <button type="button" onClick={() => nav(`/internal/encounter/${visitId}`)} data-testid="visit-hx-continue-documentation"
+                        className="h-6 px-2 rounded-sm bg-amber-500 hover:bg-amber-600 text-white text-[10px] font-bold">Continue Documentation</button>
+                )}
             </div>
             {data.source === "SIGNED_SNAPSHOT" && (
                 <div className="px-2 py-1 bg-visita-ribbon/5 border-b border-black text-[11px] text-slate-800 flex items-center gap-1.5" data-testid="visit-hx-signature">

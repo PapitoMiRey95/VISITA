@@ -7313,7 +7313,15 @@ async def _get_visit_scoped(visit_id: str, user: dict) -> dict:
 
 
 async def _get_visit_for_write(visit_id: str, user: dict) -> dict:
-    """Scoped visit that is still IN_PROGRESS. Stopped/signed visits reject every clinical mutation (409 VISIT_LOCKED / VISIT_SIGNED)."""
+    """Scoped visit whose documentation is still open (IN_PROGRESS or STOPPED_UNSIGNED). SIGNED rejects every mutation (409 VISIT_SIGNED)."""
+    v = await _get_visit_scoped(visit_id, user)
+    if v.get("status") not in visits_mod.EDITABLE_STATUSES:
+        raise HTTPException(status_code=409, detail=visits_mod.lock_error(v))
+    return v
+
+
+async def _get_visit_for_timer(visit_id: str, user: dict) -> dict:
+    """Timer/lifecycle changes only while IN_PROGRESS. Stopped (409 VISIT_STOPPED) or signed (409 VISIT_SIGNED) never resume."""
     v = await _get_visit_scoped(visit_id, user)
     if v.get("status") != visits_mod.IN_PROGRESS:
         raise HTTPException(status_code=409, detail=visits_mod.lock_error(v))
@@ -7461,8 +7469,8 @@ async def visit_exit(visit_id: str, user: dict = Depends(require_roles(*VISIT_WR
 
 @api.post("/internal/visits/{visit_id}/stop")
 async def visit_stop(visit_id: str, user: dict = Depends(require_roles(*VISIT_WRITE_ROLES))):
-    """FINAL stop: freezes time, locks all clinical editing, status READY_TO_SIGN. Irreversible (no resume). Does NOT sign."""
-    v = await _get_visit_for_write(visit_id, user)
+    """FINAL stop of the encounter: freezes time, status STOPPED_UNSIGNED. Irreversible (no resume). Documentation stays editable. Does NOT sign."""
+    v = await _get_visit_for_timer(visit_id, user)
     before = visits_mod.timer_of(v)["timer_state"]
     sets = await visits_mod.stop_final(db, v, user)
     if not sets:
@@ -7475,7 +7483,7 @@ async def visit_stop(visit_id: str, user: dict = Depends(require_roles(*VISIT_WR
 @api.post("/internal/visits/{visit_id}/resume")
 async def visit_resume(visit_id: str, user: dict = Depends(require_roles(*VISIT_WRITE_ROLES))):
     """Compatibility only for legacy PAUSED visits that are still IN_PROGRESS. Stopped/signed visits can never be resumed."""
-    v = await _get_visit_for_write(visit_id, user)
+    v = await _get_visit_for_timer(visit_id, user)
     before = visits_mod.timer_of(v)["timer_state"]
     t = await visits_mod.timer_resume(db, v, user)
     if before != t["timer_state"]:
@@ -7486,11 +7494,11 @@ async def visit_resume(visit_id: str, user: dict = Depends(require_roles(*VISIT_
 
 @api.post("/internal/visits/{visit_id}/sign")
 async def visit_sign(visit_id: str, user: dict = Depends(require_roles("physician"))):
-    """Physician-only. READY_TO_SIGN -> SIGNED using the authenticated identity; stores immutable snapshot + sha256 hash."""
+    """Physician-only. STOPPED_UNSIGNED -> SIGNED using the authenticated identity; snapshot = exact reviewed state at this moment."""
     v = await _get_visit_scoped(visit_id, user)
     if v.get("status") == visits_mod.SIGNED:
         raise HTTPException(status_code=409, detail=visits_mod.lock_error(v))
-    if v.get("status") != visits_mod.READY_TO_SIGN:
+    if v.get("status") not in visits_mod.UNSIGNED_STOPPED:
         raise HTTPException(status_code=409, detail={"code": "VISIT_NOT_STOPPED", "status": v.get("status"), "message": "Stop the visit before signing."})
     if v.get("physician_user_id") != user["id"]:
         raise HTTPException(status_code=403, detail="Only the encounter physician can sign this visit.")

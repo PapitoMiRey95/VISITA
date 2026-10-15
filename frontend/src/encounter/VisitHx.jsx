@@ -1,11 +1,12 @@
 import { useEffect, useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { useAuth } from "../context/AuthContext";
-import { Search, ShieldCheck, History } from "lucide-react";
+import { Search, ShieldCheck, History, ScrollText } from "lucide-react";
 import { api } from "../lib/api";
 import { formatDate, formatDateTime } from "../lib/date";
 import { encounterTypeLabel } from "./StartEncounter";
 import { CodingBand } from "./ServiceSelector";
+import { VisitAuditDrawer } from "./VisitAuditDrawer";
 
 /* Visit Hx — READ-ONLY historical Visit viewer. Zero mutation controls. SIGNED visits render from signed_snapshot. */
 const STATUS_BADGE = {
@@ -80,6 +81,9 @@ const fmtHgt = (cm) => (cm == null ? null : (cm / 100).toFixed(2));
 function HistoricalVisit({ data, visitId }) {
     const nav = useNavigate();
     const { user } = useAuth();
+    const [auditOpen, setAuditOpen] = useState(false);
+    useEffect(() => setAuditOpen(false), [visitId]);
+    const canAudit = user?.role === "admin" || user?.role === "physician";
     const r = data.record || {};
     const canContinue = isUnsignedStopped(data.status) && user?.role === "physician" && data.physician_user_id === user.id;
     const dx = (r.diagnoses || [])[0] || null;
@@ -100,6 +104,11 @@ function HistoricalVisit({ data, visitId }) {
                 <span>{r.physician_name}</span>
                 <span className={`px-1.5 py-px rounded-sm text-[10px] font-bold ${STATUS_BADGE[data.status] || "bg-slate-200 text-slate-700"}`} data-testid="visit-hx-status">{statusLabel(data.status)}</span>
                 <span className="ml-auto text-[10px] font-bold text-amber-800" data-testid="visit-hx-readonly">READ ONLY</span>
+                {canAudit && (
+                    <button type="button" onClick={() => setAuditOpen(true)} data-testid="visit-hx-view-audit" title="View audit trail for this Visit (read-only)"
+                        className="inline-flex items-center gap-1 h-6 px-2 rounded-sm border border-slate-400 bg-white hover:bg-slate-100 text-slate-800 text-[10px] font-bold">
+                        <ScrollText className="w-3 h-3" /> View Audit</button>
+                )}
                 {canContinue && (
                     <button type="button" onClick={() => nav(`/internal/encounter/${visitId}`)} data-testid="visit-hx-continue-documentation"
                         className="h-6 px-2 rounded-sm bg-amber-500 hover:bg-amber-600 text-white text-[10px] font-bold">Continue Documentation</button>
@@ -132,6 +141,7 @@ function HistoricalVisit({ data, visitId }) {
                         {(r.service?.additional_codes || []).map((a) => <span key={a.catalog_id} className="ml-2 font-mono text-slate-600">+{a.service_code}</span>)}</div>
                 </div>
             </div>
+            {canAudit && <VisitAuditDrawer visitId={visitId} open={auditOpen} onClose={() => setAuditOpen(false)} />}
         </div>
     );
 }

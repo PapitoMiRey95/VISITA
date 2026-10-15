@@ -9732,8 +9732,20 @@ app.add_middleware(
 )
 
 
-@app.on_event("startup")
-async def startup():
+BOOTSTRAP = {"status": "pending", "steps": {}}
+
+
+async def _bootstrap_step(name, coro, timeout=120):
+    """Run one startup step with a hard deadline; failures are logged, never fatal."""
+    try:
+        await asyncio.wait_for(coro, timeout=timeout)
+        BOOTSTRAP["steps"][name] = "ok"
+    except Exception as e:
+        BOOTSTRAP["steps"][name] = f"{type(e).__name__}: {e}"[:200]
+        logger.warning(f"[bootstrap] {name} skipped: {type(e).__name__}: {e}")
+
+
+async def _ensure_core_indexes():
     await db.users.create_index("email", unique=True)
     await db.patients.create_index("id")
     # One canonical self-owned profile per user (null linked_user_id excluded).
@@ -9741,25 +9753,40 @@ async def startup():
         "linked_user_id", unique=True,
         partialFilterExpression={"linked_user_id": {"$type": "string"}})
     await db.referrals.create_index([("ready_to_fax", 1), ("faxed", 1)])
-    # Slot reservation layer: unique (practice_id, slot_start) is the final double-booking guard.
-    # Index only — NO data backfill at startup (see backfill_slot_locks.py).
-    await slots_mod.ensure_indexes(db)
-    await guard_mod.ensure_indexes(db)
-    await visits_mod.ensure_indexes(db)
-    await history_mod.ensure_indexes(db)
-    await diag_mod.ensure_indexes(db)
-    await dx_mod.ensure_indexes(db)
-    await svc_mod.ensure_indexes(db)
-    await audit_mod.ensure_indexes(db)
-    # Storage init is lazy (put/get_object call it on demand). Warm it off-loop with a hard
-    # deadline so a slow/unreachable object-store can never block uvicorn from binding.
-    try:
-        await asyncio.wait_for(asyncio.to_thread(storage.init_storage), timeout=8)
-        logger.info("Storage initialized")
-    except Exception as e:
-        logger.warning(f"Storage init deferred (lazy on first use): {type(e).__name__}: {e}")
-    await seed_all(db, authlib)
-    logger.info("Startup complete")
+
+
+async def _bootstrap():
+    """Index creation, storage warm-up and create-if-missing seeding run in the BACKGROUND after
+    uvicorn has bound :8001, so no slow dependency can ever block readiness. Every step is
+    additive/idempotent; a failed step only logs (indexes are retried on the next boot)."""
+    BOOTSTRAP["status"] = "running"
+    steps = [("core_indexes", _ensure_core_indexes()),
+             # Slot reservation layer: unique (practice_id, slot_start) is the final double-booking guard.
+             # Index only — NO data backfill at startup (see backfill_slot_locks.py).
+             ("slots_indexes", slots_mod.ensure_indexes(db)), ("appt_guard_indexes", guard_mod.ensure_indexes(db)),
+             ("visits_indexes", visits_mod.ensure_indexes(db)), ("history_indexes", history_mod.ensure_indexes(db)),
+             ("diag_catalog_indexes", diag_mod.ensure_indexes(db)), ("diagnosis_indexes", dx_mod.ensure_indexes(db)),
+             ("service_indexes", svc_mod.ensure_indexes(db)), ("audit_indexes", audit_mod.ensure_indexes(db)),
+             # Storage init is lazy (put/get_object call it on demand); warm-up only.
+             ("storage", asyncio.to_thread(storage.init_storage))]
+    for name, coro in steps:
+        await _bootstrap_step(name, coro, timeout=8 if name == "storage" else 120)
+    await _bootstrap_step("seed", seed_all(db, authlib), timeout=120)
+    BOOTSTRAP["status"] = "complete"
+    logger.info(f"Startup complete — bootstrap {BOOTSTRAP['steps']}")
+
+
+@app.get("/health")
+@app.get("/api/health")
+async def health():
+    """Liveness/readiness for the platform probe. Always 200 once uvicorn is bound; bootstrap
+    progress is informational only (the app serves while indexes/seed finish in the background)."""
+    return {"status": "ok", "bootstrap": BOOTSTRAP["status"], "time": now_iso()}
+
+
+@app.on_event("startup")
+async def startup():
+    asyncio.create_task(_bootstrap())
 
 
 @app.on_event("shutdown")

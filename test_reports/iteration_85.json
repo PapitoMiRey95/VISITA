@@ -1,0 +1,20 @@
+{
+  "summary": "Identity Cleanup feature (backend + frontend) tested end-to-end against the preview URL with synthetic (syn-*) fixtures only — real patient_directory/patient records were never mutated. 13/13 pytest cases pass covering: queue classification (A/B/C=SAFE_LINK, D=POSSIBLE+EXACT_DOB+SHORTENED_NAME evidence, E=HALF_LINK, F2=MULTIPLE_PORTAL_ACCOUNTS, G=CLINICAL_HISTORY_REVIEW_REQUIRED w/ portal visits=1 has_clinical=true, H=IDENTITY_CONFLICT), case detail dependencies & can_link, apply-fields-before-link => 409 NOT_LINKED, A link => PIN 9911 + patient-lookup single directory row portal_linked=true, B link+apply(health_card_expiry_date,email) persisted (expiry 2029-03-28) + complete removes from queue, C link+mixed apply (cell_phone applied, address kept '1 Old Test Rd' unchanged), D name CONFLICT recommendation KEEP_CANONICAL + link PIN 9914 + USE_PORTAL name skipped w/o confirm (IDENTITY_CRITICAL_CONFIRMATION_REQUIRED) and applied with confirm_identity_critical=true, E repair-half-link => LINKED consistent, F2/G/H link => 409 with codes MULTIPLE_PORTAL_ACCOUNTS/CLINICAL_HISTORY_REVIEW_REQUIRED/IDENTITY_CONFLICT, patient-role token blocked (401/403), /api/internal/verifications regression 200. Frontend: staff /signin?internal=1 login OK, /internal/verifications renders all 4 tabs (identity/pending/history/cleanup); cleanup tab lists items with data-testid cleanup-item-<CLASS> (saw HALF_LINK, SAFE_LINK_CANDIDATE, POSSIBLE_MATCH_REVIEW, IDENTITY_CONFLICT, CLINICAL_HISTORY_REVIEW_REQUIRED, MULTIPLE_PORTAL_ACCOUNTS, NO_MATCH); opening the IDENTITY_CONFLICT case shows blocked-banner and NO cleanup-link-btn; opening SYNTHCLEAN CHARLIE SAFE_LINK => cleanup-link-btn -> confirm-link -> confirm-accept -> case-link-state 'LINK: LINKED', reconcile-table rendered with use-/keep- buttons, use-cell_phone -> cleanup-apply-btn -> confirm-accept -> cell_phone row state becomes MATCH, cleanup-complete-btn works. Synthetic cleanup at end: patients 9, directory 8, visits 1 removed (as expected).",
+  "backend_issues": {"critical": [], "minor": []},
+  "frontend_issues": {"ui_bugs": [], "integration_issues": [], "design_issues": []},
+  "test_report_links": ["/app/backend/tests/test_identity_cleanup.py", "/app/test_reports/pytest/identity_cleanup.xml"],
+  "action_items": [],
+  "critical_code_review_comments": [
+    "identity_cleanup.py classify(): when matched_directory_id is set but directory doc is missing, classify falls through to live_candidates — intentional recovery path; consider logging an orphan matched_directory_id for ops visibility.",
+    "server.py identity_cleanup_link audits 'identity_cleanup_conflict' for ANY non-linkable class including CLINICAL_HISTORY_REVIEW_REQUIRED and MULTIPLE_PORTAL_ACCOUNTS; action name slightly misleading for non-conflict blockers but meta.class/blocked_reason disambiguates — fine.",
+    "apply_fields: identity_critical skip reason is returned but no audit entry is written on skipped critical attempts — low priority but useful for forensics."
+  ],
+  "updated_files": ["/app/backend/tests/test_identity_cleanup.py"],
+  "success_rate": {"backend": "100%", "frontend": "100%"},
+  "test_credentials": "staff@visita.demo / Staff2026!; maria.lopez@demo.com / Patient2026! (patient-role authz negative test)",
+  "seed_data_creation": "python3 /app/backend/synthetic_identity_test.py create_cleanup (A..H + F1 + visit). Cleaned up at the end — removed patients:9 directory:8 visits:1 (audit rows for syn-* kept, immutable).",
+  "retest_needed": false,
+  "should_main_agent_self_test": false,
+  "context_for_next_testing_agent": "Identity Cleanup is fully covered by /app/backend/tests/test_identity_cleanup.py — it is parameterised via env vars for the dynamic syn-* ids printed by synthetic_identity_test.py create_cleanup, and must be run with -o addopts='' because the repo pytest.ini forces xdist/loadscope which breaks the shared-session state-sequence of these tests (A link must precede A lookup, B link must precede B apply, etc.). Always cleanup synthetics after a run.",
+  "rca of the issue": "N/A — no bugs reproduced."
+}

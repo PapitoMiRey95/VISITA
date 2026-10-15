@@ -799,3 +799,11 @@ PROD FOLLOW-UPS (need explicit GO, scripts not yet written): stamp practice_id o
 - Unique partial index on patients.matched_directory_id: preview data SAFE (0 conflicts) but NOT created (defer until prod cleanup). Known half-link left untouched: ROMERO CUAHUEY (pending). Historical unlinked verified (RODRIGUEZ, Kevin ×2 etc.) untouched; now surface in Identity Link Review via live screen.
 - Synthetic fixtures: backend/synthetic_identity_test.py (create|cleanup|index_report) — all removed after testing.
 - NEXT: Identity Cleanup phase (side-by-side reconciliation UI, demographic enrichment w/ audit, historical duplicate resolution, half-link repair, unique index).
+
+## Identity Cleanup (historical reconciliation) — Jun 2026, PREVIEW ONLY, tested iteration_85
+- backend/identity_cleanup.py: classify/queue/case/compare_fields/dependencies/repair_half_link/apply_fields. Routes: GET /internal/identity-cleanup, GET …/{pid}?directory_id, POST …/{pid}/link | repair-half-link | apply-fields | complete (staff/admin/physician, practice-scoped).
+- Classes: SAFE_LINK_CANDIDATE, POSSIBLE_MATCH_REVIEW, IDENTITY_CONFLICT, HALF_LINK, DIRECTORY_ALREADY_LINKED, MULTIPLE_PORTAL_ACCOUNTS (incl. portal↔portal duplicates), CLINICAL_HISTORY_REVIEW_REQUIRED, NO_MATCH, LINKED_RECONCILE_DEMOGRAPHICS.
+- Link preserves canonical PIN; historical portal PIN kept as patients.historical_visita_patient_id (never recycled). Field apply writes only patient_directory; identity-critical (name/DOB/HCN) need confirm_identity_critical. Audits: identity_cleanup_linked, demographic_reconciled (per field), identity_cleanup_half_link_repaired, identity_cleanup_reviewed, identity_cleanup_conflict.
+- Frontend: internal/IdentityCleanup.jsx as 4th Verifications tab.
+- Real preview records untouched (ROMERO half-link, RODRIGUEZ Kevin, GOMEZ Maria dups remain in queue for staff decision).
+- NEXT: production cleanup planning; portal-account reconciliation for MULTIPLE_PORTAL_ACCOUNTS; unique index after cleanup.

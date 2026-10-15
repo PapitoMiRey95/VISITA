@@ -166,7 +166,7 @@ export default function InternalLayout() {
                     <Logo variant="dark" iconClass="h-8 w-8" textClass="text-base" />
                 </div>
                 <div className="flex items-center gap-3 text-sm">
-                    <span className="text-white/80 hidden sm:inline">{user?.name} · <span className="uppercase text-white/50">{role}</span></span>
+                    <span className="text-white/80 hidden sm:inline">{user?.name} · <span className="capitalize text-white/50">{role}</span></span>
                     <button data-testid="internal-logout" onClick={guarded(() => { logout(); nav("/login"); })}
                         className="flex items-center gap-1 hover:text-white text-white/70">
                         <LogOut className="w-4 h-4" /> Logout

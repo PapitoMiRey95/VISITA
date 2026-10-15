@@ -60,7 +60,7 @@ export function DiagnosisSearch({ visitId, initial, onChange }) {
     const showAll = q.trim().length > 0;
 
     return (
-        <div className="px-2 py-1.5" data-testid="diagnosis-search" ref={wrap}>
+        <div className="px-2 py-1.5 relative" data-testid="diagnosis-search" ref={wrap}>
             <div className="flex items-center gap-1.5 text-[10px] font-bold uppercase tracking-wide text-slate-500 mb-1">
                 <Stethoscope className="w-3 h-3" /> Diagnosis <span className="normal-case font-medium text-slate-400 tracking-normal">search · text / code</span>
             </div>
@@ -79,7 +79,7 @@ export function DiagnosisSearch({ visitId, initial, onChange }) {
                 </div>
             )}
             {!sel && (showPrev || showAll) && (
-                <div className="mt-1 max-h-48 overflow-y-auto border border-slate-200 rounded-sm text-xs" data-testid="diagnosis-dropdown">
+                <div className="absolute left-1 right-1 bottom-full mb-0.5 z-30 max-h-[60vh] overflow-y-auto border border-slate-400 rounded-sm bg-white shadow-xl text-xs" data-testid="diagnosis-dropdown">
                     {showPrev && (<>
                         <div className="px-2 py-0.5 bg-slate-100 text-[9px] font-bold uppercase tracking-wide text-slate-500 flex items-center gap-1"><History className="w-3 h-3" /> Previous for this patient</div>
                         <ul className="divide-y divide-slate-100" data-testid="diagnosis-previous">

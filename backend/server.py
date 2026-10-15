@@ -4,6 +4,7 @@ from pathlib import Path
 ROOT_DIR = Path(__file__).parent
 load_dotenv(ROOT_DIR / ".env")
 
+import asyncio
 import logging
 import os
 import json
@@ -9750,11 +9751,13 @@ async def startup():
     await dx_mod.ensure_indexes(db)
     await svc_mod.ensure_indexes(db)
     await audit_mod.ensure_indexes(db)
+    # Storage init is lazy (put/get_object call it on demand). Warm it off-loop with a hard
+    # deadline so a slow/unreachable object-store can never block uvicorn from binding.
     try:
-        storage.init_storage()
+        await asyncio.wait_for(asyncio.to_thread(storage.init_storage), timeout=8)
         logger.info("Storage initialized")
     except Exception as e:
-        logger.error(f"Storage init failed: {e}")
+        logger.warning(f"Storage init deferred (lazy on first use): {type(e).__name__}: {e}")
     await seed_all(db, authlib)
     logger.info("Startup complete")
 

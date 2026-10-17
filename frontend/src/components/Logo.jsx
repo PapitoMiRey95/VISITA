@@ -1,6 +1,6 @@
 // Shared VIen brand mark — Ontario healthcare-network icon + wordmark.
 // variant="dark" for dark backgrounds (light text), "light" for light backgrounds.
-export function Logo({ variant = "light", iconClass = "h-8 w-8", textClass = "text-xl", showText = true, className = "" }) {
+export function Logo({ variant = "light", iconClass = "h-8 w-8", textClass = "text-xl", showText = true, className = "", text = "VIen" }) {
     // Vertical brand gradient: dark blue (top) -> turquoise (bottom), matching the logo mark.
     // Slightly brighter top on dark backgrounds to preserve contrast.
     const gradient = variant === "dark"
@@ -11,7 +11,7 @@ export function Logo({ variant = "light", iconClass = "h-8 w-8", textClass = "te
             <img src="/vien-logo.png" alt="VIen" className={`${iconClass} object-contain select-none`} draggable="false" />
             {showText && (
                 <span className={`font-bold tracking-tight leading-tight bg-clip-text text-transparent ${gradient} ${textClass}`}>
-                    VIen
+                    {text}
                 </span>
             )}
         </div>

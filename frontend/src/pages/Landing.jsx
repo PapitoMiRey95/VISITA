@@ -42,7 +42,7 @@ export default function Landing() {
             <div className="relative z-10 min-h-screen flex flex-col items-center px-5 py-16 lg:py-20 gap-8">
                 {/* Branding — centered hero (unchanged identity) */}
                 <div className="w-full max-w-2xl text-center px-8 py-8 lg:px-12 lg:py-10">
-                    <Logo variant="dark" iconClass="h-16 w-16 lg:h-24 lg:w-24 drop-shadow-[0_0_30px_rgba(23,179,196,0.35)]"
+                    <Logo variant="dark" text="VIsita EMR Network" iconClass="h-16 w-16 lg:h-24 lg:w-24 drop-shadow-[0_0_30px_rgba(23,179,196,0.35)]"
                         textClass="text-3xl sm:text-4xl lg:text-5xl" className="justify-center" />
                 </div>
 

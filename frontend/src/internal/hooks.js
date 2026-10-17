@@ -1,11 +1,12 @@
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { api } from "../lib/api";
 
-export function useCounters() {
+export function useCounters(enabled = true) {
     return useQuery({
         queryKey: ["counters"],
         queryFn: async () => (await api.get("/internal/counters")).data,
         refetchInterval: 20000,
+        enabled,
     });
 }
 

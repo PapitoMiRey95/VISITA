@@ -28,6 +28,7 @@ export function homePath(role) {
     if (role === "caregiver") return "/portal/people";
     if (role === "pharmacy") return "/pharmacy";
     if (role === "partner") return "/partner";
+    if (role === "developer_ops") return "/internal/maintenance";
     return "/internal";
 }
 

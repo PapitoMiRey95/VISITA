@@ -39,6 +39,7 @@ import Referrals from "./internal/Referrals";
 import Verifications from "./internal/Verifications";
 import Applications from "./internal/Applications";
 import Settings from "./internal/Settings";
+import Maintenance from "./internal/Maintenance";
 import AuditCompliance from "./internal/AuditCompliance";
 import Patients from "./internal/Patients";
 import EncounterPage from "./encounter/EncounterPage";
@@ -126,7 +127,7 @@ function App() {
                     <Route
                         path="/internal"
                         element={
-                            <RoleRoute roles={["staff", "physician", "admin"]}>
+                            <RoleRoute roles={["staff", "physician", "admin", "developer_ops"]}>
                                 <InternalLayout />
                             </RoleRoute>
                         }
@@ -156,6 +157,7 @@ function App() {
                         <Route path="professionals" element={<Professionals />} />
                         <Route path="settings" element={<Settings />} />
                         <Route path="settings/audit" element={<AuditCompliance />} />
+                        <Route path="maintenance" element={<RoleRoute roles={["admin", "developer_ops"]}><Maintenance /></RoleRoute>} />
                     </Route>
 
                     <Route

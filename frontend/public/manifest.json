@@ -1,0 +1,14 @@
+{
+  "short_name": "Visita EMR",
+  "name": "Visita EMR Network",
+  "description": "Connected healthcare network: appointments, prescriptions, clinic communication.",
+  "icons": [
+    { "src": "favicon.ico", "sizes": "16x16 32x32 48x48 64x64", "type": "image/x-icon" },
+    { "src": "logo192.png", "type": "image/png", "sizes": "192x192", "purpose": "any maskable" },
+    { "src": "logo512.png", "type": "image/png", "sizes": "512x512", "purpose": "any maskable" }
+  ],
+  "start_url": ".",
+  "display": "standalone",
+  "theme_color": "#2E8540",
+  "background_color": "#ffffff"
+}

@@ -245,6 +245,17 @@ async def seed_all(db, authlib):
             })
             await db.app_meta.insert_one({"id": "phys_v2", "at": now_iso()})
 
+    # developer_ops maintenance account — env-gated, CREATE-IF-MISSING ONLY (temp password,
+    # forced change on first login). Never overwrites an existing account.
+    ops_email = (os.environ.get("DEVELOPER_OPS_EMAIL") or "").strip().lower()
+    ops_temp = os.environ.get("DEVELOPER_OPS_TEMP_PASSWORD")
+    if ops_email and ops_temp and not await db.users.find_one({"email": ops_email}):
+        await db.users.insert_one({
+            "email": ops_email, "username": "DEVOPS", "name": "Developer Ops", "role": "developer_ops",
+            "password_hash": authlib.hash_password(ops_temp), "must_change_password": True,
+            "mfa_enabled": False, "patient_id": None, "active": True, "created_at": now_iso(),
+        })
+
     # Pharmacy portal account — env-gated, CREATE-IF-MISSING ONLY.
     # Never overwrites an existing account/password. Nothing is created unless
     # PHARMACY_USERNAME + PHARMACY_PASSWORD are configured for this environment.

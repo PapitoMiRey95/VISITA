@@ -6,6 +6,7 @@ load_dotenv(ROOT_DIR / ".env")
 
 import asyncio
 import logging
+import sys
 import os
 import json
 import re
@@ -63,6 +64,7 @@ api = APIRouter(prefix="/api")
 
 MAX_PDF_BYTES = 15 * 1024 * 1024
 CLINIC_ROLES = ("staff", "physician", "admin")
+OPS_ROLES = ("admin", "developer_ops")  # internal maintenance area (read-only diagnostics + token-gated tools)
 
 
 # ----------------------------- Auth plumbing -----------------------------
@@ -5943,7 +5945,7 @@ async def add_patient_delegate(patient_id: str, body: DelegateCreateBody,
         du = None
     if not du:
         raise HTTPException(status_code=404, detail="Delegate user not found.")
-    if du.get("role") in ("staff", "physician", "admin", "pharmacy", "partner"):
+    if du.get("role") in ("staff", "physician", "admin", "pharmacy", "partner", "developer_ops"):
         raise HTTPException(status_code=400, detail="Clinic/partner accounts cannot be delegates.")
     # A delegate cannot be granted access to their OWN patient record.
     if du.get("patient_id") == patient_id:
@@ -6405,7 +6407,7 @@ async def approve_portal_access_request(req_id: str, body: ApproveAccessRequestB
     if not du:
         raise HTTPException(status_code=500, detail="Could not resolve the caregiver account.")
     delegate_user_id = str(du["_id"])
-    if du.get("role") in ("staff", "physician", "admin", "pharmacy", "partner"):
+    if du.get("role") in ("staff", "physician", "admin", "pharmacy", "partner", "developer_ops"):
         raise HTTPException(status_code=400, detail="Clinic/partner accounts cannot be delegates.")
     if du.get("patient_id") == body.patient_id:
         raise HTTPException(status_code=400, detail="This is the patient's own account.")
@@ -8871,6 +8873,42 @@ class DataHygieneBody(BaseModel):
     dry_run: bool = True
 
 
+RELEASE_INFO = {"commit": os.environ.get("RELEASE_COMMIT") or None, "started_at": now_iso()}
+try:
+    _head = open(os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), ".git", "HEAD")).read().strip()
+    if _head.startswith("ref:"):
+        _ref = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), ".git", _head.split(" ", 1)[1])
+        _head = open(_ref).read().strip() if os.path.exists(_ref) else None
+    RELEASE_INFO["commit"] = RELEASE_INFO["commit"] or (_head[:12] if _head else None)
+except Exception:
+    pass
+
+
+def _flag_on(name):
+    return os.environ.get(name, "").strip().lower() in ("1", "true", "yes")
+
+
+@api.get("/internal/maintenance/status")
+async def maintenance_status(user: dict = Depends(require_roles(*OPS_ROLES))):
+    """READ-ONLY diagnostics for the internal maintenance area. No secrets, no PHI."""
+    base = os.environ.get("APP_BASE_URL", "")
+    counts = {c: await db[c].estimated_document_count() for c in ("soap_helpers", "diagnosis_catalog", "service_catalog", "audit_logs")}
+    audit_plan = await ib_mod.plan(db, "audit_logs", ib_mod.AUDIT_INDEXES)
+    recent = await db.audit_logs.find({"action": {"$in": ["catalog_import_maintenance", "audit_index_maintenance",
+                                                           "synthetic_test_patient_created", "password_rotated_by_ops"]}},
+                                      {"_id": 0, "action": 1, "created_at": 1, "actor": 1, "meta": 1}).sort("created_at", -1).limit(15).to_list(15)
+    return {
+        "health": _health_payload(),
+        "release": {**RELEASE_INFO, "environment": "production" if "visitaemr.com" in base.lower() else "preview",
+                    "app_base_url": base, "db_name": os.environ.get("DB_NAME"), "python": sys.version.split()[0]},
+        "flags": {"ALLOW_DEMO_SEEDING": _flag_on("ALLOW_DEMO_SEEDING"), "ALLOW_DATA_MIGRATIONS": _flag_on("ALLOW_DATA_MIGRATIONS"),
+                  "PORTAL_AUTO_CONFIRM": PORTAL_AUTO_CONFIRM, "MAINTENANCE_TOKEN_configured": bool(os.environ.get("MAINTENANCE_TOKEN")),
+                  "ENCOUNTER_PILOT_USERS": [x.strip() for x in os.environ.get("ENCOUNTER_PILOT_USERS", "").split(",") if x.strip()]},
+        "catalogs": counts, "audit_indexes": audit_plan, "synthetic_patients": await db.patient_directory.count_documents({"is_synthetic": True}),
+        "recent_maintenance_audit": recent,
+    }
+
+
 class SyntheticPatientsBody(BaseModel):
     token: str
 
@@ -8886,7 +8924,7 @@ SYNTHETIC_PATIENTS = [
 
 
 @api.post("/internal/admin/synthetic-test-patients")
-async def admin_create_synthetic_patients(body: SyntheticPatientsBody, user: dict = Depends(require_roles("admin"))):
+async def admin_create_synthetic_patients(body: SyntheticPatientsBody, user: dict = Depends(require_roles(*OPS_ROLES))):
     """Admin + MAINTENANCE_TOKEN gated. Creates EXACTLY two directory-only synthetic test patients
     (create-if-missing by TEST PIN). No portal account, no email. Never touches real records."""
     expected = os.environ.get("MAINTENANCE_TOKEN", "")
@@ -8919,7 +8957,7 @@ class CatalogImportBody(BaseModel):
 
 
 @api.post("/internal/admin/maintenance/catalog-import")
-async def admin_catalog_import(body: CatalogImportBody, user: dict = Depends(require_roles("admin"))):
+async def admin_catalog_import(body: CatalogImportBody, user: dict = Depends(require_roles(*OPS_ROLES))):
     """Admin + MAINTENANCE_TOKEN gated. One-time, insert-missing-only import of the three reference
     catalogs (soap_helpers / diagnosis_catalog / service_catalog) from the approved packages.
     Dry-run (default) performs zero writes. Existing rows are never updated/deleted. Audited."""
@@ -8939,7 +8977,7 @@ class AuditIndexMaintenanceBody(BaseModel):
 
 
 @api.post("/internal/admin/maintenance/audit-indexes")
-async def admin_audit_index_maintenance(body: AuditIndexMaintenanceBody, user: dict = Depends(require_roles("admin"))):
+async def admin_audit_index_maintenance(body: AuditIndexMaintenanceBody, user: dict = Depends(require_roles(*OPS_ROLES))):
     """Admin + MAINTENANCE_TOKEN gated. Builds ONLY the predefined approved audit_logs performance
     indexes (index_bootstrap.AUDIT_INDEXES). dry-run (default) lists EXISTS/MISSING; apply creates
     missing ones only (EXISTS/CREATED/FAILED). Never drops/alters existing indexes; no generic commands."""

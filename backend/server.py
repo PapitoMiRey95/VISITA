@@ -48,6 +48,7 @@ import names as names_mod
 import identity_cleanup as cleanup_mod
 import appt_guard as guard_mod
 import index_bootstrap as ib_mod
+import catalog_import as catalog_import_mod
 import storage
 from db import (APPT_PATIENT_STATUS, BLD_ACTIVE, BLD_PATIENT_STATUS, IMG_ACTIVE,
                 IMG_PATIENT_STATUS, MSG_ACTIVE, MSG_PATIENT_STATUS, RX_ACTIVE,
@@ -8910,6 +8911,26 @@ async def admin_create_synthetic_patients(body: SyntheticPatientsBody, user: dic
                     meta={"visita_patient_id": sp["visita_patient_id"], "marker": SYNTHETIC_MARKER})
         out.append({"id": doc["id"], "visita_patient_id": sp["visita_patient_id"], "created": True})
     return {"patients": out, "marker": SYNTHETIC_MARKER}
+
+
+class CatalogImportBody(BaseModel):
+    token: str
+    apply: bool = False
+
+
+@api.post("/internal/admin/maintenance/catalog-import")
+async def admin_catalog_import(body: CatalogImportBody, user: dict = Depends(require_roles("admin"))):
+    """Admin + MAINTENANCE_TOKEN gated. One-time, insert-missing-only import of the three reference
+    catalogs (soap_helpers / diagnosis_catalog / service_catalog) from the approved packages.
+    Dry-run (default) performs zero writes. Existing rows are never updated/deleted. Audited."""
+    expected = os.environ.get("MAINTENANCE_TOKEN", "")
+    if not expected or not secrets.compare_digest(body.token, expected):
+        raise HTTPException(status_code=403, detail="Invalid maintenance token.")
+    results = await catalog_import_mod.run(db, apply=body.apply)
+    await audit("catalog_import_maintenance", "reference_catalogs", "soap_helpers+diagnosis_catalog+service_catalog", user,
+                meta={"mode": "apply" if body.apply else "dry_run",
+                      "results": {k: {f: v[f] for f in ("SOURCE", "EXISTS", "MISSING", "INSERTED", "FAILED")} for k, v in results.items()}})
+    return {"mode": "apply" if body.apply else "dry_run", "results": results}
 
 
 class AuditIndexMaintenanceBody(BaseModel):

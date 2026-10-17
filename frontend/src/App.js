@@ -26,6 +26,7 @@ import PortalHealthCard from "./portal/PortalHealthCard";
 
 import InternalLayout from "./internal/InternalLayout";
 import Hub from "./internal/Hub";
+import ProvisionDeveloper from "./internal/ProvisionDeveloper";
 import RxQueue from "./internal/RxQueue";
 import PharmacyIntake from "./internal/PharmacyIntake";
 import SendPrescription from "./internal/SendPrescription";
@@ -160,6 +161,7 @@ function App() {
                         <Route path="professionals" element={<Professionals />} />
                         <Route path="settings" element={<Settings />} />
                         <Route path="settings/audit" element={<AuditCompliance />} />
+                        <Route path="system/provision-developer" element={<ProvisionDeveloper />} />
                     </Route>
 
                     <Route

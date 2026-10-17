@@ -70,7 +70,7 @@ function VoidTestPatient({ token, setToken }) {
                     <div className="font-bold">{out.mode === "apply" ? "ARCHIVED — email released" : out.mode === "dry_run" ? "DEPENDENCY CHECK PASS — nothing changed" : out.mode === "blocked" ? "BLOCKED — dependencies found" : "ERROR"}</div>
                     {out.msg && <div>{out.msg}</div>}
                     {out.blocking && <div>{Object.entries(out.blocking).map(([k, v]) => `${k}: ${v}`).join(" · ")}</div>}
-                    {deps && <div className="mt-1 text-[11px] opacity-80">Checked {Object.keys(deps).length} collections — all zero{out.mode === "apply" ? ` · released ${out.released_email}` : ""}.</div>}
+                    {deps && <div className="mt-1 text-[11px] opacity-80">Checked {Object.keys(deps).length} collections — all zero{(out.would_archive?.removable_relationships?.length || out.archived?.removable_relationships?.length) ? ` except this patient's own per-practice relationship record(s) (${(out.would_archive || out.archived).removable_relationships.map((r) => `${r.status} · ${r.id?.slice(0, 8)}`).join(", ")}) which will be removed with it` : ""}{out.mode === "apply" ? ` · released ${out.released_email}` : ""}.</div>}
                 </div>
             )}
             <div className="flex gap-2 justify-end">

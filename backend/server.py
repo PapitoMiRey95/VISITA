@@ -9379,9 +9379,15 @@ async def admin_void_test_patient(body: VoidTestPatientBody, user: dict = Depend
     deps["patient_directory_linked"] = await db.patient_directory.count_documents({"linked_patient_id": p["id"]})
     deps["patient_directory_matched"] = await db.patient_directory.count_documents({"id": p.get("matched_directory_id")}) if p.get("matched_directory_id") else 0
     deps["delegate_grants_as_caregiver"] = await db.patient_portal_delegates.count_documents({"delegate_user_id": str(u["_id"])})
-    blocking = {k: v for k, v in deps.items() if v}
+    # Owner-confirmed exception: this test patient's OWN per-practice relationship-state record(s) may be removed
+    # with it (keyed strictly to this patient_id; practices/providers themselves are never touched).
+    own_rels = [r async for r in db.patient_provider_relationships.find({"patient_id": p["id"]}, {"_id": 0})]
+    rels_ok = len(own_rels) == deps["patient_provider_relationships"] and all(
+        r.get("patient_id") == p["id"] and not (r.get("directory_id") and r["directory_id"] != p.get("matched_directory_id")) for r in own_rels)
+    blocking = {k: v for k, v in deps.items() if v and not (k == "patient_provider_relationships" and rels_ok)}
     summary = {"patient_id": p["id"], "pin": p.get("visita_patient_id"), "name": f"{p.get('first_name')} {p.get('last_name')}",
-               "portal_email": u.get("email"), "login_active": u.get("active", True), "dependencies": deps}
+               "portal_email": u.get("email"), "login_active": u.get("active", True), "dependencies": deps,
+               "removable_relationships": [{"id": r.get("id"), "practice_id": r.get("practice_id"), "status": r.get("status"), "created_at": r.get("created_at")} for r in own_rels] if rels_ok else []}
     if blocking:
         return {"mode": "blocked", "blocking": blocking, **summary}
     if not body.confirm:
@@ -9395,6 +9401,8 @@ async def admin_void_test_patient(body: VoidTestPatientBody, user: dict = Depend
                "account_created_at": u.get("created_at"), "last_login_at": u.get("last_login_at"), "was_active": u.get("active", True),
                "detached_at": ts, "detached_by": actor, "reason": reason, "kind": "TEST_RECORD_VOID", "dependency_check": deps}
     await db.portal_account_archive.insert_one(archive)
+    rel_ids = [r["id"] for r in summary["removable_relationships"] if r.get("id")]
+    rels_deleted = (await db.patient_provider_relationships.delete_many({"patient_id": p["id"]})).deleted_count if rel_ids else 0
     await db.users.update_one({"_id": u["_id"]}, {
         "$set": {"email": f"detached+{uid}@archived.vien.invalid", "password_hash": None, "active": False, "patient_id": None,
                  "detached_patient_id": p["id"], "portal_detached": True, "detached_at": ts, "detached_by": actor,
@@ -9411,8 +9419,9 @@ async def admin_void_test_patient(body: VoidTestPatientBody, user: dict = Depend
     await db.visita_pins.update_one({"_id": p.get("visita_patient_id")}, {"$set": {"voided_test": True, "voided_at": ts}})
     await audit("test_patient_voided", "patient", p["id"], user, meta={
         "pin": p.get("visita_patient_id"), "prior_portal_email": u.get("email"), "reason": reason,
-        "dependency_check": deps, "archive_id": archive["id"]})
-    return {"mode": "apply", "archived": summary, "released_email": u.get("email"), "archive_id": archive["id"]}
+        "dependency_check": deps, "archive_id": archive["id"],
+        "removed_relationship_ids": rel_ids, "relationships_deleted": rels_deleted})
+    return {"mode": "apply", "archived": summary, "released_email": u.get("email"), "archive_id": archive["id"], "relationships_deleted": rels_deleted}
 
 
 class OpsProvisionBody(BaseModel):

@@ -7,6 +7,9 @@ import { Button } from "../components/ui/button";
 import { Input } from "../components/ui/input";
 import { formatDateTime } from "../lib/date";
 
+// Operator attribution: the development organization is shown; the real individual stays in actor_* / audit.
+export const operatorLabel = (by, brand = "OAKMONT Developers") => (!by ? "" : by.role === "developer_ops" ? brand : by.name);
+
 export function usePlatformConfigAdmin() {
     return useQuery({ queryKey: ["developer-platform-config"], queryFn: async () => (await api.get("/developer/platform-config")).data });
 }
@@ -34,7 +37,7 @@ export function PublishBar({ cfg, onChanged }) {
     return (
         <Card title="Publish" testid="pc-publish" right={<span className="text-xs text-slate-400">live v{cfg?.published?.version ?? 0}{draft ? " · DRAFT pending" : ""}</span>}>
             {!draft && <div className="text-xs text-slate-500 mb-2" data-testid="pc-no-draft">No draft changes. Edit Features or Public Site to create a draft.</div>}
-            {draft && <div className="text-xs text-amber-300 mb-2" data-testid="pc-draft-info">Draft based on v{draft.based_on_version}, updated {formatDateTime(draft.updated_at)} by {draft.updated_by?.name}. Preview is shown in the editors below.</div>}
+            {draft && <div className="text-xs text-amber-300 mb-2" data-testid="pc-draft-info">Draft based on v{draft.based_on_version}, updated {formatDateTime(draft.updated_at)} by <span data-testid="pc-draft-by">{operatorLabel(draft.updated_by, cfg.published?.config?.branding?.operator_name)}</span>. Preview is shown in the editors below.</div>}
             <div className="flex flex-wrap items-center gap-2">
                 <Input value={confirm} onChange={(e) => setConfirm(e.target.value)} placeholder="Type PUBLISH" className="h-8 w-40 text-xs bg-slate-950 border-slate-700 text-slate-100" data-testid="pc-publish-confirm" />
                 <Button size="sm" disabled={busy || !draft || confirm !== "PUBLISH"} onClick={() => act(() => api.post("/developer/platform-config/publish", { confirm }), "Platform configuration published")} className="bg-emerald-500 hover:bg-emerald-400 text-slate-900" data-testid="pc-publish-btn"><Rocket className="w-3.5 h-3.5 mr-1" /> Publish</Button>
@@ -46,7 +49,7 @@ export function PublishBar({ cfg, onChanged }) {
                     <li key={h.version} className="flex flex-wrap items-center gap-2 border-b border-slate-800 py-1" data-testid={`pc-history-v${h.version}`}>
                         <span className="font-mono">v{h.version}</span>
                         <span className={`px-1.5 rounded-sm font-bold ${h.status === "PUBLISHED" ? "bg-emerald-500/20 text-emerald-300" : "bg-slate-700 text-slate-300"}`}>{h.status}</span>
-                        <span className="text-slate-400">{formatDateTime(h.published_at)} · {h.published_by?.name}</span>
+                        <span className="text-slate-400">{formatDateTime(h.published_at)} · <span data-testid="pc-history-by">{h.published_by?.name === "system" ? "system" : operatorLabel(h.published_by, cfg.published?.config?.branding?.operator_name)}</span></span>
                         <span className="text-slate-500 truncate max-w-xs">{h.note}</span>
                         {h.status !== "PUBLISHED" && (
                             <Button size="sm" variant="ghost" disabled={busy || confirm !== "ROLLBACK"} title='Type ROLLBACK in the box above first' className="h-6 text-amber-300 ml-auto" data-testid={`pc-rollback-v${h.version}`}

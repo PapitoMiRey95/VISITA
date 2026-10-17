@@ -34,7 +34,7 @@ PUBLIC_SITE_FIELDS = ("headline", "subtitle", "search_placeholder", "cta_create_
                       "coming_soon_label", "footer_contact", "show_role_section")
 
 DEFAULT_CONFIG = {
-    "branding": {"app_name": "VIen", "short_name": "VIen"},
+    "branding": {"app_name": "VIen", "short_name": "VIen", "operator_name": "OAKMONT Developers", "operator_title": "CEO"},
     "features": {k: ("OFF" if k in ("network", "jobs", "market") else "ON") for k in FEATURES},
     "navigation": {"hidden": {a: [] for a in AUDIENCES}},  # visibility only — never authorization
     "public_site": {"headline": "", "subtitle": "", "search_placeholder": "", "cta_create_portal": "", "cta_apply_for_care": "",
@@ -44,6 +44,22 @@ DEFAULT_CONFIG = {
 SECTIONS = tuple(DEFAULT_CONFIG.keys())
 DATA_MODES = ("PRELAUNCH_TEST", "LIVE_CLINICAL")
 _cache = {"at": 0.0, "live": None}
+
+
+def operator_brand(config: dict) -> str:
+    return (config.get("branding") or {}).get("operator_name") or "OAKMONT Developers"
+
+
+def operator_actor(config: dict, user: dict) -> dict:
+    """Attribution stored on config versions: brand for display, real individual kept for audit integrity."""
+    return {"name": operator_brand(config), "role": user.get("role"), "actor_name": user.get("name"),
+            "actor_id": str(user.get("id") or ""), "actor_username": user.get("username")}
+
+
+def operator_profile(config: dict, user: dict) -> dict:
+    b = config.get("branding") or {}
+    return {"brand": operator_brand(config), "title": b.get("operator_title") or "", "individual": user.get("name"),
+            "username": user.get("username"), "email": user.get("email"), "role": user.get("role")}
 
 
 def live_data_mode(config: dict) -> str:
@@ -115,7 +131,7 @@ async def save_draft(section: str, data: dict, user: dict) -> dict:
     base = (await draft()) or {"id": str(uuid.uuid4()), "status": "DRAFT", "config": copy.deepcopy((await published())["config"]),
                                "based_on_version": (await published())["version"], "created_at": now_iso()}
     base["config"][section] = _merge(base["config"].get(section, {}), data) if section != "navigation" else data
-    base.update(updated_at=now_iso(), updated_by={"name": user.get("name"), "role": user.get("role")})
+    base.update(updated_at=now_iso(), updated_by=operator_actor(live_cfg, user))
     await db.platform_config_versions.update_one({"id": base["id"]}, {"$set": base}, upsert=True)
     return base
 
@@ -130,7 +146,7 @@ async def _publish_config(config: dict, user: dict, note: str) -> tuple[int, int
     new_version = live["version"] + 1
     await db.platform_config_versions.update_many({"status": "PUBLISHED"}, {"$set": {"status": "SUPERSEDED", "superseded_at": now_iso()}})
     await db.platform_config_versions.insert_one({"id": str(uuid.uuid4()), "version": new_version, "status": "PUBLISHED", "config": config,
-                                                  "published_at": now_iso(), "published_by": {"name": user.get("name"), "role": user.get("role")},
+                                                  "published_at": now_iso(), "published_by": operator_actor(live["config"], user),
                                                   "note": note, "created_at": now_iso()})
     _cache["live"] = None
     return live["version"], new_version

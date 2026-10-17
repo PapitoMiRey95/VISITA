@@ -1,6 +1,7 @@
 import { useState } from "react";
 import { useQuery } from "@tanstack/react-query";
-import { LogOut, RefreshCw, Megaphone, Wrench, Server } from "lucide-react";
+import { LogOut, RefreshCw, Megaphone, Wrench, Server, Building2 } from "lucide-react";
+import { Popover, PopoverContent, PopoverTrigger } from "../components/ui/popover";
 import { toast } from "sonner";
 import { api, formatErr } from "../lib/api";
 import { useAuth } from "../context/AuthContext";
@@ -90,6 +91,26 @@ function MaintenanceMode({ current, onChanged }) {
     );
 }
 
+function OperatorIdentity({ op }) {
+    const brand = op?.brand || "OAKMONT Developers";
+    return (
+        <Popover>
+            <PopoverTrigger asChild>
+                <button type="button" className="flex items-center gap-2 rounded-sm px-2 py-1 text-slate-200 hover:text-white" data-testid="dev-operator-identity">
+                    <Building2 className="w-4 h-4 text-emerald-400" /><span className="font-semibold">{brand}</span>
+                </button>
+            </PopoverTrigger>
+            <PopoverContent align="end" className="w-72 bg-slate-900 border-slate-700 text-slate-100" data-testid="dev-operator-profile">
+                <div className="text-[10px] uppercase tracking-widest text-slate-400">Platform operator</div>
+                <div className="font-bold text-base">{brand}</div>
+                {op?.individual && <div className="text-sm text-slate-300 mt-1" data-testid="dev-operator-individual">{op.title ? `${op.title} · ` : ""}{op.individual}</div>}
+                <div className="text-[11px] text-slate-400 mt-2 font-mono">{op?.username ? `@${op.username} · ` : ""}{op?.email}</div>
+                <p className="text-[11px] text-slate-500 mt-2">Actions are attributed to {brand} in the Control Center; the audit log keeps the individual account that performed each action.</p>
+            </PopoverContent>
+        </Popover>
+    );
+}
+
 const TABS = ["OVERVIEW", "FEATURES", "PUBLIC SITE", "OPERATIONS", "DATA OPS"];
 
 function Overview({ d, pc }) {
@@ -132,7 +153,7 @@ export default function DeveloperPortal() {
                     <div><div className="font-bold leading-tight">VIen Platform Control Center</div><div className="text-[11px] text-slate-500 uppercase tracking-wider">installation operator · {d?.environment || "…"}</div></div>
                 </div>
                 <div className="flex items-center gap-3 text-sm text-slate-400">
-                    <span>{user?.name}</span>
+                    <OperatorIdentity op={d?.operator} />
                     <Button size="sm" variant="ghost" onClick={() => q.refetch()} className="text-slate-300" data-testid="dev-refresh"><RefreshCw className="w-4 h-4" /></Button>
                     <Button size="sm" variant="ghost" onClick={logout} className="text-slate-300" data-testid="dev-logout"><LogOut className="w-4 h-4 mr-1" /> Logout</Button>
                 </div>

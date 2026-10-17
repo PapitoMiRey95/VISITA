@@ -9011,6 +9011,7 @@ async def developer_status(user: dict = Depends(require_roles(*OPS_ROLES))):
         "environment": "production" if "visitaemr.com" in base.lower() else "preview",
         "release": RELEASE_INFO, "time": now_iso(),
         "announcement": state["announcement"], "maintenance": state["maintenance"],
+        "operator": pc_mod.operator_profile((await pc_mod.published())["config"], user),
     }
 
 

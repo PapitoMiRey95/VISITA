@@ -9127,6 +9127,52 @@ async def admin_audit_index_maintenance(body: AuditIndexMaintenanceBody, user: d
     return {"mode": "apply" if body.apply else "dry_run", "collection": "audit_logs", "results": results}
 
 
+OWNER_ADMIN_EMAIL = "kevinrodriguez9528@gmail.com"
+PLACEHOLDER_OPS_EMAIL = "devops@visita.demo"
+
+
+class OpsProvisionBody(BaseModel):
+    token: str
+    email: str
+    username: str
+    name: str
+    confirm: bool = False
+
+
+@api.post("/internal/admin/maintenance/provision-developer-ops")
+async def admin_provision_developer_ops(body: OpsProvisionBody, user: dict = Depends(require_roles("admin"))):
+    """ONE-TIME, owner-admin + OPS_PROVISION_TOKEN gated creation of a single installation-level
+    developer_ops account. Refuses if any non-placeholder developer_ops already exists or the action
+    already ran. Temp password is returned ONCE and never logged/audited."""
+    if (user.get("email") or "").lower() != OWNER_ADMIN_EMAIL:
+        raise HTTPException(status_code=403, detail="Not authorized")
+    expected = os.environ.get("OPS_PROVISION_TOKEN", "")
+    if not expected or not secrets.compare_digest(body.token, expected):
+        raise HTTPException(status_code=403, detail="Invalid provisioning token.")
+    email = body.email.strip().lower()
+    username = body.username.strip().upper()
+    name = body.name.strip()
+    if not re.fullmatch(r"[^@\s]+@[^@\s]+\.[^@\s]+", email) or not re.fullmatch(r"[A-Z0-9]{3,32}", username) or not name:
+        raise HTTPException(status_code=422, detail="Invalid email, username (A-Z/0-9, 3-32) or name.")
+    if await db.app_meta.find_one({"id": "developer_ops_provisioned"}):
+        raise HTTPException(status_code=409, detail="developer_ops provisioning already performed.")
+    if await db.users.find_one({"role": "developer_ops", "email": {"$ne": PLACEHOLDER_OPS_EMAIL}}):
+        raise HTTPException(status_code=409, detail="A developer_ops account already exists.")
+    if await db.users.find_one({"$or": [{"email": email}, {"username": {"$regex": f"^{re.escape(username)}$", "$options": "i"}}]}):
+        raise HTTPException(status_code=409, detail="Email or username already in use.")
+    plan = {"email": email, "username": username, "name": name, "role": "developer_ops", "must_change_password": True}
+    if not body.confirm:
+        return {"mode": "dry_run", "would_create": plan}
+    temp = _gen_temp_password()
+    await db.users.insert_one({
+        **plan, "password_hash": authlib.hash_password(temp), "mfa_enabled": False, "patient_id": None,
+        "active": True, "created_at": now_iso(), "provisioned_by": user.get("email"),
+    })
+    await db.app_meta.insert_one({"id": "developer_ops_provisioned", "at": now_iso(), "email": email, "by": user.get("email")})
+    await audit("developer_ops_provisioned", "user", email, user, meta={"username": username, "name": name})
+    return {"mode": "apply", "created": plan, "temp_password": temp}
+
+
 @api.post("/internal/admin/data-hygiene")
 async def admin_data_hygiene(body: DataHygieneBody, user: dict = Depends(require_roles("admin"))):
     """TEMPORARY maintenance endpoint: admin + MAINTENANCE_TOKEN gated, scoped to an explicit

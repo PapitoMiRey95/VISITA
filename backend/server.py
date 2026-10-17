@@ -20,6 +20,7 @@ from pymongo.errors import DuplicateKeyError
 from fastapi import (APIRouter, BackgroundTasks, Depends, FastAPI, File, Form,
                      Header, HTTPException, Request, Response, UploadFile)
 from pydantic import BaseModel, EmailStr, Field
+from fastapi.responses import JSONResponse
 from starlette.middleware.cors import CORSMiddleware
 
 import auth as authlib
@@ -50,6 +51,7 @@ import identity_cleanup as cleanup_mod
 import appt_guard as guard_mod
 import index_bootstrap as ib_mod
 import catalog_import as catalog_import_mod
+import system_state as sys_mod
 import storage
 from db import (APPT_PATIENT_STATUS, BLD_ACTIVE, BLD_PATIENT_STATUS, IMG_ACTIVE,
                 IMG_PATIENT_STATUS, MSG_ACTIVE, MSG_PATIENT_STATUS, RX_ACTIVE,
@@ -64,7 +66,7 @@ api = APIRouter(prefix="/api")
 
 MAX_PDF_BYTES = 15 * 1024 * 1024
 CLINIC_ROLES = ("staff", "physician", "admin")
-OPS_ROLES = ("admin", "developer_ops")  # internal maintenance area (read-only diagnostics + token-gated tools)
+OPS_ROLES = ("developer_ops",)  # installation-level operator ONLY — organization admins never inherit this
 
 
 # ----------------------------- Auth plumbing -----------------------------
@@ -8888,25 +8890,75 @@ def _flag_on(name):
     return os.environ.get(name, "").strip().lower() in ("1", "true", "yes")
 
 
-@api.get("/internal/maintenance/status")
-async def maintenance_status(user: dict = Depends(require_roles(*OPS_ROLES))):
-    """READ-ONLY diagnostics for the internal maintenance area. No secrets, no PHI."""
+@api.get("/system/banner")
+async def system_banner():
+    """Public, read-only: active announcement + maintenance flag for the client shell."""
+    return sys_mod.public_view(await sys_mod.get_state())
+
+
+@api.get("/developer/status")
+async def developer_status(user: dict = Depends(require_roles(*OPS_ROLES))):
+    """Simple installation status for the Developer portal (no secrets, no PHI)."""
+    try:
+        await asyncio.wait_for(db.command("ping"), timeout=3)
+        database = "CONNECTED"
+    except Exception:
+        database = "DEGRADED"
+    storage_state = "CONNECTED" if BOOTSTRAP["steps"].get("storage") == "ok" else ("DEGRADED" if "storage" in BOOTSTRAP["steps"] else "PENDING")
     base = os.environ.get("APP_BASE_URL", "")
-    counts = {c: await db[c].estimated_document_count() for c in ("soap_helpers", "diagnosis_catalog", "service_catalog", "audit_logs")}
-    audit_plan = await ib_mod.plan(db, "audit_logs", ib_mod.AUDIT_INDEXES)
-    recent = await db.audit_logs.find({"action": {"$in": ["catalog_import_maintenance", "audit_index_maintenance",
-                                                           "synthetic_test_patient_created", "password_rotated_by_ops"]}},
-                                      {"_id": 0, "action": 1, "created_at": 1, "actor": 1, "meta": 1}).sort("created_at", -1).limit(15).to_list(15)
+    state = await sys_mod.get_state(fresh=True)
     return {
-        "health": _health_payload(),
-        "release": {**RELEASE_INFO, "environment": "production" if "visitaemr.com" in base.lower() else "preview",
-                    "app_base_url": base, "db_name": os.environ.get("DB_NAME"), "python": sys.version.split()[0]},
-        "flags": {"ALLOW_DEMO_SEEDING": _flag_on("ALLOW_DEMO_SEEDING"), "ALLOW_DATA_MIGRATIONS": _flag_on("ALLOW_DATA_MIGRATIONS"),
-                  "PORTAL_AUTO_CONFIRM": PORTAL_AUTO_CONFIRM, "MAINTENANCE_TOKEN_configured": bool(os.environ.get("MAINTENANCE_TOKEN")),
-                  "ENCOUNTER_PILOT_USERS": [x.strip() for x in os.environ.get("ENCOUNTER_PILOT_USERS", "").split(",") if x.strip()]},
-        "catalogs": counts, "audit_indexes": audit_plan, "synthetic_patients": await db.patient_directory.count_documents({"is_synthetic": True}),
-        "recent_maintenance_audit": recent,
+        "api": "ONLINE", "database": database, "storage": storage_state,
+        "readiness": "READY" if BOOTSTRAP["ready"] else "NOT READY",
+        "bootstrap": BOOTSTRAP["status"], "steps": {k: ("ok" if v == "ok" else "failed") for k, v in BOOTSTRAP["steps"].items()},
+        "environment": "production" if "visitaemr.com" in base.lower() else "preview",
+        "release": RELEASE_INFO, "time": now_iso(),
+        "announcement": state["announcement"], "maintenance": state["maintenance"],
     }
+
+
+class AnnouncementBody(BaseModel):
+    message: str
+    type: str = "INFO"
+
+
+@api.put("/developer/announcement")
+async def developer_set_announcement(body: AnnouncementBody, user: dict = Depends(require_roles(*OPS_ROLES))):
+    if body.type not in sys_mod.ANNOUNCEMENT_TYPES:
+        raise HTTPException(status_code=400, detail="type must be INFO, WARNING or CRITICAL.")
+    if not body.message.strip():
+        raise HTTPException(status_code=400, detail="Message is required.")
+    prev = (await sys_mod.get_state(fresh=True))["announcement"]
+    a = await sys_mod.set_announcement(body.message, body.type, user)
+    await audit("announcement_updated" if prev.get("active") else "announcement_published", "system_state", "global", user,
+                meta={"type": a["type"], "message": a["message"]})
+    return a
+
+
+@api.delete("/developer/announcement")
+async def developer_clear_announcement(user: dict = Depends(require_roles(*OPS_ROLES))):
+    a = await sys_mod.clear_announcement(user)
+    await audit("announcement_removed", "system_state", "global", user, meta={"message": a.get("message")})
+    return a
+
+
+class MaintenanceModeBody(BaseModel):
+    on: bool
+    message: Optional[str] = None
+    confirm: str
+
+
+@api.post("/developer/maintenance-mode")
+async def developer_maintenance_mode(body: MaintenanceModeBody, user: dict = Depends(require_roles(*OPS_ROLES))):
+    """Soft maintenance mode: the server stays alive; non-operator API/app use is blocked (503)."""
+    expected = "ENTER" if body.on else "EXIT"
+    if body.confirm != expected:
+        raise HTTPException(status_code=400, detail=f'Type {expected} to confirm.')
+    prev = (await sys_mod.get_state(fresh=True))["maintenance"]
+    m = await sys_mod.set_maintenance(body.on, body.message, user)
+    await audit("maintenance_mode_entered" if body.on else "maintenance_mode_exited", "system_state", "global", user,
+                old_status="ON" if prev.get("on") else "OFF", new_status="ON" if body.on else "OFF", meta={"message": m["message"]})
+    return m
 
 
 class SyntheticPatientsBody(BaseModel):
@@ -9800,6 +9852,26 @@ async def cron_appointment_reminders(background: BackgroundTasks,
         raise HTTPException(status_code=401, detail="Unauthorized")
     background.add_task(notify_svc.send_due_reminders, db)
     return {"ok": True, "queued": True}
+
+
+@app.middleware("http")
+async def maintenance_mode_gate(request: Request, call_next):
+    """Maintenance mode never stops the server: infra probes, banner, login and the Developer portal keep
+    working; everything else returns 503 for non-operator users."""
+    path = request.url.path
+    if request.method == "OPTIONS" or not path.startswith("/api") or sys_mod.path_allowed(path):
+        return await call_next(request)
+    state = await sys_mod.get_state()
+    if not state["maintenance"]["on"]:
+        return await call_next(request)
+    header = request.headers.get("Authorization", "")
+    try:
+        role = authlib.decode_token(header[7:]).get("role") if header.startswith("Bearer ") else None
+    except Exception:
+        role = None
+    if role in OPS_ROLES:
+        return await call_next(request)
+    return JSONResponse(status_code=503, content={"detail": {"code": "MAINTENANCE_MODE", "message": state["maintenance"]["message"]}})
 
 
 app.include_router(api)

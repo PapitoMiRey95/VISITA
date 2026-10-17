@@ -2,7 +2,7 @@ import { Outlet, NavLink, useNavigate } from "react-router-dom";
 import { useState, useRef, useCallback } from "react";
 import {
     ClipboardList, Pill, Calendar, MessageSquare, ClipboardCheck,
-    Send, UserCheck, UserPlus, CalendarDays, Settings as SettingsIcon, LogOut, UserSearch, Menu, Building2, Stethoscope, Users, Receipt, AlertTriangle, Truck, Contact, QrCode, ShieldCheck, Microscope, CreditCard, LayoutGrid, Wrench,
+    Send, UserCheck, UserPlus, CalendarDays, Settings as SettingsIcon, LogOut, UserSearch, Menu, Building2, Stethoscope, Users, Receipt, AlertTriangle, Truck, Contact, QrCode, ShieldCheck, Microscope, CreditCard, LayoutGrid,
 } from "lucide-react";
 import { useAuth } from "../context/AuthContext";
 import { useCounters } from "./hooks";
@@ -15,8 +15,7 @@ export default function InternalLayout() {
     const { user, logout } = useAuth();
     const nav = useNavigate();
     const role = user?.role;
-    const isOps = role === "developer_ops";
-    const counters = useCounters(!isOps);
+    const counters = useCounters();
     const c = counters.data?.counters || {};
     const isPhysician = role === "physician";
     const [mobileOpen, setMobileOpen] = useState(false);
@@ -46,9 +45,7 @@ export default function InternalLayout() {
     };
     const doDiscard = () => { guardRef.current = { dirty: false, save: null }; const p = pending; setPending(null); p?.proceed?.(); };
 
-    const items = isOps
-        ? [{ to: "/internal/maintenance", icon: Wrench, label: "Maintenance", key: null }]
-        : isPhysician
+    const items = isPhysician
         ? [
               { to: "/internal", icon: ClipboardList, label: "Hub", end: true, key: null, iconClass: "text-pink-600" },
               { to: "/internal/patients", icon: UserSearch, label: "Patients", key: null },
@@ -91,13 +88,12 @@ export default function InternalLayout() {
               { to: "/internal/organizations", icon: Building2, label: "Organizations", key: null },
               { to: "/internal/providers", icon: Stethoscope, label: "Providers", key: null },
               { to: "/internal/professionals", icon: Contact, label: "Professional profile", key: null },
-              ...(role === "admin" ? [{ to: "/internal/settings", icon: SettingsIcon, label: "Settings", key: null },
-                                     { to: "/internal/maintenance", icon: Wrench, label: "Maintenance", key: null }] : []),
+              ...(role === "admin" ? [{ to: "/internal/settings", icon: SettingsIcon, label: "Settings", key: null }] : []),
           ];
 
     // Permanent quick-access set; everything else lives inside the Central Work Hub drawer.
     const QUICK = new Set(["/internal/patients", "/internal/rx", "/internal/calendar", "/internal/verifications",
-                           "/internal/registration-qr", "/internal/settings", "/internal/maintenance"]);
+                           "/internal/registration-qr", "/internal/settings"]);
     const quickItems = items.filter((it) => QUICK.has(it.to));
     const hubItems = items.filter((it) => !QUICK.has(it.to));
     const hubBadge = hubItems.reduce((n, it) => n + (it.key && c[it.key] > 0 ? c[it.key] : 0), 0);
@@ -170,7 +166,7 @@ export default function InternalLayout() {
                     <Logo variant="dark" iconClass="h-8 w-8" textClass="text-base" />
                 </div>
                 <div className="flex items-center gap-3 text-sm">
-                    <span className="text-white/80 hidden sm:inline">{user?.name} · <span className="capitalize text-white/50">{role === "developer_ops" ? "Developer Ops" : role}</span></span>
+                    <span className="text-white/80 hidden sm:inline">{user?.name} · <span className="capitalize text-white/50">{role}</span></span>
                     <button data-testid="internal-logout" onClick={guarded(() => { logout(); nav("/login"); })}
                         className="flex items-center gap-1 hover:text-white text-white/70">
                         <LogOut className="w-4 h-4" /> Logout

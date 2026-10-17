@@ -1,5 +1,6 @@
 import { Navigate } from "react-router-dom";
 import { useAuth } from "../context/AuthContext";
+import { AnnouncementBar, MaintenanceScreen, useSystemStatus } from "./SystemStatus";
 
 function Loader() {
     return (
@@ -11,6 +12,7 @@ function Loader() {
 
 export function RoleRoute({ roles, children, requireEncounter = false }) {
     const { user } = useAuth();
+    const sys = useSystemStatus();
     if (user === null) return <Loader />;
     if (user === false) return <Navigate to="/login" replace />;
     if (user.must_change_password) return <Navigate to="/change-password" replace />;
@@ -20,7 +22,16 @@ export function RoleRoute({ roles, children, requireEncounter = false }) {
     if (requireEncounter && !user.encounter_enabled) {
         return <Navigate to={homePath(user.role)} replace />;
     }
-    return children;
+    // Installation maintenance mode: everyone except the developer_ops operator sees the maintenance screen.
+    if (sys.maintenance?.on && user.role !== "developer_ops") {
+        return <MaintenanceScreen message={sys.maintenance.message} />;
+    }
+    return (
+        <>
+            {user.role !== "developer_ops" && <AnnouncementBar />}
+            {children}
+        </>
+    );
 }
 
 export function homePath(role) {
@@ -28,7 +39,7 @@ export function homePath(role) {
     if (role === "caregiver") return "/portal/people";
     if (role === "pharmacy") return "/pharmacy";
     if (role === "partner") return "/partner";
-    if (role === "developer_ops") return "/internal/maintenance";
+    if (role === "developer_ops") return "/developer";
     return "/internal";
 }
 

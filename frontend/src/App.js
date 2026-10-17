@@ -39,7 +39,8 @@ import Referrals from "./internal/Referrals";
 import Verifications from "./internal/Verifications";
 import Applications from "./internal/Applications";
 import Settings from "./internal/Settings";
-import Maintenance from "./internal/Maintenance";
+import DeveloperPortal from "./developer/DeveloperPortal";
+import { SystemStatusProvider } from "./components/SystemStatus";
 import AuditCompliance from "./internal/AuditCompliance";
 import Patients from "./internal/Patients";
 import EncounterPage from "./encounter/EncounterPage";
@@ -64,6 +65,7 @@ import PharmacyAccount from "./pharmacy/PharmacyAccount";
 function App() {
     return (
         <AuthProvider>
+            <SystemStatusProvider>
             <Toaster position="top-center" richColors />
             <BrowserRouter>
                 <Routes>
@@ -107,6 +109,7 @@ function App() {
                         <Route path="account" element={<PortalAccount />} />
                     </Route>
 
+                    <Route path="/developer" element={<RoleRoute roles={["developer_ops"]}><DeveloperPortal /></RoleRoute>} />
                     <Route
                         path="/internal/encounter"
                         element={
@@ -127,7 +130,7 @@ function App() {
                     <Route
                         path="/internal"
                         element={
-                            <RoleRoute roles={["staff", "physician", "admin", "developer_ops"]}>
+                            <RoleRoute roles={["staff", "physician", "admin"]}>
                                 <InternalLayout />
                             </RoleRoute>
                         }
@@ -157,7 +160,6 @@ function App() {
                         <Route path="professionals" element={<Professionals />} />
                         <Route path="settings" element={<Settings />} />
                         <Route path="settings/audit" element={<AuditCompliance />} />
-                        <Route path="maintenance" element={<RoleRoute roles={["admin", "developer_ops"]}><Maintenance /></RoleRoute>} />
                     </Route>
 
                     <Route
@@ -187,6 +189,7 @@ function App() {
                     </Route>
                 </Routes>
             </BrowserRouter>
+            </SystemStatusProvider>
         </AuthProvider>
     );
 }

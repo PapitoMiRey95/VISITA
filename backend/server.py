@@ -7521,8 +7521,80 @@ async def get_portal_account(patient_id: str, user: dict = Depends(require_roles
     await _get_scoped_patient(patient_id, user)
     u = await _portal_user_for_patient(patient_id)
     if not u:
-        return {"has_account": False, "patient_id": patient_id}
+        prior = await db.portal_account_archive.find_one({"patient_id": patient_id}, {"_id": 0}, sort=[("detached_at", -1)])
+        return {"has_account": False, "patient_id": patient_id, "prior_account": prior}
     return _portal_account_public(u)
+
+
+class PortalResetBody(BaseModel):
+    reason: str
+    confirm_text: str
+
+
+PORTAL_RESET_CONFIRM = "RESET PORTAL"
+
+
+async def _portal_reset_conflicts(patient_id: str, p: dict, u: dict) -> list:
+    """Identity/link conflicts that make detaching unsafe. Empty list == safe."""
+    issues = []
+    if u.get("role") != "patient":
+        issues.append(f"Login identity role is '{u.get('role')}', not a patient portal account.")
+    if await db.users.count_documents({"patient_id": patient_id}) > 1:
+        issues.append("More than one login identity is attached to this patient.")
+    dirs = [d async for d in db.patient_directory.find({"linked_patient_id": patient_id}, {"id": 1, "visita_patient_id": 1, "patient_status": 1})]
+    if len(dirs) > 1:
+        issues.append("More than one directory record is linked to this patient.")
+    if not dirs:
+        issues.append("No directory record is linked to this patient, so a future re-registration could not be linked back to the same record.")
+    elif p.get("matched_directory_id") and p["matched_directory_id"] != dirs[0]["id"]:
+        issues.append("Patient's matched directory record differs from the directory record linked to it (half-link).")
+    return issues
+
+
+@api.post("/internal/patients/{patient_id}/portal-account/reset")
+async def portal_account_reset(patient_id: str, body: PortalResetBody, user: dict = Depends(require_roles("admin"))):
+    """Detach/archive the portal LOGIN identity only. Patient record, PIN, directory link,
+    appointments, visits, Rx, results, referrals, delegates and audit history are untouched.
+    The patient can re-register later and claim the SAME record (has_login=False claim path)."""
+    p = await _get_scoped_patient(patient_id, user)
+    u = await _portal_user_for_patient(patient_id)
+    if not u:
+        raise HTTPException(status_code=404, detail="This patient has no portal account.")
+    reason = (body.reason or "").strip()
+    if len(reason) < 5:
+        raise HTTPException(status_code=422, detail="A reason (at least 5 characters) is required.")
+    if body.confirm_text.strip() != PORTAL_RESET_CONFIRM:
+        raise HTTPException(status_code=422, detail=f'Type "{PORTAL_RESET_CONFIRM}" to confirm.')
+    conflicts = await _portal_reset_conflicts(patient_id, p, u)
+    if conflicts:
+        raise HTTPException(status_code=409, detail={"code": "REVIEW_REQUIRED", "issues": conflicts,
+                                                     "message": "Reset not performed — identity/link review required."})
+    uid = str(u["_id"])
+    ts = now_iso()
+    actor = {"id": user.get("id"), "name": user.get("name"), "role": user.get("role")}
+    archive = {
+        "id": str(uuid.uuid4()), "user_id": uid, "patient_id": patient_id,
+        "visita_patient_id": p.get("visita_patient_id"), "login_email": u.get("email"), "name": u.get("name"),
+        "email_verified": bool(u.get("email_verified")), "account_created_at": u.get("created_at"),
+        "last_login_at": u.get("last_login_at"), "was_active": u.get("active", True),
+        "detached_at": ts, "detached_by": actor, "reason": reason,
+    }
+    await db.portal_account_archive.insert_one(archive)
+    # Detach credentials & linkage; release the login email; revoke sessions (active=False → 403 on every token).
+    await db.users.update_one({"_id": u["_id"]}, {
+        "$set": {"email": f"detached+{uid}@archived.vien.invalid", "password_hash": None, "active": False,
+                 "patient_id": None, "detached_patient_id": patient_id, "portal_detached": True,
+                 "detached_at": ts, "detached_by": actor, "detach_reason": reason, "archive_id": archive["id"],
+                 "email_verified": False, "must_change_password": False, "updated_at": ts},
+        "$unset": {"temp_password_expires_at": "", "pending_activation": ""},
+    })
+    await db.password_resets.delete_many({"user_id": uid})
+    await db.account_activations.delete_many({"user_id": uid})
+    await db.patients.update_one({"id": patient_id}, {"$set": {
+        "has_login": False, "portal_status": "DETACHED", "portal_detached_at": ts, "updated_at": ts}})
+    await audit("staff_reset_portal_account", "user", uid, user, meta={
+        "patient_id": patient_id, "archive_id": archive["id"], "prior_login_email": archive["login_email"], "reason": reason})
+    return {"ok": True, "has_account": False, "archive_id": archive["id"], "released_email": archive["login_email"]}
 
 
 @api.post("/internal/patients/{patient_id}/portal-account/send-reset")

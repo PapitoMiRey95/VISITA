@@ -1,11 +1,14 @@
 import { useState, useEffect, useCallback } from "react";
 import { toast } from "sonner";
-import { KeyRound, Mail, ShieldAlert, ShieldCheck, Ban, RotateCcw, Copy, RefreshCw, UserCog, Clock } from "lucide-react";
+import { KeyRound, Mail, ShieldAlert, ShieldCheck, Ban, RotateCcw, Copy, RefreshCw, UserCog, Clock, Unlink } from "lucide-react";
 import { api, formatErr } from "../lib/api";
 import { formatDate } from "../lib/date";
+import { useAuth } from "../context/AuthContext";
 import { Button } from "../components/ui/button";
 import { Input } from "../components/ui/input";
 import { Label } from "../components/ui/label";
+import { Textarea } from "../components/ui/textarea";
+import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "../components/ui/dialog";
 
 function StatusBadge({ status }) {
     const map = {
@@ -27,6 +30,9 @@ function Line({ label, children, testid }) {
 }
 
 export default function PortalAccountPanel({ patientId }) {
+    const { user } = useAuth();
+    const isAdmin = user?.role === "admin";
+    const [resetOpen, setResetOpen] = useState(false);
     const [acct, setAcct] = useState(null);
     const [loading, setLoading] = useState(true);
     const [busy, setBusy] = useState("");
@@ -101,8 +107,14 @@ export default function PortalAccountPanel({ patientId }) {
             </div>
 
             {!acct.has_account ? (
-                <div className="text-sm text-slate-500 bg-slate-50 border border-slate-200 rounded-sm px-3 py-4" data-testid="portal-account-none">
-                    This patient does not have a portal login account.
+                <div className="text-sm text-slate-600 bg-slate-50 border border-slate-200 rounded-sm px-3 py-4 space-y-1" data-testid="portal-account-none">
+                    <div className="font-bold text-slate-800 tracking-wide">NO PORTAL ACCOUNT</div>
+                    <div className="text-slate-500">This patient does not have a portal login account.</div>
+                    {acct.prior_account && (
+                        <div className="text-xs text-slate-500 pt-2 border-t border-slate-200 mt-2" data-testid="portal-account-prior">
+                            Previous portal account <span className="font-mono">{acct.prior_account.login_email}</span> was detached on {formatDate(acct.prior_account.detached_at)} by {acct.prior_account.detached_by?.name || "—"} — reason: “{acct.prior_account.reason}”. The patient may register again and will be linked to this same record.
+                        </div>
+                    )}
                 </div>
             ) : (
                 <>
@@ -178,8 +190,80 @@ export default function PortalAccountPanel({ patientId }) {
                         )}
                     </div>
                     <p className="text-[11px] text-slate-400 mt-2">Disabling portal access only blocks login. The patient record, VISITA PIN and all history are preserved. Every action is audited.</p>
+                    {isAdmin && (
+                        <div className="mt-4 rounded-md border border-amber-200 bg-amber-50/60 p-3 max-w-xl" data-testid="pa-reset-section">
+                            <div className="flex items-start justify-between gap-3">
+                                <div>
+                                    <div className="text-xs font-bold text-amber-900 uppercase tracking-wide">Reset / detach portal account</div>
+                                    <p className="text-[11px] text-amber-900/80 mt-0.5">Releases the login email and revokes credentials and sessions so the patient can create a fresh portal account linked to this same record. Different from disabling access.</p>
+                                </div>
+                                <Button size="sm" variant="outline" disabled={!!busy} data-testid="pa-reset-open" onClick={() => setResetOpen(true)} className="border-amber-300 text-amber-900 hover:bg-amber-100 whitespace-nowrap">
+                                    <Unlink className="w-3.5 h-3.5 mr-1" /> Reset / detach
+                                </Button>
+                            </div>
+                        </div>
+                    )}
+                    <PortalResetDialog open={resetOpen} onClose={() => setResetOpen(false)} patientId={patientId} loginEmail={acct.login_email} onDone={load} />
                 </>
             )}
         </div>
+    );
+}
+
+function PortalResetDialog({ open, onClose, patientId, loginEmail, onDone }) {
+    const [reason, setReason] = useState("");
+    const [confirm, setConfirm] = useState("");
+    const [busy, setBusy] = useState(false);
+    const [review, setReview] = useState(null);
+    const ready = reason.trim().length >= 5 && confirm.trim() === "RESET PORTAL";
+
+    const close = () => { setReason(""); setConfirm(""); setReview(null); onClose(); };
+    const run = async () => {
+        setBusy(true); setReview(null);
+        try {
+            const { data } = await api.post(`/internal/patients/${patientId}/portal-account/reset`, { reason: reason.trim(), confirm_text: confirm.trim() });
+            toast.success(`Portal account detached. Login email ${data.released_email} is released. Patient record unchanged.`);
+            close(); await onDone();
+        } catch (e) {
+            const d = e?.response?.data?.detail;
+            if (d && d.code === "REVIEW_REQUIRED") setReview(d.issues); else toast.error(formatErr(e));
+        } finally { setBusy(false); }
+    };
+
+    return (
+        <Dialog open={open} onOpenChange={(o) => { if (!o) close(); }}>
+            <DialogContent className="max-w-lg" data-testid="pa-reset-dialog">
+                <DialogHeader>
+                    <DialogTitle>Reset / detach portal account</DialogTitle>
+                    <DialogDescription>Login <span className="font-mono">{loginEmail}</span> will be detached and archived. Credentials, verification state and active sessions are revoked.</DialogDescription>
+                </DialogHeader>
+                <div className="rounded-sm border border-emerald-300 bg-emerald-50 px-3 py-2 text-sm font-semibold text-emerald-900" data-testid="pa-reset-preserve-note">
+                    Clinical patient record and history will NOT be deleted.
+                    <div className="text-[11px] font-normal text-emerald-900/80 mt-0.5">Patient identity, VISITA PIN, demographics, appointments, visits, Rx, results, referrals, invoices, caregiver history and audit trail are preserved. No new patient or PIN is created.</div>
+                </div>
+                <div className="space-y-3">
+                    <div>
+                        <Label className="text-xs">Reason (required)</Label>
+                        <Textarea rows={2} value={reason} onChange={(e) => setReason(e.target.value)} placeholder="e.g. Wrong email at registration; patient will re-register with the correct address." data-testid="pa-reset-reason" />
+                    </div>
+                    <div>
+                        <Label className="text-xs">Type <span className="font-mono font-bold">RESET PORTAL</span> to confirm</Label>
+                        <Input value={confirm} onChange={(e) => setConfirm(e.target.value)} autoComplete="off" data-testid="pa-reset-confirm" />
+                    </div>
+                    {review && (
+                        <div className="rounded-sm border border-red-300 bg-red-50 px-3 py-2 text-sm text-red-800" data-testid="pa-reset-review">
+                            <div className="font-bold">Review required — nothing was changed.</div>
+                            <ul className="list-disc pl-4 text-xs mt-1">{review.map((i, k) => <li key={k}>{i}</li>)}</ul>
+                        </div>
+                    )}
+                </div>
+                <DialogFooter>
+                    <Button variant="outline" onClick={close} data-testid="pa-reset-cancel">Cancel</Button>
+                    <Button disabled={!ready || busy} onClick={run} data-testid="pa-reset-submit" className="bg-amber-600 hover:bg-amber-700 text-white">
+                        <Unlink className="w-3.5 h-3.5 mr-1" /> Reset portal account
+                    </Button>
+                </DialogFooter>
+            </DialogContent>
+        </Dialog>
     );
 }

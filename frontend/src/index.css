@@ -169,3 +169,8 @@ html.dark .bg-slate-50\/50, html.dark .bg-slate-100\/60 { background-color: #141
 html.dark button:disabled, html.dark [aria-disabled="true"] { opacity: .55; }
 html.dark .even\:bg-slate-50\/60:nth-child(even), html.dark .bg-slate-50\/60, html.dark .bg-slate-50\/50, html.dark .bg-slate-50\/40, html.dark .bg-slate-100\/50 { background-color: #141920; }
 html.dark .bg-slate-50\/80, html.dark .bg-white\/90, html.dark .bg-white\/80 { background-color: rgba(23, 27, 33, .92); }
+
+/* Dark rows/list items: hover must not change the background (selected state keeps its own classes). */
+html.dark .hover\:bg-visita-bg:hover, html.dark .hover\:bg-portal-blue\/5:hover { background-color: #1f252d; }
+html.dark tr[class*="hover\:bg-"]:hover, html.dark li[class*="hover\:bg-"]:hover { background-color: transparent; }
+html.dark tr.even\:bg-slate-50\/60:nth-child(even):hover { background-color: #141920; }

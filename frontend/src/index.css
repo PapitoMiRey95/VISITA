@@ -191,3 +191,10 @@ html.dark .text-purple-700, html.dark .text-purple-800, html.dark .text-violet-7
 html.dark .border-purple-200, html.dark .border-indigo-200, html.dark .border-fuchsia-300 { border-color: rgba(196,181,253,.5); }
 html.dark .bg-slate-100.text-slate-600, html.dark .bg-slate-100.text-slate-700 { background-color: #262c35; }
 html.dark input::placeholder, html.dark textarea::placeholder { color: #aab3bf; }
+
+/* Dark: status pills rendered on saturated surfaces (gradient/blue/green cards) get a solid high-contrast pill */
+html.dark :is([class*="bg-gradient-to"], .bg-portal-blue, .bg-portal-blueDark, .bg-visita-green, .bg-visita-greenDark, .bg-visita-ribbon, .bg-sky-500, .bg-sky-600, .bg-cyan-500, .bg-cyan-600, .bg-emerald-600, .bg-red-600)
+  :is(.bg-emerald-50, .bg-emerald-100, .bg-green-100, .bg-amber-50, .bg-amber-100, .bg-yellow-100, .bg-red-50, .bg-red-100, .bg-rose-100, .bg-sky-50, .bg-sky-100, .bg-blue-100, .bg-cyan-100, .bg-purple-100, .bg-indigo-100, .bg-slate-100, .bg-slate-200) {
+  background-color: rgba(8, 12, 18, .88);
+  box-shadow: inset 0 0 0 1px rgba(255,255,255,.22);
+}

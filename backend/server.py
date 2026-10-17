@@ -9142,6 +9142,116 @@ class SyntheticPatientsBody(BaseModel):
     token: str
 
 
+# ---------------- Developer Data Operations (developer_ops only, fail-closed outside PRELAUNCH_TEST) ----------------
+import data_ops as dops  # noqa: E402
+
+
+async def _require_prelaunch_mode():
+    live = await pc_mod.published()
+    mode = pc_mod.live_data_mode(live["config"])
+    if mode != "PRELAUNCH_TEST":
+        raise HTTPException(status_code=403, detail={"code": "DATA_MODE_LIVE", "message": "Platform data mode is LIVE_CLINICAL — test-data tools are permanently disabled."})
+    return mode
+
+
+class DataOpsResetBody(BaseModel):
+    reason: str
+    confirm_text: str
+    include_directory: bool = False
+
+
+class DataOpsDeleteUserBody(BaseModel):
+    reason: str
+    confirm_text: str
+
+
+def _ops_reason(reason: str):
+    if len((reason or "").strip()) < 5:
+        raise HTTPException(status_code=422, detail="A reason (at least 5 characters) is required.")
+    return reason.strip()
+
+
+@api.get("/developer/data-ops/status")
+async def developer_data_ops_status(user: dict = Depends(require_roles(*OPS_ROLES))):
+    live = await pc_mod.published()
+    return {"data_mode": pc_mod.live_data_mode(live["config"]), "version": live["version"], "modes": pc_mod.DATA_MODES,
+            "confirm": {"reset": dops.RESET_CONFIRM, "delete_user": dops.DELETE_USER_CONFIRM, "purge": dops.PURGE_CONFIRM}}
+
+
+@api.get("/developer/data-ops/search")
+async def developer_data_ops_search(q: str = "", user: dict = Depends(require_roles(*OPS_ROLES))):
+    await _require_prelaunch_mode()
+    return {"results": await dops.search(q)}
+
+
+@api.get("/developer/data-ops/patient/{patient_id}/preview")
+async def developer_data_ops_patient_preview(patient_id: str, user: dict = Depends(require_roles(*OPS_ROLES))):
+    await _require_prelaunch_mode()
+    pv = await dops.patient_preview(patient_id)
+    if not pv:
+        raise HTTPException(status_code=404, detail="Patient not found.")
+    return pv
+
+
+@api.post("/developer/data-ops/patient/{patient_id}/reset")
+async def developer_data_ops_patient_reset(patient_id: str, body: DataOpsResetBody, user: dict = Depends(require_roles(*OPS_ROLES))):
+    await _require_prelaunch_mode()
+    reason = _ops_reason(body.reason)
+    if body.confirm_text.strip() != dops.RESET_CONFIRM:
+        raise HTTPException(status_code=422, detail=f'Type "{dops.RESET_CONFIRM}" to confirm.')
+    res = await dops.reset_patient(patient_id, body.include_directory)
+    if not res:
+        raise HTTPException(status_code=404, detail="Patient not found.")
+    pv = res["preview"]
+    await audit("devops_test_patient_reset", "patient", patient_id, user, meta={
+        "pin": pv["patient"].get("pin"), "name": pv["patient"].get("name"), "login_emails": [l.get("email") for l in pv["logins"]],
+        "directory_ids": [d["id"] for d in pv["directory"]], "include_directory": body.include_directory,
+        "deleted": res["deleted"], "total_deleted": res["total"], "reason": reason, "data_mode": "PRELAUNCH_TEST"})
+    return {"ok": True, "deleted": res["deleted"], "total": res["total"], "released_emails": [l.get("email") for l in pv["logins"]]}
+
+
+@api.get("/developer/data-ops/user/{user_id}/preview")
+async def developer_data_ops_user_preview(user_id: str, user: dict = Depends(require_roles(*OPS_ROLES))):
+    await _require_prelaunch_mode()
+    pv = await dops.user_preview(user_id)
+    if not pv:
+        raise HTTPException(status_code=404, detail="User not found.")
+    pv.pop("_raw_id", None)
+    return pv
+
+
+@api.post("/developer/data-ops/user/{user_id}/delete")
+async def developer_data_ops_user_delete(user_id: str, body: DataOpsDeleteUserBody, user: dict = Depends(require_roles(*OPS_ROLES))):
+    await _require_prelaunch_mode()
+    reason = _ops_reason(body.reason)
+    if body.confirm_text.strip() != dops.DELETE_USER_CONFIRM:
+        raise HTTPException(status_code=422, detail=f'Type "{dops.DELETE_USER_CONFIRM}" to confirm.')
+    pv = await dops.user_preview(user_id)
+    if not pv:
+        raise HTTPException(status_code=404, detail="User not found.")
+    if pv["protected"] or pv["id"] == str(user.get("id")) or (pv.get("email") or "").lower() == OWNER_ADMIN_EMAIL:
+        raise HTTPException(status_code=403, detail="Operator, owner and your own identity cannot be deleted here.")
+    if pv.get("patient_id") and await db.patients.find_one({"id": pv["patient_id"]}, {"_id": 1}):
+        raise HTTPException(status_code=409, detail="This login is attached to a patient record — use RESET TEST PATIENT instead.")
+    res = await dops.delete_user(user_id)
+    await audit("devops_test_user_deleted", "user", user_id, user, meta={
+        "email": pv.get("email"), "role": pv.get("role"), "name": pv.get("name"), "deleted": res["deleted"], "reason": reason, "data_mode": "PRELAUNCH_TEST"})
+    return {"ok": True, "deleted": res["deleted"], "released_email": pv.get("email")}
+
+
+@api.get("/developer/data-ops/purge-preview")
+async def developer_data_ops_purge_preview(user: dict = Depends(require_roles(*OPS_ROLES))):
+    await _require_prelaunch_mode()
+    return await dops.purge_preview()
+
+
+@api.post("/developer/data-ops/purge-all")
+async def developer_data_ops_purge_all(user: dict = Depends(require_roles(*OPS_ROLES))):
+    await _require_prelaunch_mode()
+    await audit("devops_purge_all_attempt_blocked", "platform", "purge-all", user, meta={"reason": "purge not wired in this release"})
+    raise HTTPException(status_code=501, detail={"code": "PURGE_NOT_WIRED", "message": "PURGE ALL TEST DATA is architecturally prepared but intentionally not enabled in this release."})
+
+
 SYNTHETIC_PATIENTS = [
     {"visita_patient_id": "TEST-F-001", "first_name": "Testfemale", "last_name": "SYNTHETIC-ZZ", "date_of_birth": "1985-03-15",
      "sex": "Female", "sex_code": None, "health_card_number": "0000000001", "health_card_version_code": "ZZ",

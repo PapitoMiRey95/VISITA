@@ -11,6 +11,7 @@ import { Textarea } from "../components/ui/textarea";
 import { formatDateTime } from "../lib/date";
 import { usePlatformConfigAdmin } from "./platformConfig";
 import { FeaturesSection, PublicSiteSection } from "./sections";
+import { DataOperations } from "./DataOperations";
 
 const GOOD = new Set(["ONLINE", "CONNECTED", "READY"]);
 const Indicator = ({ label, value }) => (
@@ -89,7 +90,7 @@ function MaintenanceMode({ current, onChanged }) {
     );
 }
 
-const TABS = ["OVERVIEW", "FEATURES", "PUBLIC SITE", "OPERATIONS"];
+const TABS = ["OVERVIEW", "FEATURES", "PUBLIC SITE", "OPERATIONS", "DATA OPS"];
 
 function Overview({ d, pc }) {
     const live = pc?.published;
@@ -146,6 +147,7 @@ export default function DeveloperPortal() {
                 {tab === "OVERVIEW" && <Overview d={d} pc={pcq.data} />}
                 {tab === "FEATURES" && <FeaturesSection cfg={pcq.data} onChanged={changed} />}
                 {tab === "PUBLIC SITE" && pcq.data && <PublicSiteSection key={pcq.data.draft?.updated_at || pcq.data.published?.version} cfg={pcq.data} onChanged={changed} />}
+                {tab === "DATA OPS" && <DataOperations cfg={pcq.data} onChanged={changed} />}
                 {tab === "OPERATIONS" && (
                     <div className="grid md:grid-cols-2 gap-5" data-testid="dev-operations">
                         <Card icon={Server} title="System status" testid="dev-system-status">

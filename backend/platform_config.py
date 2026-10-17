@@ -39,10 +39,22 @@ DEFAULT_CONFIG = {
     "navigation": {"hidden": {a: [] for a in AUDIENCES}},  # visibility only — never authorization
     "public_site": {"headline": "", "subtitle": "", "search_placeholder": "", "cta_create_portal": "", "cta_apply_for_care": "",
                     "coming_soon_label": "Coming soon", "footer_contact": "", "show_role_section": True},
-    "operations": {}, "network": {}, "integrations": {},
+    "operations": {"data_mode": "PRELAUNCH_TEST"}, "network": {}, "integrations": {},
 }
 SECTIONS = tuple(DEFAULT_CONFIG.keys())
+DATA_MODES = ("PRELAUNCH_TEST", "LIVE_CLINICAL")
 _cache = {"at": 0.0, "live": None}
+
+
+def live_data_mode(config: dict) -> str:
+    return ((config.get("operations") or {}).get("data_mode")) or "PRELAUNCH_TEST"
+
+
+def _enforce_one_way(config: dict, live_config: dict) -> dict:
+    """LIVE_CLINICAL is permanent: no draft/publish/rollback may return to PRELAUNCH_TEST."""
+    if live_data_mode(live_config) == "LIVE_CLINICAL":
+        config.setdefault("operations", {})["data_mode"] = "LIVE_CLINICAL"
+    return config
 
 
 def _merge(base, over):
@@ -89,10 +101,17 @@ def _validate(section: str, data: dict):
         bad = [k for k in data if k not in PUBLIC_SITE_FIELDS]
         if bad:
             raise ValueError(f"Not operator-configurable: {bad}")
+    if section == "operations":
+        bad = [k for k in data if k != "data_mode"]
+        if bad or ("data_mode" in data and data["data_mode"] not in DATA_MODES):
+            raise ValueError("operations accepts only data_mode = PRELAUNCH_TEST | LIVE_CLINICAL")
 
 
 async def save_draft(section: str, data: dict, user: dict) -> dict:
     _validate(section, data)
+    live_cfg = (await published())["config"]
+    if section == "operations" and live_data_mode(live_cfg) == "LIVE_CLINICAL" and data.get("data_mode") == "PRELAUNCH_TEST":
+        raise ValueError("Data mode is LIVE_CLINICAL — this switch is one-way and cannot return to PRELAUNCH_TEST.")
     base = (await draft()) or {"id": str(uuid.uuid4()), "status": "DRAFT", "config": copy.deepcopy((await published())["config"]),
                                "based_on_version": (await published())["version"], "created_at": now_iso()}
     base["config"][section] = _merge(base["config"].get(section, {}), data) if section != "navigation" else data
@@ -107,6 +126,7 @@ async def discard_draft():
 
 async def _publish_config(config: dict, user: dict, note: str) -> tuple[int, int]:
     live = await published()
+    config = _enforce_one_way(config, live["config"])
     new_version = live["version"] + 1
     await db.platform_config_versions.update_many({"status": "PUBLISHED"}, {"$set": {"status": "SUPERSEDED", "superseded_at": now_iso()}})
     await db.platform_config_versions.insert_one({"id": str(uuid.uuid4()), "version": new_version, "status": "PUBLISHED", "config": config,

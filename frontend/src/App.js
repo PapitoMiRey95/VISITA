@@ -4,6 +4,7 @@ import { AuthProvider } from "./context/AuthContext";
 import { RoleRoute, HomeRedirect } from "./components/RoleRoute";
 
 import Landing from "./pages/Landing";
+import PlatformAccess from "./pages/PlatformAccess";
 import SignIn from "./pages/SignIn";
 import Register from "./pages/Register";
 import PartnerRegister from "./pages/PartnerRegister";
@@ -72,6 +73,7 @@ function App() {
                 <Routes>
                     <Route path="/" element={<HomeRedirect />} />
                     <Route path="/login" element={<Landing />} />
+                    <Route path="/platform-access" element={<PlatformAccess />} />
                     <Route path="/signin" element={<SignIn />} />
                     <Route path="/register" element={<Register />} />
                     <Route path="/register/:practiceSlug" element={<Register />} />

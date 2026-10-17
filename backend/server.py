@@ -1164,6 +1164,29 @@ async def login(body: LoginBody):
     return {"token": token, "user": serialize_user(user)}
 
 
+@api.post("/platform/auth/login")
+async def platform_login(body: LoginBody):
+    """Installation-level operator sign-in: ONLY role developer_ops. Independent of any
+    practice/organization membership. Any other role (or unknown identifier) gets the same
+    generic 401 so no role information leaks."""
+    ident = (body.identifier or body.email or "").strip()
+    if not ident:
+        raise HTTPException(status_code=400, detail="Please enter your email or username.")
+    user = await db.users.find_one({"role": "developer_ops", "$or": [
+        {"email": ident.lower()},
+        {"username": {"$regex": f"^{re.escape(ident)}$", "$options": "i"}},
+    ]})
+    if not user or not authlib.verify_password(body.password, user["password_hash"]):
+        await audit("platform_login_failed", "user", ident.lower(), {"id": None, "name": None, "role": "developer_ops"})
+        raise HTTPException(status_code=401, detail="Invalid credentials.")
+    if not user.get("active", True) or user.get("platform_suspended"):
+        raise HTTPException(status_code=403, detail="This platform account is suspended.")
+    await db.users.update_one({"_id": user["_id"]}, {"$set": {"last_login_at": now_iso(), "last_platform_login_at": now_iso()}})
+    await audit("platform_login", "user", str(user["_id"]), {"id": str(user["_id"]), "name": user.get("name"), "role": user["role"]})
+    token = authlib.create_access_token(str(user["_id"]), user.get("email") or user.get("username"), user["role"])
+    return {"token": token, "user": serialize_user(user)}
+
+
 # Emergent-managed Google Sign-In — PATIENTS ONLY. Alternative auth method that
 # reuses the existing JWT session; it never bypasses registration, identity
 # matching, verification, or account-status rules. No account is ever created

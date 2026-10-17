@@ -55,6 +55,15 @@ export function AuthProvider({ children }) {
         return data.user;
     }, [loadMe]);
 
+    // Installation-level operator sign-in (developer_ops only) — separate entry from clinic/patient login.
+    const platformLogin = useCallback(async (identifier, password) => {
+        const { data } = await api.post("/platform/auth/login", { identifier, password });
+        setToken(data.token);
+        setUser(data.user);
+        await loadMe();
+        return data.user;
+    }, [loadMe]);
+
     const logout = useCallback(() => {
         clearToken();
         setUser(false);
@@ -72,8 +81,8 @@ export function AuthProvider({ children }) {
     }, []);
 
     const value = useMemo(
-        () => ({ user, patient, login, register, googleLogin, logout, refreshMe: loadMe, setTheme }),
-        [user, patient, login, register, googleLogin, logout, loadMe, setTheme]
+        () => ({ user, patient, login, register, googleLogin, platformLogin, logout, refreshMe: loadMe, setTheme }),
+        [user, patient, login, register, googleLogin, platformLogin, logout, loadMe, setTheme]
     );
 
     return <AuthCtx.Provider value={value}>{children}</AuthCtx.Provider>;

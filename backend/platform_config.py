@@ -34,7 +34,7 @@ PUBLIC_SITE_FIELDS = ("headline", "subtitle", "search_placeholder", "cta_create_
                       "coming_soon_label", "footer_contact", "show_role_section")
 
 DEFAULT_CONFIG = {
-    "branding": {"app_name": "Visita EMR Network", "short_name": "VIen"},
+    "branding": {"app_name": "VIen", "short_name": "VIen"},
     "features": {k: ("OFF" if k in ("network", "jobs", "market") else "ON") for k in FEATURES},
     "navigation": {"hidden": {a: [] for a in AUDIENCES}},  # visibility only — never authorization
     "public_site": {"headline": "", "subtitle": "", "search_placeholder": "", "cta_create_portal": "", "cta_apply_for_care": "",

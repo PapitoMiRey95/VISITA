@@ -37,7 +37,7 @@ export default function PharmacyHub() {
                     <ShieldCheck className="w-3.5 h-3.5" /> Verified
                 </span>
             </div>
-            <p className="text-slate-500 mb-6">{user?.pharmacy_name} — VIen EMR Network</p>
+            <p className="text-slate-500 mb-6">{user?.pharmacy_name} — VIen</p>
 
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                 <Card to="/pharmacy/incoming" icon={Inbox} title="Incoming Prescriptions" badge={unviewed}

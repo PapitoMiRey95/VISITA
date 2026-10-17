@@ -1,6 +1,6 @@
 {
-  "short_name": "Visita EMR",
-  "name": "Visita EMR Network",
+  "short_name": "VIen",
+  "name": "VIen",
   "description": "Connected healthcare network: appointments, prescriptions, clinic communication.",
   "icons": [
     { "src": "favicon.ico", "sizes": "16x16 32x32 48x48 64x64", "type": "image/x-icon" },

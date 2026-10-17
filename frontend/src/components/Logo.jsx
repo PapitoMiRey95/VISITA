@@ -1,4 +1,4 @@
-// Shared VIen EMR brand mark — Ontario healthcare-network icon + wordmark.
+// Shared VIen brand mark — Ontario healthcare-network icon + wordmark.
 // variant="dark" for dark backgrounds (light text), "light" for light backgrounds.
 export function Logo({ variant = "light", iconClass = "h-8 w-8", textClass = "text-xl", showText = true, className = "" }) {
     // Vertical brand gradient: dark blue (top) -> turquoise (bottom), matching the logo mark.
@@ -8,10 +8,10 @@ export function Logo({ variant = "light", iconClass = "h-8 w-8", textClass = "te
         : "bg-gradient-to-b from-[#1e50a0] to-[#12bfa0]";
     return (
         <div className={`flex items-center gap-2 ${className}`} data-testid="brand-logo">
-            <img src="/vien-logo.png" alt="VIsita EMR" className={`${iconClass} object-contain select-none`} draggable="false" />
+            <img src="/vien-logo.png" alt="VIen" className={`${iconClass} object-contain select-none`} draggable="false" />
             {showText && (
                 <span className={`font-bold tracking-tight leading-tight bg-clip-text text-transparent ${gradient} ${textClass}`}>
-                    VIsita EMR Network
+                    VIen
                 </span>
             )}
         </div>

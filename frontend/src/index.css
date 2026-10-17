@@ -143,3 +143,29 @@ html.dark .hover\:bg-visita-greenLight:hover, html.dark .bg-visita-greenLight { 
 html.dark .text-visita-greenDark { color: #5cc46f; }
 html.dark .shadow, html.dark .shadow-sm, html.dark .shadow-md { box-shadow: 0 1px 2px rgba(0,0,0,.6); }
 html.dark [data-testid="maintenance-screen"], html.dark [data-testid="developer-portal"] { background-color: #0b0e12; }
+/* shadcn design tokens for VIen Dark: dialogs, popovers, selects, sheets, dropdowns, tooltips */
+html.dark {
+    --background: 216 19% 8%;
+    --foreground: 220 14% 96%;
+    --card: 215 17% 11%;
+    --card-foreground: 220 14% 96%;
+    --popover: 215 17% 11%;
+    --popover-foreground: 220 14% 96%;
+    --secondary: 215 15% 17%;
+    --secondary-foreground: 220 14% 96%;
+    --muted: 215 15% 17%;
+    --muted-foreground: 215 12% 65%;
+    --accent: 215 15% 19%;
+    --accent-foreground: 220 14% 96%;
+    --border: 215 14% 22%;
+    --input: 215 14% 28%;
+    /* --primary / --destructive / --ring intentionally unchanged (VIen green, red) */
+}
+html.dark .bg-slate-900, html.dark .bg-slate-800 { background-color: #1f252d; }
+html.dark .bg-slate-900.text-white, html.dark .bg-slate-800.text-white { background-color: #2b323c; }
+html.dark .hover\:bg-slate-200:hover, html.dark .hover\:bg-gray-100:hover { background-color: #262c35; }
+html.dark .divide-slate-200 > :not([hidden]) ~ :not([hidden]), html.dark .divide-slate-100 > :not([hidden]) ~ :not([hidden]) { border-color: #2b323c; }
+html.dark .bg-slate-50\/50, html.dark .bg-slate-100\/60 { background-color: #141920; }
+html.dark button:disabled, html.dark [aria-disabled="true"] { opacity: .55; }
+html.dark .even\:bg-slate-50\/60:nth-child(even), html.dark .bg-slate-50\/60, html.dark .bg-slate-50\/50, html.dark .bg-slate-50\/40, html.dark .bg-slate-100\/50 { background-color: #141920; }
+html.dark .bg-slate-50\/80, html.dark .bg-white\/90, html.dark .bg-white\/80 { background-color: rgba(23, 27, 33, .92); }

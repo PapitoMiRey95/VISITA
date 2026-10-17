@@ -191,13 +191,13 @@ export default function PortalAccountPanel({ patientId }) {
                     </div>
                     <p className="text-[11px] text-slate-400 mt-2">Disabling portal access only blocks login. The patient record, VISITA PIN and all history are preserved. Every action is audited.</p>
                     {isAdmin && (
-                        <div className="mt-4 rounded-md border border-amber-200 bg-amber-50/60 p-3 max-w-xl" data-testid="pa-reset-section">
+                        <div className="mt-4 rounded-md border border-amber-200 bg-amber-50/60 dark:border-amber-500/40 dark:bg-amber-500/10 p-3 max-w-xl" data-testid="pa-reset-section">
                             <div className="flex items-start justify-between gap-3">
                                 <div>
-                                    <div className="text-xs font-bold text-amber-900 uppercase tracking-wide">Reset / detach portal account</div>
-                                    <p className="text-[11px] text-amber-900/80 mt-0.5">Releases the login email and revokes credentials and sessions so the patient can create a fresh portal account linked to this same record. Different from disabling access.</p>
+                                    <div className="text-xs font-bold text-amber-900 dark:text-amber-300 uppercase tracking-wide">Reset / detach portal account</div>
+                                    <p className="text-[11px] text-amber-900/80 dark:text-amber-100/80 mt-0.5">Releases the login email and revokes credentials and sessions so the patient can create a fresh portal account linked to this same record. Different from disabling access.</p>
                                 </div>
-                                <Button size="sm" variant="outline" disabled={!!busy} data-testid="pa-reset-open" onClick={() => setResetOpen(true)} className="border-amber-300 text-amber-900 hover:bg-amber-100 whitespace-nowrap">
+                                <Button size="sm" variant="outline" disabled={!!busy} data-testid="pa-reset-open" onClick={() => setResetOpen(true)} className="border-amber-300 text-amber-900 hover:bg-amber-100 dark:border-amber-400/50 dark:text-amber-200 dark:bg-transparent dark:hover:bg-amber-500/20 whitespace-nowrap">
                                     <Unlink className="w-3.5 h-3.5 mr-1" /> Reset / detach
                                 </Button>
                             </div>
@@ -237,9 +237,9 @@ function PortalResetDialog({ open, onClose, patientId, loginEmail, onDone }) {
                     <DialogTitle>Reset / detach portal account</DialogTitle>
                     <DialogDescription>Login <span className="font-mono">{loginEmail}</span> will be detached and archived. Credentials, verification state and active sessions are revoked.</DialogDescription>
                 </DialogHeader>
-                <div className="rounded-sm border border-emerald-300 bg-emerald-50 px-3 py-2 text-sm font-semibold text-emerald-900" data-testid="pa-reset-preserve-note">
+                <div className="rounded-sm border border-emerald-300 bg-emerald-50 dark:border-emerald-500/40 dark:bg-emerald-500/10 dark:text-emerald-200 px-3 py-2 text-sm font-semibold text-emerald-900" data-testid="pa-reset-preserve-note">
                     Clinical patient record and history will NOT be deleted.
-                    <div className="text-[11px] font-normal text-emerald-900/80 mt-0.5">Patient identity, VISITA PIN, demographics, appointments, visits, Rx, results, referrals, invoices, caregiver history and audit trail are preserved. No new patient or PIN is created.</div>
+                    <div className="text-[11px] font-normal text-emerald-900/80 dark:text-emerald-100/80 mt-0.5">Patient identity, VISITA PIN, demographics, appointments, visits, Rx, results, referrals, invoices, caregiver history and audit trail are preserved. No new patient or PIN is created.</div>
                 </div>
                 <div className="space-y-3">
                     <div>
@@ -251,7 +251,7 @@ function PortalResetDialog({ open, onClose, patientId, loginEmail, onDone }) {
                         <Input value={confirm} onChange={(e) => setConfirm(e.target.value)} autoComplete="off" data-testid="pa-reset-confirm" />
                     </div>
                     {review && (
-                        <div className="rounded-sm border border-red-300 bg-red-50 px-3 py-2 text-sm text-red-800" data-testid="pa-reset-review">
+                        <div className="rounded-sm border border-red-300 bg-red-50 dark:border-red-500/40 dark:bg-red-500/10 dark:text-red-200 px-3 py-2 text-sm text-red-800" data-testid="pa-reset-review">
                             <div className="font-bold">Review required — nothing was changed.</div>
                             <ul className="list-disc pl-4 text-xs mt-1">{review.map((i, k) => <li key={k}>{i}</li>)}</ul>
                         </div>

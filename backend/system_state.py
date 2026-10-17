@@ -14,7 +14,7 @@ _cache = {"at": 0.0, "state": None}
 CACHE_TTL = 5.0
 
 # Paths that must keep working during maintenance (infra probes, banner, login, developer portal).
-ALLOW_PREFIXES = ("/api/health", "/api/system/", "/api/auth/login", "/api/auth/me", "/api/auth/logout",
+ALLOW_PREFIXES = ("/api/health", "/api/system/", "/api/me/theme", "/api/auth/login", "/api/auth/me", "/api/auth/logout",
                   "/api/developer/", "/health", "/api/practices", "/api/settings/public")
 
 

@@ -5,6 +5,7 @@ import { toast } from "sonner";
 import { LogOut, BellRing, IdCard, Phone, CreditCard, AlertTriangle, Clock, Mail, MapPin, User } from "lucide-react";
 import { api, formatErr } from "../lib/api";
 import { useAuth } from "../context/AuthContext";
+import { ThemeSelector } from "../components/ThemeToggle";
 import { usePortal, Card } from "./shared";
 import { formatDate } from "../lib/date";
 import { Button } from "../components/ui/button";
@@ -133,6 +134,12 @@ export default function PortalAccount() {
     return (
         <div className="space-y-5 animate-fade-in">
             <h1 className="text-2xl font-bold text-slate-900">{t("portal:account.title")}</h1>
+
+            <Card data-testid="account-appearance">
+                <div className="text-sm font-bold text-slate-900 mb-1">Appearance</div>
+                <div className="text-xs text-slate-500 mb-2">Your personal preference only — it does not change how anyone else sees VIen.</div>
+                <ThemeSelector />
+            </Card>
 
             <Card>
                 <div className="text-lg font-extrabold text-slate-900">{p ? `${p.first_name} ${p.last_name}` : user?.name}</div>

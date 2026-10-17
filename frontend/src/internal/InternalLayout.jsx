@@ -6,6 +6,8 @@ import {
 } from "lucide-react";
 import { useAuth } from "../context/AuthContext";
 import { useCounters } from "./hooks";
+import { usePlatformConfig, NAV_FEATURE } from "../lib/platform";
+import { ThemeToggle } from "../components/ThemeToggle";
 import { Logo } from "../components/Logo";
 import { Button } from "../components/ui/button";
 import { Sheet, SheetContent, SheetTrigger, SheetTitle } from "../components/ui/sheet";
@@ -92,10 +94,13 @@ export default function InternalLayout() {
           ];
 
     // Permanent quick-access set; everything else lives inside the Central Work Hub drawer.
+    const { navVisible } = usePlatformConfig();
+    const audience = role === "physician" ? "physician" : "staff";
+    const visibleItems = items.filter((it) => !NAV_FEATURE[it.to] || navVisible(NAV_FEATURE[it.to], audience, role));
     const QUICK = new Set(["/internal/patients", "/internal/rx", "/internal/calendar", "/internal/verifications",
                            "/internal/registration-qr", "/internal/settings"]);
-    const quickItems = items.filter((it) => QUICK.has(it.to));
-    const hubItems = items.filter((it) => !QUICK.has(it.to));
+    const quickItems = visibleItems.filter((it) => QUICK.has(it.to));
+    const hubItems = visibleItems.filter((it) => !QUICK.has(it.to));
     const hubBadge = hubItems.reduce((n, it) => n + (it.key && c[it.key] > 0 ? c[it.key] : 0), 0);
     const [hubOpen, setHubOpen] = useState(false);
 
@@ -167,6 +172,7 @@ export default function InternalLayout() {
                 </div>
                 <div className="flex items-center gap-3 text-sm">
                     <span className="text-white/80 hidden sm:inline">{user?.name} · <span className="capitalize text-white/50">{role}</span></span>
+                    <ThemeToggle className="border-white/30 text-white/80 hover:bg-white/10" />
                     <button data-testid="internal-logout" onClick={guarded(() => { logout(); nav("/login"); })}
                         className="flex items-center gap-1 hover:text-white text-white/70">
                         <LogOut className="w-4 h-4" /> Logout

@@ -62,9 +62,18 @@ export function AuthProvider({ children }) {
         // deps empty: clearToken is a stable import; setUser/setPatient are stable setters.
     }, []);
 
+    // USER-LEVEL theme: VIen Light is the default; Dark applies only to this user's session (class on <html>).
+    useEffect(() => {
+        document.documentElement.classList.toggle("dark", !!(user && user.theme === "dark"));
+    }, [user]);
+    const setTheme = useCallback(async (theme) => {
+        await api.put("/me/theme", { theme });
+        setUser((u) => (u ? { ...u, theme } : u));
+    }, []);
+
     const value = useMemo(
-        () => ({ user, patient, login, register, googleLogin, logout, refreshMe: loadMe }),
-        [user, patient, login, register, googleLogin, logout, loadMe]
+        () => ({ user, patient, login, register, googleLogin, logout, refreshMe: loadMe, setTheme }),
+        [user, patient, login, register, googleLogin, logout, loadMe, setTheme]
     );
 
     return <AuthCtx.Provider value={value}>{children}</AuthCtx.Provider>;

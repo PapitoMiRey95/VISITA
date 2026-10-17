@@ -5,6 +5,7 @@ import { useTranslation } from "react-i18next";
 import { Home, Calendar, Pill, MessageSquare, ClipboardList, Bell, LogOut, User, Receipt, FileText, CreditCard, ArrowLeft } from "lucide-react";
 import { api, setOnBehalfOf } from "../lib/api";
 import { useAuth } from "../context/AuthContext";
+import { ThemeToggle } from "../components/ThemeToggle";
 import { Logo } from "../components/Logo";
 import { setAppLanguage, getSavedLanguage } from "../i18n";
 
@@ -114,6 +115,7 @@ export default function PortalLayout() {
                         className="p-2 rounded-full hover:bg-slate-100 text-sm font-bold text-portal-blueDark">
                         {user?.name?.[0] || "P"}
                     </button>
+                    <ThemeToggle className="border-slate-300 text-slate-700" />
                     <button data-testid="portal-logout" onClick={() => { logout(); nav("/login"); }} className="p-2 rounded-full hover:bg-slate-100">
                         <LogOut className="w-5 h-5 text-slate-600" />
                     </button>

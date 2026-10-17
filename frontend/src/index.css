@@ -122,3 +122,24 @@ body {
     [data-testid="qr-card"], [data-testid="qr-card"] * { visibility: visible; }
     [data-testid="qr-card"] { position: absolute; left: 0; top: 0; width: 100%; border: 0; }
 }
+
+/* ---------- VIen Dark (user-level appearance) ----------
+   Near-black surfaces, high-contrast primary text, muted secondary text, VIen green accents.
+   Status colours (red/amber/emerald/blue, StatusPill, announcements, maintenance) are NOT remapped
+   so errors, warnings and clinical indicators stay fully visible. */
+html.dark { color-scheme: dark; }
+html.dark body, html.dark .bg-visita-bg, html.dark .bg-slate-50, html.dark .bg-slate-100, html.dark .bg-gray-50 { background-color: #0f1216; color: #f3f4f6; }
+html.dark .bg-white { background-color: #171b21; }
+html.dark .bg-slate-200 { background-color: #262c35; }
+html.dark .text-slate-900, html.dark .text-slate-800, html.dark .text-gray-900, html.dark .text-black { color: #f3f4f6; }
+html.dark .text-slate-700, html.dark .text-slate-600, html.dark .text-gray-700 { color: #cbd1da; }
+html.dark .text-slate-500, html.dark .text-slate-400, html.dark .text-gray-500 { color: #9aa3b0; }
+html.dark .border-slate-200, html.dark .border-slate-300, html.dark .border-gray-200, html.dark .border { border-color: #2b323c; }
+html.dark .border-dashed { border-color: #3a424e; }
+html.dark input:not([type=checkbox]):not([type=radio]), html.dark textarea, html.dark select { background-color: #0f1216; color: #f3f4f6; border-color: #3a424e; }
+html.dark input::placeholder, html.dark textarea::placeholder { color: #7c8694; }
+html.dark .hover\:bg-slate-50:hover, html.dark .hover\:bg-slate-100:hover { background-color: #1f252d; }
+html.dark .hover\:bg-visita-greenLight:hover, html.dark .bg-visita-greenLight { background-color: rgba(46, 133, 64, 0.22); }
+html.dark .text-visita-greenDark { color: #5cc46f; }
+html.dark .shadow, html.dark .shadow-sm, html.dark .shadow-md { box-shadow: 0 1px 2px rgba(0,0,0,.6); }
+html.dark [data-testid="maintenance-screen"], html.dark [data-testid="developer-portal"] { background-color: #0b0e12; }

@@ -1,5 +1,6 @@
 import { useState } from "react";
 import { useNavigate } from "react-router-dom";
+import { usePlatformConfig } from "../lib/platform";
 import { useTranslation } from "react-i18next";
 import { toast } from "sonner";
 import { LogIn, UserRound, Stethoscope, Building2, Search, ChevronLeft, ChevronRight, ArrowRight, Loader2 } from "lucide-react";
@@ -15,6 +16,7 @@ const BG_MOBILE = "https://customer-assets-4nw71qhi.emergentagent.net/job_visita
 export default function Landing() {
     const nav = useNavigate();
     const { t, i18n } = useTranslation(["common", "auth"]);
+    const { publicSite: ps } = usePlatformConfig();
     const cur = i18n.language?.startsWith("es") ? "es" : "en";
     const [mode, setMode] = useState("home"); // home | roles
 
@@ -62,14 +64,14 @@ export default function Landing() {
                                     <span className="text-white font-medium [text-shadow:0_1px_4px_rgba(0,0,0,0.9)] sm:[text-shadow:none] sm:text-slate-300 sm:font-normal">{t("auth:landing2.createPortalPrompt")}</span>
                                     <button data-testid="landing-create-portal" onClick={() => nav("/register")}
                                         className="font-black text-black bg-cyan-700 hover:bg-cyan-600 rounded-full px-3.5 py-1.5 inline-flex items-center gap-1 shadow-[0_2px_10px_-2px_rgba(14,116,144,0.6)] transition-colors">
-                                        {t("auth:landing2.createPortal")} <ArrowRight className="w-4 h-4" />
+                                        {ps.cta_create_portal || t("auth:landing2.createPortal")} <ArrowRight className="w-4 h-4" />
                                     </button>
                                 </div>
                                 <div className="flex items-center justify-between gap-3 text-sm border-t border-white/10 pt-4">
                                     <span className="text-white font-medium [text-shadow:0_1px_4px_rgba(0,0,0,0.9)] sm:[text-shadow:none] sm:text-slate-400 sm:font-normal">{t("auth:landing2.applyPrompt")}</span>
                                     <button data-testid="landing-apply-care" onClick={() => nav("/register?new=1")}
                                         className="font-black text-black bg-cyan-700 hover:bg-cyan-600 rounded-full px-3.5 py-1.5 inline-flex items-center gap-1 shadow-[0_2px_10px_-2px_rgba(14,116,144,0.6)] transition-colors">
-                                        {t("auth:landing2.applyForCare")} <ArrowRight className="w-4 h-4" />
+                                        {ps.cta_apply_for_care || t("auth:landing2.applyForCare")} <ArrowRight className="w-4 h-4" />
                                     </button>
                                 </div>
                             </div>
@@ -90,6 +92,7 @@ export default function Landing() {
 }
 
 function SearchBar({ nav, t }) {
+    const { publicSite: ps } = usePlatformConfig();
     const [q, setQ] = useState("");
     const [results, setResults] = useState(null);
     const [busy, setBusy] = useState(false);
@@ -105,6 +108,12 @@ function SearchBar({ nav, t }) {
 
     return (
         <div className="w-full max-w-[760px]" data-testid="landing-home">
+            {(ps.headline || ps.subtitle) && (
+                <div className="text-center mb-5" data-testid="landing-headline">
+                    {ps.headline && <h1 className="text-3xl sm:text-4xl font-bold text-white [text-shadow:0_2px_8px_rgba(0,0,0,0.8)]">{ps.headline}</h1>}
+                    {ps.subtitle && <p className="text-base text-slate-200 mt-2 [text-shadow:0_1px_4px_rgba(0,0,0,0.8)]">{ps.subtitle}</p>}
+                </div>
+            )}
             <div className="relative">
                 <Search className="w-5 h-5 text-slate-400 absolute left-5 top-1/2 -translate-y-1/2 pointer-events-none" />
                 <Input
@@ -112,7 +121,7 @@ function SearchBar({ nav, t }) {
                     value={q}
                     onChange={(e) => setQ(e.target.value)}
                     onKeyDown={(e) => e.key === "Enter" && search()}
-                    placeholder={t("auth:landing2.searchPlaceholder")}
+                    placeholder={ps.search_placeholder || t("auth:landing2.searchPlaceholder")}
                     aria-label={t("auth:landing2.searchHint")}
                     className="h-14 lg:h-16 w-full rounded-full border-white/10 bg-[#0f1e30]/95 pl-14 pr-32 text-base lg:text-lg text-slate-100 placeholder:text-slate-500 shadow-[0_18px_50px_-18px_rgba(0,0,0,0.9)] focus-visible:ring-2 focus-visible:ring-cyan-400/60"
                 />

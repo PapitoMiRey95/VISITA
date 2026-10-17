@@ -52,6 +52,7 @@ import appt_guard as guard_mod
 import index_bootstrap as ib_mod
 import catalog_import as catalog_import_mod
 import system_state as sys_mod
+import platform_config as pc_mod
 import storage
 from db import (APPT_PATIENT_STATUS, BLD_ACTIVE, BLD_PATIENT_STATUS, IMG_ACTIVE,
                 IMG_PATIENT_STATUS, MSG_ACTIVE, MSG_PATIENT_STATUS, RX_ACTIVE,
@@ -86,6 +87,7 @@ def serialize_user(u: dict) -> dict:
         "organization_id": u.get("organization_id"),
         "practice_id": u.get("practice_id"),
         "encounter_enabled": encounter_pilot_allows(u),
+        "theme": u.get("theme") if u.get("theme") in ("light", "dark") else "light",
     }
 
 
@@ -8961,6 +8963,86 @@ async def developer_maintenance_mode(body: MaintenanceModeBody, user: dict = Dep
     return m
 
 
+class ThemeBody(BaseModel):
+    theme: str
+
+
+@api.put("/me/theme")
+async def set_my_theme(body: ThemeBody, user: dict = Depends(get_current_user)):
+    """USER-LEVEL appearance preference (VIen Light default / VIen Dark). Affects only this user."""
+    if body.theme not in ("light", "dark"):
+        raise HTTPException(status_code=400, detail="theme must be light or dark")
+    await db.users.update_one({"_id": ObjectId(user["id"])}, {"$set": {"theme": body.theme}})
+    return {"theme": body.theme}
+
+
+@api.get("/system/config")
+async def system_config(preview: bool = False, user_role: Optional[str] = None):
+    """Public, read-only published platform config (branding/features/navigation/public copy).
+    ?preview=1 is honoured only for developer_ops (draft preview)."""
+    return pc_mod.public_view(await pc_mod.published())
+
+
+@api.get("/developer/platform-config")
+async def developer_platform_config(user: dict = Depends(require_roles(*OPS_ROLES))):
+    return {"published": await pc_mod.published(), "draft": await pc_mod.draft(), "history": await pc_mod.history(),
+            "registry": {"features": pc_mod.FEATURES, "states": pc_mod.FEATURE_STATES, "audiences": pc_mod.AUDIENCES,
+                         "public_site_fields": pc_mod.PUBLIC_SITE_FIELDS, "sections": pc_mod.SECTIONS}}
+
+
+class DraftBody(BaseModel):
+    section: str
+    data: dict
+
+
+@api.put("/developer/platform-config/draft")
+async def developer_save_draft(body: DraftBody, user: dict = Depends(require_roles(*OPS_ROLES))):
+    try:
+        d = await pc_mod.save_draft(body.section, body.data, user)
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    await audit("platform_config_draft_saved", "platform_config", "draft", user, meta={"section": body.section})
+    return d
+
+
+@api.delete("/developer/platform-config/draft")
+async def developer_discard_draft(user: dict = Depends(require_roles(*OPS_ROLES))):
+    await pc_mod.discard_draft()
+    await audit("platform_config_draft_discarded", "platform_config", "draft", user)
+    return {"ok": True}
+
+
+class ConfirmBody(BaseModel):
+    confirm: str
+    version: Optional[int] = None
+
+
+@api.post("/developer/platform-config/publish")
+async def developer_publish(body: ConfirmBody, user: dict = Depends(require_roles(*OPS_ROLES))):
+    if body.confirm != "PUBLISH":
+        raise HTTPException(status_code=400, detail="Type PUBLISH to confirm.")
+    try:
+        prev, new, changed = await pc_mod.publish_draft(user)
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    await audit("platform_config_published", "platform_config", f"v{new}", user, old_status=f"v{prev}", new_status=f"v{new}",
+                meta={"sections": changed, "previous_version": prev, "new_version": new})
+    return {"previous_version": prev, "version": new, "sections": changed}
+
+
+@api.post("/developer/platform-config/rollback")
+async def developer_rollback(body: ConfirmBody, user: dict = Depends(require_roles(*OPS_ROLES))):
+    if body.confirm != "ROLLBACK" or body.version is None:
+        raise HTTPException(status_code=400, detail="Type ROLLBACK and choose a version.")
+    try:
+        prev, new = await pc_mod.rollback(body.version, user)
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    await audit("platform_config_rolled_back", "platform_config", f"v{new}", user, old_status=f"v{prev}", new_status=f"v{new}",
+                meta={"restored_version": body.version, "previous_version": prev, "new_version": new})
+    return {"previous_version": prev, "version": new, "restored_version": body.version}
+
+
 class SyntheticPatientsBody(BaseModel):
     token: str
 
@@ -9861,14 +9943,21 @@ async def maintenance_mode_gate(request: Request, call_next):
     path = request.url.path
     if request.method == "OPTIONS" or not path.startswith("/api") or sys_mod.path_allowed(path):
         return await call_next(request)
-    state = await sys_mod.get_state()
-    if not state["maintenance"]["on"]:
-        return await call_next(request)
     header = request.headers.get("Authorization", "")
     try:
         role = authlib.decode_token(header[7:]).get("role") if header.startswith("Bearer ") else None
     except Exception:
         role = None
+    # Feature registry: OFF fails closed at the API; PILOT = internal roles only.
+    feat = pc_mod.feature_for_path(path)
+    if feat and role not in OPS_ROLES:
+        st = pc_mod.feature_state((await pc_mod.published())["config"], feat)
+        if st == "OFF" or (st == "PILOT" and role not in pc_mod.INTERNAL_ROLES):
+            return JSONResponse(status_code=403, content={"detail": {"code": "FEATURE_OFF", "feature": feat,
+                                                                     "message": f"{pc_mod.FEATURES[feat]} is currently unavailable."}})
+    state = await sys_mod.get_state()
+    if not state["maintenance"]["on"]:
+        return await call_next(request)
     if role in OPS_ROLES:
         return await call_next(request)
     return JSONResponse(status_code=503, content={"detail": {"code": "MAINTENANCE_MODE", "message": state["maintenance"]["message"]}})

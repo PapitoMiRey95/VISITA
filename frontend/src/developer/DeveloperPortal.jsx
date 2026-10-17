@@ -104,7 +104,10 @@ function OperatorIdentity({ op }) {
                 <div className="text-[10px] uppercase tracking-widest text-slate-400">Platform operator</div>
                 <div className="font-bold text-base">{brand}</div>
                 {op?.individual && <div className="text-sm text-slate-300 mt-1" data-testid="dev-operator-individual">{op.title ? `${op.title} · ` : ""}{op.individual}</div>}
-                <div className="text-[11px] text-slate-400 mt-2 font-mono">{op?.username ? `@${op.username} · ` : ""}{op?.email}</div>
+                <div className="text-[11px] text-slate-400 mt-2 font-mono leading-5">
+                    {op?.username && <div data-testid="dev-operator-username">@{op.username}</div>}
+                    {op?.email && <div data-testid="dev-operator-email">{op.email}</div>}
+                </div>
                 <p className="text-[11px] text-slate-500 mt-2">Actions are attributed to {brand} in the Control Center; the audit log keeps the individual account that performed each action.</p>
             </PopoverContent>
         </Popover>

@@ -6,6 +6,7 @@ version's config as a new version). Only developer_ops writes. Security/privacy/
 controls are NOT part of this model and cannot be toggled here.
 """
 import copy
+import re
 import time
 import uuid
 
@@ -58,7 +59,8 @@ def operator_actor(config: dict, user: dict) -> dict:
 
 def operator_profile(config: dict, user: dict) -> dict:
     b = config.get("branding") or {}
-    return {"brand": operator_brand(config), "title": b.get("operator_title") or "", "individual": user.get("name"),
+    individual = re.sub(r"\s*[\u2013\u2014-]\s*Developer\s*$", "", user.get("name") or "")  # presentation only; account name unchanged
+    return {"brand": operator_brand(config), "title": b.get("operator_title") or "", "individual": individual,
             "username": user.get("username"), "email": user.get("email"), "role": user.get("role")}
 
 

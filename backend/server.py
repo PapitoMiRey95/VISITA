@@ -9226,6 +9226,85 @@ OWNER_ADMIN_EMAIL = "kevinrodriguez9528@gmail.com"
 PLACEHOLDER_OPS_EMAIL = "devops@visita.demo"
 
 
+TEST_PATIENT_DEP_COLLECTIONS = [
+    "appointment_requests", "visits", "prescription_requests", "rx_transmissions", "patient_medications",
+    "exam_results", "bloodwork_requests", "imaging_requests", "referrals", "patient_referrals", "invoices",
+    "payment_proofs", "attachments", "private_requests", "patient_messages", "portal_access_requests",
+    "patient_provider_relationships", "practice_patient_relationships", "appointment_day_locks",
+    "appointment_review_flags", "patient_portal_delegates",
+]
+
+
+class VoidTestPatientBody(BaseModel):
+    token: str
+    patient_id: str
+    pin: str
+    portal_email: str
+    confirm: bool = False
+
+
+@api.post("/internal/admin/maintenance/void-test-patient")
+async def admin_void_test_patient(body: VoidTestPatientBody, user: dict = Depends(require_roles("admin"))):
+    """ONE-TIME, owner-admin + OPS_PROVISION_TOKEN gated archive of a single owner-confirmed TEST patient
+    with ZERO clinical dependencies. Soft-voids the patient, detaches its login identity (releasing the
+    email), never hard-deletes. Refuses on any dependency or identity mismatch."""
+    if (user.get("email") or "").lower() != OWNER_ADMIN_EMAIL:
+        raise HTTPException(status_code=403, detail="Not authorized")
+    expected = os.environ.get("OPS_PROVISION_TOKEN", "")
+    if not expected or not secrets.compare_digest(body.token, expected):
+        raise HTTPException(status_code=403, detail="Invalid token.")
+    p = await db.patients.find_one({"id": body.patient_id})
+    if not p:
+        raise HTTPException(status_code=404, detail="Patient not found.")
+    email = body.portal_email.strip().lower()
+    if str(p.get("visita_patient_id")) != body.pin.strip():
+        raise HTTPException(status_code=409, detail="PIN does not match this patient record.")
+    if p.get("record_status") == "VOIDED_TEST":
+        raise HTTPException(status_code=409, detail="This record is already archived as TEST.")
+    logins = [u async for u in db.users.find({"patient_id": p["id"]})]
+    if len(logins) != 1 or (logins[0].get("email") or "").lower() != email:
+        raise HTTPException(status_code=409, detail="Portal login identity does not match (expected exactly one login with the given email).")
+    u = logins[0]
+    deps = {c: await db[c].count_documents({"patient_id": p["id"]}) for c in TEST_PATIENT_DEP_COLLECTIONS}
+    deps["patient_directory_linked"] = await db.patient_directory.count_documents({"linked_patient_id": p["id"]})
+    deps["patient_directory_matched"] = await db.patient_directory.count_documents({"id": p.get("matched_directory_id")}) if p.get("matched_directory_id") else 0
+    deps["delegate_grants_as_caregiver"] = await db.patient_portal_delegates.count_documents({"delegate_user_id": str(u["_id"])})
+    blocking = {k: v for k, v in deps.items() if v}
+    summary = {"patient_id": p["id"], "pin": p.get("visita_patient_id"), "name": f"{p.get('first_name')} {p.get('last_name')}",
+               "portal_email": u.get("email"), "login_active": u.get("active", True), "dependencies": deps}
+    if blocking:
+        return {"mode": "blocked", "blocking": blocking, **summary}
+    if not body.confirm:
+        return {"mode": "dry_run", "would_archive": summary}
+    ts = now_iso()
+    actor = {"id": user.get("id"), "name": user.get("name"), "role": user.get("role")}
+    reason = "Confirmed test patient cleanup — owner-created test record"
+    uid = str(u["_id"])
+    archive = {"id": str(uuid.uuid4()), "user_id": uid, "patient_id": p["id"], "visita_patient_id": p.get("visita_patient_id"),
+               "login_email": u.get("email"), "name": u.get("name"), "email_verified": bool(u.get("email_verified")),
+               "account_created_at": u.get("created_at"), "last_login_at": u.get("last_login_at"), "was_active": u.get("active", True),
+               "detached_at": ts, "detached_by": actor, "reason": reason, "kind": "TEST_RECORD_VOID", "dependency_check": deps}
+    await db.portal_account_archive.insert_one(archive)
+    await db.users.update_one({"_id": u["_id"]}, {
+        "$set": {"email": f"detached+{uid}@archived.vien.invalid", "password_hash": None, "active": False, "patient_id": None,
+                 "detached_patient_id": p["id"], "portal_detached": True, "detached_at": ts, "detached_by": actor,
+                 "detach_reason": reason, "archive_id": archive["id"], "email_verified": False, "must_change_password": False,
+                 "is_test_identity": True, "updated_at": ts},
+        "$unset": {"temp_password_expires_at": "", "pending_activation": ""}})
+    await db.password_resets.delete_many({"user_id": uid})
+    await db.account_activations.delete_many({"user_id": uid})
+    await db.patients.update_one({"id": p["id"]}, {"$set": {
+        "record_status": "VOIDED_TEST", "is_test_record": True, "active_status": False, "has_login": False,
+        "portal_status": "DETACHED", "portal_detached_at": ts, "voided_at": ts, "voided_by": actor, "void_reason": reason,
+        "prior_portal_email": u.get("email"), "updated_at": ts}})
+    # PIN stays attached to this voided record so it is never reissued to another patient.
+    await db.visita_pins.update_one({"_id": p.get("visita_patient_id")}, {"$set": {"voided_test": True, "voided_at": ts}})
+    await audit("test_patient_voided", "patient", p["id"], user, meta={
+        "pin": p.get("visita_patient_id"), "prior_portal_email": u.get("email"), "reason": reason,
+        "dependency_check": deps, "archive_id": archive["id"]})
+    return {"mode": "apply", "archived": summary, "released_email": u.get("email"), "archive_id": archive["id"]}
+
+
 class OpsProvisionBody(BaseModel):
     token: str
     email: str

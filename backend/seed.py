@@ -247,8 +247,14 @@ async def seed_all(db, authlib):
 
     # developer_ops maintenance account — env-gated, CREATE-IF-MISSING ONLY (temp password,
     # forced change on first login). Never overwrites an existing account.
+    # PRODUCTION: startup provisioning is refused unconditionally (legacy secrets are ignored);
+    # operator accounts there are created only by an explicit, audited one-time action.
     ops_email = (os.environ.get("DEVELOPER_OPS_EMAIL") or "").strip().lower()
     ops_temp = os.environ.get("DEVELOPER_OPS_TEMP_PASSWORD")
+    if ops_email and ops_temp and _is_production():
+        import logging
+        logging.getLogger("visita").warning("DEVELOPER_OPS_* secrets present but developer_ops startup provisioning is refused on Production.")
+        ops_email = ops_temp = None
     if ops_email and ops_temp and not await db.users.find_one({"email": ops_email}):
         await db.users.insert_one({
             "email": ops_email, "username": "DEVOPS", "name": "Developer Ops", "role": "developer_ops",

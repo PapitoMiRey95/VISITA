@@ -127,7 +127,7 @@ async def get_current_user(request: Request) -> dict:
         m = await db.org_memberships.find_one({"id": payload["ws"], "user_id": str(user["_id"])}, {"_id": 0})
         if not m or m["status"] != "ACTIVE":
             raise HTTPException(status_code=403, detail={"code": "WORKSPACE_INACTIVE", "message": "Your access to this organization is not active."})
-        out.update(role="staff", practice_id=m["org_id"], allowed_modules=m.get("modules", []),
+        out.update(role="staff", base_role=user.get("role"), practice_id=m["org_id"], allowed_modules=m.get("modules", []),
                    workspace={"membership_id": m["id"], "org_id": m["org_id"], "org_name": m["org_name"], "role_title": m["role_title"]})
     return out
 

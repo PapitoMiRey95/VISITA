@@ -1,6 +1,6 @@
 import { BrowserRouter, Routes, Route, Navigate } from "react-router-dom";
 import { Toaster } from "sonner";
-import { AuthProvider } from "./context/AuthContext";
+import { AuthProvider, useAuth } from "./context/AuthContext";
 import { RoleRoute, HomeRedirect } from "./components/RoleRoute";
 
 import Landing from "./pages/Landing";
@@ -28,6 +28,13 @@ import PortalHealthCard from "./portal/PortalHealthCard";
 
 import InternalLayout from "./internal/InternalLayout";
 import Hub from "./internal/Hub";
+
+// Physicians land on Patients; every other internal role keeps the Work Hub.
+function InternalIndex() {
+    const { user } = useAuth();
+    const isPhysician = user?.role === "physician" || user?.base_role === "physician";
+    return isPhysician ? <Navigate to="/internal/patients" replace /> : <Hub />;
+}
 import ProvisionDeveloper from "./internal/ProvisionDeveloper";
 import RxQueue from "./internal/RxQueue";
 import PharmacyIntake from "./internal/PharmacyIntake";
@@ -142,7 +149,7 @@ function App() {
                             </RoleRoute>
                         }
                     >
-                        <Route index element={<Hub />} />
+                        <Route index element={<InternalIndex />} />
                         <Route path="patients" element={<Patients />} />
                         <Route path="rx" element={<RxQueue />} />
                         <Route path="pharmacy-intake" element={<PharmacyIntake />} />

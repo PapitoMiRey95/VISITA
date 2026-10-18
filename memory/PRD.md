@@ -858,3 +858,4 @@ PROD FOLLOW-UPS (need explicit GO, scripts not yet written): stamp practice_id o
 - 2026-10-17 (Preview only, NOT deployed): Operator branding — platform config branding.operator_name="OAKMONT Developers", operator_title="CEO"; published_by/updated_by store {name: brand, role, actor_name, actor_id, actor_username}; /developer/status returns operator profile; header shows OAKMONT Developers with profile popover (CEO · <individual>); history/draft attributions mapped via operatorLabel(). Audit untouched (real actor).
 - 2026-10-17: OAKMONT Developers operator branding DEPLOYED (individual shown only in profile popover, " – Developer" suffix stripped for display; audit unchanged).
 - 2026-10-17 (Preview only): Public homepage wordmark restored to "VIsita EMR Network" (Logo text prop; Landing.jsx only). Internal app keeps "VIen".
+- 2026-10-18: Homepage wordmark "VIsita EMR Network" DEPLOYED (bundle main.93a7f991.js).

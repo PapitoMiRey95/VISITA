@@ -2,6 +2,7 @@
 No mutation endpoints exist for audit records. Practice scoping is derived (older records carry no practice_id):
   a record is visible iff practice_id == user's practice, OR meta.practice_id matches, OR its entity is a visit /
   directory patient / portal patient of the practice. Physicians additionally only see their own visits' events."""
+import re
 from datetime import datetime, timedelta, timezone
 
 from names import full_display_name
@@ -83,9 +84,9 @@ async def list_events(db, user, *, date_from=None, date_to=None, patient_ref=Non
         ids = [vid for vid, v in visits.items() if v.get("patient_ref") == patient_ref]
         ands.append({"$or": [{"meta.patient_ref": patient_ref}, {"entity_type": "visit", "entity_id": {"$in": ids}}, {"entity_id": patient_ref.split(":", 1)[-1]}]})
     if actor:
-        ands.append({"$or": [{"actor_id": actor}, {"actor_name": {"$regex": actor, "$options": "i"}}]})
+        ands.append({"$or": [{"actor_id": actor}, {"actor_name": {"$regex": re.escape(actor), "$options": "i"}}]})
     if action:
-        ands.append({"action": {"$regex": action, "$options": "i"}})
+        ands.append({"action": {"$regex": re.escape(action), "$options": "i"}})
     if module:
         ands.append({"entity_type": {"$in": [k for k, m in MODULE.items() if m.lower() == module.lower()] or [module]}})
     if visit_status:

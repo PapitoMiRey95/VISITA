@@ -1160,13 +1160,13 @@ async def login(body: LoginBody):
     exp = user.get("temp_password_expires_at")
     if user.get("must_change_password") and exp:
         try:
-            if datetime.fromisoformat(exp) < datetime.now(timezone.utc):
-                raise HTTPException(status_code=403,
-                                    detail="Your temporary password has expired. Please contact the clinic for a new one.")
-        except HTTPException:
-            raise
+            expired = datetime.fromisoformat(exp) < datetime.now(timezone.utc)
         except Exception:
-            pass
+            logger.warning("temp_password_expires_at unparseable for user %s; failing closed", str(user["_id"]))
+            expired = True
+        if expired:
+            raise HTTPException(status_code=403,
+                                detail="Your temporary password has expired. Please contact the clinic for a new one.")
     await db.users.update_one({"_id": user["_id"]}, {"$set": {"last_login_at": now_iso()}})
     token = authlib.create_access_token(str(user["_id"]), user.get("email") or user.get("username"), user["role"])
     return {"token": token, "user": serialize_user(user)}

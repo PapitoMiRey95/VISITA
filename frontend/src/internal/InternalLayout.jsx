@@ -7,6 +7,12 @@ import {
 import { useAuth } from "../context/AuthContext";
 import { useCounters } from "./hooks";
 import { usePlatformConfig, NAV_FEATURE } from "../lib/platform";
+import { api, setToken } from "../lib/api";
+const WORKSPACE_NAV = {
+    patients: ["/internal/patients", "/internal/registration-qr"], calendar: ["/internal/calendar", "/internal/appointments"],
+    messages: ["/internal/messages", "/internal/tasks"], registration: ["/internal/applications", "/internal/verifications", "/internal/portal-access-requests", "/internal/health-card-updates", "/internal/registration-qr"],
+    rx: ["/internal/rx", "/internal/send-rx"], billing: ["/internal/billing", "/internal/private-requests"],
+};
 import { ThemeToggle } from "../components/ThemeToggle";
 import { Logo } from "../components/Logo";
 import { Button } from "../components/ui/button";
@@ -96,7 +102,10 @@ export default function InternalLayout() {
     // Permanent quick-access set; everything else lives inside the Central Work Hub drawer.
     const { navVisible } = usePlatformConfig();
     const audience = role === "physician" ? "physician" : "staff";
-    const visibleItems = items.filter((it) => !NAV_FEATURE[it.to] || navVisible(NAV_FEATURE[it.to], audience, role));
+    const ws = user?.workspace;
+    const wsItems = ws ? items.filter((it) => it.to === "/internal" || (user.allowed_modules || []).some((m) => (WORKSPACE_NAV[m] || []).includes(it.to))) : items;
+    const netItem = !ws && ["physician", "admin", "staff"].includes(role) && navVisible("network", audience, role) ? [{ to: "/network", icon: Building2, label: "VIen Network", key: null }] : [];
+    const visibleItems = [...wsItems, ...netItem].filter((it) => !NAV_FEATURE[it.to] || navVisible(NAV_FEATURE[it.to], audience, role));
     const QUICK = new Set(["/internal/patients", "/internal/rx", "/internal/calendar", "/internal/verifications",
                            "/internal/registration-qr", "/internal/settings"]);
     const quickItems = visibleItems.filter((it) => QUICK.has(it.to));
@@ -171,7 +180,13 @@ export default function InternalLayout() {
                     <Logo variant="dark" iconClass="h-8 w-8" textClass="text-base" />
                 </div>
                 <div className="flex items-center gap-3 text-sm">
-                    <span className="text-white/80 hidden sm:inline">{user?.name} · <span className="capitalize text-white/50">{role}</span></span>
+                    {user?.workspace ? (
+                        <span className="hidden sm:inline-flex items-center gap-2 text-xs" data-testid="workspace-banner">
+                            <span className="px-2 py-0.5 rounded-sm bg-emerald-500/25 text-emerald-100 font-bold uppercase tracking-wide">Workspace</span>
+                            <span className="text-white/90">{user.workspace.org_name} · {user.workspace.role_title} · {user.name}</span>
+                            <button type="button" className="underline text-white/80" data-testid="workspace-exit" onClick={async () => { const { data } = await api.post("/network/workspace/exit"); setToken(data.token); window.location.assign("/network"); }}>Exit workspace</button>
+                        </span>
+                    ) : <span className="text-white/80 hidden sm:inline">{user?.name} · <span className="capitalize text-white/50">{role}</span></span>}
                     <ThemeToggle className="border-white/30 text-white/80 hover:bg-white/10" />
                     <button data-testid="internal-logout" onClick={guarded(() => { logout(); nav("/login"); })}
                         className="flex items-center gap-1 hover:text-white text-white/70">

@@ -24,8 +24,8 @@ def _secret() -> str:
     return os.environ["JWT_SECRET"]
 
 
-def create_access_token(user_id: str, email: str, role: str) -> str:
-    payload = {
+def create_access_token(user_id: str, email: str, role: str, extra: dict | None = None) -> str:
+    payload = {**(extra or {}),
         "sub": user_id,
         "email": email,
         "role": role,

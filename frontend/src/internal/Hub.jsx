@@ -89,7 +89,10 @@ export default function Hub() {
     const { user } = useAuth();
     const counters = useCounters();
     const c = counters.data?.counters || {};
-    const items = user?.role === "physician" ? PHYS : STAFF;
+    const WS_NAV = { patients: ["/internal/patients"], calendar: ["/internal/calendar", "/internal/appointments"], messages: ["/internal/messages", "/internal/tasks"],
+        registration: ["/internal/applications", "/internal/verifications", "/internal/portal-access-requests", "/internal/health-card-updates"], rx: ["/internal/rx", "/internal/send-rx"], billing: ["/internal/billing", "/internal/private-requests"] };
+    const base = user?.role === "physician" ? PHYS : STAFF;
+    const items = user?.workspace ? base.filter((it) => (user.allowed_modules || []).some((m) => (WS_NAV[m] || []).includes(it.to))) : base;
 
     return (
         <div className="animate-fade-in">

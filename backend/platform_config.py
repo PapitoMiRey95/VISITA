@@ -27,9 +27,9 @@ API_FEATURE_PREFIXES = [
     ("/api/caregiver", "caregiver"), ("/api/register", "registration"), ("/api/internal/prescriptions", "rx"),
     ("/api/internal/send-rx", "rx"), ("/api/internal/pharmacy-rx", "rx"), ("/api/internal/calendar", "calendar"),
     ("/api/internal/appointments", "calendar"), ("/api/availability", "calendar"), ("/api/internal/exams", "results"),
-    ("/api/internal/referrals", "referrals"),
+    ("/api/internal/referrals", "referrals"), ("/api/network/", "network"),
 ]
-INTERNAL_ROLES = ("admin", "physician", "staff", "developer_ops")
+INTERNAL_ROLES = ("admin", "physician", "staff", "developer_ops", "network")
 # Operator-configurable public copy ONLY (legal/privacy/emergency language is intentionally excluded).
 PUBLIC_SITE_FIELDS = ("headline", "subtitle", "search_placeholder", "cta_create_portal", "cta_apply_for_care",
                       "coming_soon_label", "footer_contact", "show_role_section")

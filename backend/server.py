@@ -121,7 +121,15 @@ async def get_current_user(request: Request) -> dict:
         raise HTTPException(status_code=401, detail="User not found")
     if not user.get("active", True):
         raise HTTPException(status_code=403, detail="Account disabled")
-    return serialize_user(user)
+    out = serialize_user(user)
+    if payload.get("ws"):
+        # VIen Network workspace session: identity stays the person's own; role/practice come from an ACTIVE membership.
+        m = await db.org_memberships.find_one({"id": payload["ws"], "user_id": str(user["_id"])}, {"_id": 0})
+        if not m or m["status"] != "ACTIVE":
+            raise HTTPException(status_code=403, detail={"code": "WORKSPACE_INACTIVE", "message": "Your access to this organization is not active."})
+        out.update(role="staff", practice_id=m["org_id"], allowed_modules=m.get("modules", []),
+                   workspace={"membership_id": m["id"], "org_id": m["org_id"], "org_name": m["org_name"], "role_title": m["role_title"]})
+    return out
 
 
 def require_roles(*roles):
@@ -9143,8 +9151,167 @@ class SyntheticPatientsBody(BaseModel):
     token: str
 
 
+# ---------------- VIen Network — Phase 1 (feature "network"; PILOT = internal roles incl. `network` persons) ----------------
+NETWORK_ROLES = ("physician", "admin", "staff", "network", "developer_ops")
+
+
+class InviteBody(BaseModel):
+    user_id: str
+    role_title: str = "Secretary"
+
+
+class AccessBody(BaseModel):
+    modules: list[str]
+
+
+class NetProfileBody(BaseModel):
+    headline: Optional[str] = None
+    summary: Optional[str] = None
+    city: Optional[str] = None
+    languages: Optional[list[str]] = None
+    availability: Optional[str] = None
+
+
+async def _owned_org(user: dict, org_id: str) -> dict:
+    org = await net_mod.org_doc(org_id)
+    if not org:
+        raise HTTPException(status_code=404, detail="Organization not found.")
+    if not await net_mod.is_org_owner(user, org_id):
+        raise HTTPException(status_code=403, detail="Only the organization owner can manage its team.")
+    return org
+
+
+@api.get("/network/home")
+async def network_home(user: dict = Depends(require_roles(*NETWORK_ROLES))):
+    uid = str(user["id"])
+    me = await net_mod.profile_for(uid)
+    invitations = await db.org_memberships.find({"user_id": uid, "status": "INVITED"}, {"_id": 0}).to_list(20)
+    memberships = await db.org_memberships.find({"user_id": uid, "status": {"$in": ["ACTIVE", "SUSPENDED"]}}, {"_id": 0}).to_list(20)
+    owned = [await net_mod.org_doc(p["id"]) for p in await db.practices.find({"physician_user_id": uid}, {"_id": 0, "id": 1}).to_list(10)]
+    return {"me": me, "invitations": invitations, "memberships": memberships, "owned_organizations": owned, "modules": net_mod.MODULES}
+
+
+@api.put("/network/me/profile")
+async def network_update_profile(body: NetProfileBody, user: dict = Depends(require_roles(*NETWORK_ROLES))):
+    data = {k: v for k, v in body.model_dump().items() if v is not None}
+    await db.network_profiles.update_one({"user_id": str(user["id"])}, {"$set": {**data, "updated_at": now_iso()}}, upsert=True)
+    return await net_mod.profile_for(str(user["id"]))
+
+
+@api.get("/network/people/{user_id}")
+async def network_person(user_id: str, user: dict = Depends(require_roles(*NETWORK_ROLES))):
+    p = await net_mod.profile_for(user_id)
+    if not p:
+        raise HTTPException(status_code=404, detail="Profile not found.")
+    return p
+
+
+@api.get("/network/orgs/{org_id}")
+async def network_org(org_id: str, user: dict = Depends(require_roles(*NETWORK_ROLES))):
+    org = await net_mod.org_doc(org_id)
+    if not org:
+        raise HTTPException(status_code=404, detail="Organization not found.")
+    return {**org, "team": await net_mod.team(org_id), "connections": await net_mod.connections_for("organization", org_id),
+            "can_manage": await net_mod.is_org_owner(user, org_id), "modules": net_mod.MODULES}
+
+
+@api.get("/network/search")
+async def network_search(q: str = "", user: dict = Depends(require_roles(*NETWORK_ROLES))):
+    q = q.strip()
+    if len(q) < 2:
+        return {"results": []}
+    rx = {"$regex": re.escape(q), "$options": "i"}
+    rows = await db.users.find({"role": {"$nin": ["patient", "caregiver", "developer_ops"]}, "active": {"$ne": False},
+                                "$or": [{"name": rx}, {"email": rx}, {"username": rx}]}, {"name": 1, "email": 1, "role": 1, "username": 1}).limit(10).to_list(10)
+    return {"results": [{"id": str(u["_id"]), "name": u.get("name"), "email": u.get("email"), "username": u.get("username"), "role": u.get("role")} for u in rows]}
+
+
+@api.post("/network/orgs/{org_id}/invite")
+async def network_invite(org_id: str, body: InviteBody, user: dict = Depends(require_roles(*NETWORK_ROLES))):
+    org = await _owned_org(user, org_id)
+    try:
+        invitee = await db.users.find_one({"_id": ObjectId(body.user_id)})
+    except Exception:
+        invitee = None
+    if not invitee or invitee.get("role") in ("patient", "caregiver"):
+        raise HTTPException(status_code=404, detail="VIen identity not found.")
+    try:
+        m = await net_mod.invite(org, invitee, body.role_title.strip() or "Secretary", user)
+    except ValueError as e:
+        raise HTTPException(status_code=409, detail=str(e))
+    await audit("network_invitation_sent", "org_membership", m["id"], user, meta={"org_id": org_id, "invitee_id": m["user_id"], "role_title": m["role_title"]})
+    return m
+
+
+async def _my_invitation(mid: str, user: dict) -> dict:
+    m = await db.org_memberships.find_one({"id": mid, "user_id": str(user["id"]), "status": "INVITED"}, {"_id": 0})
+    if not m:
+        raise HTTPException(status_code=404, detail="Invitation not found.")
+    return m
+
+
+@api.post("/network/invitations/{mid}/accept")
+async def network_accept(mid: str, user: dict = Depends(require_roles(*NETWORK_ROLES))):
+    m = await net_mod.respond(await _my_invitation(mid, user), True, user)
+    await audit("network_invitation_accepted", "org_membership", mid, user, old_status="INVITED", new_status="ACTIVE", meta={"org_id": m["org_id"], "role_title": m["role_title"]})
+    return m
+
+
+@api.post("/network/invitations/{mid}/decline")
+async def network_decline(mid: str, user: dict = Depends(require_roles(*NETWORK_ROLES))):
+    m = await net_mod.respond(await _my_invitation(mid, user), False, user)
+    await audit("network_invitation_declined", "org_membership", mid, user, old_status="INVITED", new_status="DECLINED", meta={"org_id": m["org_id"]})
+    return m
+
+
+async def _org_member(user: dict, org_id: str, mid: str) -> dict:
+    await _owned_org(user, org_id)
+    m = await db.org_memberships.find_one({"id": mid, "org_id": org_id, "status": {"$in": ["ACTIVE", "SUSPENDED"]}}, {"_id": 0})
+    if not m:
+        raise HTTPException(status_code=404, detail="Membership not found.")
+    return m
+
+
+@api.put("/network/orgs/{org_id}/members/{mid}/access")
+async def network_set_access(org_id: str, mid: str, body: AccessBody, user: dict = Depends(require_roles(*NETWORK_ROLES))):
+    m = await _org_member(user, org_id, mid)
+    mods = await net_mod.set_access(m, body.modules)
+    await audit("network_access_granted", "org_membership", mid, user, meta={"org_id": org_id, "member_id": m["user_id"], "modules_before": m.get("modules", []), "modules_after": mods})
+    return {"ok": True, "modules": mods}
+
+
+@api.post("/network/orgs/{org_id}/members/{mid}/{action}")
+async def network_member_action(org_id: str, mid: str, action: str, user: dict = Depends(require_roles(*NETWORK_ROLES))):
+    m = await _org_member(user, org_id, mid)
+    new = {"suspend": "SUSPENDED", "reactivate": "ACTIVE", "remove": "REMOVED"}.get(action)
+    if not new:
+        raise HTTPException(status_code=400, detail="Unknown action.")
+    await net_mod.set_status(m, new)
+    await audit(f"network_member_{action}", "org_membership", mid, user, old_status=m["status"], new_status=new, meta={"org_id": org_id, "member_id": m["user_id"]})
+    return {"ok": True, "status": new}
+
+
+@api.post("/network/workspace/{mid}/enter")
+async def network_workspace_enter(mid: str, user: dict = Depends(require_roles(*NETWORK_ROLES))):
+    m = await db.org_memberships.find_one({"id": mid, "user_id": str(user["id"])}, {"_id": 0})
+    if not m or m["status"] != "ACTIVE":
+        raise HTTPException(status_code=403, detail="Your membership is not active.")
+    if not m.get("modules"):
+        raise HTTPException(status_code=403, detail="The organization has not granted you workspace access yet.")
+    token = authlib.create_access_token(str(user["id"]), user.get("email") or "", "staff", extra={"ws": mid})
+    await audit("network_workspace_entered", "org_membership", mid, user, meta={"org_id": m["org_id"], "modules": m["modules"]})
+    return {"token": token, "workspace": {"org_id": m["org_id"], "org_name": m["org_name"], "role_title": m["role_title"], "modules": m["modules"]}}
+
+
+@api.post("/network/workspace/exit")
+async def network_workspace_exit(user: dict = Depends(get_current_user)):
+    u = await db.users.find_one({"_id": ObjectId(user["id"])})
+    return {"token": authlib.create_access_token(str(u["_id"]), u.get("email") or "", u["role"])}
+
+
 # ---------------- Developer Data Operations (developer_ops only, fail-closed outside PRELAUNCH_TEST) ----------------
 import data_ops as dops  # noqa: E402
+import network as net_mod  # noqa: E402
 
 
 async def _require_prelaunch_mode():
@@ -10289,6 +10456,16 @@ async def maintenance_mode_gate(request: Request, call_next):
     except Exception:
         role = None
     # Feature registry: OFF fails closed at the API; PILOT = internal roles only.
+    ws_modules = None
+    try:
+        _pl = authlib.decode_token(header[7:]) if header.startswith("Bearer ") else {}
+        if _pl.get("ws"):
+            _m = await db.org_memberships.find_one({"id": _pl["ws"]}, {"modules": 1, "status": 1})
+            ws_modules = (_m or {}).get("modules", []) if (_m or {}).get("status") == "ACTIVE" else []
+    except Exception:
+        ws_modules = None
+    if ws_modules is not None and not net_mod.workspace_allowed(path, ws_modules):
+        return JSONResponse(status_code=403, content={"detail": {"code": "WORKSPACE_MODULE_DENIED", "message": "This organization has not granted you access to this tool."}})
     feat = pc_mod.feature_for_path(path)
     if feat and role not in OPS_ROLES:
         st = pc_mod.feature_state((await pc_mod.published())["config"], feat)

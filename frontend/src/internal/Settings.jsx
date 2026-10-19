@@ -33,12 +33,6 @@ const TEMPLATE_FIELDS = [
 
 const DAYS = [["mon", "Monday"], ["tue", "Tuesday"], ["wed", "Wednesday"], ["thu", "Thursday"], ["fri", "Friday"], ["sat", "Saturday"], ["sun", "Sunday"]];
 
-const to12 = (t) => {
-    if (!t) return "";
-    const [h, m] = String(t).split(":").map(Number);
-    const ap = h < 12 ? "AM" : "PM";
-    return `${h % 12 || 12}:${String(m).padStart(2, "0")} ${ap}`;
-};
 
 export default function Settings() {
     const { user } = useAuth();
@@ -227,10 +221,18 @@ export default function Settings() {
                     <div data-testid="daily-break-section">
                         <Label className="text-xs font-semibold text-slate-600 uppercase tracking-wide">Daily break</Label>
                         <div className="flex items-center gap-3 text-sm bg-slate-50 border border-slate-200 rounded-sm px-2 py-1 mt-1" data-testid="daily-break-row">
-                            <span className="font-semibold text-slate-800 w-40">Mon–Thu</span>
-                            <span className="text-slate-600">{to12(avail.break_start)}–{to12(avail.break_end)}</span>
+                            <span className="font-semibold text-slate-800 w-40">Every working day</span>
+                            <Input type="time" className="h-8 w-32" value={avail.break_start || ""} data-testid="avail-break-start"
+                                onChange={(e) => setAvail({ ...avail, break_start: e.target.value })} />
+                            <span className="text-slate-400">to</span>
+                            <Input type="time" className="h-8 w-32" value={avail.break_end || ""} data-testid="avail-break-end"
+                                onChange={(e) => setAvail({ ...avail, break_end: e.target.value })} />
+                            {(avail.break_start || avail.break_end) && (
+                                <button type="button" data-testid="avail-break-clear" onClick={() => setAvail({ ...avail, break_start: "", break_end: "" })}
+                                    className="text-xs text-slate-400 hover:text-red-600">No break</button>
+                            )}
                         </div>
-                        <p className="text-[11px] text-slate-400 mt-1">Recurring — patients are never offered this time.</p>
+                        <p className="text-[11px] text-slate-400 mt-1">Recurring — patients are never offered this time. Save with the button below.</p>
                     </div>
 
                     <div data-testid="blocked-days-section">

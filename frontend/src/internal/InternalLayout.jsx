@@ -108,8 +108,10 @@ export default function InternalLayout() {
     const visibleItems = [...wsItems, ...netItem].filter((it) => !NAV_FEATURE[it.to] || navVisible(NAV_FEATURE[it.to], audience, role));
     const QUICK = new Set(["/internal/patients", "/internal/work", "/internal/rx", "/internal/send-rx", "/internal/calendar", "/internal/verifications",
                            "/internal/registration-qr", "/internal/settings"]);
-    const quickItems = visibleItems.filter((it) => QUICK.has(it.to));
-    const hubItems = visibleItems.filter((it) => !QUICK.has(it.to));
+    // Physicians keep Verifications inside All Queues; staff/admin see it in the quick sidebar.
+    const isQuick = (it) => QUICK.has(it.to) && !(isPhysician && it.to === "/internal/verifications");
+    const quickItems = visibleItems.filter(isQuick);
+    const hubItems = visibleItems.filter((it) => !isQuick(it));
     const hubBadge = hubItems.reduce((n, it) => n + (it.key && c[it.key] > 0 ? c[it.key] : 0), 0);
     const [hubOpen, setHubOpen] = useState(false);
 

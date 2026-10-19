@@ -16,7 +16,7 @@ export function BookingTypesCard() {
         const next = ph[field].includes(key) ? ph[field].filter((k) => k !== key) : [...ph[field], key];
         setBusy(ph.physician_user_id + key);
         try {
-            await api.put(`/admin/booking-types/${ph.physician_user_id}`, { patient_booking_types: ph.patient_booking_types, caregiver_booking_types: ph.caregiver_booking_types, [field]: next });
+            await api.put(`/admin/booking-types/${ph.physician_user_id}`, { patient_booking_types: next });
             toast.success("Booking types saved.");
             await load();
         } catch (e) { toast.error(formatErr(e)); } finally { setBusy(null); }
@@ -36,17 +36,13 @@ export function BookingTypesCard() {
     return (
         <div className="bg-white border border-slate-300 rounded-sm p-4 mb-4 space-y-3" data-testid="booking-types-card">
             <h2 className="font-semibold text-slate-700 flex items-center gap-2"><CalendarCheck className="w-4 h-4 text-visita-green" /> Patient booking types</h2>
-            <p className="text-xs text-slate-500">What patients (and caregivers) may book online per physician. Internal calendar scheduling and existing appointments are not affected.</p>
+            <p className="text-xs text-slate-500">What patients may book online in the Patient Portal, per physician. Internal calendar scheduling and existing appointments are not affected.</p>
             {data.physicians.map((ph) => (
-                <div key={ph.physician_user_id} data-testid="booking-types-physician" className="border border-slate-200 rounded-sm p-3 grid grid-cols-1 sm:grid-cols-[180px_1fr_1fr] gap-3 items-start">
+                <div key={ph.physician_user_id} data-testid="booking-types-physician" className="border border-slate-200 rounded-sm p-3 grid grid-cols-1 sm:grid-cols-[180px_1fr] gap-3 items-start">
                     <div className="font-semibold text-sm text-slate-800">{ph.physician_name}</div>
                     <div>
                         <Label className="text-[11px] uppercase tracking-wide text-slate-500">Patient Portal</Label>
                         <div className="mt-1 space-y-1">{data.patient_types.map((it) => <Check key={it.key} ph={ph} field="patient_booking_types" item={it} />)}</div>
-                    </div>
-                    <div>
-                        <Label className="text-[11px] uppercase tracking-wide text-slate-500">Caregiver Portal</Label>
-                        <div className="mt-1 space-y-1">{data.caregiver_types.map((it) => <Check key={it.key} ph={ph} field="caregiver_booking_types" item={it} />)}</div>
                     </div>
                 </div>
             ))}

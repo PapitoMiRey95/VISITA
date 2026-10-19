@@ -55,6 +55,7 @@ import system_state as sys_mod
 import platform_config as pc_mod
 import storage
 import work_hub as work_mod
+import booking_types as bt_mod
 from db import (APPT_PATIENT_STATUS, BLD_ACTIVE, BLD_PATIENT_STATUS, IMG_ACTIVE,
                 IMG_PATIENT_STATUS, MSG_ACTIVE, MSG_PATIENT_STATUS, RX_ACTIVE,
                 RX_PATIENT_STATUS, audit, db, mask_hcn, next_ref, now_iso)
@@ -1744,6 +1745,14 @@ async def create_appointment(body: AppointmentBody, ctx: PortalCtx = Depends(por
     # Legacy portal patients may have no practice_id: resolve the default practice so the
     # appointment is always practice-scoped (visible in internal queues/calendar).
     practice_id = p.get("practice_id") or ((await resolve_practice()) or {}).get("id")
+    # Physician-configured patient-facing booking types (backend-enforced; internal calendar unaffected).
+    allowed_types = await bt_mod.allowed_types(practice_id, ctx.is_delegate)
+    requested_type = body.appointment_type or ("IN_CLINIC" if "IN_CLINIC" in allowed_types else (allowed_types[0] if allowed_types else None))
+    if not allowed_types:
+        raise HTTPException(status_code=403, detail="Online booking is not available for this physician right now. Please call the clinic.")
+    if requested_type not in allowed_types:
+        raise HTTPException(status_code=403, detail=f"{bt_mod.LABELS.get(requested_type, requested_type)} appointments cannot be booked online with this physician right now.")
+    body.appointment_type = requested_type
     # portal_access() guarantees a VERIFIED patient (or an authorized caregiver acting for a
     # verified patient) — so verified bookings are CONFIRMED directly (approved by Dr. Aguayo).
     # Any non-verified path is already rejected upstream; the legacy HELD/requested branch is
@@ -1758,7 +1767,7 @@ async def create_appointment(body: AppointmentBody, ctx: PortalCtx = Depends(por
         await guard_mod.release_day_lock(db, appt_id)
         raise
     ref = await next_ref("APT")
-    appt_type = body.appointment_type if body.appointment_type in ("IN_CLINIC", "TELEPHONE") else None
+    appt_type = body.appointment_type if body.appointment_type in ("IN_CLINIC", "TELEPHONE", "PROXY") else None
     label = opt.get("label") or avail_mod._label(avail_mod._to_min(t24))
     status = "confirmed" if auto_confirm else "requested"
     doc = {
@@ -1939,7 +1948,13 @@ async def get_busy_slots(practice_id=None):
 async def availability_slots(days: int = 28, user: dict = Depends(get_current_user)):
     avail = await get_availability_doc()
     busy = await get_busy_slots()
+    practice_id = user.get("practice_id")
+    if not practice_id and user.get("patient_id"):
+        pat = await db.patients.find_one({"id": user["patient_id"]}, {"_id": 0, "practice_id": 1})
+        practice_id = (pat or {}).get("practice_id")
+    cfg = await bt_mod.config_for(await bt_mod.physician_for_practice(practice_id or ((await resolve_practice()) or {}).get("id")))
     return {"timezone": avail.get("timezone"), "duration": avail.get("appointment_duration"),
+            "booking_types": cfg["patient_booking_types"], "caregiver_booking_types": cfg["caregiver_booking_types"],
             "slots": avail_mod.generate_slots(avail, days=min(max(days, 1), 60), busy=busy)}
 
 
@@ -1954,6 +1969,39 @@ async def put_availability(payload: dict, user: dict = Depends(require_roles("ad
     await db.settings.update_one({"id": "availability"}, {"$set": payload}, upsert=True)
     await audit("update_availability", "settings", "availability", user)
     return {"ok": True}
+
+
+class BookingTypesBody(BaseModel):
+    patient_booking_types: list[str]
+    caregiver_booking_types: list[str] = []
+
+
+@api.get("/admin/booking-types")
+async def get_booking_types(user: dict = Depends(require_roles("admin", "physician"))):
+    """Per-physician patient-facing booking types for the caller's practice."""
+    out = []
+    async for ph in db.users.find({"role": "physician", "practice_id": user.get("practice_id")}, {"_id": 1, "name": 1}):
+        pid = str(ph["_id"])
+        out.append({"physician_user_id": pid, "physician_name": ph.get("name"), **(await bt_mod.config_for(pid))})
+    return {"physicians": out, "patient_types": [{"key": k, "label": bt_mod.LABELS[k]} for k in bt_mod.PATIENT_TYPES],
+            "caregiver_types": [{"key": k, "label": bt_mod.LABELS[k]} for k in bt_mod.CAREGIVER_TYPES]}
+
+
+@api.put("/admin/booking-types/{physician_user_id}")
+async def put_booking_types(physician_user_id: str, body: BookingTypesBody, user: dict = Depends(require_roles("admin", "physician"))):
+    ph = None
+    if ObjectId.is_valid(physician_user_id):
+        ph = await db.users.find_one({"_id": ObjectId(physician_user_id), "role": "physician", "practice_id": user.get("practice_id")}, {"_id": 1})
+    if not ph:
+        raise HTTPException(status_code=404, detail="Physician not found in your practice.")
+    before = await bt_mod.config_for(physician_user_id)
+    try:
+        doc = await bt_mod.save(physician_user_id, user.get("practice_id"), body.patient_booking_types, body.caregiver_booking_types, user)
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=f"Unknown booking type: {e}")
+    await audit("update_booking_types", "physician_booking_config", physician_user_id, user,
+                meta={"before": before, "after": {k: doc[k] for k in ("patient_booking_types", "caregiver_booking_types")}})
+    return doc
 
 
 class BlockTimeBody(BaseModel):

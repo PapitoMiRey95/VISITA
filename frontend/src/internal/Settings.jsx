@@ -11,6 +11,7 @@ import { Textarea } from "../components/ui/textarea";
 import { Label } from "../components/ui/label";
 import { DEFAULT_SERVICE_CATALOG, SERVICE_CATEGORIES, CLASSIFICATIONS, applyOmaCatalog } from "../lib/billing";
 import { useUnsavedGuard } from "./unsavedGuard";
+import { BookingTypesCard } from "./BookingTypesCard";
 
 const SETTING_FIELDS = [
     ["clinic_name", "Clinic name"],
@@ -116,6 +117,8 @@ export default function Settings() {
             <div className="bg-white border border-slate-300 rounded-sm p-4 mb-4 space-y-3">
                 <h2 className="font-semibold text-slate-700">Clinic information</h2>
             </div>
+
+            <BookingTypesCard />
 
             <div className="bg-white border border-slate-300 rounded-sm p-4 mb-4 space-y-3" data-testid="direct-billing-card">
                 <button type="button" data-testid="db-toggle" onClick={() => setBillingOpen((o) => !o)}

@@ -51,6 +51,8 @@ export default function PortalAppointments() {
         refetchOnWindowFocus: true,
     });
     const slots = slotsQ.data?.slots || [];
+    // Physician-configured patient-facing types (backend-enforced too). Default keeps legacy behaviour until loaded.
+    const bookingTypes = slotsQ.data?.booking_types || ["IN_CLINIC", "TELEPHONE"];
 
     // Group available slots by date -> only these dates are selectable.
     const { byDate, availableDates, minDate, maxDate } = useMemo(() => {
@@ -71,6 +73,7 @@ export default function PortalAppointments() {
     const [selDate, setSelDate] = useState(null);     // Date object
     const [selSlot, setSelSlot] = useState(null);     // slot object
     const [apptType, setApptType] = useState("IN_CLINIC");     // IN_CLINIC | TELEPHONE (default In-Clinic)
+    useEffect(() => { if (!bookingTypes.includes(apptType)) setApptType(bookingTypes[0] || ""); }, [bookingTypes, apptType]);
     const [reason, setReason] = useState("");
     const [note, setNote] = useState("");
     const [busy, setBusy] = useState(false);
@@ -122,7 +125,7 @@ export default function PortalAppointments() {
             });
             toast.success(t(instant ? "requests:appointments.toasts.requestSubmitted" : "requests:appointments.toasts.requestHeld"));
             setJustSubmitted(true); setWarnOpen(false);
-            setSelDate(null); setSelSlot(null); setApptType("IN_CLINIC"); setReason(""); setNote(""); setAckExisting(false);
+            setSelDate(null); setSelSlot(null); setApptType(bookingTypes[0] || "IN_CLINIC"); setReason(""); setNote(""); setAckExisting(false);
             refetch();
             setTimeout(() => document.getElementById("appt-your-requests")?.scrollIntoView({ behavior: "smooth" }), 300);
         } catch (err) {
@@ -272,11 +275,11 @@ export default function PortalAppointments() {
                                     <span className="w-6 h-6 rounded-full bg-portal-blue text-white text-xs font-bold flex items-center justify-center">3</span>
                                     <Label className="font-semibold text-slate-700">{t("requests:appointments.appointmentType")}</Label>
                                 </div>
-                                <div className="grid grid-cols-2 gap-3 mb-4" data-testid="appt-type-select">
+                                <div className={`grid gap-3 mb-4 ${bookingTypes.length > 1 ? "grid-cols-2" : "grid-cols-1"}`} data-testid="appt-type-select">
                                     {[
                                         { v: "IN_CLINIC", title: t("requests:appointments.inClinic"), Icon: Hospital, desc: t("requests:appointments.inClinicDesc") },
                                         { v: "TELEPHONE", title: t("requests:appointments.telephone"), Icon: Phone, desc: t("requests:appointments.telephoneDesc") },
-                                    ].map(({ v, title, Icon, desc }) => {
+                                    ].filter(({ v }) => bookingTypes.includes(v)).map(({ v, title, Icon, desc }) => {
                                         const on = apptType === v;
                                         return (
                                             <button type="button" key={v} data-testid={`appt-type-${v}`} onClick={() => setApptType(v)}

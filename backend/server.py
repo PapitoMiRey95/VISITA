@@ -2151,10 +2151,13 @@ class CalendarBookBody(BaseModel):
     appointment_type: Optional[str] = "Office visit"
     override_same_day: bool = False
     override_reason: Optional[str] = None
+    manual: bool = False  # physician/admin any-time override (outside configured clinic hours)
 
 
 @api.post("/internal/calendar/book")
 async def calendar_book(body: CalendarBookBody, user: dict = Depends(require_roles(*CLINIC_ROLES))):
+    if body.manual and user.get("role") not in ("physician", "admin"):
+        raise HTTPException(status_code=403, detail="Only a physician or admin can schedule outside clinic hours.")
     # Resolve the patient identity from either a directory record or a verified portal account.
     if body.directory_id:
         d = await db.patient_directory.find_one({"id": body.directory_id})
@@ -2176,9 +2179,18 @@ async def calendar_book(body: CalendarBookBody, user: dict = Depends(require_rol
         ident = await guard_mod.identity(db, patient_id=p["id"])
     else:
         raise HTTPException(status_code=400, detail="A patient must be selected.")
-    time24 = avail_mod._norm_time(body.time)
     avail = await get_availability_doc()
-    _validate_bookable(avail, body.date, time24)
+    if body.manual:
+        try:
+            time24 = avail_mod._norm_time(body.time)
+            datetime.strptime(f"{body.date} {time24}", "%Y-%m-%d %H:%M")
+        except ValueError:
+            raise HTTPException(status_code=400, detail="Please enter a valid date and time.")
+        if avail_mod.is_past_slot(avail, body.date, time24):
+            raise HTTPException(status_code=400, detail="That time is in the past. Please choose an upcoming time.")
+    else:
+        time24 = avail_mod._norm_time(body.time)
+        _validate_bookable(avail, body.date, time24)
     appt_id = str(uuid.uuid4())
     override = await _guard_new_booking(user.get("practice_id"), ident, body.date, appt_id, user, "calendar",
                                         body.override_same_day, body.override_reason)
@@ -2198,14 +2210,16 @@ async def calendar_book(body: CalendarBookBody, user: dict = Depends(require_rol
         "status": "confirmed", "slot_state": slots_mod.CONFIRMED,
         **_confirmed_fields(body.date, time24, body.label),
         "approved_by": user["name"], "approved_at": now_iso(), "booked_by": user["name"],
-        "booked_from": {"source_type": "calendar", "source_id": None},
+        "booked_from": {"source_type": "calendar_manual" if body.manual else "calendar", "source_id": None},
         "assigned_to": None, "internal_notes": [],
-        "history": [{"status": "confirmed", "at": now_iso(), "by": user["name"], "note": "Booked directly from calendar"}],
+        "history": [{"status": "confirmed", "at": now_iso(), "by": user["name"],
+                     "note": "Manually scheduled by physician/admin (any-time override)" if body.manual else "Booked directly from calendar"}],
         "created_at": now_iso(), "updated_at": now_iso(), "completed_at": None,
     }
     await db.appointment_requests.insert_one({**appt})
     await audit("calendar_book", "appointment", appt["id"], user, new_status="confirmed",
-                meta={"slot": f"{body.date} {time24}", "direct_booking": True, "same_day_override": bool(override)})
+                meta={"slot": f"{body.date} {time24}", "direct_booking": True, "same_day_override": bool(override),
+                      "manual_any_time": bool(body.manual), "outside_clinic_hours": bool(body.manual and not avail_mod.is_within(avail, body.date, time24))})
     await guard_mod.refresh_week_flags(db, user.get("practice_id"), ident, [body.date], user)
     try:
         await notify_svc.appointment_confirmed(db, appt)

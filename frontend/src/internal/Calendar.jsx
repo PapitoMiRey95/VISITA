@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { useAuth } from "../context/AuthContext";
 import { useQuery } from "@tanstack/react-query";
 import { toast } from "sonner";
 import { ChevronLeft, ChevronRight, CalendarDays, Ban, Plus, Search } from "lucide-react";
@@ -9,6 +10,7 @@ import { ApptTypeEditor } from "../components/ApptTypeEditor";
 import { useInvalidate } from "./hooks";
 import { Button } from "../components/ui/button";
 import { Input } from "../components/ui/input";
+import { Label } from "../components/ui/label";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "../components/ui/dialog";
 import { StatusPill } from "./statusPill";
 import { ApptTypeBadge } from "../components/ApptTypeBadge";
@@ -84,17 +86,22 @@ function monthLabel(iso) {
     const d = new Date(monthFirstISO(iso) + "T00:00:00");
     return d.toLocaleDateString("en-US", { month: "long", year: "numeric" });
 }
-function todayISO() { return new Date().toISOString().slice(0, 10); }
+// Clinic-local "today" (America/Toronto), independent of the device timezone.
+function todayISO() { return new Intl.DateTimeFormat("en-CA", { timeZone: "America/Toronto", year: "numeric", month: "2-digit", day: "2-digit" }).format(new Date()); }
+const isMobileViewport = () => typeof window !== "undefined" && window.matchMedia && window.matchMedia("(max-width: 767px)").matches;
 const WEEKDAY_HEADERS = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
 
 export default function Calendar() {
     const invalidate = useInvalidate();
-    const [view, setView] = useState("month"); // day | week | month
+    const { user } = useAuth();
+    const canManual = user?.role === "physician" || user?.role === "admin";
+    // Mobile physician/admin: open on today's Day view (set once; manual Day/Week/Month changes are respected).
+    const [view, setView] = useState(() => (canManual && isMobileViewport() ? "day" : "month")); // day | week | month
     const [start, setStart] = useState(todayISO());
     const [resched, setResched] = useState(null);
     const [cancelling, setCancelling] = useState(null);
     const [histOpen, setHistOpen] = useState({}); // per-day "Show day history" toggle
-    const [booking, setBooking] = useState(null); // {date, time, label}
+    const [booking, setBooking] = useState(null); // {date, time, label} | {date, manual: true}
     const [blocking, setBlocking] = useState(null); // {date}
     const [search, setSearch] = useState(""); // filter by patient name / last name / PIN
     const [dropdownOpen, setDropdownOpen] = useState(false);
@@ -189,7 +196,7 @@ export default function Calendar() {
                         {view === "month" ? monthLabel(start) : "Native VIen EMR schedule"} · {cal.data?.timezone || "America/Toronto"}
                     </p>
                 </div>
-                <div className="flex items-center gap-2">
+                <div className="flex items-center gap-2 flex-wrap">
                     <div className="flex rounded-sm border border-slate-300 overflow-hidden">
                         <button data-testid="cal-view-day" onClick={() => setView("day")} className={`px-3 py-1.5 text-sm ${view === "day" ? "bg-visita-green text-white" : "bg-white"}`}>Day</button>
                         <button data-testid="cal-view-week" onClick={() => setView("week")} className={`px-3 py-1.5 text-sm border-l border-slate-300 ${view === "week" ? "bg-visita-green text-white" : "bg-white"}`}>Week</button>
@@ -198,6 +205,11 @@ export default function Calendar() {
                     <Button size="icon" variant="outline" data-testid="cal-prev" onClick={goPrev}><ChevronLeft className="w-4 h-4" /></Button>
                     <Button size="sm" variant="outline" data-testid="cal-today" onClick={() => setStart(todayISO())}>Today</Button>
                     <Button size="icon" variant="outline" data-testid="cal-next" onClick={goNext}><ChevronRight className="w-4 h-4" /></Button>
+                    {canManual && (
+                        <Button size="sm" data-testid="cal-add-appointment" onClick={() => setBooking({ date: start, manual: true })}>
+                            <Plus className="w-4 h-4 mr-1" /> Add appointment
+                        </Button>
+                    )}
                 </div>
             </div>
 
@@ -270,10 +282,13 @@ export default function Calendar() {
                                 )
                             )}
                         </div>
-                        {d.closed ? (
-                            <div className="text-xs text-slate-400 py-2 text-center italic">{d.reason || "Closed"}</div>
+                        {d.closed && liveAppts(d.appointments).length === 0 && historyAppts(d.appointments).length === 0 ? (
+                            <div className="text-xs text-slate-400 py-2 text-center italic">{d.reason || "Closed"}
+                                {canManual && <button data-testid="cal-day-add" onClick={() => setBooking({ date: d.date, manual: true })} className="block mx-auto mt-1 not-italic text-visita-greenDark font-semibold hover:underline">+ Add appointment</button>}
+                            </div>
                         ) : (
                             <div className="space-y-1">
+                                {d.closed && <div className="text-[11px] text-slate-400 italic text-center" data-testid="cal-closed-note">{d.reason || "Closed"} — manually scheduled</div>}
                                 {d.day_blocked && (
                                     <div data-testid="cal-day-blocked" className="rounded-sm bg-red-50 border border-red-200 text-red-700 text-xs font-semibold px-2 py-0.5 text-center">
                                         DAY BLOCKED — remaining slots unavailable
@@ -318,6 +333,12 @@ export default function Calendar() {
                                 ))}
                                 {d.appointments.length === 0 && d.open_slots.length === 0 && (
                                     <div className="text-xs text-slate-400 py-1.5 text-center">No availability</div>
+                                )}
+                                {canManual && !d.closed && (
+                                    <button data-testid="cal-day-add" onClick={() => setBooking({ date: d.date, manual: true })}
+                                        className="w-full flex items-center justify-center gap-1 rounded-sm border border-visita-green/40 px-2 py-0.5 text-xs font-semibold text-visita-greenDark hover:bg-visita-green hover:text-white">
+                                        <Plus className="w-3 h-3" /> Add appointment (any time)
+                                    </button>
                                 )}
                                 <DayHistory appts={historyAppts(d.appointments)} open={!!histOpen[d.date]}
                                     onToggle={() => setHistOpen((h) => ({ ...h, [d.date]: !h[d.date] }))}
@@ -473,6 +494,9 @@ function MonthGrid({ anchor, rows, onPickDate, matchAppt, active }) {
 }
 
 function BookSlotDialog({ slot, onClose, onDone }) {
+    const manual = !!slot.manual;
+    const [date, setDate] = useState(slot.date);
+    const [time, setTime] = useState(slot.time || "");
     const [q, setQ] = useState("");
     const [results, setResults] = useState([]);
     const [patient, setPatient] = useState(null);
@@ -489,12 +513,13 @@ function BookSlotDialog({ slot, onClose, onDone }) {
     const submit = async (override = false) => {
         setBusy(true);
         try {
-            const body = { date: slot.date, time: slot.time, label: slot.label, reason: reason || null };
+            if (manual && (!date || !time)) { toast.error("Please choose a date and time."); setBusy(false); return; }
+            const body = manual ? { date, time, reason: reason || null, manual: true } : { date: slot.date, time: slot.time, label: slot.label, reason: reason || null };
             if (patient.source === "portal") body.patient_id = patient.patient_id || patient.id;
             else body.directory_id = patient.directory_id || patient.id;
             if (override) { body.override_same_day = true; body.override_reason = overrideReason.trim(); }
             await api.post("/internal/calendar/book", body);
-            toast.success(override ? "Appointment booked with same-day override (audited)." : "Appointment booked and patient notified.");
+            toast.success(override ? "Appointment booked with same-day override (audited)." : manual ? "Appointment scheduled (confirmed) and patient notified." : "Appointment booked and patient notified.");
             onDone(); onClose();
         } catch (e) {
             if (isSameDayConflict(e)) { setConflict(e.response.data.detail); return; }
@@ -505,7 +530,14 @@ function BookSlotDialog({ slot, onClose, onDone }) {
     return (
         <Dialog open onOpenChange={(o) => !o && onClose()}>
             <DialogContent className="max-w-md" data-testid="cal-book-dialog">
-                <DialogHeader><DialogTitle>Book — {formatDate(slot.date)} · {slot.label}</DialogTitle></DialogHeader>
+                <DialogHeader><DialogTitle>{manual ? "Add appointment — any date & time" : `Book — ${formatDate(slot.date)} · ${slot.label}`}</DialogTitle></DialogHeader>
+                {manual && (
+                    <div className="grid grid-cols-2 gap-2" data-testid="cal-manual-when">
+                        <div><Label className="text-xs">Date</Label><Input type="date" value={date} onChange={(e) => setDate(e.target.value)} data-testid="cal-manual-date" /></div>
+                        <div><Label className="text-xs">Time</Label><Input type="time" step="300" value={time} onChange={(e) => setTime(e.target.value)} data-testid="cal-manual-time" /></div>
+                        <p className="col-span-2 text-[11px] text-slate-500">Internal override: any day or time, including evenings and weekends. Patient self-booking hours are not affected.</p>
+                    </div>
+                )}
                 {!patient ? (
                     <div className="space-y-2">
                         <form onSubmit={search} className="flex gap-2">
@@ -533,7 +565,7 @@ function BookSlotDialog({ slot, onClose, onDone }) {
                             <SameDayOverride conflict={conflict} reason={overrideReason} setReason={setOverrideReason} busy={busy}
                                 onConfirm={() => submit(true)} onCancel={onClose} />
                         ) : (
-                            <Button disabled={busy} onClick={() => submit(false)} className="w-full bg-visita-green hover:bg-visita-greenDark text-white" data-testid="cal-book-confirm">Confirm & Book</Button>
+                            <Button disabled={busy} onClick={() => submit(false)} className="w-full bg-visita-green hover:bg-visita-greenDark text-white" data-testid="cal-book-confirm">{manual ? "Confirm & Schedule" : "Confirm & Book"}</Button>
                         )}
                     </div>
                 )}

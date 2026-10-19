@@ -2015,8 +2015,13 @@ async def internal_calendar(start: Optional[str] = None, days: int = 7,
             "completed_by": a.get("completed_by"), "marked_by": a.get("marked_by"), "completed_at": a.get("completed_at"),
             "internal_notes": a.get("internal_notes") or [],
         })
+    rem_by_day = {}
+    if user.get("role") in ("physician", "admin"):
+        async for r in db.calendar_reminders.find({"practice_id": user.get("practice_id"), "date": {"$gte": start, "$lte": end}}, {"_id": 0}):
+            rem_by_day.setdefault(r["date"], []).append(r)
     for row in day_rows:
         row["appointments"] = sorted(by_day.get(row["date"], []), key=lambda x: x["time"] or "")
+        row["reminders"] = sorted(rem_by_day.get(row["date"], []), key=lambda x: x["time"])
         row["day_blocked"] = any(b.get("date") == row["date"] and b.get("block_day")
                                  for b in avail.get("blocked_periods", []))
     return {"timezone": avail.get("timezone"), "duration": avail.get("appointment_duration"), "days": day_rows}
@@ -2087,6 +2092,41 @@ async def internal_appointment_search(q: str = "", limit: int = 30,
     return {"results": (upcoming + past)[:limit]}
 
 
+
+
+class ReminderBody(BaseModel):
+    date: str
+    time: str
+    title: str
+    note: Optional[str] = None
+
+
+@api.post("/internal/calendar/reminders")
+async def calendar_reminder_create(body: ReminderBody, user: dict = Depends(require_roles("physician", "admin"))):
+    """Personal (non-patient) calendar item for physician/admin. Never touches patients, portal or availability."""
+    title = (body.title or "").strip()
+    if not title or len(title) > 120:
+        raise HTTPException(status_code=400, detail="Please enter a short title.")
+    try:
+        t24 = avail_mod._norm_time(body.time)
+        datetime.strptime(f"{body.date} {t24}", "%Y-%m-%d %H:%M")
+    except ValueError:
+        raise HTTPException(status_code=400, detail="Please enter a valid date and time.")
+    doc = {"id": str(uuid.uuid4()), "practice_id": user.get("practice_id"), "date": body.date, "time": t24,
+           "label": avail_mod._label(avail_mod._to_min(t24)), "title": title, "note": (body.note or "").strip()[:500] or None,
+           "created_by": {"id": user["id"], "name": user.get("name")}, "created_at": now_iso()}
+    await db.calendar_reminders.insert_one({**doc})
+    await audit("calendar_reminder_created", "calendar_reminder", doc["id"], user, meta={"date": body.date, "time": t24})
+    return doc
+
+
+@api.delete("/internal/calendar/reminders/{rid}")
+async def calendar_reminder_delete(rid: str, user: dict = Depends(require_roles("physician", "admin"))):
+    r = await db.calendar_reminders.find_one_and_delete({"id": rid, "practice_id": user.get("practice_id")})
+    if not r:
+        raise HTTPException(status_code=404, detail="Reminder not found.")
+    await audit("calendar_reminder_deleted", "calendar_reminder", rid, user, meta={"date": r.get("date"), "time": r.get("time")})
+    return {"ok": True}
 
 
 class DayBody(BaseModel):

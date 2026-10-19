@@ -2,7 +2,7 @@ import { useState } from "react";
 import { useAuth } from "../context/AuthContext";
 import { useQuery } from "@tanstack/react-query";
 import { toast } from "sonner";
-import { ChevronLeft, ChevronRight, CalendarDays, Ban, Plus, Search } from "lucide-react";
+import { ChevronLeft, ChevronRight, CalendarDays, Ban, Plus, Search, Bell, X } from "lucide-react";
 import { api, formatErr } from "../lib/api";
 import { formatLastFirst, formatCombinedName } from "../lib/name";
 import { formatDate } from "../lib/date";
@@ -90,6 +90,37 @@ function monthLabel(iso) {
 function todayISO() { return new Intl.DateTimeFormat("en-CA", { timeZone: "America/Toronto", year: "numeric", month: "2-digit", day: "2-digit" }).format(new Date()); }
 const isMobileViewport = () => typeof window !== "undefined" && window.matchMedia && window.matchMedia("(max-width: 767px)").matches;
 const WEEKDAY_HEADERS = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
+const toMin = (t) => { const [h, m] = String(t || "0:0").split(":").map(Number); return h * 60 + (m || 0); };
+const fromMin = (m) => `${String(Math.floor(m / 60)).padStart(2, "0")}:${String(m % 60).padStart(2, "0")}`;
+const labelOf = (t) => { const m = toMin(t); const h = Math.floor(m / 60); return `${h % 12 || 12}:${String(m % 60).padStart(2, "0")} ${h < 12 ? "AM" : "PM"}`; };
+const nowMinToronto = () => { const p = new Intl.DateTimeFormat("en-CA", { timeZone: "America/Toronto", hour: "2-digit", minute: "2-digit", hour12: false }).formatToParts(new Date()); return Number(p.find((x) => x.type === "hour").value) % 24 * 60 + Number(p.find((x) => x.type === "minute").value); };
+// Internal-only quick-add rows (physician/admin): 30-min steps after the last normal slot through 11:00 PM.
+// Closed/weekend days start at 9:00 AM. Never fed back into patient availability.
+function internalRows(d, duration) {
+    const dur = duration || 30;
+    if (d.date < todayISO()) return [];
+    const taken = new Set([...(d.appointments || []).filter((a) => !isHistory(a)).map((a) => a.time), ...(d.reminders || []).map((r) => r.time)]);
+    const normal = [...(d.open_slots || []).map((s) => toMin(s.time)), ...(d.appointments || []).map((a) => toMin(a.time))];
+    let start = d.closed || normal.length === 0 ? 9 * 60 : Math.max(...normal) + dur;
+    start = Math.ceil(start / 30) * 30;
+    const minNow = d.date === todayISO() ? nowMinToronto() : -1;
+    const rows = [];
+    for (let m = start; m <= 23 * 60; m += 30) {
+        const t = fromMin(m);
+        if (m <= minNow || taken.has(t)) continue;
+        rows.push({ time: t, label: labelOf(t) });
+    }
+    return rows;
+}
+// Chronological rows under the appointments: open clinic slots (everyone), reminders + internal after-hours rows (physician/admin).
+function dayRows(d, canManual, duration) {
+    const rows = (d.open_slots || []).map((s) => ({ kind: "open", time: s.time, label: s.label }));
+    if (canManual) {
+        rows.push(...(d.reminders || []).map((r) => ({ kind: "reminder", ...r })));
+        rows.push(...internalRows(d, duration).map((s) => ({ kind: "internal", ...s })));
+    }
+    return rows.sort((a, b) => toMin(a.time) - toMin(b.time));
+}
 
 export default function Calendar() {
     const invalidate = useInvalidate();
@@ -158,6 +189,10 @@ export default function Calendar() {
         }
         catch (e) { toast.error(formatErr(e)); }
     };
+    const deleteReminder = async (id) => {
+        try { await api.delete(`/internal/calendar/reminders/${id}`); toast.success("Reminder removed."); refresh(); }
+        catch (e) { toast.error(formatErr(e)); }
+    };
     const unblockDay = async (date) => {
         try { await api.post("/internal/calendar/unblock-day", { date }); toast.success("Day unblocked."); refresh(); }
         catch (e) { toast.error(formatErr(e)); }
@@ -206,8 +241,8 @@ export default function Calendar() {
                     <Button size="sm" variant="outline" data-testid="cal-today" onClick={() => setStart(todayISO())}>Today</Button>
                     <Button size="icon" variant="outline" data-testid="cal-next" onClick={goNext}><ChevronRight className="w-4 h-4" /></Button>
                     {canManual && (
-                        <Button size="sm" data-testid="cal-add-appointment" onClick={() => setBooking({ date: start, manual: true })}>
-                            <Plus className="w-4 h-4 mr-1" /> Add appointment
+                        <Button size="sm" data-testid="cal-add-appointment" onClick={() => setBooking({ date: start, time: "", internal: true, editWhen: true })}>
+                            <Plus className="w-4 h-4 mr-1" /> Add
                         </Button>
                     )}
                 </div>
@@ -282,13 +317,11 @@ export default function Calendar() {
                                 )
                             )}
                         </div>
-                        {d.closed && liveAppts(d.appointments).length === 0 && historyAppts(d.appointments).length === 0 ? (
-                            <div className="text-xs text-slate-400 py-2 text-center italic">{d.reason || "Closed"}
-                                {canManual && <button data-testid="cal-day-add" onClick={() => setBooking({ date: d.date, manual: true })} className="block mx-auto mt-1 not-italic text-visita-greenDark font-semibold hover:underline">+ Add appointment</button>}
-                            </div>
+                        {d.closed && !canManual && liveAppts(d.appointments).length === 0 && historyAppts(d.appointments).length === 0 ? (
+                            <div className="text-xs text-slate-400 py-2 text-center italic">{d.reason || "Closed"}</div>
                         ) : (
                             <div className="space-y-1">
-                                {d.closed && <div className="text-[11px] text-slate-400 italic text-center" data-testid="cal-closed-note">{d.reason || "Closed"} — manually scheduled</div>}
+                                {d.closed && !canManual && <div className="text-[11px] text-slate-400 italic text-center" data-testid="cal-closed-note">{d.reason || "Closed"} — manually scheduled</div>}
                                 {d.day_blocked && (
                                     <div data-testid="cal-day-blocked" className="rounded-sm bg-red-50 border border-red-200 text-red-700 text-xs font-semibold px-2 py-0.5 text-center">
                                         DAY BLOCKED — remaining slots unavailable
@@ -325,20 +358,23 @@ export default function Calendar() {
                                     </div>
                                     );
                                 })}
-                                {d.open_slots.map((s) => (
-                                    <button key={s.time} data-testid="cal-open-slot" onClick={() => setBooking({ date: d.date, time: s.time, label: s.label })}
-                                        className="w-full flex items-center gap-1 text-left rounded-sm border border-dashed border-slate-200 px-2 py-0.5 text-xs text-slate-500 hover:border-visita-green hover:text-visita-greenDark">
-                                        <Plus className="w-3 h-3" /> {s.label}
+                                {dayRows(d, canManual, cal.data?.duration).map((row) => row.kind === "reminder" ? (
+                                    <div key={row.id} data-testid="cal-reminder" className="rounded-sm border border-dashed border-indigo-300 bg-indigo-50/60 px-2 py-1 text-xs flex items-start justify-between gap-2">
+                                        <div className="min-w-0">
+                                            <div className="font-semibold text-indigo-900 flex items-center gap-1"><Bell className="w-3 h-3 shrink-0" /> {row.label || row.time} · {row.title}</div>
+                                            {row.note && <div className="text-indigo-700/80 truncate leading-tight">{row.note}</div>}
+                                        </div>
+                                        <button type="button" data-testid="cal-reminder-delete" onClick={() => deleteReminder(row.id)} className="text-indigo-400 hover:text-red-600 shrink-0" aria-label="Remove reminder"><X className="w-3 h-3" /></button>
+                                    </div>
+                                ) : (
+                                    <button key={`${row.kind}-${row.time}`} data-testid={row.kind === "open" ? "cal-open-slot" : "cal-internal-slot"}
+                                        onClick={() => setBooking({ date: d.date, time: row.time, label: row.label, internal: row.kind === "internal" })}
+                                        className={`w-full flex items-center gap-1 text-left rounded-sm border border-dashed px-2 py-0.5 text-xs hover:border-visita-green hover:text-visita-greenDark ${row.kind === "open" ? "border-slate-200 text-slate-500" : "border-slate-200/70 text-slate-400"}`}>
+                                        <Plus className="w-3 h-3" /> {row.label}
                                     </button>
                                 ))}
-                                {d.appointments.length === 0 && d.open_slots.length === 0 && (
+                                {!canManual && d.appointments.length === 0 && d.open_slots.length === 0 && (
                                     <div className="text-xs text-slate-400 py-1.5 text-center">No availability</div>
-                                )}
-                                {canManual && !d.closed && (
-                                    <button data-testid="cal-day-add" onClick={() => setBooking({ date: d.date, manual: true })}
-                                        className="w-full flex items-center justify-center gap-1 rounded-sm border border-visita-green/40 px-2 py-0.5 text-xs font-semibold text-visita-greenDark hover:bg-visita-green hover:text-white">
-                                        <Plus className="w-3 h-3" /> Add appointment (any time)
-                                    </button>
                                 )}
                                 <DayHistory appts={historyAppts(d.appointments)} open={!!histOpen[d.date]}
                                     onToggle={() => setHistOpen((h) => ({ ...h, [d.date]: !h[d.date] }))}
@@ -356,7 +392,7 @@ export default function Calendar() {
             {cancelling && (
                 <CancelAppointmentDialog appt={cancelling} onClose={() => setCancelling(null)} onDone={() => { refresh(); setDetail(null); }} />
             )}
-            {booking && <BookSlotDialog slot={booking} onClose={() => setBooking(null)} onDone={refresh} />}
+            {booking && <BookSlotDialog slot={booking} canManual={canManual} onClose={() => setBooking(null)} onDone={refresh} />}
             {blocking && <BlockDialog day={blocking} onClose={() => setBlocking(null)} onDone={refresh} />}
             {detail && (
                 <AppointmentDetail appt={detail} onClose={() => setDetail(null)}
@@ -469,6 +505,7 @@ function MonthGrid({ anchor, rows, onPickDate, matchAppt, active }) {
                                 </span>
                                 <div className="flex items-center gap-1">
                                     {blocked && <span data-testid="cal-month-blocked" className="text-[9px] font-bold text-red-700 bg-red-50 border border-red-200 rounded px-1">BLOCKED</span>}
+                                    {(d?.reminders || []).length > 0 && <span data-testid="cal-month-reminders" className="text-[10px] text-indigo-500 font-semibold flex items-center gap-0.5"><Bell className="w-2.5 h-2.5" />{d.reminders.length}</span>}
                                     {appts.length > 0 && <span className="text-[10px] text-slate-400 font-semibold">{appts.length}</span>}
                                 </div>
                             </div>
@@ -493,17 +530,25 @@ function MonthGrid({ anchor, rows, onPickDate, matchAppt, active }) {
     );
 }
 
-function BookSlotDialog({ slot, onClose, onDone }) {
-    const manual = !!slot.manual;
+// Compact composer: date/time come from the clicked row (editable via "Change"). Appointment uses the
+// existing /internal/calendar/book path (manual=true for internal after-hours/weekend rows); Personal reminder
+// is a physician/admin-only calendar note (no patient, no portal, no notification).
+function BookSlotDialog({ slot, canManual, onClose, onDone }) {
+    const internal = !!slot.internal;
+    const [kind, setKind] = useState("appointment"); // appointment | reminder
+    const [editWhen, setEditWhen] = useState(!!slot.editWhen);
     const [date, setDate] = useState(slot.date);
     const [time, setTime] = useState(slot.time || "");
     const [q, setQ] = useState("");
     const [results, setResults] = useState([]);
     const [patient, setPatient] = useState(null);
     const [reason, setReason] = useState("");
+    const [title, setTitle] = useState("");
+    const [note, setNote] = useState("");
     const [busy, setBusy] = useState(false);
     const [conflict, setConflict] = useState(null);
     const [overrideReason, setOverrideReason] = useState("");
+    const whenLabel = `${formatDate(date)} · ${time ? labelOf(time) : "—"}`;
 
     const search = async (e) => {
         e.preventDefault();
@@ -511,15 +556,21 @@ function BookSlotDialog({ slot, onClose, onDone }) {
         catch (err) { toast.error(formatErr(err)); }
     };
     const submit = async (override = false) => {
+        if (!date || !time) { toast.error("Please choose a date and time."); return; }
         setBusy(true);
         try {
-            if (manual && (!date || !time)) { toast.error("Please choose a date and time."); setBusy(false); return; }
-            const body = manual ? { date, time, reason: reason || null, manual: true } : { date: slot.date, time: slot.time, label: slot.label, reason: reason || null };
+            if (kind === "reminder") {
+                await api.post("/internal/calendar/reminders", { date, time, title, note: note || null });
+                toast.success("Reminder added to your calendar.");
+                onDone(); onClose(); return;
+            }
+            const body = { date, time, reason: reason || null, manual: internal || editWhen };
+            if (!body.manual) body.label = slot.label;
             if (patient.source === "portal") body.patient_id = patient.patient_id || patient.id;
             else body.directory_id = patient.directory_id || patient.id;
             if (override) { body.override_same_day = true; body.override_reason = overrideReason.trim(); }
             await api.post("/internal/calendar/book", body);
-            toast.success(override ? "Appointment booked with same-day override (audited)." : manual ? "Appointment scheduled (confirmed) and patient notified." : "Appointment booked and patient notified.");
+            toast.success(override ? "Appointment booked with same-day override (audited)." : "Appointment scheduled (confirmed) and patient notified.");
             onDone(); onClose();
         } catch (e) {
             if (isSameDayConflict(e)) { setConflict(e.response.data.detail); return; }
@@ -530,19 +581,34 @@ function BookSlotDialog({ slot, onClose, onDone }) {
     return (
         <Dialog open onOpenChange={(o) => !o && onClose()}>
             <DialogContent className="max-w-md" data-testid="cal-book-dialog">
-                <DialogHeader><DialogTitle>{manual ? "Add appointment — any date & time" : `Book — ${formatDate(slot.date)} · ${slot.label}`}</DialogTitle></DialogHeader>
-                {manual && (
+                <DialogHeader><DialogTitle className="flex items-center justify-between gap-2 pr-6">
+                    <span data-testid="cal-composer-when">{whenLabel}</span>
+                    {!editWhen && <button type="button" data-testid="cal-composer-change-when" onClick={() => setEditWhen(true)} className="text-xs font-normal text-slate-400 hover:text-visita-greenDark">Change</button>}
+                </DialogTitle></DialogHeader>
+                {editWhen && (
                     <div className="grid grid-cols-2 gap-2" data-testid="cal-manual-when">
                         <div><Label className="text-xs">Date</Label><Input type="date" value={date} onChange={(e) => setDate(e.target.value)} data-testid="cal-manual-date" /></div>
                         <div><Label className="text-xs">Time</Label><Input type="time" step="300" value={time} onChange={(e) => setTime(e.target.value)} data-testid="cal-manual-time" /></div>
-                        <p className="col-span-2 text-[11px] text-slate-500">Internal override: any day or time, including evenings and weekends. Patient self-booking hours are not affected.</p>
                     </div>
                 )}
-                {!patient ? (
+                {canManual && (
+                    <div className="flex rounded-sm border border-slate-300 overflow-hidden text-xs" data-testid="cal-composer-kind">
+                        <button type="button" data-testid="cal-kind-appointment" onClick={() => setKind("appointment")} className={`flex-1 px-3 py-1.5 ${kind === "appointment" ? "bg-visita-green text-white font-semibold" : "bg-white"}`}>Appointment</button>
+                        <button type="button" data-testid="cal-kind-reminder" onClick={() => setKind("reminder")} className={`flex-1 px-3 py-1.5 border-l border-slate-300 flex items-center justify-center gap-1 ${kind === "reminder" ? "bg-visita-green text-white font-semibold" : "bg-white"}`}><Bell className="w-3 h-3" /> Personal reminder</button>
+                    </div>
+                )}
+                {kind === "reminder" ? (
+                    <div className="space-y-2 text-sm">
+                        <Input autoFocus value={title} onChange={(e) => setTitle(e.target.value)} placeholder="Title — e.g. Call cardiologist, Review MRI" data-testid="cal-reminder-title" maxLength={120} />
+                        <Input value={note} onChange={(e) => setNote(e.target.value)} placeholder="Short note (optional)" data-testid="cal-reminder-note" maxLength={500} />
+                        <p className="text-[11px] text-slate-500">Private to the clinic calendar. No patient, portal or notification involved.</p>
+                        <Button disabled={busy || !title.trim()} onClick={() => submit(false)} className="w-full bg-visita-green hover:bg-visita-greenDark text-white" data-testid="cal-reminder-save">Save reminder</Button>
+                    </div>
+                ) : !patient ? (
                     <div className="space-y-2">
                         <form onSubmit={search} className="flex gap-2">
                             <div className="relative flex-1"><Search className="w-4 h-4 text-slate-400 absolute left-2 top-2.5" />
-                                <Input className="pl-8" value={q} onChange={(e) => setQ(e.target.value)} placeholder="Name, DOB, phone, email, health card, or PIN" data-testid="cal-book-search" /></div>
+                                <Input autoFocus className="pl-8" value={q} onChange={(e) => setQ(e.target.value)} placeholder="Patient — name, DOB, phone, health card, or PIN" data-testid="cal-book-search" /></div>
                             <Button type="submit">Search</Button>
                         </form>
                         <div className="max-h-60 overflow-y-auto divide-y border rounded-sm">
@@ -565,7 +631,7 @@ function BookSlotDialog({ slot, onClose, onDone }) {
                             <SameDayOverride conflict={conflict} reason={overrideReason} setReason={setOverrideReason} busy={busy}
                                 onConfirm={() => submit(true)} onCancel={onClose} />
                         ) : (
-                            <Button disabled={busy} onClick={() => submit(false)} className="w-full bg-visita-green hover:bg-visita-greenDark text-white" data-testid="cal-book-confirm">{manual ? "Confirm & Schedule" : "Confirm & Book"}</Button>
+                            <Button disabled={busy} onClick={() => submit(false)} className="w-full bg-visita-green hover:bg-visita-greenDark text-white" data-testid="cal-book-confirm">Confirm & Schedule</Button>
                         )}
                     </div>
                 )}

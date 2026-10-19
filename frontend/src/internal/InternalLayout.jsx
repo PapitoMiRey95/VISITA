@@ -106,7 +106,7 @@ export default function InternalLayout() {
     const wsItems = ws ? items.filter((it) => it.to === "/internal" || (user.allowed_modules || []).some((m) => (WORKSPACE_NAV[m] || []).includes(it.to))) : items;
     const netItem = !ws && ["physician", "admin", "staff"].includes(role) && navVisible("network", audience, role) ? [{ to: "/network", icon: Building2, label: "VIen Network", key: null }] : [];
     const visibleItems = [...wsItems, ...netItem].filter((it) => !NAV_FEATURE[it.to] || navVisible(NAV_FEATURE[it.to], audience, role));
-    const QUICK = new Set(["/internal/patients", "/internal/work", "/internal/rx", "/internal/send-rx", "/internal/exams", "/internal/calendar", "/internal/verifications",
+    const QUICK = new Set(["/internal/patients", "/internal/work", "/internal/rx", "/internal/send-rx", "/internal/exams", "/internal/calendar", "/network", "/internal/verifications",
                            "/internal/registration-qr", "/internal/settings"]);
     // Physicians keep Verifications inside All Queues; staff/admin see it in the quick sidebar.
     const isQuick = (it) => QUICK.has(it.to) && !(isPhysician && it.to === "/internal/verifications");

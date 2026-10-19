@@ -19,7 +19,7 @@ MODULES = {
 MODULE_API_PREFIXES = {
     "patients": ("/api/internal/patients", "/api/internal/patient-lookup", "/api/internal/directory", "/api/internal/identity-links", "/api/internal/registration-qr"),
     "calendar": ("/api/internal/calendar", "/api/internal/appointments", "/api/internal/appointment-search", "/api/availability", "/api/internal/slots", "/api/internal/breaks"),
-    "messages": ("/api/internal/messages", "/api/internal/tasks"),
+    "messages": ("/api/internal/messages", "/api/internal/tasks", "/api/internal/work"),
     "registration": ("/api/internal/applications", "/api/internal/verifications", "/api/internal/portal-access-requests", "/api/internal/health-card-updates", "/api/internal/registration", "/api/internal/delegate-options"),
     "rx": ("/api/internal/prescriptions", "/api/internal/send-rx", "/api/internal/pharmacy-rx", "/api/internal/pharmacies"),
     "billing": ("/api/internal/invoices", "/api/internal/private-requests", "/api/internal/service-catalog"),

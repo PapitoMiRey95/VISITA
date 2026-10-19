@@ -54,6 +54,7 @@ import catalog_import as catalog_import_mod
 import system_state as sys_mod
 import platform_config as pc_mod
 import storage
+import work_hub as work_mod
 from db import (APPT_PATIENT_STATUS, BLD_ACTIVE, BLD_PATIENT_STATUS, IMG_ACTIVE,
                 IMG_PATIENT_STATUS, MSG_ACTIVE, MSG_PATIENT_STATUS, RX_ACTIVE,
                 RX_PATIENT_STATUS, audit, db, mask_hcn, next_ref, now_iso)
@@ -3661,7 +3662,8 @@ async def counters(user: dict = Depends(require_roles(*CLINIC_ROLES))):
         par = await db.portal_access_requests.count_documents({**ps, "status": "PENDING"})
         results_review = await db.exam_results.count_documents({**ps, "status": "READY_FOR_PHYSICIAN"})
         result_access = await db.exam_results.count_documents({**ps, "status": "REVIEWED", "shared_with_patient": False, "access_requested": True})
-        return {"role": "physician", "counters": {"rx": rx, "imaging": img, "bloodwork": bld, "messages": pmsg, "doctor_tasks": dmsg, "applications": apps, "portal_access": par, "results_review": results_review, "result_access": result_access}}
+        work = await work_mod.actionable_count(user)
+        return {"role": "physician", "counters": {"rx": rx, "imaging": img, "bloodwork": bld, "messages": pmsg, "doctor_tasks": dmsg, "work_hub": work, "applications": apps, "portal_access": par, "results_review": results_review, "result_access": result_access}}
     rx = await db.prescription_requests.count_documents({**ps, "internal_status": {"$in": RX_ACTIVE}})
     referrals = await db.referrals.count_documents({**ps, "ready_to_fax": True, "faxed": False})
     img = await db.imaging_requests.count_documents({**ps, "internal_status": {"$in": IMG_ACTIVE}})
@@ -3675,7 +3677,7 @@ async def counters(user: dict = Depends(require_roles(*CLINIC_ROLES))):
     exams = await db.exam_results.count_documents({**ps, "status": {"$in": ["NEEDS_PATIENT_MATCH", "RECEIVED"]}})
     return {"role": user["role"], "counters": {
         "rx": rx, "referrals": referrals, "imaging": img, "bloodwork": bld, "messages": msgs,
-        "appointments": appts, "doctor_tasks": tasks, "verifications": pending_verif, "applications": apps,
+        "appointments": appts, "doctor_tasks": tasks, "work_hub": await work_mod.actionable_count(user), "verifications": pending_verif, "applications": apps,
         "portal_access": par, "exams": exams,
     }}
 
@@ -10534,6 +10536,7 @@ async def maintenance_mode_gate(request: Request, call_next):
     return JSONResponse(status_code=503, content={"detail": {"code": "MAINTENANCE_MODE", "message": state["maintenance"]["message"]}})
 
 
+api.include_router(work_mod.build_router(require_roles))
 app.include_router(api)
 
 _DEFAULT_CORS = "https://visitaemr.com,https://www.visitaemr.com,https://visita-admin.preview.emergentagent.com"

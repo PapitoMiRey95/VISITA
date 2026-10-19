@@ -10,7 +10,7 @@ import { usePlatformConfig, NAV_FEATURE } from "../lib/platform";
 import { api, setToken } from "../lib/api";
 const WORKSPACE_NAV = {
     patients: ["/internal/patients", "/internal/registration-qr"], calendar: ["/internal/calendar", "/internal/appointments"],
-    messages: ["/internal/messages", "/internal/tasks"], registration: ["/internal/applications", "/internal/verifications", "/internal/portal-access-requests", "/internal/health-card-updates", "/internal/registration-qr"],
+    messages: ["/internal/messages", "/internal/tasks", "/internal/work"], registration: ["/internal/applications", "/internal/verifications", "/internal/portal-access-requests", "/internal/health-card-updates", "/internal/registration-qr"],
     rx: ["/internal/rx", "/internal/send-rx"], billing: ["/internal/billing", "/internal/private-requests"],
 };
 import { ThemeToggle } from "../components/ThemeToggle";
@@ -68,7 +68,7 @@ export default function InternalLayout() {
               { to: "/internal/calendar", icon: CalendarDays, label: "Calendar", key: null },
               { to: "/internal/private-requests", icon: Users, label: "Private Requests", key: null },
               { to: "/internal/billing", icon: Receipt, label: "Billing", key: null },
-              { to: "/internal/tasks", icon: Send, label: "Intercom", key: "doctor_tasks" },
+              { to: "/internal/work", icon: Send, label: "Work Hub", key: "work_hub" },
               { to: "/internal/referrals", icon: ClipboardCheck, label: "Referral Drop-Off", key: null },
               { to: "/internal/verifications", icon: UserCheck, label: "Verifications", key: "verifications" },
               { to: "/internal/providers", icon: Stethoscope, label: "Providers", key: null },
@@ -87,7 +87,7 @@ export default function InternalLayout() {
               { to: "/internal/private-requests", icon: Users, label: "Private Requests", key: null },
               { to: "/internal/billing", icon: Receipt, label: "Billing", key: null },
               { to: "/internal/calendar", icon: CalendarDays, label: "Calendar", key: null },
-              { to: "/internal/tasks", icon: Send, label: "Intercom", key: "doctor_tasks" },
+              { to: "/internal/work", icon: Send, label: "Work Hub", key: "work_hub" },
               { to: "/internal/verifications", icon: UserCheck, label: "Verifications", key: "verifications" },
               { to: "/internal/applications", icon: UserPlus, label: "Applications", key: "applications" },
               { to: "/internal/portal-access-requests", icon: ShieldCheck, label: "Portal Access", key: "portal_access" },
@@ -106,7 +106,7 @@ export default function InternalLayout() {
     const wsItems = ws ? items.filter((it) => it.to === "/internal" || (user.allowed_modules || []).some((m) => (WORKSPACE_NAV[m] || []).includes(it.to))) : items;
     const netItem = !ws && ["physician", "admin", "staff"].includes(role) && navVisible("network", audience, role) ? [{ to: "/network", icon: Building2, label: "VIen Network", key: null }] : [];
     const visibleItems = [...wsItems, ...netItem].filter((it) => !NAV_FEATURE[it.to] || navVisible(NAV_FEATURE[it.to], audience, role));
-    const QUICK = new Set(["/internal/patients", "/internal/rx", "/internal/calendar", "/internal/verifications",
+    const QUICK = new Set(["/internal/patients", "/internal/work", "/internal/rx", "/internal/calendar", "/internal/verifications",
                            "/internal/registration-qr", "/internal/settings"]);
     const quickItems = visibleItems.filter((it) => QUICK.has(it.to));
     const hubItems = visibleItems.filter((it) => !QUICK.has(it.to));
@@ -140,7 +140,7 @@ export default function InternalLayout() {
     const workHubButton = (onNavigate, prefix) => (
         <button key="work-hub" type="button" data-testid={`${prefix}-work-hub`} onClick={() => { onNavigate?.(); setHubOpen(true); }}
             className="w-[calc(100%-1rem)] flex items-center justify-between px-3 py-2 mx-2 my-0.5 rounded-sm text-sm font-semibold text-visita-greenDark bg-visita-greenLight/60 hover:bg-visita-greenLight border border-visita-green/30 transition-colors duration-75">
-            <span className="flex items-center gap-2"><LayoutGrid className="w-4 h-4" /> Work Hub</span>
+            <span className="flex items-center gap-2"><LayoutGrid className="w-4 h-4" /> All Queues</span>
             {hubBadge > 0 && (
                 <span className="bg-red-600 text-white text-xs font-bold rounded-full min-w-[20px] h-5 px-1 flex items-center justify-center" data-testid={`${prefix}-work-hub-badge`}>
                     {hubBadge}
@@ -204,7 +204,7 @@ export default function InternalLayout() {
                     <SheetContent side="left" className="w-80 p-0 bg-white overflow-y-auto" data-testid="work-hub-drawer">
                         <div className="h-12 bg-visita-ribbon flex items-center gap-2 px-4 text-white">
                             <LayoutGrid className="w-5 h-5" />
-                            <SheetTitle className="text-white text-base font-semibold">Central Work Hub</SheetTitle>
+                            <SheetTitle className="text-white text-base font-semibold">All Queues</SheetTitle>
                         </div>
                         <p className="px-4 pt-3 pb-1 text-xs text-slate-500">All clinic tools you're authorized to use. Quick-access items stay in the sidebar.</p>
                         <div className="py-2" data-testid="work-hub-items">

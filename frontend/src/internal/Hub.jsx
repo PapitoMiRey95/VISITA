@@ -12,7 +12,7 @@ const STAFF = [
     { key: "bloodwork", label: "Bloodwork", to: "/internal/bloodwork", icon: Droplet },
     { key: "messages", label: "Messages", to: "/internal/messages", icon: MessageSquare },
     { key: "appointments", label: "Appointments", to: "/internal/appointments", icon: Calendar },
-    { key: "doctor_tasks", label: "Intercom", to: "/internal/tasks", icon: Send },
+    { key: "work_hub", label: "Work Hub", to: "/internal/work", icon: Send },
     { key: "verifications", label: "Verifications", to: "/internal/verifications", icon: UserCheck },
     { key: "applications", label: "Applications", to: "/internal/applications", icon: UserPlus },
 ];
@@ -30,7 +30,7 @@ const PHYS = [
     { label: "Calendar", to: "/internal/calendar", icon: CalendarDays },
     { label: "Private Requests", to: "/internal/private-requests", icon: Users },
     { label: "Billing", to: "/internal/billing", icon: Receipt },
-    { key: "doctor_tasks", label: "Intercom", to: "/internal/tasks", icon: Send },
+    { key: "work_hub", label: "Work Hub", to: "/internal/work", icon: Send },
     { label: "Referral Drop-Off", to: "/internal/referrals", icon: ClipboardCheck },
     { key: "verifications", label: "Verifications", to: "/internal/verifications", icon: UserCheck },
     { label: "Providers", to: "/internal/providers", icon: Stethoscope },
@@ -89,7 +89,7 @@ export default function Hub() {
     const { user } = useAuth();
     const counters = useCounters();
     const c = counters.data?.counters || {};
-    const WS_NAV = { patients: ["/internal/patients"], calendar: ["/internal/calendar", "/internal/appointments"], messages: ["/internal/messages", "/internal/tasks"],
+    const WS_NAV = { patients: ["/internal/patients"], calendar: ["/internal/calendar", "/internal/appointments"], messages: ["/internal/messages", "/internal/tasks", "/internal/work"],
         registration: ["/internal/applications", "/internal/verifications", "/internal/portal-access-requests", "/internal/health-card-updates"], rx: ["/internal/rx", "/internal/send-rx"], billing: ["/internal/billing", "/internal/private-requests"] };
     const base = user?.role === "physician" ? PHYS : STAFF;
     const items = user?.workspace ? base.filter((it) => (user.allowed_modules || []).some((m) => (WS_NAV[m] || []).includes(it.to))) : base;

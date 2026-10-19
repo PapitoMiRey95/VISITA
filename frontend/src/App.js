@@ -45,6 +45,7 @@ import Calendar from "./internal/Calendar";
 import ExamsResults from "./internal/ExamsResults";
 import MessageQueue from "./internal/MessageQueue";
 import TaskQueue from "./internal/TaskQueue";
+import WorkHub from "./internal/WorkHub";
 import Referrals from "./internal/Referrals";
 import Verifications from "./internal/Verifications";
 import Applications from "./internal/Applications";
@@ -162,7 +163,8 @@ function App() {
                         <Route path="imaging" element={<Navigate to="/internal/exams" replace />} />
                         <Route path="bloodwork" element={<Navigate to="/internal/exams" replace />} />
                         <Route path="messages" element={<MessageQueue />} />
-                        <Route path="tasks" element={<TaskQueue />} />
+                        <Route path="work" element={<WorkHub />} />
+                        <Route path="tasks" element={<TaskQueue />} /> {/* legacy intercom — kept for rollback during Preview */}
                         <Route path="referrals" element={<Referrals />} />
                         <Route path="verifications" element={<Verifications />} />
                         <Route path="applications" element={<Applications />} />

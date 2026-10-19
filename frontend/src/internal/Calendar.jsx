@@ -88,6 +88,8 @@ function monthLabel(iso) {
 }
 // Clinic-local "today" (America/Toronto), independent of the device timezone.
 function todayISO() { return new Intl.DateTimeFormat("en-CA", { timeZone: "America/Toronto", year: "numeric", month: "2-digit", day: "2-digit" }).format(new Date()); }
+const OPEN_PREF_KEY = "vien.calendar.showOpenTimes"; // local UI preference only (physician/admin compact mode)
+const readOpenPref = () => { try { return localStorage.getItem(OPEN_PREF_KEY) === "1"; } catch { return false; } };
 const isMobileViewport = () => typeof window !== "undefined" && window.matchMedia && window.matchMedia("(max-width: 767px)").matches;
 const WEEKDAY_HEADERS = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
 const toMin = (t) => { const [h, m] = String(t || "0:0").split(":").map(Number); return h * 60 + (m || 0); };
@@ -100,7 +102,8 @@ function internalRows(d, duration) {
     const dur = duration || 30;
     if (d.date < todayISO()) return [];
     const taken = new Set([...(d.appointments || []).filter((a) => !isHistory(a)).map((a) => a.time), ...(d.reminders || []).map((r) => r.time)]);
-    const normal = [...(d.open_slots || []).map((s) => toMin(s.time)), ...(d.appointments || []).map((a) => toMin(a.time))];
+    const normal = [...(d.open_slots || []).map((s) => toMin(s.time)),
+        ...(d.appointments || []).filter((a) => !a.is_private && a.source !== "calendar_manual").map((a) => toMin(a.time))];
     let start = d.closed || normal.length === 0 ? 9 * 60 : Math.max(...normal) + dur;
     start = Math.ceil(start / 30) * 30;
     const minNow = d.date === todayISO() ? nowMinToronto() : -1;
@@ -113,11 +116,17 @@ function internalRows(d, duration) {
     return rows;
 }
 // Chronological rows under the appointments: open clinic slots (everyone), reminders + internal after-hours rows (physician/admin).
-function dayRows(d, canManual, duration) {
+// Appointments interleaved chronologically with the open/reminder rows.
+function mergedRows(d, canManual, duration, showOpen) {
+    const appts = liveAppts(d.appointments).map((a) => ({ kind: "appt", time: a.time, id: a.id, appt: a }));
+    return [...appts, ...dayRows(d, canManual, duration, showOpen)].sort((a, b) => toMin(a.time) - toMin(b.time));
+}
+function dayRows(d, canManual, duration, showOpen = true) {
     const rows = (d.open_slots || []).map((s) => ({ kind: "open", time: s.time, label: s.label }));
     if (canManual) {
         rows.push(...(d.reminders || []).map((r) => ({ kind: "reminder", ...r })));
         rows.push(...internalRows(d, duration).map((s) => ({ kind: "internal", ...s })));
+        if (!showOpen) return rows.filter((r) => r.kind === "reminder").sort((a, b) => toMin(a.time) - toMin(b.time));
     }
     return rows.sort((a, b) => toMin(a.time) - toMin(b.time));
 }
@@ -128,6 +137,9 @@ export default function Calendar() {
     const canManual = user?.role === "physician" || user?.role === "admin";
     // Mobile physician/admin: open on today's Day view (set once; manual Day/Week/Month changes are respected).
     const [view, setView] = useState(() => (canManual && isMobileViewport() ? "day" : "month")); // day | week | month
+    // Compact mode (physician/admin): empty open/quick-add rows hidden by default; appointments + reminders always shown.
+    const [showOpen, setShowOpen] = useState(readOpenPref);
+    const toggleOpen = () => setShowOpen((v) => { try { localStorage.setItem(OPEN_PREF_KEY, v ? "0" : "1"); } catch { /* ignore */ } return !v; });
     const [start, setStart] = useState(todayISO());
     const [resched, setResched] = useState(null);
     const [cancelling, setCancelling] = useState(null);
@@ -327,7 +339,7 @@ export default function Calendar() {
                                         DAY BLOCKED — remaining slots unavailable
                                     </div>
                                 )}
-                                {liveAppts(d.appointments).map((a) => {
+                                {mergedRows(d, canManual, cal.data?.duration, showOpen).map((row) => row.kind === "appt" ? (() => { const a = row.appt;
                                     const m = matchAppt(a);
                                     const sel = a.id === selectedId;
                                     return (
@@ -357,8 +369,8 @@ export default function Calendar() {
                                         </div>
                                     </div>
                                     );
-                                })}
-                                {dayRows(d, canManual, cal.data?.duration).map((row) => row.kind === "reminder" ? (
+                                })() :
+                                row.kind === "reminder" ? (
                                     <div key={row.id} data-testid="cal-reminder" className="rounded-sm border border-dashed border-indigo-300 bg-indigo-50/60 px-2 py-1 text-xs flex items-start justify-between gap-2">
                                         <div className="min-w-0">
                                             <div className="font-semibold text-indigo-900 flex items-center gap-1"><Bell className="w-3 h-3 shrink-0" /> {row.label || row.time} · {row.title}</div>
@@ -375,6 +387,12 @@ export default function Calendar() {
                                 ))}
                                 {!canManual && d.appointments.length === 0 && d.open_slots.length === 0 && (
                                     <div className="text-xs text-slate-400 py-1.5 text-center">No availability</div>
+                                )}
+                                {canManual && d.date >= todayISO() && (
+                                    <button type="button" data-testid="cal-toggle-open-times" onClick={toggleOpen}
+                                        className="w-full text-left text-[11px] font-semibold text-slate-400 hover:text-visita-greenDark flex items-center gap-1 pt-0.5">
+                                        {showOpen ? <><span className="w-3 text-center">−</span> Hide open times</> : <><Plus className="w-3 h-3" /> Show open times</>}
+                                    </button>
                                 )}
                                 <DayHistory appts={historyAppts(d.appointments)} open={!!histOpen[d.date]}
                                     onToggle={() => setHistOpen((h) => ({ ...h, [d.date]: !h[d.date] }))}

@@ -4,18 +4,23 @@ import { Plus, Inbox } from "lucide-react";
 import { api } from "../lib/api";
 import { useInvalidate } from "./hooks";
 import { Button } from "../components/ui/button";
-import { Chip, STATUS_TONE, STATUS_LABEL, OWNER_LABEL, whenLabel, NewWorkDialog, WorkDetail } from "./workHubParts";
+import { Chip, STATUS_TONE, STATUS_LABEL, OWNER_LABEL, whenLabel, NewWorkDialog, WorkDetail, PriorityBadge, OverdueBadge, SignedBadge } from "./workHubParts";
 
 const VIEWS = [["my", "My Work"], ["sent", "Sent"], ["waiting", "Waiting"], ["completed", "Completed"]];
 
 function WorkCard({ item, cat, selected, onClick }) {
     return (
-        <button data-testid="work-card" data-status={item.status} onClick={onClick}
-            className={`w-full text-left bg-white border rounded-sm px-3 py-2 transition-colors ${selected ? "border-visita-green ring-1 ring-visita-green" : "border-slate-300 hover:border-visita-green/60"}`}>
-            <div className="text-[11px] text-slate-500 uppercase tracking-wide font-semibold truncate">{cat} {item.patient_name ? `· ${item.patient_name}` : ""}</div>
+        <button data-testid="work-card" data-status={item.status} data-priority={item.priority || "NORMAL"} onClick={onClick}
+            className={`w-full text-left bg-white border rounded-sm px-3 py-2 transition-colors ${selected ? "border-visita-green ring-1 ring-visita-green" : item.priority === "ASAP" ? "border-red-400 hover:border-red-500" : "border-slate-300 hover:border-visita-green/60"}`}>
+            <div className="flex items-center gap-1.5 min-w-0">
+                <PriorityBadge priority={item.priority} testid="work-card-priority" />
+                <OverdueBadge item={item} testid="work-card-overdue" />
+                <SignedBadge item={item} testid="work-card-signed" />
+                <span className="text-[11px] text-slate-500 uppercase tracking-wide font-semibold truncate">{cat} {item.patient_name ? `· ${item.patient_name}` : ""}</span>
+            </div>
             <div className="text-sm font-medium text-slate-900 truncate">{item.message}</div>
             <div className="mt-1 flex items-center justify-between gap-2 text-[11px] text-slate-500">
-                <span className="flex items-center gap-1"><Chip tone="bg-visita-greenLight text-visita-greenDark border-visita-green/40">{OWNER_LABEL[item.owner_role]}</Chip><Chip tone={STATUS_TONE[item.status]}>{STATUS_LABEL[item.status]}</Chip></span>
+                <span className="flex items-center gap-1"><Chip tone="bg-visita-greenLight text-visita-greenDark border-visita-green/40">With {OWNER_LABEL[item.owner_role]}</Chip><Chip tone={STATUS_TONE[item.status]}>{STATUS_LABEL[item.status]}</Chip></span>
                 <span className="truncate">from {item.created_by_name} · {whenLabel(item.updated_at)}</span>
             </div>
         </button>
@@ -60,7 +65,7 @@ export default function WorkHub() {
                     {items.map((it) => <WorkCard key={it.id} item={it} cat={catLabel(it.category)} selected={it.id === selectedId} onClick={() => setSelectedId(it.id)} />)}
                 </div>
                 <div className={selected ? "" : "hidden md:block"}>
-                    {selected ? <WorkDetail item={selected} side={side} categories={categories} onChanged={refresh} onBack={() => setSelectedId(null)} />
+                    {selected ? <WorkDetail item={selected} side={side} categories={categories} documentCategories={meta.data?.document_categories || []} onChanged={refresh} onBack={() => setSelectedId(null)} />
                         : <div className="hidden md:flex h-40 items-center justify-center rounded-sm border border-dashed border-slate-300 text-sm text-slate-400">Select an item to see its history and actions.</div>}
                 </div>
             </div>

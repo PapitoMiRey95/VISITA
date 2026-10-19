@@ -235,7 +235,7 @@ export default function Patients() {
                             <Input data-testid="patient-pin-search" value={pinQuery} inputMode="numeric"
                                 onChange={(e) => setPinQuery(e.target.value.replace(/\D/g, ""))}
                                 placeholder="VISITA PIN" className="flex-1" />
-                            <Button type="submit" variant="outline" disabled={searching} data-testid="patient-pin-search-btn">PIN</Button>
+                            <Button type="submit" disabled={searching} data-testid="patient-pin-search-btn">PIN</Button>
                         </div>
                     </form>
                 </div>

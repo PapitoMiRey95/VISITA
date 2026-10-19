@@ -274,8 +274,8 @@ export default function Patients() {
                 </div>
             ) : (
                 <div className="bg-white border border-slate-300 rounded-sm p-5 max-w-3xl" data-testid="patient-snapshot">
-                    <div className="flex items-start justify-between gap-4 mb-3">
-                        <div className="min-w-[220px]">
+                    <div className="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-3 sm:gap-4 mb-3">
+                        <div className="min-w-0 sm:min-w-[220px]">
                             <h2 className="text-lg font-bold text-slate-900" data-testid="patient-name">{formatPatientName(selected)}</h2>
                             <div className="flex items-center gap-2 mt-1">
                                 <span className={`inline-block px-2 py-0.5 rounded-sm text-xs ${selected.source === "portal" ? "bg-emerald-100 text-emerald-800 font-semibold" : "bg-slate-100 text-slate-600"}`}>{statusLabel(selected.patient_status)}</span>
@@ -283,7 +283,7 @@ export default function Patients() {
                                 {selected.is_synthetic && <span className="inline-block px-2 py-0.5 rounded-sm text-xs font-bold bg-fuchsia-100 text-fuchsia-800 border border-fuchsia-300" data-testid="synthetic-badge">SYNTHETIC TEST PATIENT — NOT FOR REAL CLINICAL CARE</span>}
                             </div>
                         </div>
-                        <div className="flex items-center justify-end flex-wrap gap-2">
+                        <div className="flex items-center justify-start sm:justify-end flex-wrap gap-2 w-full sm:w-auto">
                             {user?.role === "physician" && user?.encounter_enabled && !editing && <StartEncounterButton patient={selected} />}
                             {canEdit && !editing && (
                                 <Button variant="outline" size="sm" data-testid="patient-edit-btn" onClick={startEdit}>

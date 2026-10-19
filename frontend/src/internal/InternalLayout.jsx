@@ -151,13 +151,14 @@ export default function InternalLayout() {
         </button>
     );
 
+    // Sidebar order: Patients, Work Hub, Calendar, then the remaining quick items, All Queues, Settings, Network.
+    const QUICK_ORDER = ["/internal/patients", "/internal/work", "/internal/calendar"];
     const renderNav = (onNavigate, prefix = "sidebar") => {
-        const out = [];
-        quickItems.forEach((it) => {
-            out.push(renderItem(it, onNavigate, prefix));
-            if (it.to === "/internal/patients") out.push(workHubButton(onNavigate, prefix));
-        });
-        return out;
+        const first = QUICK_ORDER.map((to) => quickItems.find((it) => it.to === to)).filter(Boolean);
+        const rest = quickItems.filter((it) => !QUICK_ORDER.includes(it.to) && it.to !== "/internal/settings" && it.to !== "/network");
+        const tail = quickItems.filter((it) => it.to === "/internal/settings" || it.to === "/network");
+        return [...first.map((it) => renderItem(it, onNavigate, prefix)), ...rest.map((it) => renderItem(it, onNavigate, prefix)),
+            workHubButton(onNavigate, prefix), ...tail.map((it) => renderItem(it, onNavigate, prefix))];
     };
 
     return (

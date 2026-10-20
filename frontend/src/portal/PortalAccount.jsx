@@ -13,6 +13,7 @@ import { Input } from "../components/ui/input";
 import { Label } from "../components/ui/label";
 import { HealthCardNumberInput } from "../components/HealthCardNumberInput";
 import { Select, SelectTrigger, SelectValue, SelectContent, SelectItem } from "../components/ui/select";
+import { CompletionProfileCard } from "./ProfileCompletion";
 
 const SEX_OPTIONS = ["Male", "Female", "X"];
 const TYPE_KEY = { ohip: "typeOhip", private: "typePrivate", tourist: "typeTourist" };
@@ -151,6 +152,8 @@ export default function PortalAccount() {
                     </span>
                 </div>
             </Card>
+
+            {p?.verification_status === "verified" && <CompletionProfileCard />}
 
             {p && !p.sex && !editSex && (
                 <div className="rounded-xl border border-amber-300 bg-amber-50 p-4 flex items-start gap-3" data-testid="acct-sex-prompt">

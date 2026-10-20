@@ -920,3 +920,11 @@ PROD FOLLOW-UPS (need explicit GO, scripts not yet written): stamp practice_id o
 - New `frontend/src/internal/workHubSections.jsx`: SECTIONS (ASAP→B2→B1→Routine), `sectionSort` (overdue→due today→earliest due→oldest), collapsible `PrioritySection` (zero-item hidden), `PhysicianSummary` (ASAP/Overdue/Due-today from active my+sent items; reminders reused from existing GET /internal/calendar?days=4 — no new collection/endpoint).
 - `WorkHub.jsx`: My Work & Sent grouped; Sent "Include completed" renders a separate Completed section; Waiting/History untouched; physician sees summary when nothing selected.
 - No backend changes. Verified with seeded data + screenshots (desktop dark/light, collapsed, mobile). Not deployed.
+
+## 2026-06 — Portal: required missing health-card info + registration-gap recovery prep (PREVIEW, awaiting GO)
+- Prod READ-ONLY audit done (RCA_354f97b3): 51 ACTIVE+VERIFIED linked; canonical never had issue/expiry keys (40/51 recoverable from `patients`), sex_code numeric "1"/"2" on 49/51 (display bug, fixed), version present 50/51. No writes.
+- `server.py`: SEX_FROM_CODE += "1"/"2"/"9"; portal overview sex/HC fields use canonical-then-registration (`prof_mod.effective`); Rx endpoints (/portal/prescriptions, /refill-requests, /prescriptions/photo, /prescription-requests) gated 428 PROFILE_COMPLETION_REQUIRED. Appointments/messages/help NOT gated.
+- New `profile_completion.py`: GET /portal/profile-completeness, POST /portal/profile-completion (fills blank canonical+portal only; conflicts & HC-name differences → `identity_review_items` + Work Hub ADMIN_OTHER/Routine to CLINIC; audit `patient_profile_completion`, source PATIENT_PORTAL_PROFILE_COMPLETION).
+- New `tools/backfill_registration_gaps.py` (dry-run default, --apply; issue/expiry/version-when-blank/sex-when-no-code only). Dry-run verified on Preview. NOT run on Prod.
+- Frontend `portal/ProfileCompletion.jsx` (banner, per-session modal, profile card; EN/ES in portal.json `completion`). Scenarios A–H verified via API + screenshots.
+- Prod backfill + Prod gating: HOLD until explicit GO.

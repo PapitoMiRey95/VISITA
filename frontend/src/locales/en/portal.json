@@ -242,5 +242,39 @@
     "hcPendingNote": "Submitted — the clinic will review and approve before this becomes active.",
     "hcSubmitTitle": "Submit an update",
     "hcSubmitBtn": "Submit for review"
+  },
+  "completion": {
+    "bannerTitle": "Please complete your information",
+    "bannerBody": "We need a few details from your health card to keep your medical record up to date.",
+    "bannerCta": "Complete now",
+    "modalTitle": "Complete your health information",
+    "modalIntro": "Please enter the information exactly as shown on your health card.",
+    "missingLabel": "Missing:",
+    "fields": {
+      "health_card_version_code": "Health Card Version Code",
+      "health_card_issue_date": "Health Card Issue Date",
+      "health_card_expiry_date": "Health Card Expiry Date",
+      "sex": "Sex"
+    },
+    "versionHelp": "The 2 letters printed after the 10-digit number (e.g. 1234 567 890 AB → AB).",
+    "hcNumberOnFile": "Health Card Number on file",
+    "hcNumberLabel": "Health Card Number",
+    "nameTitle": "Name as shown on your health card",
+    "nameHelp": "Confirm or correct it. Changes are reviewed by the clinic before your record is updated.",
+    "firstName": "First name",
+    "middleName": "Middle / second name",
+    "lastName": "Last name",
+    "secondLastName": "Second surname",
+    "save": "Save and continue",
+    "later": "Later",
+    "saving": "Saving…",
+    "savedAll": "Thank you — your information is complete.",
+    "savedPartial": "Saved. Some details still need attention.",
+    "reviewNote": "Some of what you entered differs from our records. The clinic will review it — nothing was changed yet.",
+    "profileTitle": "Information required",
+    "profileBody": "Please complete the following so we can keep your record up to date:",
+    "profileCta": "Complete information",
+    "gateTitle": "Complete your information first",
+    "gateBody": "Prescription requests need your health card details to be complete. It only takes a minute."
   }
 }

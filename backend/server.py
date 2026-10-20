@@ -56,6 +56,7 @@ import platform_config as pc_mod
 import storage
 import work_hub as work_mod
 import booking_types as bt_mod
+import profile_completion as prof_mod
 from db import (APPT_PATIENT_STATUS, BLD_ACTIVE, BLD_PATIENT_STATUS, IMG_ACTIVE,
                 IMG_PATIENT_STATUS, MSG_ACTIVE, MSG_PATIENT_STATUS, RX_ACTIVE,
                 RX_PATIENT_STATUS, audit, db, mask_hcn, next_ref, now_iso)
@@ -3155,6 +3156,7 @@ async def download_my_proof(inv_id: str, att_id: str, user: dict = Depends(get_c
 @api.post("/portal/prescriptions")
 async def create_rx(body: PrescriptionBody, ctx: PortalCtx = Depends(portal_access(delegates_mod.RX_REQUESTS))):
     p = ctx.patient
+    await prof_mod.require_complete(p)
     ref = await next_ref("RX")
     doc = {
         "id": str(uuid.uuid4()), "ref_number": ref, "patient_id": p["id"],
@@ -3197,6 +3199,7 @@ async def create_refill_requests(body: RefillRequestBody,
     `patient_medications` (never patient free-text). Longer supply stays a REQUEST
     (received) for physician review and is never auto-approved."""
     p = ctx.patient
+    await prof_mod.require_complete(p)
     ids = [i for i in (body.medication_ids or []) if i]
     if not ids:
         raise HTTPException(status_code=400, detail="Select at least one medication to refill.")
@@ -3258,6 +3261,7 @@ async def create_rx_photo(
     object storage for staff/physician review. NEVER updates the official
     `patient_medications` list; only a physician-sent prescription can do that."""
     p = ctx.patient
+    await prof_mod.require_complete(p)
     attachment = await _store_pharmacy_upload(file, "patient_rx")
     ref = await next_ref("RX")
     now = now_iso()
@@ -3335,6 +3339,7 @@ async def create_prescription_request(body: PrescriptionRequestBody,
     Feeds the EXISTING prescription_requests queue (status 'received'). Manual entries
     are flagged for physician review and NEVER touch patient_medications/medication_catalog."""
     p = ctx.patient
+    await prof_mod.require_complete(p)
     name = (body.medication_name or "").strip()
     if not name:
         raise HTTPException(status_code=400, detail="Enter the medication you're requesting.")
@@ -3499,6 +3504,7 @@ async def portal_overview(ctx: PortalCtx = Depends(portal_access())):
                                    "cancelled_at": latest_at}
     has_fee = any((a.get("late_fee") or {}).get("status") == "outstanding" for a in appts)
     pending_hc = p.get("pending_health_card")
+    eff = prof_mod.effective(p, await prof_mod.canonical_for(p))  # canonical first, then registration
     inv_open = 0 if is_del else await db.invoices.count_documents({"patient_id": pid, "status": {"$in": ["ISSUED", "PAYMENT_SUBMITTED"]}})
     inv_total = 0 if is_del else await db.invoices.count_documents({"patient_id": pid, "status": {"$ne": "DRAFT"}})
     return {
@@ -3512,14 +3518,14 @@ async def portal_overview(ctx: PortalCtx = Depends(portal_access())):
                     "patient_type": p["patient_type"], "verification_status": p["verification_status"],
                     "visita_patient_id": p.get("visita_patient_id"),
                     "phone": p.get("phone"), "email": p.get("email"),
-                    "sex": p.get("sex"),
+                    "sex": eff.get("sex"),
                     "address": p.get("address"), "unit": p.get("unit"),
                     "city": p.get("city"), "province": p.get("province"),
                     "postal_code": p.get("postal_code"),
-                    "health_card_display": identity_mod.format_health_card(p.get("health_card_number"), p.get("health_card_version")),
-                    "health_card_issue_date": p.get("health_card_issue_date"),
-                    "health_card_expiry_date": p.get("health_card_expiry_date"),
-                    "health_card_status": identity_mod.health_card_status(p.get("health_card_expiry_date")),
+                    "health_card_display": identity_mod.format_health_card(eff.get("health_card_number"), eff.get("health_card_version_code")),
+                    "health_card_issue_date": eff.get("health_card_issue_date"),
+                    "health_card_expiry_date": eff.get("health_card_expiry_date"),
+                    "health_card_status": identity_mod.health_card_status(eff.get("health_card_expiry_date")),
                     "health_card_update_pending": bool(pending_hc),
                     "pending_health_card": pending_hc,
                     "has_outstanding_fee": (False if is_del else has_fee),
@@ -5585,7 +5591,7 @@ async def internal_patient_lookup_pin(pin: str, user: dict = Depends(require_rol
     return await _attach_portal_access(results)
 
 
-SEX_FROM_CODE = {"M": "Male", "F": "Female", "X": "Other", "O": "Other", "U": "Unknown"}
+SEX_FROM_CODE = {"M": "Male", "F": "Female", "X": "Other", "O": "Other", "U": "Unknown", "1": "Male", "2": "Female", "9": "Unknown"}  # legacy numeric codes (ISO 5218) kept as-is
 SEX_TO_CODE = {"Male": "M", "Female": "F", "Other": "X", "Unknown": "U"}
 # Verified registration → canonical refresh. CURRENT fields follow the patient (overwrite when different);
 # FILL fields only populate an empty canonical value; IDENTITY fields are never overwritten (reviewable conflict).
@@ -10648,6 +10654,7 @@ async def maintenance_mode_gate(request: Request, call_next):
 
 
 api.include_router(work_mod.build_router(require_roles))
+api.include_router(prof_mod.build_router(get_current_user, get_patient_record))
 app.include_router(api)
 
 _DEFAULT_CORS = "https://visitaemr.com,https://www.visitaemr.com,https://visita-admin.preview.emergentagent.com"

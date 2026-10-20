@@ -8,6 +8,7 @@ import { useAuth } from "../context/AuthContext";
 import { EmergencyNotice } from "../components/EmergencyNotice";
 import { usePortal, PendingBanner, Card, StatusPill } from "./shared";
 import { formatDate } from "../lib/date";
+import { CompletionPrompt } from "./ProfileCompletion";
 
 const TILES = [
     { to: "/portal/appointments", icon: Calendar, tkey: "home.tiles.appointments", color: "text-portal-blue", testid: "tile-appointments" },
@@ -265,6 +266,8 @@ export default function PortalHome() {
             </div>
 
             {p && <PendingBanner status={p.verification_status} />}
+
+            {p?.verification_status === "verified" && <CompletionPrompt />}
 
             <ClinicCancellationAlert />
 

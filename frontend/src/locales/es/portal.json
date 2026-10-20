@@ -242,5 +242,39 @@
     "hcPendingNote": "Enviado: la clínica lo revisará y aprobará antes de que sea activo.",
     "hcSubmitTitle": "Enviar una actualización",
     "hcSubmitBtn": "Enviar para revisión"
+  },
+  "completion": {
+    "bannerTitle": "Necesitamos completar su información",
+    "bannerBody": "Para mantener su expediente actualizado, necesitamos algunos datos de su tarjeta de salud.",
+    "bannerCta": "Completar ahora",
+    "modalTitle": "Complete su información de salud",
+    "modalIntro": "Ingrese la información exactamente como aparece en su tarjeta de salud.",
+    "missingLabel": "Falta:",
+    "fields": {
+      "health_card_version_code": "Código de versión de la tarjeta de salud",
+      "health_card_issue_date": "Fecha de emisión de la tarjeta de salud",
+      "health_card_expiry_date": "Fecha de vencimiento de la tarjeta de salud",
+      "sex": "Sexo"
+    },
+    "versionHelp": "Las 2 letras impresas después del número de 10 dígitos (ej. 1234 567 890 AB → AB).",
+    "hcNumberOnFile": "Número de tarjeta de salud registrado",
+    "hcNumberLabel": "Número de tarjeta de salud",
+    "nameTitle": "Nombre como aparece en su tarjeta de salud",
+    "nameHelp": "Confírmelo o corríjalo. La clínica revisa los cambios antes de actualizar su expediente.",
+    "firstName": "Primer nombre",
+    "middleName": "Segundo nombre",
+    "lastName": "Primer apellido",
+    "secondLastName": "Segundo apellido",
+    "save": "Guardar y continuar",
+    "later": "Más tarde",
+    "saving": "Guardando…",
+    "savedAll": "Gracias — su información está completa.",
+    "savedPartial": "Guardado. Aún faltan algunos datos.",
+    "reviewNote": "Parte de lo que ingresó difiere de nuestros registros. La clínica lo revisará — por ahora no se cambió nada.",
+    "profileTitle": "Información requerida",
+    "profileBody": "Complete lo siguiente para mantener su expediente actualizado:",
+    "profileCta": "Completar información",
+    "gateTitle": "Complete su información primero",
+    "gateBody": "Las solicitudes de recetas requieren que los datos de su tarjeta de salud estén completos. Solo toma un minuto."
   }
 }

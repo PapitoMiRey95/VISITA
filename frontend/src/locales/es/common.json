@@ -1,5 +1,8 @@
 {
-  "brand": { "vien": "VIsita", "emr": " EMR" },
+  "brand": {
+    "vien": "VIsita",
+    "emr": " EMR"
+  },
   "practice": "Red de Atención Médica Conectada",
   "tagline": "Acceso seguro para pacientes, clínicas, médicos, farmacias y otros proveedores de salud.",
   "language": {
@@ -26,7 +29,11 @@
     "submit": "Enviar",
     "change": "Cambiar"
   },
-  "status": { "loading": "Cargando…", "notSet": "Sin establecer", "optional": "Opcional" },
+  "status": {
+    "loading": "Cargando…",
+    "notSet": "Sin establecer",
+    "optional": "Opcional"
+  },
   "pickers": {
     "dobTitle": "Fecha de nacimiento",
     "issueTitle": "Fecha de emisión",
@@ -39,8 +46,38 @@
     "selectDob": "Seleccione su fecha de nacimiento",
     "selectDate": "Seleccione una fecha",
     "expiryHint": "Las tarjetas vencen en la fecha de cumpleaños. Elija el año de vencimiento — el día y el mes provienen de la fecha de nacimiento.",
-    "monthsFull": ["Enero", "Febrero", "Marzo", "Abril", "Mayo", "Junio", "Julio", "Agosto", "Septiembre", "Octubre", "Noviembre", "Diciembre"],
-    "monthsAbbr": ["Ene", "Feb", "Mar", "Abr", "May", "Jun", "Jul", "Ago", "Sep", "Oct", "Nov", "Dic"]
+    "monthsFull": [
+      "Enero",
+      "Febrero",
+      "Marzo",
+      "Abril",
+      "Mayo",
+      "Junio",
+      "Julio",
+      "Agosto",
+      "Septiembre",
+      "Octubre",
+      "Noviembre",
+      "Diciembre"
+    ],
+    "monthsAbbr": [
+      "Ene",
+      "Feb",
+      "Mar",
+      "Abr",
+      "May",
+      "Jun",
+      "Jul",
+      "Ago",
+      "Sep",
+      "Oct",
+      "Nov",
+      "Dic"
+    ],
+    "exactCta": "La fecha impresa en mi tarjeta es diferente",
+    "exactHint": "Elija el mes y el día exactamente como aparecen en la tarjeta para",
+    "exactNote": "Ingresado exactamente como aparece en la tarjeta.",
+    "derivedNote": "Basado en la fecha de nacimiento. Si su tarjeta muestra otro día o mes, use el enlace de abajo."
   },
   "validation": {
     "required": "Campo obligatorio",

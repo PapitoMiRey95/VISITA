@@ -5,11 +5,14 @@ import { CreditCard, Clock, CheckCircle2 } from "lucide-react";
 import { api, formatErr } from "../lib/api";
 import { usePortal, Card } from "./shared";
 import { HealthCardNumberInput } from "../components/HealthCardNumberInput";
+import { IssueDatePicker } from "../components/IssueDatePicker";
+import { ExpiryPicker } from "../components/ExpiryPicker";
+
 import { Button } from "../components/ui/button";
 import { Input } from "../components/ui/input";
 import { Label } from "../components/ui/label";
+import { displayHcDate } from "../lib/hcDates";
 
-const fmtDate = (d) => (d ? new Date(d + "T00:00:00").toLocaleDateString() : "—");
 
 export default function PortalHealthCard() {
     const { t } = useTranslation(["portal"]);
@@ -47,7 +50,7 @@ export default function PortalHealthCard() {
                 <p className="text-xs uppercase tracking-wide text-slate-400 font-bold mb-1">{t("managed.hcCurrent", "Current on file")}</p>
                 <div className="font-semibold text-slate-800 tracking-wide" data-testid="managed-hc-current-value">{p?.health_card_display || t("account.notOnFile", "Not on file")}</div>
                 <div className="text-xs text-slate-500 mt-0.5">
-                    {t("account.issue", "Issued")}: {fmtDate(p?.health_card_issue_date)} · {t("account.expiry", "Expires")}: {fmtDate(p?.health_card_expiry_date)}
+                    {t("account.issue", "Issued")}: {displayHcDate(p?.health_card_issue_date) || "—"} · {t("account.expiry", "Expires")}: {displayHcDate(p?.health_card_expiry_date) || "—"}
                 </div>
             </Card>
 
@@ -56,7 +59,7 @@ export default function PortalHealthCard() {
                     <div className="flex items-center gap-2 text-amber-800 font-bold text-sm"><Clock className="w-4 h-4" /> {t("managed.hcPendingTitle", "Pending staff review")}</div>
                     <div className="text-sm text-amber-900 mt-1" data-testid="managed-hc-pending-value">{pending.display}</div>
                     <div className="text-xs text-amber-800/80 mt-0.5">
-                        {t("account.issue", "Issued")}: {fmtDate(pending.health_card_issue_date)} · {t("account.expiry", "Expires")}: {fmtDate(pending.health_card_expiry_date)}
+                        {t("account.issue", "Issued")}: {displayHcDate(pending.health_card_issue_date) || "—"} · {t("account.expiry", "Expires")}: {displayHcDate(pending.health_card_expiry_date) || "—"}
                     </div>
                     <p className="text-xs text-amber-800/70 mt-2">{t("managed.hcPendingNote", "Submitted — the clinic will review and approve before this becomes active.")}</p>
                 </Card>
@@ -73,8 +76,8 @@ export default function PortalHealthCard() {
                         <Label className="text-xs">{t("account.hcVersion", "Version Code")}</Label>
                         <Input data-testid="managed-hc-version" value={hc.health_card_version} onChange={(e) => setHc({ ...hc, health_card_version: e.target.value.toUpperCase() })} placeholder="XX" maxLength={2} />
                     </div>
-                    <div><Label className="text-xs">{t("account.hcIssue", "Issue Date")}</Label><Input type="date" data-testid="managed-hc-issue" value={hc.health_card_issue_date} onChange={(e) => setHc({ ...hc, health_card_issue_date: e.target.value })} /></div>
-                    <div><Label className="text-xs">{t("account.hcExpiry", "Expiry Date")}</Label><Input type="date" data-testid="managed-hc-expiry" value={hc.health_card_expiry_date} onChange={(e) => setHc({ ...hc, health_card_expiry_date: e.target.value })} /></div>
+                    <div><Label className="text-xs">{t("account.hcIssue", "Issue Date")}</Label><IssueDatePicker testid="managed-hc-issue" value={hc.health_card_issue_date} onChange={(v) => setHc({ ...hc, health_card_issue_date: v })} /></div>
+                    <div><Label className="text-xs">{t("account.hcExpiry", "Expiry Date")}</Label><ExpiryPicker testid="managed-hc-expiry" value={hc.health_card_expiry_date} onChange={(v) => setHc({ ...hc, health_card_expiry_date: v })} dob={p?.date_of_birth} /></div>
                 </div>
                 <Button data-testid="managed-hc-submit" disabled={busy} onClick={submit} className="mt-3 bg-portal-blue text-white">
                     {busy ? t("common:loading", "Submitting…") : t("managed.hcSubmitBtn", "Submit for review")}

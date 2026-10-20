@@ -3,7 +3,7 @@ import { createPortal } from "react-dom";
 import { useLockBodyScroll } from "../hooks/useLockBodyScroll";
 import { useTranslation } from "react-i18next";
 import { Calendar, Check, X } from "lucide-react";
-import { deriveExpiryISO } from "../lib/hcDates";
+import { deriveExpiryISO, daysInMonth } from "../lib/hcDates";
 
 // Controlled Health Card EXPIRY DATE picker. Requires a confirmed DOB. The user
 // selects ONLY the expiry YEAR (current year through current year + 5); the
@@ -12,6 +12,7 @@ import { deriveExpiryISO } from "../lib/hcDates";
 export function ExpiryPicker({ value, onChange, dob, testid = "expiry" }) {
     const { t } = useTranslation("common");
     const MON_ABBR = t("pickers.monthsAbbr", { returnObjects: true });
+    const MONTHS = t("pickers.monthsFull", { returnObjects: true });
     const dispHc = (iso) => {
         if (!iso) return "";
         const [y, m, d] = String(iso).split("-").map(Number);
@@ -34,16 +35,24 @@ export function ExpiryPicker({ value, onChange, dob, testid = "expiry" }) {
     useEffect(() => {
         if (open && value) {
             const y = Number(String(value).split("-")[0]);
-            if (y) { setYear(y); setConfirming(true); }
+            if (y) {
+                setYear(y); setConfirming(true);
+                const [, m, d] = String(value).split("-").map(Number);
+                setExact(deriveExpiryISO(dob, y) === value ? null : { step: "day", month: m - 1, day: d });
+            }
         }
     }, [open, value]);
 
     const derived = year ? deriveExpiryISO(dob, year) : "";
+    // Exception path: the printed card does not follow the DOB month/day — pick the exact month + day.
+    const [exact, setExact] = useState(null); // null | {step:"month"|"day", month}
+    const exactIso = exact?.month != null && exact?.day ? `${year}-${String(exact.month + 1).padStart(2, "0")}-${String(exact.day).padStart(2, "0")}` : "";
 
     const finish = () => {
-        onChange(derived);
+        onChange(exactIso || derived);
         setOpen(false);
         setConfirming(false);
+        setExact(null);
     };
 
     return (
@@ -61,7 +70,7 @@ export function ExpiryPicker({ value, onChange, dob, testid = "expiry" }) {
             )}
 
             {open && !disabled && createPortal(
-                <div className="fixed inset-0 z-50 flex items-start sm:items-center justify-center bg-black/50 px-3 pb-3 pt-[max(0.75rem,env(safe-area-inset-top))] sm:p-4 overscroll-contain" data-testid={`${testid}-modal`}>
+                <div style={{ pointerEvents: "auto" }} className="fixed inset-0 z-[60] flex items-start sm:items-center justify-center bg-black/50 px-3 pb-3 pt-[max(0.75rem,env(safe-area-inset-top))] sm:p-4 overscroll-contain" data-testid={`${testid}-modal`}>
                     <div className="w-full sm:max-w-md bg-white rounded-2xl shadow-xl max-h-[min(78dvh,78vh)] sm:max-h-[88vh] flex flex-col animate-fade-in">
                         <div className="flex items-center justify-between px-4 py-3 border-b border-slate-100">
                             <h3 className="font-bold text-slate-900">{t("pickers.expiryTitle")}</h3>
@@ -83,14 +92,34 @@ export function ExpiryPicker({ value, onChange, dob, testid = "expiry" }) {
                                     ))}
                                 </div>
                             </div>
+                        ) : exact && !exact.day ? (
+                            <div className="overflow-y-auto p-4 flex-1" data-testid={`${testid}-exact`}>
+                                <p className="text-sm text-slate-500 mb-3">{t("pickers.exactHint")} <b>{year}</b></p>
+                                {exact.month == null ? (
+                                    <div className="grid grid-cols-2 sm:grid-cols-3 gap-2" data-testid={`${testid}-exact-months`}>
+                                        {MONTHS.map((mn, i) => (
+                                            <button key={mn} type="button" data-testid={`${testid}-exact-month-${i}`} onClick={() => setExact({ step: "day", month: i })}
+                                                className="h-12 rounded-lg text-base font-semibold border bg-white text-slate-700 border-slate-200 hover:border-portal-blue">{mn}</button>
+                                        ))}
+                                    </div>
+                                ) : (
+                                    <div className="grid grid-cols-5 sm:grid-cols-7 gap-2" data-testid={`${testid}-exact-days`}>
+                                        {Array.from({ length: daysInMonth(year, exact.month) }, (_, i) => i + 1).map((d) => (
+                                            <button key={d} type="button" data-testid={`${testid}-exact-day-${d}`} onClick={() => setExact({ ...exact, day: d })}
+                                                className="h-12 rounded-lg text-base font-semibold border bg-white text-slate-700 border-slate-200 hover:border-portal-blue">{d}</button>
+                                        ))}
+                                    </div>
+                                )}
+                            </div>
                         ) : (
                             <div className="text-center py-8 px-4" data-testid={`${testid}-confirm`}>
                                 <p className="text-sm text-slate-500 mb-1">{t("pickers.expiryTitle")}</p>
-                                <p className="text-3xl font-extrabold text-slate-900 mb-6" data-testid={`${testid}-confirm-value`}>
-                                    {derived ? dispHc(derived) : `${year} ${MON_ABBR[0]}`}
+                                <p className="text-3xl font-extrabold text-slate-900 mb-2" data-testid={`${testid}-confirm-value`}>
+                                    {exactIso ? dispHc(exactIso) : derived ? dispHc(derived) : `${year} ${MON_ABBR[0]}`}
                                 </p>
-                                <div className="flex gap-3 justify-center">
-                                    <button type="button" data-testid={`${testid}-change`} onClick={() => setConfirming(false)}
+                                <p className="text-xs text-slate-500 mb-5" data-testid={`${testid}-confirm-note`}>{exactIso ? t("pickers.exactNote") : t("pickers.derivedNote")}</p>
+                                <div className="flex gap-3 justify-center flex-wrap">
+                                    <button type="button" data-testid={`${testid}-change`} onClick={() => { setConfirming(false); setExact(null); }}
                                         className="px-5 h-11 rounded-lg border border-slate-300 font-semibold text-slate-700 hover:bg-slate-50">
                                         {t("pickers.change")}
                                     </button>
@@ -99,6 +128,10 @@ export function ExpiryPicker({ value, onChange, dob, testid = "expiry" }) {
                                         <Check className="w-4 h-4" /> {t("pickers.confirm")}
                                     </button>
                                 </div>
+                                {!exactIso && (
+                                    <button type="button" data-testid={`${testid}-exact-btn`} onClick={() => setExact({ step: "month", month: null })}
+                                        className="mt-4 text-xs font-semibold text-portal-blueDark underline underline-offset-2">{t("pickers.exactCta")}</button>
+                                )}
                             </div>
                         )}
                     </div>

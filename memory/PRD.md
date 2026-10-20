@@ -928,3 +928,10 @@ PROD FOLLOW-UPS (need explicit GO, scripts not yet written): stamp practice_id o
 - New `tools/backfill_registration_gaps.py` (dry-run default, --apply; issue/expiry/version-when-blank/sex-when-no-code only). Dry-run verified on Preview. NOT run on Prod.
 - Frontend `portal/ProfileCompletion.jsx` (banner, per-session modal, profile card; EN/ES in portal.json `completion`). Scenarios A–H verified via API + screenshots.
 - Prod backfill + Prod gating: HOLD until explicit GO.
+
+## 2026-06 — Standardized Health Card date entry (PREVIEW, awaiting GO)
+- Shared pickers already existed: `components/IssueDatePicker.jsx` (Year→Month→Day→Confirm, 5-yr window) and `components/ExpiryPicker.jsx` (year → DOB-derived date → Confirm). Reused everywhere; no new date implementation.
+- ExpiryPicker: added exception path "The date printed on my card is different" (month+day grid for the chosen year), notes derived vs exact; pre-loads exact mode when existing value ≠ DOB derivation. Overlay z-[60] + pointer-events:auto so it works inside Radix dialogs.
+- Wired into: ProfileCompletion modal, PortalAccount HC edit, PortalHealthCard (delegate), internal Patients Edit Patient Information. Portal overview now returns `date_of_birth`; completeness returns `date_of_birth`.
+- Backend `validate_hc_dates`: DOB month/day match no longer hard-enforced (card authoritative); keeps 5-yr issue window, expiry year range, and expiry > issue. profile_completion uses the same validator.
+- New common.json pickers keys: exactCta/exactHint/exactNote/derivedNote (en/es/fr).

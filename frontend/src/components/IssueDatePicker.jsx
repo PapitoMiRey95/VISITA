@@ -90,7 +90,7 @@ export function IssueDatePicker({ value, onChange, testid = "issue" }) {
             </button>
 
             {open && createPortal(
-                <div className="fixed inset-0 z-50 flex items-start sm:items-center justify-center bg-black/50 px-3 pb-3 pt-[max(0.75rem,env(safe-area-inset-top))] sm:p-4 overscroll-contain" data-testid={`${testid}-modal`}>
+                <div style={{ pointerEvents: "auto" }} className="fixed inset-0 z-[60] flex items-start sm:items-center justify-center bg-black/50 px-3 pb-3 pt-[max(0.75rem,env(safe-area-inset-top))] sm:p-4 overscroll-contain" data-testid={`${testid}-modal`}>
                     <div className="w-full sm:max-w-md bg-white rounded-2xl shadow-xl max-h-[min(78dvh,78vh)] sm:max-h-[88vh] flex flex-col animate-fade-in">
                         <div className="flex items-center justify-between px-4 py-3 border-b border-slate-100">
                             <div className="flex items-center gap-2">

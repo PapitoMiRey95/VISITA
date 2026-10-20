@@ -55,7 +55,7 @@ async def completeness(p: dict) -> dict:
     d = await canonical_for(p)
     missing = missing_fields(p, d)
     name_src = d or p
-    return {"required": bool(missing), "missing": missing,
+    return {"required": bool(missing), "missing": missing, "date_of_birth": (d or p).get("date_of_birth") or p.get("date_of_birth"),
             "health_card_number_on_file": not _blank(effective(p, d).get("health_card_number")),
             "name_on_file": {"first_name": name_src.get("first_name"), "middle_name": p.get("middle_name"),
                              "last_name": name_src.get("last_name"), "second_last_name": p.get("second_last_name")}}
@@ -108,7 +108,7 @@ async def _clinic_review_item(p: dict, d: Optional[dict], review: dict):
     return doc["ref_number"]
 
 
-def build_router(get_current_user, get_patient_record) -> APIRouter:
+def build_router(get_current_user, get_patient_record, validate_hc_dates) -> APIRouter:
     r = APIRouter()
 
     @r.get("/portal/profile-completeness")
@@ -116,7 +116,7 @@ def build_router(get_current_user, get_patient_record) -> APIRouter:
         return await completeness(await get_patient_record(user))
 
     @r.post("/portal/profile-completion")
-    async def submit_completion(body: CompletionBody, user: dict = Depends(get_current_user)):
+    async def submit_completion(body: CompletionBody, user: dict = Depends(get_current_user)):  # noqa: C901
         p = await get_patient_record(user)
         d = await canonical_for(p)
         eff = effective(p, d)
@@ -136,8 +136,10 @@ def build_router(get_current_user, get_patient_record) -> APIRouter:
             if body.sex not in SEX_OPTIONS:
                 raise HTTPException(status_code=400, detail="Please select a valid sex.")
             submitted["sex"] = body.sex
-        if submitted.get("health_card_issue_date") and submitted.get("health_card_expiry_date") and submitted["health_card_issue_date"] >= submitted["health_card_expiry_date"]:
-            raise HTTPException(status_code=400, detail="Expiry date must be after the issue date.")
+        # Same authoritative HC date rules as registration (5-year issue window, expiry year range, expiry after issue).
+        validate_hc_dates(submitted.get("health_card_issue_date") or eff.get("health_card_issue_date"),
+                          submitted.get("health_card_expiry_date") or eff.get("health_card_expiry_date"),
+                          (d or p).get("date_of_birth") or p.get("date_of_birth"))
         for k, v in submitted.items():
             cur = eff.get(k)
             if _blank(cur):

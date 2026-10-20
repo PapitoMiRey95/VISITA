@@ -12,6 +12,9 @@ import { Button } from "../components/ui/button";
 import { Input } from "../components/ui/input";
 import { Label } from "../components/ui/label";
 import { HealthCardNumberInput } from "../components/HealthCardNumberInput";
+import { IssueDatePicker } from "../components/IssueDatePicker";
+import { ExpiryPicker } from "../components/ExpiryPicker";
+
 import { Select, SelectTrigger, SelectValue, SelectContent, SelectItem } from "../components/ui/select";
 import { CompletionProfileCard } from "./ProfileCompletion";
 
@@ -312,8 +315,8 @@ export default function PortalAccount() {
                                 </div>
                             </div>
                             <div className="grid grid-cols-2 gap-2">
-                                <div><Label className="text-xs">{t("portal:account.hcIssue")}</Label><Input type="date" data-testid="acct-hc-issue" value={hc.health_card_issue_date} onChange={(e) => setHc({ ...hc, health_card_issue_date: e.target.value })} /></div>
-                                <div><Label className="text-xs">{t("portal:account.hcExpiry")}</Label><Input type="date" data-testid="acct-hc-expiry" value={hc.health_card_expiry_date} onChange={(e) => setHc({ ...hc, health_card_expiry_date: e.target.value })} /></div>
+                                <div><Label className="text-xs">{t("portal:account.hcIssue")}</Label><IssueDatePicker testid="acct-hc-issue" value={hc.health_card_issue_date} onChange={(v) => setHc({ ...hc, health_card_issue_date: v })} /></div>
+                                <div><Label className="text-xs">{t("portal:account.hcExpiry")}</Label><ExpiryPicker testid="acct-hc-expiry" value={hc.health_card_expiry_date} onChange={(v) => setHc({ ...hc, health_card_expiry_date: v })} dob={p?.date_of_birth} /></div>
                             </div>
                             <div className="flex gap-2">
                                 <Button data-testid="acct-hc-submit" disabled={busy} onClick={submitHc} className="bg-portal-blue text-white">{t("portal:account.saveHealthCard")}</Button>

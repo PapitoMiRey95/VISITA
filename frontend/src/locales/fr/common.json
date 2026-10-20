@@ -1,1 +1,8 @@
-{}
+{
+  "pickers": {
+    "exactCta": "La date imprimée sur ma carte est différente",
+    "exactHint": "Choisissez le mois et le jour exactement comme imprimés sur la carte pour",
+    "exactNote": "Saisi exactement comme imprimé sur la carte.",
+    "derivedNote": "Basé sur la date de naissance. Si votre carte indique un autre jour ou mois, utilisez le lien ci-dessous."
+  }
+}

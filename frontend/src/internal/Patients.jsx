@@ -10,6 +10,8 @@ import { Input } from "../components/ui/input";
 import { Label } from "../components/ui/label";
 import { Button } from "../components/ui/button";
 import { HealthCardNumberInput } from "../components/HealthCardNumberInput";
+import { IssueDatePicker } from "../components/IssueDatePicker";
+import { ExpiryPicker } from "../components/ExpiryPicker";
 import FamilyAccess from "./FamilyAccess";
 import PortalAccountPanel from "./PortalAccountPanel";
 import MedicalRecord from "./MedicalRecord";
@@ -388,8 +390,8 @@ export default function Patients() {
                                     <div className="col-span-2"><Label className="text-xs">Number (10 digits)</Label><HealthCardNumberInput data-testid="edit-hcn" value={form.health_card_number} onChange={(v) => setForm({ ...form, health_card_number: v })} placeholder="2245 881 830" /></div>
                                     <div><Label className="text-xs">Version</Label><Input data-testid="edit-hcv" value={form.health_card_version} maxLength={2} onChange={(e) => setForm({ ...form, health_card_version: e.target.value.toUpperCase() })} /></div>
                                     <div></div>
-                                    <div className="col-span-2"><Label className="text-xs">Issue Date</Label><Input type="date" data-testid="edit-hc-issue" value={form.health_card_issue_date || ""} onChange={(e) => setForm({ ...form, health_card_issue_date: e.target.value })} /></div>
-                                    <div className="col-span-2"><Label className="text-xs">Expiry Date</Label><Input type="date" data-testid="edit-hc-expiry" value={form.health_card_expiry_date || ""} onChange={(e) => setForm({ ...form, health_card_expiry_date: e.target.value })} /></div>
+                                    <div className="col-span-2"><Label className="text-xs">Issue Date</Label><IssueDatePicker testid="edit-hc-issue" value={form.health_card_issue_date || ""} onChange={(v) => setForm({ ...form, health_card_issue_date: v })} /></div>
+                                    <div className="col-span-2"><Label className="text-xs">Expiry Date</Label><ExpiryPicker testid="edit-hc-expiry" value={form.health_card_expiry_date || ""} onChange={(v) => setForm({ ...form, health_card_expiry_date: v })} dob={form.date_of_birth} /></div>
                                 </div>
                             </div>
                             <div className="flex gap-2">

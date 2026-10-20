@@ -10,6 +10,9 @@ import { Input } from "../components/ui/input";
 import { Label } from "../components/ui/label";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from "../components/ui/dialog";
 import { Select, SelectTrigger, SelectValue, SelectContent, SelectItem } from "../components/ui/select";
+import { IssueDatePicker } from "../components/IssueDatePicker";
+import { ExpiryPicker } from "../components/ExpiryPicker";
+
 
 // Own-patient only (never for caregiver "on behalf of" mode).
 export function useCompleteness(enabled = true) {
@@ -86,10 +89,10 @@ export function CompletionModal({ open, onClose }) {
                             <p className="text-[11px] text-slate-500 mt-1">{t("completion.versionHelp")}</p></div>
                     )}
                     {missing.includes("health_card_issue_date") && (
-                        <div><Label className="text-xs">{t("completion.fields.health_card_issue_date")}</Label><Input type="date" data-testid="completion-field-health_card_issue_date" value={f.health_card_issue_date || ""} onChange={(e) => set("health_card_issue_date", e.target.value)} /></div>
+                        <div><Label className="text-xs">{t("completion.fields.health_card_issue_date")}</Label><IssueDatePicker testid="completion-field-health_card_issue_date" value={f.health_card_issue_date || ""} onChange={(v) => set("health_card_issue_date", v)} /></div>
                     )}
                     {missing.includes("health_card_expiry_date") && (
-                        <div><Label className="text-xs">{t("completion.fields.health_card_expiry_date")}</Label><Input type="date" data-testid="completion-field-health_card_expiry_date" value={f.health_card_expiry_date || ""} onChange={(e) => set("health_card_expiry_date", e.target.value)} /></div>
+                        <div><Label className="text-xs">{t("completion.fields.health_card_expiry_date")}</Label><ExpiryPicker testid="completion-field-health_card_expiry_date" value={f.health_card_expiry_date || ""} onChange={(v) => set("health_card_expiry_date", v)} dob={c.data?.date_of_birth} /></div>
                     )}
                     {missing.includes("sex") && (
                         <div><Label className="text-xs">{t("completion.fields.sex")}</Label>

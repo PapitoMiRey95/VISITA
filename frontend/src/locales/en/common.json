@@ -1,5 +1,8 @@
 {
-  "brand": { "vien": "VIsita", "emr": " EMR" },
+  "brand": {
+    "vien": "VIsita",
+    "emr": " EMR"
+  },
   "practice": "Connected Healthcare Network",
   "tagline": "Secure access for patients, clinics, physicians, pharmacies, and healthcare partners.",
   "language": {
@@ -26,7 +29,11 @@
     "submit": "Submit",
     "change": "Change"
   },
-  "status": { "loading": "Loading…", "notSet": "Not set", "optional": "Optional" },
+  "status": {
+    "loading": "Loading…",
+    "notSet": "Not set",
+    "optional": "Optional"
+  },
   "pickers": {
     "dobTitle": "Date of Birth",
     "issueTitle": "Issue Date",
@@ -39,8 +46,38 @@
     "selectDob": "Select date of birth",
     "selectDate": "Select date",
     "expiryHint": "Cards expire on the birthday. Choose the expiry year — the day and month come from the date of birth.",
-    "monthsFull": ["January", "February", "March", "April", "May", "June", "July", "August", "September", "October", "November", "December"],
-    "monthsAbbr": ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"]
+    "monthsFull": [
+      "January",
+      "February",
+      "March",
+      "April",
+      "May",
+      "June",
+      "July",
+      "August",
+      "September",
+      "October",
+      "November",
+      "December"
+    ],
+    "monthsAbbr": [
+      "Jan",
+      "Feb",
+      "Mar",
+      "Apr",
+      "May",
+      "Jun",
+      "Jul",
+      "Aug",
+      "Sep",
+      "Oct",
+      "Nov",
+      "Dec"
+    ],
+    "exactCta": "The date printed on my card is different",
+    "exactHint": "Pick the month and day exactly as printed on the card for",
+    "exactNote": "Entered exactly as printed on the card.",
+    "derivedNote": "Based on the date of birth. If your card shows a different day or month, use the link below."
   },
   "validation": {
     "required": "Required field",

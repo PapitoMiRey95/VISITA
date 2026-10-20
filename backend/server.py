@@ -760,9 +760,9 @@ def _derive_expiry_iso(dob_str, year):
 
 def validate_hc_dates(issue_str, expiry_str, dob_str):
     """Server-side guard for OHIP Health Card dates. Both optional. Issue date
-    must fall within exactly 5 years ago through today. Expiry must be derived
-    from the DOB (month/day) with a year of current..current+5. Rejects a direct
-    API submission that bypasses the UI pickers."""
+    must fall within exactly 5 years ago through today. Expiry year must be
+    current..current+5 and fall after the issue date; the DOB-derived month/day is
+    UI assistance only (printed card is authoritative)."""
     from datetime import date as _date
     today = _date.today()
     if issue_str:
@@ -784,8 +784,9 @@ def validate_hc_dates(issue_str, expiry_str, dob_str):
             raise HTTPException(status_code=400, detail="Date of birth is required before setting a Health Card expiry date.")
         if expiry.year < today.year or expiry.year > today.year + 5:
             raise HTTPException(status_code=400, detail="Health Card expiry year must be between this year and 5 years from now.")
-        if expiry.isoformat() != _derive_expiry_iso(dob_str, expiry.year):
-            raise HTTPException(status_code=400, detail="Health Card expiry day and month must match the date of birth.")
+        # DOB-derived month/day is the smart DEFAULT in the UI, not a hard rule: the printed card is authoritative.
+        if issue_str and expiry <= _parse_iso(issue_str):
+            raise HTTPException(status_code=400, detail="Health Card expiry date must be after the issue date.")
 
 
 # ----------------------------- Practices (care-ownership context) -----------------------------
@@ -3515,6 +3516,7 @@ async def portal_overview(ctx: PortalCtx = Depends(portal_access())):
             "permissions": sorted(perms) if is_del else None,
         },
         "patient": {"first_name": p["first_name"], "last_name": p["last_name"],
+                    "date_of_birth": p.get("date_of_birth"),
                     "patient_type": p["patient_type"], "verification_status": p["verification_status"],
                     "visita_patient_id": p.get("visita_patient_id"),
                     "phone": p.get("phone"), "email": p.get("email"),
@@ -10654,7 +10656,7 @@ async def maintenance_mode_gate(request: Request, call_next):
 
 
 api.include_router(work_mod.build_router(require_roles))
-api.include_router(prof_mod.build_router(get_current_user, get_patient_record))
+api.include_router(prof_mod.build_router(get_current_user, get_patient_record, validate_hc_dates))
 app.include_router(api)
 
 _DEFAULT_CORS = "https://visitaemr.com,https://www.visitaemr.com,https://visita-admin.preview.emergentagent.com"

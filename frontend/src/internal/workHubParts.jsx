@@ -332,11 +332,11 @@ function EventRow({ ev }) {
         DOCUMENT_SIGNED: `document signed → ${who(ev.to_name, ev.to_position, ev.to_role || "CLINIC")}`,
     }[ev.type] || ev.type;
     return (
-        <div data-testid="work-event" className="flex gap-2 text-xs">
-            <Icon className={`w-4 h-4 mt-0.5 shrink-0 ${ev.type === "DOCUMENT_SIGNED" ? "text-emerald-600" : ev.type === "PRIORITY_CHANGED" && ev.to_priority === "ASAP" ? "text-red-600" : "text-visita-greenDark"}`} />
+        <div data-testid="work-event" className="flex gap-2.5 text-sm">
+            <Icon className={`w-5 h-5 mt-0.5 shrink-0 ${ev.type === "DOCUMENT_SIGNED" ? "text-emerald-600" : ev.type === "PRIORITY_CHANGED" && ev.to_priority === "ASAP" ? "text-red-600" : "text-visita-greenDark"}`} />
             <div className="min-w-0">
-                <div className="text-slate-500"><span className="font-semibold text-slate-700">{ev.by_name}</span> · {head} · {whenLabel(ev.at)}</div>
-                {ev.text && <div className="text-sm sm:text-[15px] leading-relaxed text-slate-900 whitespace-pre-wrap mt-0.5">{ev.text}</div>}
+                <div className="text-sm sm:text-base text-slate-600"><span className="font-semibold text-slate-800">{ev.by_name}</span> · {head} · {whenLabel(ev.at)}</div>
+                {ev.text && <div className="text-base sm:text-lg leading-relaxed text-slate-900 whitespace-pre-wrap mt-0.5">{ev.text}</div>}
             </div>
         </div>
     );
@@ -411,12 +411,12 @@ export function WorkDetail({ item, side, userId, members = [], queues = [], cate
                     <Bell className="w-3 h-3" />{item.status === "WAITING" && item.waiting_until ? `Waiting until ${formatDate(item.waiting_until.slice(0, 10))}` : `Due ${formatDate(item.due_at.slice(0, 10))}`}
                 </div>
             )}
-            <div className="space-y-2 border-t border-slate-200 pt-2" data-testid="work-history">
-                <div className="flex items-center justify-between text-[11px] uppercase tracking-wide font-semibold text-slate-400">
+            <div className="space-y-3 border-t border-slate-200 pt-3" data-testid="work-history">
+                <div className="flex items-center justify-between text-xs uppercase tracking-wide font-semibold text-slate-500">
                     <span>{showAll ? `Full history (${events.length})` : "Latest activity"}</span>
                     {events.length > LATEST_N && (
-                        <button type="button" data-testid="work-history-toggle" onClick={() => setShowAll((s) => !s)} className="inline-flex items-center gap-0.5 normal-case tracking-normal text-visita-greenDark hover:underline">
-                            {showAll ? <><ChevronUp className="w-3 h-3" /> Show latest</> : <><ChevronDown className="w-3 h-3" /> View full history ({events.length})</>}
+                        <button type="button" data-testid="work-history-toggle" onClick={() => setShowAll((s) => !s)} className="inline-flex items-center gap-0.5 normal-case tracking-normal text-sm text-visita-greenDark hover:underline">
+                            {showAll ? <><ChevronUp className="w-4 h-4" /> Show latest</> : <><ChevronDown className="w-4 h-4" /> View full history ({events.length})</>}
                         </button>
                     )}
                 </div>

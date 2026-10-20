@@ -296,14 +296,15 @@ export function NewWorkDialog({ side, categories, members = [], queues = [], use
                                 </select></div>
                         </>
                     )}
-                    <div><Label className="text-xs">What needs to be done?{priority !== "NORMAL" && <span className="text-slate-400 font-normal" data-testid="work-message-optional"> (optional)</span>}</Label>
-                        <Input autoFocus required={priority === "NORMAL"} data-testid="work-message" value={message} onChange={(e) => setMessage(e.target.value)} placeholder={priority !== "NORMAL" ? `Defaults to “${PRIORITY_DEFAULT_TEXT[priority]}”` : "e.g. Complete insurance form"} maxLength={2000} /></div>
+                    {/* Physician booking priority: keyed to CREATOR role, independent of recipient. */}
                     {side === "PHYSICIAN" && (
                         <div className="flex items-center gap-2">
                             <Label className="text-xs">Priority</Label>
                             <PriorityControl value={priority} onChange={setPriority} />
                         </div>
                     )}
+                    <div><Label className="text-xs">What needs to be done?{priority !== "NORMAL" && <span className="text-slate-400 font-normal" data-testid="work-message-optional"> (optional)</span>}</Label>
+                        <Input autoFocus required={priority === "NORMAL"} data-testid="work-message" value={message} onChange={(e) => setMessage(e.target.value)} placeholder={priority !== "NORMAL" ? `Defaults to “${PRIORITY_DEFAULT_TEXT[priority]}”` : "e.g. Complete insurance form"} maxLength={2000} /></div>
                     <div className="flex flex-wrap items-center gap-1.5">
                         <Label className="text-xs mr-1">Remind / Due</Label>
                         {DUE_PRESETS.map(([k, l]) => (

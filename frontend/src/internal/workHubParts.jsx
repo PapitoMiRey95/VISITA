@@ -333,10 +333,10 @@ function EventRow({ ev }) {
     }[ev.type] || ev.type;
     return (
         <div data-testid="work-event" className="flex gap-2 text-xs">
-            <Icon className={`w-3.5 h-3.5 mt-0.5 shrink-0 ${ev.type === "DOCUMENT_SIGNED" ? "text-emerald-600" : ev.type === "PRIORITY_CHANGED" && ev.to_priority === "ASAP" ? "text-red-600" : "text-visita-greenDark"}`} />
+            <Icon className={`w-4 h-4 mt-0.5 shrink-0 ${ev.type === "DOCUMENT_SIGNED" ? "text-emerald-600" : ev.type === "PRIORITY_CHANGED" && ev.to_priority === "ASAP" ? "text-red-600" : "text-visita-greenDark"}`} />
             <div className="min-w-0">
                 <div className="text-slate-500"><span className="font-semibold text-slate-700">{ev.by_name}</span> · {head} · {whenLabel(ev.at)}</div>
-                {ev.text && <div className="text-slate-800 whitespace-pre-wrap">{ev.text}</div>}
+                {ev.text && <div className="text-sm sm:text-[15px] leading-relaxed text-slate-900 whitespace-pre-wrap mt-0.5">{ev.text}</div>}
             </div>
         </div>
     );

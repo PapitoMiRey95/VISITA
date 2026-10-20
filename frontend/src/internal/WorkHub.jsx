@@ -5,6 +5,7 @@ import { api } from "../lib/api";
 import { useInvalidate } from "./hooks";
 import { Button } from "../components/ui/button";
 import { Chip, STATUS_TONE, STATUS_LABEL, ownerLabel, whenLabel, NewWorkDialog, WorkDetail, PriorityBadge, OverdueBadge, SignedBadge, CategoryTag, OutcomeBadge } from "./workHubParts";
+import { groupByPriority, PrioritySection, PhysicianSummary } from "./workHubSections";
 
 const VIEWS = [["my", "My Work"], ["sent", "Sent"], ["waiting", "Waiting"], ["completed", "History"]];
 const HISTORY_PAGE = 30;
@@ -67,6 +68,8 @@ export default function WorkHub() {
     const side = meta.data?.side || list.data?.side;
     const categories = meta.data?.categories || [];
     const selected = items.find((i) => i.id === selectedId) || null;
+    const grouped = view === "my" || view === "sent";
+    const completedSent = view === "sent" ? items.filter((i) => i.status === "COMPLETED") : [];
     useEffect(() => { if (selectedId && !list.isLoading && !list.isPlaceholderData && !selected) setSelectedId(null); }, [selectedId, selected, list.isLoading, list.isPlaceholderData]);
     const refresh = () => { invalidate(); list.refetch(); };
     const changeView = (k) => { setView(k); setSelectedId(null); setHistoryPages(1); };
@@ -94,18 +97,28 @@ export default function WorkHub() {
                 )}
             </div>
             <div className="grid grid-cols-1 md:grid-cols-[minmax(0,1fr)_minmax(0,1.1fr)] gap-3">
-                <div className={`space-y-1.5 ${selected ? "hidden md:block" : ""}`} data-testid="work-list">
+                <div className={`space-y-3 ${selected ? "hidden md:block" : ""}`} data-testid="work-list">
                     {list.isLoading && <p className="text-sm text-slate-400">Loading…</p>}
                     {!list.isLoading && items.length === 0 && <p className="text-sm text-slate-400 py-6 text-center" data-testid="work-empty">{view === "my" ? "Nothing needs your attention." : isHistory ? "No completed items yet." : "No items."}</p>}
-                    {items.map((it) => isHistory
-                        ? <HistoryCard key={it.id} item={it} selected={it.id === selectedId} onClick={() => setSelectedId(it.id)} />
-                        : <WorkCard key={it.id} item={it} selected={it.id === selectedId} onClick={() => setSelectedId(it.id)} />)}
+                    {isHistory && items.map((it) => <HistoryCard key={it.id} item={it} selected={it.id === selectedId} onClick={() => setSelectedId(it.id)} />)}
+                    {view === "waiting" && items.map((it) => <WorkCard key={it.id} item={it} selected={it.id === selectedId} onClick={() => setSelectedId(it.id)} />)}
+                    {grouped && groupByPriority(items).map((s) => (
+                        <PrioritySection key={s.key} section={s}>
+                            {s.items.map((it) => <WorkCard key={it.id} item={it} selected={it.id === selectedId} onClick={() => setSelectedId(it.id)} />)}
+                        </PrioritySection>
+                    ))}
+                    {grouped && completedSent.length > 0 && (
+                        <PrioritySection section={{ key: "COMPLETED", title: "Completed", accent: "text-emerald-700 border-emerald-200", items: completedSent }}>
+                            {completedSent.map((it) => <HistoryCard key={it.id} item={it} selected={it.id === selectedId} onClick={() => setSelectedId(it.id)} />)}
+                        </PrioritySection>
+                    )}
                     {isHistory && list.data?.has_more && (
                         <Button variant="outline" size="sm" data-testid="work-history-load-more" disabled={list.isFetching} onClick={() => setHistoryPages((p) => p + 1)} className="w-full h-8 text-xs">{list.isFetching ? "Loading…" : "Load more"}</Button>
                     )}
                 </div>
                 <div className={selected ? "" : "hidden md:block"}>
                     {selected ? <WorkDetail item={selected} side={side} userId={meta.data?.user_id} members={meta.data?.members || []} queues={meta.data?.queues || []} categories={categories} documentCategories={meta.data?.document_categories || []} onChanged={refresh} onBack={() => setSelectedId(null)} />
+                        : side === "PHYSICIAN" ? <PhysicianSummary />
                         : <div className="hidden md:flex h-40 items-center justify-center rounded-sm border border-dashed border-slate-300 text-sm text-slate-400">Select an item to see its history and actions.</div>}
                 </div>
             </div>

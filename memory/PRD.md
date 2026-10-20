@@ -915,3 +915,8 @@ PROD FOLLOW-UPS (need explicit GO, scripts not yet written): stamp practice_id o
 - `work_hub.py`: `CreateBody.message` Optional; blank allowed only when priority ∈ B2/B1/ASAP → stored `message` = PRIORITY_DEFAULT_TEXT[priority], `message_auto: true`; NORMAL + blank → 400; non-physician rules unchanged.
 - `workHubParts.jsx` NewWorkDialog: label "(optional)" + placeholder shows default text when B2/B1/ASAP; Send enabled without text for those priorities.
 - Verified 7 API cases + physician dialog screenshot. Not deployed.
+
+## 2026-06 — Work Hub: priority sections + physician Today/Upcoming (PREVIEW, awaiting GO)
+- New `frontend/src/internal/workHubSections.jsx`: SECTIONS (ASAP→B2→B1→Routine), `sectionSort` (overdue→due today→earliest due→oldest), collapsible `PrioritySection` (zero-item hidden), `PhysicianSummary` (ASAP/Overdue/Due-today from active my+sent items; reminders reused from existing GET /internal/calendar?days=4 — no new collection/endpoint).
+- `WorkHub.jsx`: My Work & Sent grouped; Sent "Include completed" renders a separate Completed section; Waiting/History untouched; physician sees summary when nothing selected.
+- No backend changes. Verified with seeded data + screenshots (desktop dark/light, collapsed, mobile). Not deployed.

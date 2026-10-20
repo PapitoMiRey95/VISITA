@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef, useCallback } from "react";
 import { toast } from "sonner";
-import { Search, X, UserRound, Bell, ArrowRightLeft, Check, Clock, Play, RotateCcw, MessageSquare, FileCheck2, Flag, AlertTriangle } from "lucide-react";
+import { Search, X, UserRound, Bell, ArrowRightLeft, Check, Clock, Play, RotateCcw, MessageSquare, FileCheck2, Flag, AlertTriangle, PhoneCall, FileOutput, Microscope, FileText, Scale, FolderOpen, CalendarDays, ClipboardList, Pill, ChevronDown, ChevronUp } from "lucide-react";
 import { api, formatErr } from "../lib/api";
 import { formatPatientName } from "../lib/name";
 import { formatDate, formatDateTime } from "../lib/date";
@@ -8,6 +8,26 @@ import { Button } from "../components/ui/button";
 import { Input } from "../components/ui/input";
 import { Label } from "../components/ui/label";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "../components/ui/dialog";
+import { Tooltip, TooltipTrigger, TooltipContent, TooltipProvider } from "../components/ui/tooltip";
+
+// Category → lucide icon + short readable label (always shown together; never color-only).
+export const CATEGORY_META = {
+    MESSAGE: { icon: MessageSquare, label: "Message" },
+    CALL_BOOK_PATIENT: { icon: PhoneCall, label: "Call / Book" },
+    REFERRAL_FOLLOWUP: { icon: FileOutput, label: "Referral" },
+    RESULTS: { icon: Microscope, label: "Results / Exams" },
+    INSURANCE_FORM: { icon: FileText, label: "Form" },
+    LEGAL: { icon: Scale, label: "Legal" },
+    CHART_REQUEST: { icon: FolderOpen, label: "Chart Request" },
+    APPOINTMENT_CALL: { icon: CalendarDays, label: "Appointment" },
+    ADMIN_OTHER: { icon: ClipboardList, label: "Admin" },
+    RX: { icon: Pill, label: "Rx" },
+};
+export function CategoryTag({ category, testid = "work-category-tag", className = "" }) {
+    const m = CATEGORY_META[category] || { icon: ClipboardList, label: category };
+    const Icon = m.icon;
+    return <span data-testid={testid} data-category={category} className={`inline-flex items-center gap-1 text-[11px] text-slate-600 uppercase tracking-wide font-semibold ${className}`}><Icon className="w-3.5 h-3.5 text-visita-greenDark shrink-0" aria-hidden="true" />{m.label}</span>;
+}
 
 export const STATUS_TONE = {
     NEW: "bg-amber-100 text-amber-800 border-amber-200",
@@ -39,6 +59,8 @@ export function RecipientSelect({ value, onChange, members = [], queues = [], ex
 export const targetBody = (v) => (v.startsWith("u:") ? { to_user_id: v.slice(2), send_to: null } : { send_to: v.slice(2), to_user_id: null });
 export const targetLabel = (v, members) => (v.startsWith("u:") ? (members.find((m) => m.user_id === v.slice(2))?.name || "member") : QUEUE_LABEL[v.slice(2)]);
 export const PRIORITY_LABEL = { NORMAL: "Normal", B2: "B2", B1: "B1", ASAP: "ASAP" };
+// Dr. Aguayo's operational meanings — do not reinterpret.
+export const PRIORITY_HELP = { B2: "Book patient in about 1 week.", B1: "Book patient in about 2–3 weeks.", ASAP: "Book patient as soon as possible." };
 const PRIORITY_TONE = {
     B2: "bg-slate-100 text-slate-700 border-slate-300",
     B1: "bg-amber-100 text-amber-900 border-amber-300",
@@ -51,8 +73,22 @@ export function overdueDays(item) {
     return diff > 0 ? Math.floor(diff / 86400000) : null;
 }
 export function PriorityBadge({ priority, testid }) {
+    const [open, setOpen] = useState(false);
     if (!priority || priority === "NORMAL") return null;
-    return <Chip tone={PRIORITY_TONE[priority]} testid={testid}>{priority === "ASAP" && <AlertTriangle className="w-3 h-3 mr-0.5" />}{PRIORITY_LABEL[priority]}</Chip>;
+    return (
+        <TooltipProvider delayDuration={150}>
+            <Tooltip open={open} onOpenChange={setOpen}>
+                <TooltipTrigger asChild>
+                    <button type="button" data-testid={testid} aria-label={`${PRIORITY_LABEL[priority]}: ${PRIORITY_HELP[priority]}`}
+                        onClick={(e) => { e.stopPropagation(); setOpen((o) => !o); }}
+                        className={`inline-flex items-center rounded-sm border px-1.5 py-0.5 text-[10px] font-bold uppercase tracking-wide cursor-help focus:outline-none focus:ring-1 focus:ring-visita-green ${PRIORITY_TONE[priority]}`}>
+                        {priority === "ASAP" && <AlertTriangle className="w-3 h-3 mr-0.5" />}{PRIORITY_LABEL[priority]}
+                    </button>
+                </TooltipTrigger>
+                <TooltipContent side="top" data-testid={`${testid}-tooltip`} className="bg-slate-900 text-white">{PRIORITY_HELP[priority]}</TooltipContent>
+            </Tooltip>
+        </TooltipProvider>
+    );
 }
 export function OverdueBadge({ item, testid }) {
     const d = overdueDays(item);
@@ -239,16 +275,20 @@ function EventRow({ ev }) {
     );
 }
 
+const LATEST_N = 4;
+
 // Right-hand detail: patient, category, owner, status, request, history, valid actions.
 export function WorkDetail({ item, side, userId, members = [], queues = [], categories, documentCategories = [], onChanged, onBack }) {
     const [note, setNote] = useState("");
     const [waitUntil, setWaitUntil] = useState("");
     const [busy, setBusy] = useState(false);
+    const [showAll, setShowAll] = useState(false);
+    const events = item.events || [];
+    useEffect(() => setShowAll(false), [item.id]);
     const defaultTarget = item.owner_role === "PHYSICIAN" ? "q:CLINIC" : "q:PHYSICIAN";
     const [target, setTarget] = useState(defaultTarget);
     const owned = item.owner_user_id ? item.owner_user_id === userId : item.owner_role === side;
     const mine = owned && item.status !== "COMPLETED";
-    const cat = categories.find((c) => c.key === item.category)?.label || item.category;
     const act = async (action, extra = {}) => {
         setBusy(true);
         try {
@@ -260,13 +300,13 @@ export function WorkDetail({ item, side, userId, members = [], queues = [], cate
     const other = targetLabel(target, members);
     return (
         <div data-testid="work-detail" className="bg-white border border-slate-300 rounded-sm p-3 space-y-3 text-sm">
-            <div className="flex items-start justify-between gap-2">
-                <div className="min-w-0">
+            <div className="flex flex-wrap items-start justify-between gap-2">
+                <div className="min-w-0 flex-1 basis-40">
                     {onBack && <button data-testid="work-detail-back" onClick={onBack} className="text-xs text-slate-400 hover:text-visita-greenDark mb-1 md:hidden">← Back to list</button>}
-                    <div className="text-xs text-slate-500">{item.ref_number} · {cat}</div>
+                    <div className="text-xs text-slate-500 flex items-center gap-1.5 whitespace-nowrap">{item.ref_number} · <CategoryTag category={item.category} testid="work-detail-category" className="whitespace-nowrap" /></div>
                     <div className="font-bold text-slate-900 truncate" data-testid="work-detail-patient">{item.patient_name || "No patient"}</div>
                 </div>
-                <div className="flex flex-col items-end gap-1 shrink-0">
+                <div className="flex flex-wrap items-center justify-end gap-1 shrink-0 max-w-full">
                     <span className="flex items-center gap-1">
                         <PriorityBadge priority={item.priority} testid="work-detail-priority" />
                         <Chip tone="bg-visita-greenLight text-visita-greenDark border-visita-green/40" testid="work-detail-owner">With {ownerLabel(item)}</Chip>
@@ -286,7 +326,7 @@ export function WorkDetail({ item, side, userId, members = [], queues = [], cate
             )}
             {side !== "PHYSICIAN" && item.priority && item.priority !== "NORMAL" && (
                 <div className="flex items-center gap-2 text-xs text-slate-500" data-testid="work-detail-priority-readonly">
-                    <Flag className="w-3 h-3" /><span>Physician priority: <span className="font-semibold text-slate-800">{PRIORITY_LABEL[item.priority]}</span> (set by physician)</span>
+                    <Flag className="w-3 h-3" /><span>Physician priority:</span><PriorityBadge priority={item.priority} testid="work-detail-priority-readonly-badge" /><span className="text-slate-400">{PRIORITY_HELP[item.priority]}</span>
                 </div>
             )}
             {(item.due_at || (item.status === "WAITING" && item.waiting_until)) && (
@@ -295,7 +335,15 @@ export function WorkDetail({ item, side, userId, members = [], queues = [], cate
                 </div>
             )}
             <div className="space-y-2 border-t border-slate-200 pt-2" data-testid="work-history">
-                {(item.events || []).map((ev, i) => <EventRow key={i} ev={ev} />)}
+                <div className="flex items-center justify-between text-[11px] uppercase tracking-wide font-semibold text-slate-400">
+                    <span>{showAll ? `Full history (${events.length})` : "Latest activity"}</span>
+                    {events.length > LATEST_N && (
+                        <button type="button" data-testid="work-history-toggle" onClick={() => setShowAll((s) => !s)} className="inline-flex items-center gap-0.5 normal-case tracking-normal text-visita-greenDark hover:underline">
+                            {showAll ? <><ChevronUp className="w-3 h-3" /> Show latest</> : <><ChevronDown className="w-3 h-3" /> View full history ({events.length})</>}
+                        </button>
+                    )}
+                </div>
+                {(showAll ? events : events.slice(-LATEST_N)).map((ev, i) => <EventRow key={`${ev.at}-${i}`} ev={ev} />)}
             </div>
             {item.status !== "COMPLETED" && (
                 <div className="border-t border-slate-200 pt-2 space-y-2">

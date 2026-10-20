@@ -161,12 +161,16 @@ def build_router(require_roles) -> APIRouter:
         return doc
 
     @r.get("/internal/work")
-    async def list_work(view: str = "my", user: dict = guard):
-        """Views: my (owned by my side, actionable incl. due WAITING) | sent | waiting | completed."""
+    async def list_work(view: str = "my", include_completed: bool = False, limit: int = 300, offset: int = 0, user: dict = guard):
+        """Views: my (owned by my side, actionable incl. due WAITING) | sent (active by default) | waiting | completed (History, paginated)."""
         ps = {"practice_id": user.get("practice_id")}
         side = side_of(user)
+        limit = max(1, min(limit, 300))
+        offset = max(0, offset)
         if view == "sent":
             q = {**ps, "created_by": user["id"]}
+            if not include_completed:
+                q["status"] = {"$ne": "COMPLETED"}
         elif view == "waiting":
             q = {**ps, "status": "WAITING"}
         elif view == "completed":
@@ -174,10 +178,12 @@ def build_router(require_roles) -> APIRouter:
         else:
             q = _actionable_query(user)
         sort = [("completed_at", -1)] if view == "completed" else [("updated_at", -1)]
-        items = await db[COLL].find(q, {"_id": 0}).sort(sort).limit(300).to_list(300)
+        items = await db[COLL].find(q, {"_id": 0}).sort(sort).skip(offset).limit(limit + 1).to_list(limit + 1)
+        has_more = len(items) > limit
+        items = items[:limit]
         if view == "my":
             items.sort(key=_rank)
-        return {"view": view, "side": side, "items": items}
+        return {"view": view, "side": side, "items": items, "has_more": has_more, "offset": offset, "limit": limit}
 
     @r.get("/internal/work/count")
     async def count_work(user: dict = guard):

@@ -898,3 +898,9 @@ PROD FOLLOW-UPS (need explicit GO, scripts not yet written): stamp practice_id o
 - Backend `work_hub.py`: non-physician create with priority ≠ NORMAL → 403; `priority` action → 403 for non-physicians; PRIORITY_CHANGED only on physician change.
 - Frontend `workHubParts.jsx`: Priority row hidden in New Work Item for non-physicians; detail shows read-only "Physician priority: B1 (set by physician)" for staff/admin; physician keeps Normal/B2/B1/ASAP selector.
 - Verified: API 403s for admin+staff, staff still note/in_progress/handoff, 4 screenshots OK. Not deployed.
+
+## 2026-06 — Work Hub: priority tooltips, category icons, History tab (PREVIEW, awaiting GO)
+- `work_hub.py` list_work: `include_completed` (Sent excludes COMPLETED by default), `limit/offset` + `has_more` (History paginated, 30/page in UI).
+- `workHubParts.jsx`: PRIORITY_HELP tooltips (B2 ≈1 wk, B1 ≈2–3 wks, ASAP) on badges — hover/focus/tap; CATEGORY_META lucide icon+label (CategoryTag); detail timeline "Latest activity" (4) + "View full history (N)"; mobile header wrap fix.
+- `WorkHub.jsx`: tabs My Work | Sent | Waiting | History; HistoryCard compact; Load more; Sent "Include completed" toggle.
+- Verified via API + 9 screenshots. Not deployed.

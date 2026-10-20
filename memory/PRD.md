@@ -893,3 +893,8 @@ PROD FOLLOW-UPS (need explicit GO, scripts not yet written): stamp practice_id o
 - Preview one-off: ROMERO CUAHUEY (test record) backfilled via the same function. Historical linked pairs in Prod may need a bounded backfill later (same function, dry-run first).
 - Script: backend/tests/manual_registration_merge_scenario.py (22 checks, self-cleaning). Remove before deploy.
 - Work Hub member assignment (2026-10-20, PREVIEW): recipients = active practice users (db.users, roles staff/physician/admin) with position from org_memberships.role_title → user.position → role label; shared queues "Any Physician"/"Clinic Staff" kept. Fields owner_user_id/owner_name/owner_position; My Work/counters = personally assigned OR unassigned on my side; owner-only actions use owns(); handoff/signed accept to_user_id or send_to; events carry from/to user+position. UI: RecipientSelect (optgroups) in New + Detail; cards "With Dr. Pablo Aguayo · Physician". PIN field added to Work Hub patient picker.
+
+## 2026-06 — Work Hub: physician-only priority (PREVIEW, awaiting GO)
+- Backend `work_hub.py`: non-physician create with priority ≠ NORMAL → 403; `priority` action → 403 for non-physicians; PRIORITY_CHANGED only on physician change.
+- Frontend `workHubParts.jsx`: Priority row hidden in New Work Item for non-physicians; detail shows read-only "Physician priority: B1 (set by physician)" for staff/admin; physician keeps Normal/B2/B1/ASAP selector.
+- Verified: API 403s for admin+staff, staff still note/in_progress/handoff, 4 screenshots OK. Not deployed.

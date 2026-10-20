@@ -201,6 +201,8 @@ def build_router(require_roles) -> APIRouter:
             raise HTTPException(status_code=400, detail="Unknown source type.")
         if body.priority not in PRIORITIES:
             raise HTTPException(status_code=400, detail="Please choose a valid priority.")
+        if body.priority != "NORMAL" and side_of(user) != "PHYSICIAN":
+            raise HTTPException(status_code=403, detail="Only a physician can set B2 / B1 / ASAP priority.")
         doc = {
             "id": str(uuid.uuid4()), "ref_number": await next_ref("WRK"), "practice_id": user.get("practice_id"),
             "patient_id": body.patient_id, "directory_id": body.directory_id, "patient_name": (body.patient_name or "").strip() or None,
@@ -249,6 +251,8 @@ def build_router(require_roles) -> APIRouter:
             to = {"to_role": target["owner_role"], "to_user_id": target["owner_user_id"], "to_name": target["owner_name"], "to_position": target["owner_position"]}
             ev = _event("DOCUMENT_SIGNED" if body.action == "signed" else "handoff", user, note or ("Document signed." if body.action == "signed" else None), **frm, **to)
         elif body.action == "priority":
+            if side != "PHYSICIAN":
+                raise HTTPException(status_code=403, detail="Only a physician can change priority.")
             if body.priority not in PRIORITIES:
                 raise HTTPException(status_code=400, detail="Please choose a valid priority.")
             if body.priority == doc.get("priority", "NORMAL"):

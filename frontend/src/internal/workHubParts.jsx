@@ -195,10 +195,12 @@ export function NewWorkDialog({ side, categories, members = [], queues = [], use
                     </div>
                     <div><Label className="text-xs">What needs to be done?</Label>
                         <Input autoFocus required data-testid="work-message" value={message} onChange={(e) => setMessage(e.target.value)} placeholder="e.g. Complete insurance form" maxLength={2000} /></div>
-                    <div className="flex items-center gap-2">
-                        <Label className="text-xs">Priority</Label>
-                        <PriorityControl value={priority} onChange={setPriority} />
-                    </div>
+                    {side === "PHYSICIAN" && (
+                        <div className="flex items-center gap-2">
+                            <Label className="text-xs">Priority</Label>
+                            <PriorityControl value={priority} onChange={setPriority} />
+                        </div>
+                    )}
                     <div className="flex flex-wrap items-center gap-1.5">
                         <Label className="text-xs mr-1">Remind / Due</Label>
                         {DUE_PRESETS.map(([k, l]) => (
@@ -276,10 +278,15 @@ export function WorkDetail({ item, side, userId, members = [], queues = [], cate
                     </span>
                 </div>
             </div>
-            {item.status !== "COMPLETED" && (
+            {item.status !== "COMPLETED" && side === "PHYSICIAN" && (
                 <div className="flex items-center gap-2 text-xs text-slate-500">
                     <span>Priority</span>
                     <PriorityControl size="xs" value={item.priority || "NORMAL"} onChange={(p) => act("priority", { priority: p })} testid="work-detail-priority-control" />
+                </div>
+            )}
+            {side !== "PHYSICIAN" && item.priority && item.priority !== "NORMAL" && (
+                <div className="flex items-center gap-2 text-xs text-slate-500" data-testid="work-detail-priority-readonly">
+                    <Flag className="w-3 h-3" /><span>Physician priority: <span className="font-semibold text-slate-800">{PRIORITY_LABEL[item.priority]}</span> (set by physician)</span>
                 </div>
             )}
             {(item.due_at || (item.status === "WAITING" && item.waiting_until)) && (

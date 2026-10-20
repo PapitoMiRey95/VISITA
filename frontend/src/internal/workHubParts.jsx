@@ -9,24 +9,33 @@ import { Input } from "../components/ui/input";
 import { Label } from "../components/ui/label";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "../components/ui/dialog";
 import { Tooltip, TooltipTrigger, TooltipContent, TooltipProvider } from "../components/ui/tooltip";
+import { DropdownMenu, DropdownMenuTrigger, DropdownMenuContent, DropdownMenuItem } from "../components/ui/dropdown-menu";
 
-// Category → lucide icon + short readable label (always shown together; never color-only).
+// Category → lucide icon + short readable label + accent (always shown together; never color-only; accents never signal urgency).
 export const CATEGORY_META = {
-    MESSAGE: { icon: MessageSquare, label: "Message" },
-    CALL_BOOK_PATIENT: { icon: PhoneCall, label: "Call / Book" },
-    REFERRAL_FOLLOWUP: { icon: FileOutput, label: "Referral" },
-    RESULTS: { icon: Microscope, label: "Results / Exams" },
-    INSURANCE_FORM: { icon: FileText, label: "Form" },
-    LEGAL: { icon: Scale, label: "Legal" },
-    CHART_REQUEST: { icon: FolderOpen, label: "Chart Request" },
-    APPOINTMENT_CALL: { icon: CalendarDays, label: "Appointment" },
-    ADMIN_OTHER: { icon: ClipboardList, label: "Admin" },
-    RX: { icon: Pill, label: "Rx" },
+    MESSAGE: { icon: MessageSquare, label: "Message", color: "text-cyan-600 dark:text-cyan-400" },
+    CALL_BOOK_PATIENT: { icon: PhoneCall, label: "Call / Book", color: "text-teal-600 dark:text-teal-400" },
+    REFERRAL_FOLLOWUP: { icon: FileOutput, label: "Referral", color: "text-violet-600 dark:text-violet-400" },
+    RESULTS: { icon: Microscope, label: "Results / Exams", color: "text-indigo-600 dark:text-indigo-400" },
+    INSURANCE_FORM: { icon: FileText, label: "Form", color: "text-amber-600 dark:text-amber-400" },
+    LEGAL: { icon: Scale, label: "Legal", color: "text-rose-600 dark:text-rose-400" },
+    CHART_REQUEST: { icon: FolderOpen, label: "Chart Request", color: "text-slate-500 dark:text-slate-300" },
+    APPOINTMENT_CALL: { icon: CalendarDays, label: "Appointment", color: "text-emerald-600 dark:text-emerald-400" },
+    ADMIN_OTHER: { icon: ClipboardList, label: "Admin", color: "text-slate-500 dark:text-slate-400" },
+    RX: { icon: Pill, label: "Rx", color: "text-pink-600 dark:text-pink-400" },
 };
 export function CategoryTag({ category, testid = "work-category-tag", className = "" }) {
-    const m = CATEGORY_META[category] || { icon: ClipboardList, label: category };
+    const m = CATEGORY_META[category] || { icon: ClipboardList, label: category, color: "text-slate-500" };
     const Icon = m.icon;
-    return <span data-testid={testid} data-category={category} className={`inline-flex items-center gap-1 text-[11px] text-slate-600 uppercase tracking-wide font-semibold ${className}`}><Icon className="w-3.5 h-3.5 text-visita-greenDark shrink-0" aria-hidden="true" />{m.label}</span>;
+    return <span data-testid={testid} data-category={category} className={`inline-flex items-center gap-1.5 text-[11px] text-slate-600 uppercase tracking-wide font-semibold ${className}`}><Icon className={`w-4 h-4 shrink-0 ${m.color}`} strokeWidth={2.25} aria-hidden="true" />{m.label}</span>;
+}
+export const OUTCOME_LABEL = { COMPLETED: "Completed", ALREADY_DONE: "Already done", NO_LONGER_NEEDED: "No longer needed", DUPLICATE: "Duplicate" };
+export const CLOSE_OUTCOMES = ["ALREADY_DONE", "NO_LONGER_NEEDED", "DUPLICATE"];
+// Outcome badge only when the close was not an ordinary Complete.
+export function OutcomeBadge({ item, testid }) {
+    const o = item.completion_outcome;
+    if (item.status !== "COMPLETED" || !o || o === "COMPLETED") return null;
+    return <Chip tone="bg-slate-200 text-slate-700 border-slate-300" testid={testid}>{OUTCOME_LABEL[o]}</Chip>;
 }
 
 export const STATUS_TONE = {
@@ -260,7 +269,7 @@ function EventRow({ ev }) {
         created: `sent to ${who(ev.to_name, ev.to_position, ev.to_role)}`,
         handoff: `${who(ev.from_name, ev.from_position, ev.from_role)} → ${who(ev.to_name, ev.to_position, ev.to_role)}`,
         waiting: ev.waiting_until ? `waiting until ${formatDate(ev.waiting_until.slice(0, 10))}` : "waiting",
-        completed: "completed", status: STATUS_LABEL[ev.status] || ev.status, reply: "note", reopened: "reopened",
+        completed: ev.outcome && ev.outcome !== "COMPLETED" ? `closed as ${OUTCOME_LABEL[ev.outcome]}` : "completed task", status: STATUS_LABEL[ev.status] || ev.status, reply: "note", reopened: "reopened",
         PRIORITY_CHANGED: `changed priority ${PRIORITY_LABEL[ev.from_priority] || ev.from_priority} → ${PRIORITY_LABEL[ev.to_priority] || ev.to_priority}`,
         DOCUMENT_SIGNED: `document signed → ${who(ev.to_name, ev.to_position, ev.to_role || "CLINIC")}`,
     }[ev.type] || ev.type;
@@ -283,8 +292,10 @@ export function WorkDetail({ item, side, userId, members = [], queues = [], cate
     const [waitUntil, setWaitUntil] = useState("");
     const [busy, setBusy] = useState(false);
     const [showAll, setShowAll] = useState(false);
+    const [closing, setClosing] = useState(null);
+    const [closeNote, setCloseNote] = useState("");
     const events = item.events || [];
-    useEffect(() => setShowAll(false), [item.id]);
+    useEffect(() => { setShowAll(false); setClosing(null); setCloseNote(""); }, [item.id]);
     const defaultTarget = item.owner_role === "PHYSICIAN" ? "q:CLINIC" : "q:PHYSICIAN";
     const [target, setTarget] = useState(defaultTarget);
     const owned = item.owner_user_id ? item.owner_user_id === userId : item.owner_role === side;
@@ -293,8 +304,8 @@ export function WorkDetail({ item, side, userId, members = [], queues = [], cate
         setBusy(true);
         try {
             await api.post(`/internal/work/${item.id}/action`, { action, note: note || null, ...extra });
-            setNote(""); setWaitUntil(""); onChanged();
-            toast.success({ handoff: `Sent to ${targetLabel(target, members)}.`, complete: "Completed.", waiting: "Set to waiting.", in_progress: "In progress.", reply: "Note added.", reopen: "Reopened.", signed: `Signed — sent to ${targetLabel(target, members)}.`, priority: "Priority updated." }[action]);
+            setNote(""); setWaitUntil(""); setClosing(null); setCloseNote(""); onChanged();
+            toast.success(action === "complete" && extra.outcome && extra.outcome !== "COMPLETED" ? `Closed as ${OUTCOME_LABEL[extra.outcome]}.` : { handoff: `Sent to ${targetLabel(target, members)}.`, complete: "Completed.", waiting: "Set to waiting.", in_progress: "In progress.", reply: "Note added.", reopen: "Reopened.", signed: `Signed — sent to ${targetLabel(target, members)}.`, priority: "Priority updated." }[action]);
         } catch (e) { toast.error(formatErr(e)); } finally { setBusy(false); }
     };
     const other = targetLabel(target, members);
@@ -361,14 +372,34 @@ export function WorkDetail({ item, side, userId, members = [], queues = [], cate
                                 <Input type="date" data-testid="work-waiting-until" value={waitUntil} onChange={(e) => setWaitUntil(e.target.value)} className="h-8 w-36 text-xs" title="Waiting until" />
                             </span>
                         )}
-                        {mine && <Button size="sm" disabled={busy} data-testid="work-action-complete" onClick={() => act("complete")} className="h-8 bg-emerald-600 hover:bg-emerald-700 text-white"><Check className="w-3.5 h-3.5 mr-1" /> Complete</Button>}
+                        {mine && (
+                            <span className="inline-flex rounded-sm overflow-hidden">
+                                <Button size="sm" disabled={busy} data-testid="work-action-complete" onClick={() => act("complete")} className="h-8 rounded-r-none bg-emerald-600 hover:bg-emerald-700 text-white"><Check className="w-3.5 h-3.5 mr-1" /> Complete</Button>
+                                <DropdownMenu>
+                                    <DropdownMenuTrigger asChild>
+                                        <Button size="sm" disabled={busy} data-testid="work-action-close-menu" aria-label="Close as…" className="h-8 w-7 px-0 rounded-l-none border-l border-emerald-800/40 bg-emerald-600 hover:bg-emerald-700 text-white"><ChevronDown className="w-3.5 h-3.5" /></Button>
+                                    </DropdownMenuTrigger>
+                                    <DropdownMenuContent align="end" className="text-xs">
+                                        {CLOSE_OUTCOMES.map((o) => <DropdownMenuItem key={o} data-testid={`work-close-${o.toLowerCase()}`} onSelect={() => setClosing(o)}>Close as {OUTCOME_LABEL[o]}</DropdownMenuItem>)}
+                                    </DropdownMenuContent>
+                                </DropdownMenu>
+                            </span>
+                        )}
                         <Button size="sm" variant="ghost" disabled={busy || !note.trim()} data-testid="work-action-reply" onClick={() => act("reply")} className="h-8"><MessageSquare className="w-3.5 h-3.5 mr-1" /> Add note</Button>
                     </div>
+                    {closing && (
+                        <div className="flex flex-wrap items-center gap-1.5 rounded-sm border border-slate-300 bg-slate-50 p-2 text-xs" data-testid="work-close-panel">
+                            <span className="font-semibold text-slate-700">Close as {OUTCOME_LABEL[closing]}</span>
+                            <Input data-testid="work-close-note" autoFocus value={closeNote} onChange={(e) => setCloseNote(e.target.value)} placeholder="Optional note, e.g. Patient was already booked" maxLength={500} className="h-7 flex-1 min-w-[12rem] text-xs" />
+                            <Button size="sm" disabled={busy} data-testid="work-close-confirm" onClick={() => act("complete", { outcome: closing, note: closeNote || null })} className="h-7 bg-slate-700 hover:bg-slate-800 text-white text-xs">Confirm</Button>
+                            <Button size="sm" variant="ghost" disabled={busy} data-testid="work-close-cancel" onClick={() => { setClosing(null); setCloseNote(""); }} className="h-7 text-xs">Cancel</Button>
+                        </div>
+                    )}
                 </div>
             )}
             {item.status === "COMPLETED" && (
                 <div className="border-t border-slate-200 pt-2 flex items-center justify-between text-xs text-slate-500">
-                    <span>Completed by {item.completed_by} · {whenLabel(item.completed_at)}</span>
+                    <span className="flex items-center gap-1.5"><OutcomeBadge item={item} testid="work-detail-outcome" />{item.completion_outcome && item.completion_outcome !== "COMPLETED" ? "Closed" : "Completed"} by {item.completed_by} · {whenLabel(item.completed_at)}</span>
                     <Button size="sm" variant="ghost" disabled={busy} data-testid="work-action-reopen" onClick={() => act("reopen")} className="h-7 text-xs"><RotateCcw className="w-3 h-3 mr-1" /> Reopen</Button>
                 </div>
             )}

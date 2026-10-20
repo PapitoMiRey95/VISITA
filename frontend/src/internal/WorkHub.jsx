@@ -4,7 +4,7 @@ import { Plus, Inbox, Check } from "lucide-react";
 import { api } from "../lib/api";
 import { useInvalidate } from "./hooks";
 import { Button } from "../components/ui/button";
-import { Chip, STATUS_TONE, STATUS_LABEL, ownerLabel, whenLabel, NewWorkDialog, WorkDetail, PriorityBadge, OverdueBadge, SignedBadge, CategoryTag } from "./workHubParts";
+import { Chip, STATUS_TONE, STATUS_LABEL, ownerLabel, whenLabel, NewWorkDialog, WorkDetail, PriorityBadge, OverdueBadge, SignedBadge, CategoryTag, OutcomeBadge } from "./workHubParts";
 
 const VIEWS = [["my", "My Work"], ["sent", "Sent"], ["waiting", "Waiting"], ["completed", "History"]];
 const HISTORY_PAGE = 30;
@@ -43,7 +43,10 @@ function HistoryCard({ item, selected, onClick }) {
                 <span className="ml-auto text-[10px] text-slate-400 shrink-0">{item.ref_number}</span>
             </div>
             <div className="text-sm text-slate-800 truncate">{item.message}</div>
-            <div className="text-[11px] text-emerald-700 flex items-center gap-1"><Check className="w-3 h-3" /> Completed {whenLabel(item.completed_at)} · {item.completed_by}</div>
+            <div className="text-[11px] flex items-center gap-1.5 flex-wrap">
+                <OutcomeBadge item={item} testid="work-card-outcome" />
+                <span className="text-emerald-700 inline-flex items-center gap-1"><Check className="w-3 h-3" /> {item.completion_outcome && item.completion_outcome !== "COMPLETED" ? "Closed" : "Completed"} {whenLabel(item.completed_at)} · {item.completed_by}</span>
+            </div>
         </button>
     );
 }

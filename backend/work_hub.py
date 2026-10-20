@@ -24,6 +24,7 @@ CATEGORY_LABELS = {
 }
 OWNERS = ("PHYSICIAN", "CLINIC")
 STATUSES = ("NEW", "IN_PROGRESS", "WAITING", "COMPLETED")
+OUTCOMES = ("COMPLETED", "ALREADY_DONE", "NO_LONGER_NEEDED", "DUPLICATE")  # why an item left active work; status stays COMPLETED
 SOURCE_TYPES = ("PRESCRIPTION_REQUEST", "REFERRAL", "PATIENT_MESSAGE", "APPOINTMENT_REQUEST")
 CLINIC_ROLES = ("staff", "physician", "admin")
 
@@ -88,6 +89,7 @@ class ActionBody(BaseModel):
     note: Optional[str] = None
     waiting_until: Optional[str] = None
     priority: Optional[str] = None
+    outcome: Optional[str] = None  # complete: COMPLETED | ALREADY_DONE | NO_LONGER_NEEDED | DUPLICATE
     send_to: Optional[str] = None  # handoff/signed target queue
     to_user_id: Optional[str] = None  # handoff/signed target member
 
@@ -272,10 +274,13 @@ def build_router(require_roles) -> APIRouter:
             upd.update({"status": "WAITING", "waiting_until": _valid_iso(body.waiting_until)})
             ev = _event("waiting", user, note, waiting_until=upd["waiting_until"])
         elif body.action == "complete":
-            upd.update({"status": "COMPLETED", "completed_at": now_iso(), "completed_by": user.get("name"), "waiting_until": None})
-            ev = _event("completed", user, note)
+            outcome = body.outcome or "COMPLETED"
+            if outcome not in OUTCOMES:
+                raise HTTPException(status_code=400, detail="Please choose a valid close outcome.")
+            upd.update({"status": "COMPLETED", "completed_at": now_iso(), "completed_by": user.get("name"), "completion_outcome": outcome, "waiting_until": None})
+            ev = _event("completed", user, note, outcome=outcome)
         elif body.action == "reopen":
-            upd.update({"status": "NEW", "completed_at": None, "completed_by": None, "owner_role": side, "owner_user_id": user["id"], "owner_name": user.get("name"), "owner_position": await _position_of(user)})
+            upd.update({"status": "NEW", "completed_at": None, "completed_by": None, "completion_outcome": None, "owner_role": side, "owner_user_id": user["id"], "owner_name": user.get("name"), "owner_position": await _position_of(user)})
             ev = _event("reopened", user, note)
         elif body.action == "reply":
             if not note:

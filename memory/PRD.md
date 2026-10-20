@@ -904,3 +904,9 @@ PROD FOLLOW-UPS (need explicit GO, scripts not yet written): stamp practice_id o
 - `workHubParts.jsx`: PRIORITY_HELP tooltips (B2 ≈1 wk, B1 ≈2–3 wks, ASAP) on badges — hover/focus/tap; CATEGORY_META lucide icon+label (CategoryTag); detail timeline "Latest activity" (4) + "View full history (N)"; mobile header wrap fix.
 - `WorkHub.jsx`: tabs My Work | Sent | Waiting | History; HistoryCard compact; Load more; Sent "Include completed" toggle.
 - Verified via API + 9 screenshots. Not deployed.
+
+## 2026-06 — Work Hub: colored category icons + close outcomes (PREVIEW, awaiting GO)
+- `work_hub.py`: `OUTCOMES` (COMPLETED|ALREADY_DONE|NO_LONGER_NEEDED|DUPLICATE); `complete` action takes optional `outcome` → stored as `completion_outcome` (status stays COMPLETED), event carries `outcome`+note; reopen clears `completion_outcome`.
+- `workHubParts.jsx`: CATEGORY_META accent colors (w-4 icons, dark variants); Complete + ▾ split menu (shadcn DropdownMenu) → inline optional note panel → Confirm; OutcomeBadge; event text "completed task"/"closed as X".
+- `WorkHub.jsx`: HistoryCard shows OutcomeBadge + "Closed/Completed by".
+- Verified via API (counters decrement for all outcomes, 400 on bad outcome, reopen trail) + Light/Dark screenshots. Not deployed.

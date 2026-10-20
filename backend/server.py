@@ -5347,7 +5347,7 @@ def _directory_snapshot(d: dict) -> dict:
         "visita_patient_id": d.get("visita_patient_id"),
         "date_of_birth": d.get("date_of_birth"), "age": _age_from_dob(d.get("date_of_birth")),
         "home_phone": d.get("home_phone"), "cell_phone": d.get("cell_phone"),
-        "email": d.get("email"), "sex": d.get("sex"),
+        "email": d.get("email"), "sex": d.get("sex") or SEX_FROM_CODE.get((d.get("sex_code") or "").strip().upper()),
         "address": d.get("address"), "unit": d.get("unit"),
         "city": d.get("city"), "province": d.get("province"), "postal_code": d.get("postal_code"),
         "address_full": address_full,
@@ -5585,6 +5585,69 @@ async def internal_patient_lookup_pin(pin: str, user: dict = Depends(require_rol
     return await _attach_portal_access(results)
 
 
+SEX_FROM_CODE = {"M": "Male", "F": "Female", "X": "Other", "O": "Other", "U": "Unknown"}
+SEX_TO_CODE = {"Male": "M", "Female": "F", "Other": "X", "Unknown": "U"}
+# Verified registration → canonical refresh. CURRENT fields follow the patient (overwrite when different);
+# FILL fields only populate an empty canonical value; IDENTITY fields are never overwritten (reviewable conflict).
+_MERGE_CURRENT = (("health_card_version", "health_card_version_code"), ("health_card_issue_date", "health_card_issue_date"),
+                  ("health_card_expiry_date", "health_card_expiry_date"), ("email", "email"), ("phone", "cell_phone"), ("home_phone", "home_phone"))
+_MERGE_ADDRESS = (("address", "address"), ("unit", "unit"), ("city", "city"), ("province", "province"), ("postal_code", "postal_code"), ("country", "country"))
+_MERGE_IDENTITY = (("first_name", "first_name"), ("last_name", "last_name"), ("date_of_birth", "date_of_birth"), ("health_card_number", "health_card_number"))
+
+
+def _blank(v) -> bool:
+    return v is None or (isinstance(v, str) and not v.strip())
+
+
+async def _refresh_canonical_from_registration(p: dict, d: dict, user: dict, source: str) -> dict:
+    """MISSING ≠ CONFLICT. Fill/refresh the canonical directory record from a human-verified portal
+    registration without ever erasing canonical data or silently changing strong identity fields."""
+    changes, conflicts = {}, {}
+    if d.get("practice_id") and p.get("practice_id") and d["practice_id"] != p["practice_id"]:
+        await audit("canonical_refresh_skipped", "patient_directory", d["id"], user,
+                    meta={"reason": "cross_practice", "patient_id": p["id"], "link_source": source})
+        return {"changes": {}, "conflicts": {"practice_id": {"canonical": d["practice_id"], "submitted": p["practice_id"]}}}
+    for pk, dk in _MERGE_CURRENT:
+        pv = p.get(pk)
+        if _blank(pv):
+            continue
+        if isinstance(pv, str):
+            pv = pv.strip()
+        if (d.get(dk) or None) != pv:
+            changes[dk] = {"from": d.get(dk), "to": pv}
+    # Address is updated as a block only when the registration supplies a street address.
+    if not _blank(p.get("address")):
+        for pk, dk in _MERGE_ADDRESS:
+            pv = p.get(pk)
+            if _blank(pv):
+                continue  # never erase canonical data with a blank submitted field
+            pv = pv.strip() if isinstance(pv, str) else pv
+            if (d.get(dk) or None) != pv:
+                changes[dk] = {"from": d.get(dk), "to": pv}
+    # Sex: fill when canonical empty; conflict when both present and different.
+    psex = (p.get("sex") or "").strip() or None
+    dsex = d.get("sex") or SEX_FROM_CODE.get((d.get("sex_code") or "").strip().upper())
+    if psex and not dsex:
+        changes["sex"] = {"from": None, "to": psex}
+        changes["sex_code"] = {"from": d.get("sex_code"), "to": SEX_TO_CODE.get(psex, d.get("sex_code"))}
+    elif psex and dsex and psex.lower() != dsex.lower():
+        conflicts["sex"] = {"canonical": dsex, "submitted": psex}
+    for pk, dk in _MERGE_IDENTITY:
+        pv, dv = p.get(pk), d.get(dk)
+        if _blank(pv) or _blank(dv):
+            continue
+        norm = (lambda x: "".join(ch for ch in str(x).lower() if ch.isalnum()))
+        if norm(pv) != norm(dv):
+            conflicts[dk] = {"canonical": dv, "submitted": pv}
+    if changes:
+        await db.patient_directory.update_one({"id": d["id"]}, {"$set": {**{k: v["to"] for k, v in changes.items()}, "updated_at": now_iso()}})
+    if changes or conflicts:
+        await audit("canonical_refreshed_from_registration", "patient_directory", d["id"], user,
+                    meta={"source": "VERIFIED_PORTAL_REGISTRATION", "link_source": source, "patient_id": p["id"],
+                          "changes": changes, "conflicts": conflicts})
+    return {"changes": changes, "conflicts": conflicts}
+
+
 async def _link_portal_to_directory(p: dict, d: dict, user: dict, source: str) -> Optional[str]:
     """Hardened two-way link portal account ⇄ canonical directory record.
     Guards: PORTAL_ALREADY_LINKED, DIRECTORY_ALREADY_LINKED (incl. any other active
@@ -5625,10 +5688,12 @@ async def _link_portal_to_directory(p: dict, d: dict, user: dict, source: str) -
                                               {"$set": {"linked_patient_id": existing, "updated_at": now_iso()}})
         await audit("identity_link_rolled_back", "patient", pid, user, meta={"directory_id": did, "reason": "portal_conditional_write_failed"})
         raise HTTPException(status_code=409, detail={"code": "PORTAL_ALREADY_LINKED", "message": "Concurrent link detected; rolled back."})
+    merge = await _refresh_canonical_from_registration(p, d, user, source)
     await audit("identity_linked", "patient", pid, user,
                 meta={"directory_id": did, "visita_patient_id": pin, "preserved_pin": bool(pin), "source": source,
                       "historical_portal_pin": updates.get("historical_visita_patient_id"),
-                      "resulting_identity_state": "LINKED_EXISTING"})
+                      "resulting_identity_state": "LINKED_EXISTING",
+                      "canonical_fields_refreshed": sorted(merge["changes"].keys()), "identity_conflicts": sorted(merge["conflicts"].keys())})
     return pin
 
 

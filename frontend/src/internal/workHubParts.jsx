@@ -238,8 +238,8 @@ export function NewWorkDialog({ side, categories, members = [], queues = [], use
                         <div><Label className="text-xs">Send to</Label>
                             <RecipientSelect value={sendTo} onChange={setSendTo} members={members} queues={queues} excludeUserId={userId} testid="work-send-to" className="w-full" /></div>
                     </div>
-                    <div><Label className="text-xs">What needs to be done?</Label>
-                        <Input autoFocus required data-testid="work-message" value={message} onChange={(e) => setMessage(e.target.value)} placeholder="e.g. Complete insurance form" maxLength={2000} /></div>
+                    <div><Label className="text-xs">What needs to be done?{priority !== "NORMAL" && <span className="text-slate-400 font-normal" data-testid="work-message-optional"> (optional)</span>}</Label>
+                        <Input autoFocus required={priority === "NORMAL"} data-testid="work-message" value={message} onChange={(e) => setMessage(e.target.value)} placeholder={priority !== "NORMAL" ? `Defaults to “${PRIORITY_HELP[priority]}”` : "e.g. Complete insurance form"} maxLength={2000} /></div>
                     {side === "PHYSICIAN" && (
                         <div className="flex items-center gap-2">
                             <Label className="text-xs">Priority</Label>
@@ -254,7 +254,7 @@ export function NewWorkDialog({ side, categories, members = [], queues = [], use
                         ))}
                         {due === "custom" && <Input type="date" data-testid="work-due-custom" value={custom} onChange={(e) => setCustom(e.target.value)} className="h-7 w-40 text-xs" />}
                     </div>
-                    <Button type="submit" disabled={busy || !message.trim()} data-testid="work-submit" className="w-full bg-visita-green hover:bg-visita-greenDark text-white">Send to {targetLabel(sendTo, members)}</Button>
+                    <Button type="submit" disabled={busy || (priority === "NORMAL" && !message.trim())} data-testid="work-submit" className="w-full bg-visita-green hover:bg-visita-greenDark text-white">Send to {targetLabel(sendTo, members)}</Button>
                 </form>
             </DialogContent>
         </Dialog>

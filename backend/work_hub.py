@@ -17,6 +17,8 @@ COLL = "work_items"
 CATEGORIES = ["MESSAGE", "CALL_BOOK_PATIENT", "REFERRAL_FOLLOWUP", "RESULTS", "INSURANCE_FORM", "LEGAL", "CHART_REQUEST", "APPOINTMENT_CALL", "ADMIN_OTHER"]
 DOCUMENT_CATEGORIES = ("INSURANCE_FORM", "LEGAL", "CHART_REQUEST")  # eligible for "Signed → Send to Clinic"
 PRIORITIES = ("NORMAL", "B2", "B1", "ASAP")  # clinic working labels only — no clinical time definition enforced
+# Deterministic display text when a physician sends a priority without a written message (never AI-generated).
+PRIORITY_DEFAULT_TEXT = {"B2": "Book patient in about 1 week.", "B1": "Book patient in about 2–3 weeks.", "ASAP": "Book patient as soon as possible."}
 CATEGORY_LABELS = {
     "MESSAGE": "Message", "CALL_BOOK_PATIENT": "Call / Book Patient", "REFERRAL_FOLLOWUP": "Referral / Follow-up", "RESULTS": "Results / Imaging / BW",
     "INSURANCE_FORM": "Insurance / Form", "LEGAL": "Legal", "CHART_REQUEST": "Chart Request",
@@ -72,7 +74,7 @@ def owns(item: dict, user: dict) -> bool:
 
 class CreateBody(BaseModel):
     category: str
-    message: str
+    message: Optional[str] = None  # required unless priority is B2/B1/ASAP (deterministic fallback text)
     send_to: Optional[str] = None  # queue: PHYSICIAN | CLINIC
     to_user_id: Optional[str] = None  # specific practice member (takes precedence)
     patient_id: Optional[str] = None
@@ -203,18 +205,23 @@ def build_router(require_roles) -> APIRouter:
             raise HTTPException(status_code=400, detail="Please choose a valid type.")
         target = await resolve_target(user.get("practice_id"), body.send_to, body.to_user_id)
         msg = (body.message or "").strip()
-        if not msg or len(msg) > 2000:
-            raise HTTPException(status_code=400, detail="Please describe what needs to be done.")
-        if body.source_type and body.source_type not in SOURCE_TYPES:
-            raise HTTPException(status_code=400, detail="Unknown source type.")
+        if len(msg) > 2000:
+            raise HTTPException(status_code=400, detail="Please keep the description under 2000 characters.")
         if body.priority not in PRIORITIES:
             raise HTTPException(status_code=400, detail="Please choose a valid priority.")
         if body.priority != "NORMAL" and side_of(user) != "PHYSICIAN":
             raise HTTPException(status_code=403, detail="Only a physician can set B2 / B1 / ASAP priority.")
+        message_auto = False
+        if not msg:
+            if body.priority == "NORMAL":
+                raise HTTPException(status_code=400, detail="Please describe what needs to be done.")
+            msg, message_auto = PRIORITY_DEFAULT_TEXT[body.priority], True
+        if body.source_type and body.source_type not in SOURCE_TYPES:
+            raise HTTPException(status_code=400, detail="Unknown source type.")
         doc = {
             "id": str(uuid.uuid4()), "ref_number": await next_ref("WRK"), "practice_id": user.get("practice_id"),
             "patient_id": body.patient_id, "directory_id": body.directory_id, "patient_name": (body.patient_name or "").strip() or None,
-            "category": body.category, "message": msg,
+            "category": body.category, "message": msg, "message_auto": message_auto,
             "created_by": user["id"], "created_by_name": user.get("name"), "created_by_role": user.get("role"),
             **target,
             "status": "NEW", "priority": body.priority, "due_at": _valid_iso(body.due_at), "waiting_until": None,

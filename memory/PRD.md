@@ -910,3 +910,8 @@ PROD FOLLOW-UPS (need explicit GO, scripts not yet written): stamp practice_id o
 - `workHubParts.jsx`: CATEGORY_META accent colors (w-4 icons, dark variants); Complete + ▾ split menu (shadcn DropdownMenu) → inline optional note panel → Confirm; OutcomeBadge; event text "completed task"/"closed as X".
 - `WorkHub.jsx`: HistoryCard shows OutcomeBadge + "Closed/Completed by".
 - Verified via API (counters decrement for all outcomes, 400 on bad outcome, reopen trail) + Light/Dark screenshots. Not deployed.
+
+## 2026-06 — Work Hub: priority items without written message (PREVIEW, awaiting GO)
+- `work_hub.py`: `CreateBody.message` Optional; blank allowed only when priority ∈ B2/B1/ASAP → stored `message` = PRIORITY_DEFAULT_TEXT[priority], `message_auto: true`; NORMAL + blank → 400; non-physician rules unchanged.
+- `workHubParts.jsx` NewWorkDialog: label "(optional)" + placeholder shows default text when B2/B1/ASAP; Send enabled without text for those priorities.
+- Verified 7 API cases + physician dialog screenshot. Not deployed.

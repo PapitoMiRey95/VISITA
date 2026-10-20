@@ -10656,7 +10656,7 @@ async def maintenance_mode_gate(request: Request, call_next):
 
 
 api.include_router(work_mod.build_router(require_roles))
-api.include_router(prof_mod.build_router(get_current_user, get_patient_record, validate_hc_dates))
+api.include_router(prof_mod.build_router(get_current_user, get_patient_record, validate_hc_dates, require_roles))
 app.include_router(api)
 
 _DEFAULT_CORS = "https://visitaemr.com,https://www.visitaemr.com,https://visita-admin.preview.emergentagent.com"

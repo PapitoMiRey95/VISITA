@@ -46,7 +46,7 @@ export const STATUS_TONE = {
 };
 export const STATUS_LABEL = { NEW: "New", IN_PROGRESS: "In progress", WAITING: "Waiting", COMPLETED: "Completed" };
 export const OWNER_LABEL = { PHYSICIAN: "Doctor", CLINIC: "Clinic" };
-export const PRIORITIES = ["NORMAL", "B2", "B1", "ASAP"];
+export const PRIORITIES = ["NORMAL", "B1", "B2", "ASAP"];
 export const QUEUE_LABEL = { PHYSICIAN: "Any Physician", CLINIC: "Clinic Staff" };
 // "With Dr. Pablo Aguayo · Physician" for a person, "With Clinic Staff" for a shared queue.
 export function ownerLabel(item) {
@@ -69,7 +69,9 @@ export const targetBody = (v) => (v.startsWith("u:") ? { to_user_id: v.slice(2),
 export const targetLabel = (v, members) => (v.startsWith("u:") ? (members.find((m) => m.user_id === v.slice(2))?.name || "member") : QUEUE_LABEL[v.slice(2)]);
 export const PRIORITY_LABEL = { NORMAL: "Normal", B2: "B2", B1: "B1", ASAP: "ASAP" };
 // Dr. Aguayo's operational meanings — do not reinterpret.
-export const PRIORITY_HELP = { B2: "Book patient in about 1 week.", B1: "Book patient in about 2–3 weeks.", ASAP: "Book patient as soon as possible." };
+// Stored fallback text when a physician sends a priority without a message (mirrors backend PRIORITY_DEFAULT_TEXT).
+export const PRIORITY_DEFAULT_TEXT = { B1: "Book patient in about 1 week.", B2: "Book patient within about 3–4 weeks.", ASAP: "Book patient as soon as possible." };
+export const PRIORITY_HELP = { B1: "Book patient in about 1 week.", B2: "Regular follow-up — book patient within about 3–4 weeks.", ASAP: "Book patient as soon as possible." };
 const PRIORITY_TONE = {
     B2: "bg-slate-100 text-slate-700 border-slate-300",
     B1: "bg-amber-100 text-amber-900 border-amber-300",
@@ -239,7 +241,7 @@ export function NewWorkDialog({ side, categories, members = [], queues = [], use
                             <RecipientSelect value={sendTo} onChange={setSendTo} members={members} queues={queues} excludeUserId={userId} testid="work-send-to" className="w-full" /></div>
                     </div>
                     <div><Label className="text-xs">What needs to be done?{priority !== "NORMAL" && <span className="text-slate-400 font-normal" data-testid="work-message-optional"> (optional)</span>}</Label>
-                        <Input autoFocus required={priority === "NORMAL"} data-testid="work-message" value={message} onChange={(e) => setMessage(e.target.value)} placeholder={priority !== "NORMAL" ? `Defaults to “${PRIORITY_HELP[priority]}”` : "e.g. Complete insurance form"} maxLength={2000} /></div>
+                        <Input autoFocus required={priority === "NORMAL"} data-testid="work-message" value={message} onChange={(e) => setMessage(e.target.value)} placeholder={priority !== "NORMAL" ? `Defaults to “${PRIORITY_DEFAULT_TEXT[priority]}”` : "e.g. Complete insurance form"} maxLength={2000} /></div>
                     {side === "PHYSICIAN" && (
                         <div className="flex items-center gap-2">
                             <Label className="text-xs">Priority</Label>

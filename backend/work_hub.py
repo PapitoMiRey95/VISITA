@@ -16,9 +16,9 @@ from db import audit, db, next_ref, now_iso
 COLL = "work_items"
 CATEGORIES = ["MESSAGE", "CALL_BOOK_PATIENT", "REFERRAL_FOLLOWUP", "RESULTS", "INSURANCE_FORM", "LEGAL", "CHART_REQUEST", "APPOINTMENT_CALL", "ADMIN_OTHER"]
 DOCUMENT_CATEGORIES = ("INSURANCE_FORM", "LEGAL", "CHART_REQUEST")  # eligible for "Signed → Send to Clinic"
-PRIORITIES = ("NORMAL", "B2", "B1", "ASAP")  # clinic working labels only — no clinical time definition enforced
+PRIORITIES = ("NORMAL", "B2", "B1", "ASAP")  # urgency: ASAP > B1 (~1 wk) > B2 (regular follow-up ~3–4 wks) > NORMAL  # clinic working labels only — no clinical time definition enforced
 # Deterministic display text when a physician sends a priority without a written message (never AI-generated).
-PRIORITY_DEFAULT_TEXT = {"B2": "Book patient in about 1 week.", "B1": "Book patient in about 2–3 weeks.", "ASAP": "Book patient as soon as possible."}
+PRIORITY_DEFAULT_TEXT = {"B1": "Book patient in about 1 week.", "B2": "Book patient within about 3–4 weeks.", "ASAP": "Book patient as soon as possible."}
 CATEGORY_LABELS = {
     "MESSAGE": "Message", "CALL_BOOK_PATIENT": "Call / Book Patient", "REFERRAL_FOLLOWUP": "Referral / Follow-up", "RESULTS": "Results / Imaging / BW",
     "INSURANCE_FORM": "Insurance / Form", "LEGAL": "Legal", "CHART_REQUEST": "Chart Request",

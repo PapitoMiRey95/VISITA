@@ -18,6 +18,7 @@ FEATURES = {
     "emr": "EMR / Encounter", "pharmacy": "Pharmacy portal", "patient_portal": "Patient Portal", "caregiver": "Caregiver access",
     "registration": "Patient registration", "rx": "Prescriptions (Rx)", "calendar": "Calendar & appointments",
     "results": "Results (labs / imaging)", "referrals": "Referrals", "network": "Network", "jobs": "Jobs", "market": "Market",
+    "profile_completion": "Patient profile completion (missing health-card info prompt + Rx gate)",
 }
 AUDIENCES = ("public", "physician", "staff", "pharmacy", "patient", "network")
 # API prefix -> feature. OFF fails at the backend too (403 FEATURE_OFF), not just in the UI.
@@ -36,7 +37,7 @@ PUBLIC_SITE_FIELDS = ("headline", "subtitle", "search_placeholder", "cta_create_
 
 DEFAULT_CONFIG = {
     "branding": {"app_name": "VIen", "short_name": "VIen", "operator_name": "OAKMONT Developers", "operator_title": "CEO"},
-    "features": {k: ("OFF" if k in ("network", "jobs", "market") else "ON") for k in FEATURES},
+    "features": {k: ("OFF" if k in ("network", "jobs", "market", "profile_completion") else "ON") for k in FEATURES},
     "navigation": {"hidden": {a: [] for a in AUDIENCES}},  # visibility only — never authorization
     "public_site": {"headline": "", "subtitle": "", "search_placeholder": "", "cta_create_portal": "", "cta_apply_for_care": "",
                     "coming_soon_label": "Coming soon", "footer_contact": "", "show_role_section": True},

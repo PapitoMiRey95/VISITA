@@ -9,6 +9,7 @@ from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel
 
 import identity as identity_mod
+import platform_config as platform_mod
 import work_hub as work_mod
 from db import audit, db, next_ref, now_iso
 
@@ -51,11 +52,16 @@ async def canonical_for(p: dict) -> Optional[dict]:
     return await db.patient_directory.find_one({"id": did}) if did else None
 
 
+async def feature_on() -> bool:
+    """Operator flag (Platform Control Center → features.profile_completion). OFF = no prompt, no gate."""
+    return platform_mod.feature_state((await platform_mod.published())["config"], "profile_completion") == "ON"
+
+
 async def completeness(p: dict) -> dict:
     d = await canonical_for(p)
-    missing = missing_fields(p, d)
+    missing = missing_fields(p, d) if await feature_on() else []
     name_src = d or p
-    return {"required": bool(missing), "missing": missing, "date_of_birth": (d or p).get("date_of_birth") or p.get("date_of_birth"),
+    return {"required": bool(missing), "missing": missing, "feature_on": await feature_on(), "date_of_birth": (d or p).get("date_of_birth") or p.get("date_of_birth"),
             "health_card_number_on_file": not _blank(effective(p, d).get("health_card_number")),
             "name_on_file": {"first_name": name_src.get("first_name"), "middle_name": p.get("middle_name"),
                              "last_name": name_src.get("last_name"), "second_last_name": p.get("second_last_name")}}
@@ -108,8 +114,93 @@ async def _clinic_review_item(p: dict, d: Optional[dict], review: dict):
     return doc["ref_number"]
 
 
-def build_router(get_current_user, get_patient_record, validate_hc_dates) -> APIRouter:
+BACKFILL_FILL = (("health_card_version", "health_card_version_code"), ("health_card_issue_date", "health_card_issue_date"), ("health_card_expiry_date", "health_card_expiry_date"))
+BACKFILL_IDENTITY = (("first_name", "first_name"), ("last_name", "last_name"), ("date_of_birth", "date_of_birth"), ("health_card_number", "health_card_number"))
+
+
+def _mask(v):
+    return v if _blank(v) else "*" * max(0, len(str(v)) - 4) + str(v)[-4:]
+
+
+async def backfill_registration_gaps(apply: bool = False, pins: Optional[list] = None, actor: Optional[dict] = None, include_demo: bool = False) -> dict:
+    """Canonical ← verified portal registration. Scope: issue/expiry, version-when-blank, sex only when no usable sex/sex_code.
+    Never overwrites a non-blank canonical value; identity/contact fields are reported only. DRY-RUN unless apply=True."""
+    q = {"portal_status": {"$in": ["ACTIVE", "VERIFIED"]}, "verification_status": "verified", "matched_directory_id": {"$ne": None}}
+    if not include_demo:
+        q["is_demo"] = {"$ne": True}
+    plan, review, skipped, examined = [], [], 0, 0
+    async for p in db.patients.find(q):
+        examined += 1
+        d = await db.patient_directory.find_one({"id": p["matched_directory_id"]})
+        if not d or d.get("patient_status") not in (None, "ACTIVE"):
+            skipped += 1
+            continue
+        pin = str(d.get("visita_patient_id"))
+        if pins and pin not in pins:
+            continue
+        changes, conflicts = {}, {}
+        for pk, dk in BACKFILL_FILL:
+            pv, dv = p.get(pk), d.get(dk)
+            if _blank(pv):
+                continue
+            pv = pv.strip() if isinstance(pv, str) else pv
+            if _blank(dv):
+                changes[dk] = pv
+            elif _norm(pv) != _norm(dv):
+                conflicts[dk] = {"canonical": dv, "registration": pv}
+        psex, dsex = (p.get("sex") or "").strip() or None, sex_of(d)
+        if psex and not dsex:
+            changes["sex"] = psex
+            if _blank(d.get("sex_code")):
+                changes["sex_code"] = SEX_TO_CODE.get(psex, "X")
+        elif psex and dsex and psex.lower() != dsex.lower():
+            conflicts["sex"] = {"canonical": dsex, "registration": psex}
+        for pk, dk in BACKFILL_IDENTITY:
+            pv, dv = p.get(pk), d.get(dk)
+            if not _blank(pv) and not _blank(dv) and _norm(pv) != _norm(dv):
+                conflicts[dk] = {"canonical": _mask(dv) if "card" in dk else dv, "registration": _mask(pv) if "card" in dk else pv}
+        if changes:
+            plan.append({"pin": pin, "directory_id": d["id"], "patient_id": p["id"], "set": changes})
+        if conflicts:
+            review.append({"pin": pin, "directory_id": d["id"], "conflicts": conflicts})
+    applied = 0
+    if apply:
+        for row in plan:
+            d = await db.patient_directory.find_one({"id": row["directory_id"]})
+            safe = {k: v for k, v in row["set"].items() if _blank(d.get(k))}  # re-check at write time
+            if not safe:
+                continue
+            await db.patient_directory.update_one({"id": row["directory_id"]}, {"$set": {**safe, "updated_at": now_iso()}})
+            await audit("canonical_refreshed_from_registration", "patient_directory", row["directory_id"],
+                        actor or {"id": "system", "name": "backfill_registration_gaps", "role": "system", "practice_id": d.get("practice_id")},
+                        meta={"source": "VERIFIED_PORTAL_REGISTRATION", "link_source": "historical_backfill", "patient_id": row["patient_id"],
+                              "changes": {k: {"from": None, "to": v} for k, v in safe.items()}, "conflicts": {}})
+            applied += 1
+    return {"mode": "APPLY" if apply else "DRY_RUN", "records_examined": examined, "records_skipped_no_active_directory": skipped,
+            "records_to_update": len(plan), "applied": applied,
+            "field_fill_counts": {k: sum(1 for r in plan if k in r["set"]) for k in ("health_card_issue_date", "health_card_expiry_date", "health_card_version_code", "sex", "sex_code")},
+            "review_required": len(review), "plan": plan, "review": review}
+
+
+class BackfillBody(BaseModel):
+    apply: bool = False
+    pins: Optional[list] = None
+    confirm: Optional[str] = None  # must equal "APPLY" when apply=True
+
+
+def build_router(get_current_user, get_patient_record, validate_hc_dates, require_roles) -> APIRouter:
     r = APIRouter()
+
+    @r.post("/internal/system/backfill-registration-gaps")
+    async def run_backfill(body: BackfillBody, user: dict = Depends(require_roles("admin", "developer_ops"))):
+        """Operator-only. Dry-run by default; apply requires confirm == "APPLY". Audited."""
+        if body.apply and body.confirm != "APPLY":
+            raise HTTPException(status_code=400, detail="To apply, send confirm: \"APPLY\".")
+        actor = {"id": user["id"], "name": user.get("name"), "role": user["role"], "practice_id": user.get("practice_id")}
+        res = await backfill_registration_gaps(apply=body.apply, pins=body.pins, actor=actor)
+        await audit("backfill_registration_gaps_run", "system", "patient_directory", actor,
+                    meta={"mode": res["mode"], "records_to_update": res["records_to_update"], "applied": res["applied"], "field_fill_counts": res["field_fill_counts"], "review_required": res["review_required"]})
+        return res
 
     @r.get("/portal/profile-completeness")
     async def get_completeness(user: dict = Depends(get_current_user)):

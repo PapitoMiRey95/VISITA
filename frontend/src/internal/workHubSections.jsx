@@ -8,8 +8,8 @@ import { overdueDays, PRIORITY_HELP } from "./workHubParts";
 // Priority sections for active lists (My Work / Sent). Uses the existing `priority` field only.
 export const SECTIONS = [
     { key: "ASAP", title: "ASAP — Urgent", accent: "text-red-700 border-red-300", icon: AlertTriangle },
-    { key: "B2", title: "B2 — About 1 week", accent: "text-slate-700 border-slate-300" },
-    { key: "B1", title: "B1 — About 2–3 weeks", accent: "text-amber-800 border-amber-300" },
+    { key: "B1", title: "B1 — About 1 week", accent: "text-amber-800 border-amber-300" },
+    { key: "B2", title: "B2 — Regular follow-up · 3–4 weeks", accent: "text-slate-700 border-slate-300" },
     { key: "NORMAL", title: "Routine / Normal", accent: "text-slate-600 border-slate-200" },
 ];
 

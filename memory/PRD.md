@@ -935,3 +935,9 @@ PROD FOLLOW-UPS (need explicit GO, scripts not yet written): stamp practice_id o
 - Wired into: ProfileCompletion modal, PortalAccount HC edit, PortalHealthCard (delegate), internal Patients Edit Patient Information. Portal overview now returns `date_of_birth`; completeness returns `date_of_birth`.
 - Backend `validate_hc_dates`: DOB month/day match no longer hard-enforced (card authoritative); keeps 5-yr issue window, expiry year range, and expiry > issue. profile_completion uses the same validator.
 - New common.json pickers keys: exactCta/exactHint/exactNote/derivedNote (en/es/fr).
+
+## 2026-06 — PROD DEPLOY (B1/B2 correction + profile completion flagged OFF + HC pickers)
+- Final definitions: ASAP = asap; B1 = about 1 week; B2 = regular follow-up, within about 3–4 weeks. Fallback texts updated (backend PRIORITY_DEFAULT_TEXT, frontend PRIORITY_DEFAULT_TEXT/PRIORITY_HELP); sections ASAP→B1→B2→Routine; selector Normal|B1|B2|ASAP. Existing items' stored messages untouched (message is authoritative).
+- Feature flag `profile_completion` (platform_config FEATURES, default OFF; ON only) gates both the portal prompt and the Rx 428 gate. Preview set to ON.
+- Backfill available as admin/developer_ops endpoint POST /api/internal/system/backfill-registration-gaps {apply:false|true, confirm:"APPLY"}; CLI tool wraps same function.
+- PROD SEQUENCE for user: (1) deploy ✓ → (2) dry-run endpoint, compare to audit (~40/40, 0 sex, 0 version) → (3) apply with confirm → (4) Platform Control Center → features → profile_completion ON.

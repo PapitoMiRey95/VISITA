@@ -32,10 +32,48 @@ def side_of(user: dict) -> str:
     return "PHYSICIAN" if user.get("role") == "physician" else "CLINIC"
 
 
+ROLE_LABEL = {"physician": "Physician", "admin": "Clinic Administrator", "staff": "Clinic Staff"}
+QUEUE_LABEL = {"PHYSICIAN": "Any Physician", "CLINIC": "Clinic Staff"}
+
+
+async def practice_members(practice_id: Optional[str]) -> list:
+    """Authoritative source: db.users (active clinic roles of this practice). Position comes from the
+    Network org membership role_title when present, else user.position, else the VIen role label.
+    Position is routing context only — it never grants permissions."""
+    titles = {m["user_id"]: m.get("role_title") async for m in db.org_memberships.find(
+        {"status": "ACTIVE", "$or": [{"practice_id": practice_id}, {"practice_id": None}]}, {"_id": 0, "user_id": 1, "role_title": 1})}
+    out = []
+    async for u in db.users.find({"role": {"$in": list(CLINIC_ROLES)}, "practice_id": practice_id, "active": {"$ne": False}},
+                                 {"_id": 1, "name": 1, "role": 1, "position": 1}).sort("name", 1):
+        uid = str(u["_id"])
+        out.append({"user_id": uid, "name": u.get("name"), "role": u["role"], "side": "PHYSICIAN" if u["role"] == "physician" else "CLINIC",
+                    "position": titles.get(uid) or u.get("position") or ROLE_LABEL.get(u["role"], u["role"])})
+    return out
+
+
+async def resolve_target(practice_id: Optional[str], send_to: Optional[str], to_user_id: Optional[str]) -> dict:
+    """Returns owner fields for a queue (PHYSICIAN|CLINIC) or a specific practice member."""
+    if to_user_id:
+        m = next((x for x in await practice_members(practice_id) if x["user_id"] == to_user_id), None)
+        if not m:
+            raise HTTPException(status_code=400, detail="That person is not an active member of this clinic.")
+        return {"owner_role": m["side"], "owner_user_id": m["user_id"], "owner_name": m["name"], "owner_position": m["position"]}
+    if send_to not in OWNERS:
+        raise HTTPException(status_code=400, detail="Please choose who should receive this.")
+    return {"owner_role": send_to, "owner_user_id": None, "owner_name": None, "owner_position": None}
+
+
+def owns(item: dict, user: dict) -> bool:
+    if item.get("owner_user_id"):
+        return item["owner_user_id"] == user["id"]
+    return item.get("owner_role") == side_of(user)
+
+
 class CreateBody(BaseModel):
     category: str
     message: str
-    send_to: str  # PHYSICIAN | CLINIC
+    send_to: Optional[str] = None  # queue: PHYSICIAN | CLINIC
+    to_user_id: Optional[str] = None  # specific practice member (takes precedence)
     patient_id: Optional[str] = None
     directory_id: Optional[str] = None
     patient_name: Optional[str] = None
@@ -50,6 +88,8 @@ class ActionBody(BaseModel):
     note: Optional[str] = None
     waiting_until: Optional[str] = None
     priority: Optional[str] = None
+    send_to: Optional[str] = None  # handoff/signed target queue
+    to_user_id: Optional[str] = None  # handoff/signed target member
 
 
 def _event(kind: str, user: dict, text: Optional[str] = None, **extra) -> dict:
@@ -68,14 +108,21 @@ def _valid_iso(value: Optional[str]) -> Optional[str]:
 
 
 def _actionable_query(user: dict) -> dict:
-    return {"practice_id": user.get("practice_id"), "owner_role": side_of(user), "$or": [
-        {"status": {"$in": ["NEW", "IN_PROGRESS"]}},
-        {"status": "WAITING", "$or": [{"waiting_until": None}, {"waiting_until": {"$lte": now_iso()}}]},
+    """Personally assigned to me, or in my side's shared queue (unassigned)."""
+    return {"practice_id": user.get("practice_id"), "$and": [
+        {"$or": [{"owner_user_id": user["id"]}, {"owner_user_id": None, "owner_role": side_of(user)}]},
+        {"$or": [{"status": {"$in": ["NEW", "IN_PROGRESS"]}},
+                 {"status": "WAITING", "$or": [{"waiting_until": None}, {"waiting_until": {"$lte": now_iso()}}]}]},
     ]}
 
 
 async def actionable_count(user: dict) -> int:
     return await db[COLL].count_documents(_actionable_query(user))
+
+
+async def _position_of(user: dict) -> Optional[str]:
+    m = next((x for x in await practice_members(user.get("practice_id")) if x["user_id"] == user["id"]), None)
+    return m["position"] if m else ROLE_LABEL.get(user.get("role"))
 
 
 def _rank(item: dict):
@@ -139,14 +186,14 @@ def build_router(require_roles) -> APIRouter:
     @r.get("/internal/work/meta")
     async def work_meta(user: dict = guard):
         return {"categories": [{"key": k, "label": CATEGORY_LABELS[k]} for k in CATEGORIES], "document_categories": list(DOCUMENT_CATEGORIES),
-                "priorities": list(PRIORITIES), "side": side_of(user)}
+                "priorities": list(PRIORITIES), "side": side_of(user), "user_id": user["id"],
+                "members": await practice_members(user.get("practice_id")), "queues": [{"key": k, "label": v} for k, v in QUEUE_LABEL.items()]}
 
     @r.post("/internal/work")
     async def create_work(body: CreateBody, user: dict = guard):
         if body.category not in CATEGORIES:
             raise HTTPException(status_code=400, detail="Please choose a valid type.")
-        if body.send_to not in OWNERS:
-            raise HTTPException(status_code=400, detail="Please choose who should receive this.")
+        target = await resolve_target(user.get("practice_id"), body.send_to, body.to_user_id)
         msg = (body.message or "").strip()
         if not msg or len(msg) > 2000:
             raise HTTPException(status_code=400, detail="Please describe what needs to be done.")
@@ -159,16 +206,17 @@ def build_router(require_roles) -> APIRouter:
             "patient_id": body.patient_id, "directory_id": body.directory_id, "patient_name": (body.patient_name or "").strip() or None,
             "category": body.category, "message": msg,
             "created_by": user["id"], "created_by_name": user.get("name"), "created_by_role": user.get("role"),
-            "owner_role": body.send_to, "owner_user_id": None,
+            **target,
             "status": "NEW", "priority": body.priority, "due_at": _valid_iso(body.due_at), "waiting_until": None,
             "signed": False, "appointment_id": None,
             "source_type": body.source_type, "source_id": body.source_id,
             "created_at": now_iso(), "updated_at": now_iso(), "completed_at": None, "completed_by": None,
-            "events": [_event("created", user, msg, to_role=body.send_to)],
+            "events": [_event("created", user, msg, to_role=target["owner_role"], to_user_id=target["owner_user_id"], to_name=target["owner_name"], to_position=target["owner_position"],
+                              from_position=(await _position_of(user)))],
         }
         await db[COLL].insert_one({**doc})
         await audit("work_item_created", "work_item", doc["id"], user, new_status="NEW",
-                    meta={"category": body.category, "owner_role": body.send_to, "priority": body.priority, "has_patient": bool(body.patient_id or body.directory_id)})
+                    meta={"category": body.category, "owner_role": target["owner_role"], "owner_user_id": target["owner_user_id"], "priority": body.priority, "has_patient": bool(body.patient_id or body.directory_id)})
         return doc
 
     @r.get("/internal/work/{item_id}")
@@ -183,21 +231,23 @@ def build_router(require_roles) -> APIRouter:
         note = (body.note or "").strip()
         upd = {"updated_at": now_iso()}
         owner_only = body.action in ("handoff", "signed", "in_progress", "waiting", "complete")
-        if owner_only and doc["owner_role"] != side:
+        if owner_only and not owns(doc, user):
             raise HTTPException(status_code=403, detail="Only the current owner can do that.")
-        if body.action == "handoff":
+        frm = {"from_role": doc["owner_role"], "from_user_id": user["id"], "from_name": user.get("name"), "from_position": await _position_of(user)}
+        if body.action in ("handoff", "signed"):
             if doc["status"] == "COMPLETED":
                 raise HTTPException(status_code=400, detail="This item is already completed.")
-            to = "CLINIC" if doc["owner_role"] == "PHYSICIAN" else "PHYSICIAN"
-            upd.update({"owner_role": to, "owner_user_id": None, "status": "NEW", "waiting_until": None})
-            if to == "PHYSICIAN":
+            if body.action == "signed" and side != "PHYSICIAN":
+                raise HTTPException(status_code=400, detail="Only the physician can mark a document as signed.")
+            default_queue = "CLINIC" if doc["owner_role"] == "PHYSICIAN" else "PHYSICIAN"
+            target = await resolve_target(user.get("practice_id"), body.send_to or (None if body.to_user_id else default_queue), body.to_user_id)
+            upd.update({**target, "status": "NEW", "waiting_until": None})
+            if body.action == "signed":
+                upd["signed"] = True
+            elif target["owner_role"] == "PHYSICIAN":
                 upd["signed"] = False
-            ev = _event("handoff", user, note, from_role=doc["owner_role"], to_role=to)
-        elif body.action == "signed":
-            if side != "PHYSICIAN" or doc["status"] == "COMPLETED":
-                raise HTTPException(status_code=400, detail="Only the physician can mark a document as signed on an open item.")
-            upd.update({"owner_role": "CLINIC", "owner_user_id": None, "status": "NEW", "waiting_until": None, "signed": True})
-            ev = _event("DOCUMENT_SIGNED", user, note or "Document signed.", from_role="PHYSICIAN", to_role="CLINIC")
+            to = {"to_role": target["owner_role"], "to_user_id": target["owner_user_id"], "to_name": target["owner_name"], "to_position": target["owner_position"]}
+            ev = _event("DOCUMENT_SIGNED" if body.action == "signed" else "handoff", user, note or ("Document signed." if body.action == "signed" else None), **frm, **to)
         elif body.action == "priority":
             if body.priority not in PRIORITIES:
                 raise HTTPException(status_code=400, detail="Please choose a valid priority.")
@@ -215,7 +265,7 @@ def build_router(require_roles) -> APIRouter:
             upd.update({"status": "COMPLETED", "completed_at": now_iso(), "completed_by": user.get("name"), "waiting_until": None})
             ev = _event("completed", user, note)
         elif body.action == "reopen":
-            upd.update({"status": "NEW", "completed_at": None, "completed_by": None, "owner_role": side})
+            upd.update({"status": "NEW", "completed_at": None, "completed_by": None, "owner_role": side, "owner_user_id": user["id"], "owner_name": user.get("name"), "owner_position": await _position_of(user)})
             ev = _event("reopened", user, note)
         elif body.action == "reply":
             if not note:

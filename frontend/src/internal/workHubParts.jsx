@@ -18,6 +18,26 @@ export const STATUS_TONE = {
 export const STATUS_LABEL = { NEW: "New", IN_PROGRESS: "In progress", WAITING: "Waiting", COMPLETED: "Completed" };
 export const OWNER_LABEL = { PHYSICIAN: "Doctor", CLINIC: "Clinic" };
 export const PRIORITIES = ["NORMAL", "B2", "B1", "ASAP"];
+export const QUEUE_LABEL = { PHYSICIAN: "Any Physician", CLINIC: "Clinic Staff" };
+// "With Dr. Pablo Aguayo · Physician" for a person, "With Clinic Staff" for a shared queue.
+export function ownerLabel(item) {
+    if (item.owner_user_id) return `${item.owner_name || "Member"}${item.owner_position ? ` · ${item.owner_position}` : ""}`;
+    return QUEUE_LABEL[item.owner_role] || OWNER_LABEL[item.owner_role];
+}
+// Compact recipient selector: shared queues + registered members of this practice, grouped. value = "q:CLINIC" | "u:<user_id>".
+export function RecipientSelect({ value, onChange, members = [], queues = [], excludeUserId, testid = "work-recipient", className = "" }) {
+    const phys = members.filter((m) => m.side === "PHYSICIAN" && m.user_id !== excludeUserId);
+    const team = members.filter((m) => m.side === "CLINIC" && m.user_id !== excludeUserId);
+    return (
+        <select data-testid={testid} value={value} onChange={(e) => onChange(e.target.value)} className={`h-9 rounded-sm border border-slate-300 bg-white px-2 text-sm ${className}`}>
+            <optgroup label="Shared queues">{queues.map((q) => <option key={q.key} value={`q:${q.key}`}>{q.label}</option>)}</optgroup>
+            {phys.length > 0 && <optgroup label="Physicians">{phys.map((m) => <option key={m.user_id} value={`u:${m.user_id}`}>{m.name} — {m.position}</option>)}</optgroup>}
+            {team.length > 0 && <optgroup label="Clinic team">{team.map((m) => <option key={m.user_id} value={`u:${m.user_id}`}>{m.name} — {m.position}</option>)}</optgroup>}
+        </select>
+    );
+}
+export const targetBody = (v) => (v.startsWith("u:") ? { to_user_id: v.slice(2), send_to: null } : { send_to: v.slice(2), to_user_id: null });
+export const targetLabel = (v, members) => (v.startsWith("u:") ? (members.find((m) => m.user_id === v.slice(2))?.name || "member") : QUEUE_LABEL[v.slice(2)]);
 export const PRIORITY_LABEL = { NORMAL: "Normal", B2: "B2", B1: "B1", ASAP: "ASAP" };
 const PRIORITY_TONE = {
     B2: "bg-slate-100 text-slate-700 border-slate-300",
@@ -138,10 +158,10 @@ function dueFromPreset(p, custom) {
 }
 
 // Compact composer: Patient (optional) → Type → Send to → What needs doing → Due → Send.
-export function NewWorkDialog({ side, categories, onClose, onDone }) {
+export function NewWorkDialog({ side, categories, members = [], queues = [], userId, onClose, onDone }) {
     const [patient, setPatient] = useState(null);
     const [category, setCategory] = useState("MESSAGE");
-    const [sendTo, setSendTo] = useState(side === "PHYSICIAN" ? "CLINIC" : "PHYSICIAN");
+    const [sendTo, setSendTo] = useState(side === "PHYSICIAN" ? "q:CLINIC" : (members.find((m) => m.side === "PHYSICIAN") ? `u:${members.find((m) => m.side === "PHYSICIAN").user_id}` : "q:PHYSICIAN"));
     const [message, setMessage] = useState("");
     const [due, setDue] = useState("");
     const [custom, setCustom] = useState("");
@@ -151,12 +171,12 @@ export function NewWorkDialog({ side, categories, onClose, onDone }) {
         e.preventDefault(); setBusy(true);
         try {
             await api.post("/internal/work", {
-                category, message, send_to: sendTo, priority, due_at: dueFromPreset(due, custom),
+                category, message, ...targetBody(sendTo), priority, due_at: dueFromPreset(due, custom),
                 patient_id: patient?.patient_id || (patient?.source === "portal" ? patient?.id : null) || null,
                 directory_id: patient?.directory_id || (patient?.source === "directory" ? patient?.id : null) || null,
                 patient_name: patient ? formatPatientName(patient) : null,
             });
-            toast.success(`Sent to ${OWNER_LABEL[sendTo]}.`); onDone(); onClose();
+            toast.success(`Sent to ${targetLabel(sendTo, members)}.`); onDone(); onClose();
         } catch (err) { toast.error(formatErr(err)); } finally { setBusy(false); }
     };
     return (
@@ -171,12 +191,7 @@ export function NewWorkDialog({ side, categories, onClose, onDone }) {
                                 {categories.map((c) => <option key={c.key} value={c.key}>{c.label}</option>)}
                             </select></div>
                         <div><Label className="text-xs">Send to</Label>
-                            <div className="flex rounded-sm border border-slate-300 overflow-hidden h-9" data-testid="work-send-to">
-                                {["PHYSICIAN", "CLINIC"].map((o) => (
-                                    <button key={o} type="button" data-testid={`work-send-to-${o.toLowerCase()}`} onClick={() => setSendTo(o)}
-                                        className={`flex-1 text-sm ${sendTo === o ? "bg-visita-green text-white font-semibold" : "bg-white text-slate-600"}`}>{OWNER_LABEL[o]}</button>
-                                ))}
-                            </div></div>
+                            <RecipientSelect value={sendTo} onChange={setSendTo} members={members} queues={queues} excludeUserId={userId} testid="work-send-to" className="w-full" /></div>
                     </div>
                     <div><Label className="text-xs">What needs to be done?</Label>
                         <Input autoFocus required data-testid="work-message" value={message} onChange={(e) => setMessage(e.target.value)} placeholder="e.g. Complete insurance form" maxLength={2000} /></div>
@@ -192,7 +207,7 @@ export function NewWorkDialog({ side, categories, onClose, onDone }) {
                         ))}
                         {due === "custom" && <Input type="date" data-testid="work-due-custom" value={custom} onChange={(e) => setCustom(e.target.value)} className="h-7 w-40 text-xs" />}
                     </div>
-                    <Button type="submit" disabled={busy || !message.trim()} data-testid="work-submit" className="w-full bg-visita-green hover:bg-visita-greenDark text-white">Send to {OWNER_LABEL[sendTo]}</Button>
+                    <Button type="submit" disabled={busy || !message.trim()} data-testid="work-submit" className="w-full bg-visita-green hover:bg-visita-greenDark text-white">Send to {targetLabel(sendTo, members)}</Button>
                 </form>
             </DialogContent>
         </Dialog>
@@ -202,13 +217,14 @@ export function NewWorkDialog({ side, categories, onClose, onDone }) {
 function EventRow({ ev }) {
     const icon = { created: MessageSquare, reply: MessageSquare, handoff: ArrowRightLeft, waiting: Clock, completed: Check, status: Play, reopened: RotateCcw, PRIORITY_CHANGED: Flag, DOCUMENT_SIGNED: FileCheck2 }[ev.type] || MessageSquare;
     const Icon = icon;
+    const who = (name, pos, role) => (name ? `${name}${pos ? ` (${pos})` : ""}` : (QUEUE_LABEL[role] || OWNER_LABEL[role] || role));
     const head = {
-        created: `sent to ${OWNER_LABEL[ev.to_role] || ev.to_role}`,
-        handoff: `${OWNER_LABEL[ev.from_role] || ev.from_role} → ${OWNER_LABEL[ev.to_role] || ev.to_role}`,
+        created: `sent to ${who(ev.to_name, ev.to_position, ev.to_role)}`,
+        handoff: `${who(ev.from_name, ev.from_position, ev.from_role)} → ${who(ev.to_name, ev.to_position, ev.to_role)}`,
         waiting: ev.waiting_until ? `waiting until ${formatDate(ev.waiting_until.slice(0, 10))}` : "waiting",
         completed: "completed", status: STATUS_LABEL[ev.status] || ev.status, reply: "note", reopened: "reopened",
         PRIORITY_CHANGED: `changed priority ${PRIORITY_LABEL[ev.from_priority] || ev.from_priority} → ${PRIORITY_LABEL[ev.to_priority] || ev.to_priority}`,
-        DOCUMENT_SIGNED: "Doctor → Clinic · document signed",
+        DOCUMENT_SIGNED: `document signed → ${who(ev.to_name, ev.to_position, ev.to_role || "CLINIC")}`,
     }[ev.type] || ev.type;
     return (
         <div data-testid="work-event" className="flex gap-2 text-xs">
@@ -222,21 +238,24 @@ function EventRow({ ev }) {
 }
 
 // Right-hand detail: patient, category, owner, status, request, history, valid actions.
-export function WorkDetail({ item, side, categories, documentCategories = [], onChanged, onBack }) {
+export function WorkDetail({ item, side, userId, members = [], queues = [], categories, documentCategories = [], onChanged, onBack }) {
     const [note, setNote] = useState("");
     const [waitUntil, setWaitUntil] = useState("");
     const [busy, setBusy] = useState(false);
-    const mine = item.owner_role === side && item.status !== "COMPLETED";
+    const defaultTarget = item.owner_role === "PHYSICIAN" ? "q:CLINIC" : "q:PHYSICIAN";
+    const [target, setTarget] = useState(defaultTarget);
+    const owned = item.owner_user_id ? item.owner_user_id === userId : item.owner_role === side;
+    const mine = owned && item.status !== "COMPLETED";
     const cat = categories.find((c) => c.key === item.category)?.label || item.category;
     const act = async (action, extra = {}) => {
         setBusy(true);
         try {
             await api.post(`/internal/work/${item.id}/action`, { action, note: note || null, ...extra });
             setNote(""); setWaitUntil(""); onChanged();
-            toast.success({ handoff: `Sent to ${OWNER_LABEL[item.owner_role === "PHYSICIAN" ? "CLINIC" : "PHYSICIAN"]}.`, complete: "Completed.", waiting: "Set to waiting.", in_progress: "In progress.", reply: "Note added.", reopen: "Reopened.", signed: "Signed — sent to Clinic.", priority: "Priority updated." }[action]);
+            toast.success({ handoff: `Sent to ${targetLabel(target, members)}.`, complete: "Completed.", waiting: "Set to waiting.", in_progress: "In progress.", reply: "Note added.", reopen: "Reopened.", signed: `Signed — sent to ${targetLabel(target, members)}.`, priority: "Priority updated." }[action]);
         } catch (e) { toast.error(formatErr(e)); } finally { setBusy(false); }
     };
-    const other = OWNER_LABEL[item.owner_role === "PHYSICIAN" ? "CLINIC" : "PHYSICIAN"];
+    const other = targetLabel(target, members);
     return (
         <div data-testid="work-detail" className="bg-white border border-slate-300 rounded-sm p-3 space-y-3 text-sm">
             <div className="flex items-start justify-between gap-2">
@@ -248,7 +267,7 @@ export function WorkDetail({ item, side, categories, documentCategories = [], on
                 <div className="flex flex-col items-end gap-1 shrink-0">
                     <span className="flex items-center gap-1">
                         <PriorityBadge priority={item.priority} testid="work-detail-priority" />
-                        <Chip tone="bg-visita-greenLight text-visita-greenDark border-visita-green/40" testid="work-detail-owner">With {OWNER_LABEL[item.owner_role]}</Chip>
+                        <Chip tone="bg-visita-greenLight text-visita-greenDark border-visita-green/40" testid="work-detail-owner">With {ownerLabel(item)}</Chip>
                     </span>
                     <span className="flex items-center gap-1">
                         <OverdueBadge item={item} testid="work-detail-overdue" />
@@ -274,11 +293,12 @@ export function WorkDetail({ item, side, categories, documentCategories = [], on
             {item.status !== "COMPLETED" && (
                 <div className="border-t border-slate-200 pt-2 space-y-2">
                     <Input data-testid="work-note" value={note} onChange={(e) => setNote(e.target.value)} placeholder={mine ? "Reply / note (optional)" : "Add a note"} maxLength={2000} />
+                    {mine && <div className="flex items-center gap-2 text-xs text-slate-500"><span>Send to</span><RecipientSelect value={target} onChange={setTarget} members={members} queues={queues} excludeUserId={userId} testid="work-detail-recipient" className="h-8 flex-1 min-w-0" /></div>}
                     <div className="flex flex-wrap gap-1.5">
                         {mine && side === "PHYSICIAN" && documentCategories.includes(item.category) && (
-                            <Button size="sm" disabled={busy} data-testid="work-action-signed" onClick={() => act("signed")} className="h-8 bg-emerald-600 hover:bg-emerald-700 text-white"><FileCheck2 className="w-3.5 h-3.5 mr-1" /> Signed → Send to Clinic</Button>
+                            <Button size="sm" disabled={busy} data-testid="work-action-signed" onClick={() => act("signed", targetBody(target))} className="h-8 bg-emerald-600 hover:bg-emerald-700 text-white"><FileCheck2 className="w-3.5 h-3.5 mr-1" /> Signed → Send to {other}</Button>
                         )}
-                        {mine && <Button size="sm" disabled={busy} data-testid="work-action-handoff" onClick={() => act("handoff")} className="h-8 bg-visita-green hover:bg-visita-greenDark text-white"><ArrowRightLeft className="w-3.5 h-3.5 mr-1" /> Send to {other}</Button>}
+                        {mine && <Button size="sm" disabled={busy} data-testid="work-action-handoff" onClick={() => act("handoff", targetBody(target))} className="h-8 bg-visita-green hover:bg-visita-greenDark text-white"><ArrowRightLeft className="w-3.5 h-3.5 mr-1" /> Send to {other}</Button>}
                         {mine && item.status !== "IN_PROGRESS" && <Button size="sm" variant="outline" disabled={busy} data-testid="work-action-in-progress" onClick={() => act("in_progress")} className="h-8"><Play className="w-3.5 h-3.5 mr-1" /> In progress</Button>}
                         {mine && (
                             <span className="inline-flex items-center gap-1">

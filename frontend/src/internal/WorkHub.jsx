@@ -4,7 +4,7 @@ import { Plus, Inbox } from "lucide-react";
 import { api } from "../lib/api";
 import { useInvalidate } from "./hooks";
 import { Button } from "../components/ui/button";
-import { Chip, STATUS_TONE, STATUS_LABEL, OWNER_LABEL, whenLabel, NewWorkDialog, WorkDetail, PriorityBadge, OverdueBadge, SignedBadge } from "./workHubParts";
+import { Chip, STATUS_TONE, STATUS_LABEL, ownerLabel, whenLabel, NewWorkDialog, WorkDetail, PriorityBadge, OverdueBadge, SignedBadge } from "./workHubParts";
 
 const VIEWS = [["my", "My Work"], ["sent", "Sent"], ["waiting", "Waiting"], ["completed", "Completed"]];
 
@@ -20,7 +20,7 @@ function WorkCard({ item, cat, selected, onClick }) {
             </div>
             <div className="text-sm font-medium text-slate-900 truncate">{item.message}</div>
             <div className="mt-1 flex items-center justify-between gap-2 text-[11px] text-slate-500">
-                <span className="flex items-center gap-1"><Chip tone="bg-visita-greenLight text-visita-greenDark border-visita-green/40">With {OWNER_LABEL[item.owner_role]}</Chip><Chip tone={STATUS_TONE[item.status]}>{STATUS_LABEL[item.status]}</Chip></span>
+                <span className="flex items-center gap-1"><Chip tone="bg-visita-greenLight text-visita-greenDark border-visita-green/40">With {ownerLabel(item)}</Chip><Chip tone={STATUS_TONE[item.status]}>{STATUS_LABEL[item.status]}</Chip></span>
                 <span className="truncate">from {item.created_by_name} · {whenLabel(item.updated_at)}</span>
             </div>
         </button>
@@ -65,11 +65,11 @@ export default function WorkHub() {
                     {items.map((it) => <WorkCard key={it.id} item={it} cat={catLabel(it.category)} selected={it.id === selectedId} onClick={() => setSelectedId(it.id)} />)}
                 </div>
                 <div className={selected ? "" : "hidden md:block"}>
-                    {selected ? <WorkDetail item={selected} side={side} categories={categories} documentCategories={meta.data?.document_categories || []} onChanged={refresh} onBack={() => setSelectedId(null)} />
+                    {selected ? <WorkDetail item={selected} side={side} userId={meta.data?.user_id} members={meta.data?.members || []} queues={meta.data?.queues || []} categories={categories} documentCategories={meta.data?.document_categories || []} onChanged={refresh} onBack={() => setSelectedId(null)} />
                         : <div className="hidden md:flex h-40 items-center justify-center rounded-sm border border-dashed border-slate-300 text-sm text-slate-400">Select an item to see its history and actions.</div>}
                 </div>
             </div>
-            {creating && side && <NewWorkDialog side={side} categories={categories} onClose={() => setCreating(false)} onDone={refresh} />}
+            {creating && side && <NewWorkDialog side={side} categories={categories} members={meta.data?.members || []} queues={meta.data?.queues || []} userId={meta.data?.user_id} onClose={() => setCreating(false)} onDone={refresh} />}
         </div>
     );
 }

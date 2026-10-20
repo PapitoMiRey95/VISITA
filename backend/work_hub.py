@@ -27,6 +27,10 @@ CATEGORY_LABELS = {
 OWNERS = ("PHYSICIAN", "CLINIC")
 STATUSES = ("NEW", "IN_PROGRESS", "WAITING", "COMPLETED")
 OUTCOMES = ("COMPLETED", "ALREADY_DONE", "NO_LONGER_NEEDED", "DUPLICATE")  # why an item left active work; status stays COMPLETED
+# Staff → Physician context (workflow metadata only, never authorization; separate from physician booking priority).
+ATTENTION_LEVELS = ("ROUTINE", "IMPORTANT", "NEEDS_ATTENTION")  # "how soon should the physician review this?"
+REQUESTED_ACTIONS = ("REVIEW_DECISION", "PATIENT_INSTRUCTIONS", "SIGN_APPROVE", "PREPARE_DOCUMENT", "FYI", "OTHER")
+REFERRAL_SUBTYPES = ("DECLINED", "MORE_INFO_REQUESTED", "PROVIDER_UPDATE", "ACCEPTED_IN_PROCESS", "APPOINTMENT_BOOKED", "FOLLOW_UP_NEEDED")
 SOURCE_TYPES = ("PRESCRIPTION_REQUEST", "REFERRAL", "PATIENT_MESSAGE", "APPOINTMENT_REQUEST")
 CLINIC_ROLES = ("staff", "physician", "admin")
 
@@ -84,6 +88,9 @@ class CreateBody(BaseModel):
     priority: str = "NORMAL"
     source_type: Optional[str] = None
     source_id: Optional[str] = None
+    attention_level: Optional[str] = None  # physician-targeted only; None = never assigned (UI falls back to Routine)
+    requested_action: Optional[str] = None  # physician-targeted only
+    referral_subtype: Optional[str] = None  # REFERRAL_FOLLOWUP only
 
 
 class ActionBody(BaseModel):
@@ -187,6 +194,8 @@ def build_router(require_roles) -> APIRouter:
         items = items[:limit]
         if view == "my":
             items.sort(key=_rank)
+        for it in items:  # derived, never stored: clinic sent it, physician side currently owns it, still active
+            it["awaiting_physician"] = it.get("created_by_role") != "physician" and it.get("owner_role") == "PHYSICIAN" and it.get("status") != "COMPLETED"
         return {"view": view, "side": side, "items": items, "has_more": has_more, "offset": offset, "limit": limit}
 
     @r.get("/internal/work/count")
@@ -195,7 +204,7 @@ def build_router(require_roles) -> APIRouter:
 
     @r.get("/internal/work/meta")
     async def work_meta(user: dict = guard):
-        return {"categories": [{"key": k, "label": CATEGORY_LABELS[k]} for k in CATEGORIES], "document_categories": list(DOCUMENT_CATEGORIES),
+        return {"attention_levels": list(ATTENTION_LEVELS), "requested_actions": list(REQUESTED_ACTIONS), "referral_subtypes": list(REFERRAL_SUBTYPES), "categories": [{"key": k, "label": CATEGORY_LABELS[k]} for k in CATEGORIES], "document_categories": list(DOCUMENT_CATEGORIES),
                 "priorities": list(PRIORITIES), "side": side_of(user), "user_id": user["id"],
                 "members": await practice_members(user.get("practice_id")), "queues": [{"key": k, "label": v} for k, v in QUEUE_LABEL.items()]}
 
@@ -218,6 +227,21 @@ def build_router(require_roles) -> APIRouter:
             msg, message_auto = PRIORITY_DEFAULT_TEXT[body.priority], True
         if body.source_type and body.source_type not in SOURCE_TYPES:
             raise HTTPException(status_code=400, detail="Unknown source type.")
+        attention, requested = None, None
+        if target["owner_role"] == "PHYSICIAN":
+            if body.attention_level is not None:
+                if body.attention_level not in ATTENTION_LEVELS:
+                    raise HTTPException(status_code=400, detail="Please choose a valid attention level.")
+                attention = body.attention_level
+            if body.requested_action is not None:
+                if body.requested_action not in REQUESTED_ACTIONS:
+                    raise HTTPException(status_code=400, detail="Please choose what you need from the doctor.")
+                requested = body.requested_action
+        referral_subtype = None
+        if body.referral_subtype:
+            if body.category != "REFERRAL_FOLLOWUP" or body.referral_subtype not in REFERRAL_SUBTYPES:
+                raise HTTPException(status_code=400, detail="Referral outcome applies to Referral items only.")
+            referral_subtype = body.referral_subtype
         doc = {
             "id": str(uuid.uuid4()), "ref_number": await next_ref("WRK"), "practice_id": user.get("practice_id"),
             "patient_id": body.patient_id, "directory_id": body.directory_id, "patient_name": (body.patient_name or "").strip() or None,
@@ -225,6 +249,7 @@ def build_router(require_roles) -> APIRouter:
             "created_by": user["id"], "created_by_name": user.get("name"), "created_by_role": user.get("role"),
             **target,
             "status": "NEW", "priority": body.priority, "due_at": _valid_iso(body.due_at), "waiting_until": None,
+            "attention_level": attention, "requested_action": requested, "referral_subtype": referral_subtype,
             "signed": False, "appointment_id": None,
             "source_type": body.source_type, "source_id": body.source_id,
             "created_at": now_iso(), "updated_at": now_iso(), "completed_at": None, "completed_by": None,

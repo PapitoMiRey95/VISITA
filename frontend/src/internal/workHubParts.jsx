@@ -29,6 +29,31 @@ export function CategoryTag({ category, testid = "work-category-tag", className 
     const Icon = m.icon;
     return <span data-testid={testid} data-category={category} className={`inline-flex items-center gap-1.5 text-[11px] text-slate-600 uppercase tracking-wide font-semibold ${className}`}><Icon className={`w-4 h-4 shrink-0 ${m.color}`} strokeWidth={2.25} aria-hidden="true" />{m.label}</span>;
 }
+// Staff → Physician context (workflow metadata, not authorization; separate from physician booking priority).
+export const ATTENTION_LABEL = { ROUTINE: "Routine", IMPORTANT: "Important", NEEDS_ATTENTION: "Needs attention soon" };
+export const ATTENTION_TONE = { ROUTINE: "bg-emerald-50 text-emerald-700 border-emerald-300", IMPORTANT: "bg-amber-50 text-amber-800 border-amber-400", NEEDS_ATTENTION: "bg-red-50 text-red-700 border-red-400" };
+export const ATTENTION_DOT = { ROUTINE: "bg-emerald-500", IMPORTANT: "bg-amber-400", NEEDS_ATTENTION: "bg-red-500" };
+export const REQUESTED_ACTION_LABEL = { REVIEW_DECISION: "Review / Decision", PATIENT_INSTRUCTIONS: "Instructions for patient", SIGN_APPROVE: "Sign / Approve", PREPARE_DOCUMENT: "Complete / Prepare document", FYI: "FYI only", OTHER: "Other" };
+export const REFERRAL_SUBTYPE_LABEL = { DECLINED: "Declined", MORE_INFO_REQUESTED: "More info requested", PROVIDER_UPDATE: "Provider moved / contact update", ACCEPTED_IN_PROCESS: "Accepted / In process", APPOINTMENT_BOOKED: "Appointment booked", FOLLOW_UP_NEEDED: "Follow-up needed" };
+export function AttentionBadge({ level, testid }) {
+    if (!level) return null;
+    return <Chip tone={ATTENTION_TONE[level]} testid={testid}><span className={`w-1.5 h-1.5 rounded-full mr-1 ${ATTENTION_DOT[level]}`} />{ATTENTION_LABEL[level]}</Chip>;
+}
+export function RequestedActionBadge({ action, testid }) {
+    if (!action) return null;
+    return <Chip tone="bg-sky-50 text-sky-800 border-sky-300" testid={testid}>{REQUESTED_ACTION_LABEL[action] || action}</Chip>;
+}
+export function ReferralSubtypeBadge({ item, testid }) {
+    if (item.category !== "REFERRAL_FOLLOWUP" || !item.referral_subtype) return null;
+    return <span data-testid={testid} className="text-[10px] font-bold uppercase tracking-wide text-violet-700 border border-violet-300 rounded-sm px-1">{REFERRAL_SUBTYPE_LABEL[item.referral_subtype] || item.referral_subtype}</span>;
+}
+// Derived (never stored) label for the sender's Sent view: are we still waiting for the doctor?
+export function AwaitingBadge({ item, testid }) {
+    if (item.status === "COMPLETED" || item.created_by_role === "physician") return null;
+    if (item.awaiting_physician) return <Chip tone="bg-indigo-50 text-indigo-800 border-indigo-300" testid={testid}>Awaiting {item.owner_name || "physician"}</Chip>;
+    if (item.owner_role === "CLINIC" && (item.events || []).some((e) => e.type === "handoff" && e.to_role === "CLINIC")) return <Chip tone="bg-emerald-50 text-emerald-800 border-emerald-300" testid={testid}>Returned to Clinic</Chip>;
+    return null;
+}
 export const OUTCOME_LABEL = { COMPLETED: "Completed", ALREADY_DONE: "Already done", NO_LONGER_NEEDED: "No longer needed", DUPLICATE: "Duplicate" };
 export const CLOSE_OUTCOMES = ["ALREADY_DONE", "NO_LONGER_NEEDED", "DUPLICATE"];
 // Outcome badge only when the close was not an ordinary Complete.
@@ -213,12 +238,19 @@ export function NewWorkDialog({ side, categories, members = [], queues = [], use
     const [due, setDue] = useState("");
     const [custom, setCustom] = useState("");
     const [priority, setPriority] = useState("NORMAL");
+    const [attention, setAttention] = useState("ROUTINE");
+    const [requested, setRequested] = useState("REVIEW_DECISION");
+    const [refSub, setRefSub] = useState("");
     const [busy, setBusy] = useState(false);
+    const toPhysician = sendTo === "q:PHYSICIAN" || members.find((m) => `u:${m.user_id}` === sendTo)?.side === "PHYSICIAN";
+    const showAttention = toPhysician && side !== "PHYSICIAN";
     const submit = async (e) => {
         e.preventDefault(); setBusy(true);
         try {
             await api.post("/internal/work", {
                 category, message, ...targetBody(sendTo), priority, due_at: dueFromPreset(due, custom),
+                ...(showAttention ? { attention_level: attention, requested_action: requested } : {}),
+                ...(category === "REFERRAL_FOLLOWUP" && refSub ? { referral_subtype: refSub } : {}),
                 patient_id: patient?.patient_id || (patient?.source === "portal" ? patient?.id : null) || null,
                 directory_id: patient?.directory_id || (patient?.source === "directory" ? patient?.id : null) || null,
                 patient_name: patient ? formatPatientName(patient) : null,
@@ -240,6 +272,30 @@ export function NewWorkDialog({ side, categories, members = [], queues = [], use
                         <div><Label className="text-xs">Send to</Label>
                             <RecipientSelect value={sendTo} onChange={setSendTo} members={members} queues={queues} excludeUserId={userId} testid="work-send-to" className="w-full" /></div>
                     </div>
+                    {category === "REFERRAL_FOLLOWUP" && (
+                        <div><Label className="text-xs">Referral outcome <span className="text-slate-400 font-normal">(optional)</span></Label>
+                            <select data-testid="work-referral-subtype" value={refSub} onChange={(e) => setRefSub(e.target.value)} className="w-full h-9 rounded-sm border border-slate-300 bg-white px-2 text-sm">
+                                <option value="">— Not specified —</option>
+                                {Object.entries(REFERRAL_SUBTYPE_LABEL).map(([k, l]) => <option key={k} value={k}>{l}</option>)}
+                            </select></div>
+                    )}
+                    {showAttention && (
+                        <>
+                            <div className="flex flex-wrap items-center gap-1.5" data-testid="work-attention">
+                                <Label className="text-xs mr-1">Attention</Label>
+                                {Object.keys(ATTENTION_LABEL).map((k) => (
+                                    <button key={k} type="button" data-testid={`work-attention-${k.toLowerCase()}`} onClick={() => setAttention(k)}
+                                        className={`inline-flex items-center rounded-sm border px-2 py-0.5 text-xs ${attention === k ? `${ATTENTION_TONE[k]} font-semibold` : "border-slate-300 text-slate-600"}`}>
+                                        <span className={`w-1.5 h-1.5 rounded-full mr-1 ${ATTENTION_DOT[k]}`} />{ATTENTION_LABEL[k]}
+                                    </button>
+                                ))}
+                            </div>
+                            <div><Label className="text-xs">What do you need from the doctor?</Label>
+                                <select data-testid="work-requested-action" value={requested} onChange={(e) => setRequested(e.target.value)} className="w-full h-9 rounded-sm border border-slate-300 bg-white px-2 text-sm">
+                                    {Object.entries(REQUESTED_ACTION_LABEL).map(([k, l]) => <option key={k} value={k}>{l}</option>)}
+                                </select></div>
+                        </>
+                    )}
                     <div><Label className="text-xs">What needs to be done?{priority !== "NORMAL" && <span className="text-slate-400 font-normal" data-testid="work-message-optional"> (optional)</span>}</Label>
                         <Input autoFocus required={priority === "NORMAL"} data-testid="work-message" value={message} onChange={(e) => setMessage(e.target.value)} placeholder={priority !== "NORMAL" ? `Defaults to “${PRIORITY_DEFAULT_TEXT[priority]}”` : "e.g. Complete insurance form"} maxLength={2000} /></div>
                     {side === "PHYSICIAN" && (
@@ -316,12 +372,20 @@ export function WorkDetail({ item, side, userId, members = [], queues = [], cate
             <div className="flex flex-wrap items-start justify-between gap-2">
                 <div className="min-w-0 flex-1 basis-40">
                     {onBack && <button data-testid="work-detail-back" onClick={onBack} className="text-xs text-slate-400 hover:text-visita-greenDark mb-1 md:hidden">← Back to list</button>}
-                    <div className="text-xs text-slate-500 flex items-center gap-1.5 whitespace-nowrap">{item.ref_number} · <CategoryTag category={item.category} testid="work-detail-category" className="whitespace-nowrap" /></div>
+                    <div className="text-xs text-slate-500 flex items-center gap-1.5 whitespace-nowrap">{item.ref_number} · <CategoryTag category={item.category} testid="work-detail-category" className="whitespace-nowrap" /><ReferralSubtypeBadge item={item} testid="work-detail-referral-subtype" /></div>
                     <div className="font-bold text-slate-900 truncate" data-testid="work-detail-patient">{item.patient_name || "No patient"}</div>
+                    {(item.attention_level || item.requested_action) && (
+                        <div className="mt-1 flex flex-wrap items-center gap-1 text-xs" data-testid="work-detail-attention-row">
+                            <AttentionBadge level={item.attention_level} testid="work-detail-attention" />
+                            <RequestedActionBadge action={item.requested_action} testid="work-detail-requested-action" />
+                        </div>
+                    )}
+                    <div className="text-[11px] text-slate-500 mt-0.5" data-testid="work-detail-sender">From {item.created_by_name}{item.created_by_role && item.created_by_role !== "physician" ? " (Clinic)" : ""}</div>
                 </div>
                 <div className="flex flex-wrap items-center justify-end gap-1 shrink-0 max-w-full">
                     <span className="flex items-center gap-1">
                         <PriorityBadge priority={item.priority} testid="work-detail-priority" />
+                        {side !== "PHYSICIAN" && <AwaitingBadge item={item} testid="work-detail-awaiting" />}
                         <Chip tone="bg-visita-greenLight text-visita-greenDark border-visita-green/40" testid="work-detail-owner">With {ownerLabel(item)}</Chip>
                     </span>
                     <span className="flex items-center gap-1">

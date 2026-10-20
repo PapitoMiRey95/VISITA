@@ -941,3 +941,10 @@ PROD FOLLOW-UPS (need explicit GO, scripts not yet written): stamp practice_id o
 - Feature flag `profile_completion` (platform_config FEATURES, default OFF; ON only) gates both the portal prompt and the Rx 428 gate. Preview set to ON.
 - Backfill available as admin/developer_ops endpoint POST /api/internal/system/backfill-registration-gaps {apply:false|true, confirm:"APPLY"}; CLI tool wraps same function.
 - PROD SEQUENCE for user: (1) deploy ✓ → (2) dry-run endpoint, compare to audit (~40/40, 0 sex, 0 version) → (3) apply with confirm → (4) Platform Control Center → features → profile_completion ON.
+
+## 2026-06 — Work Hub: Staff → Physician Attention + Requested Action (PREVIEW, awaiting GO)
+- `work_hub.py`: additive fields `attention_level` (ROUTINE|IMPORTANT|NEEDS_ATTENTION), `requested_action` (REVIEW_DECISION|PATIENT_INSTRUCTIONS|SIGN_APPROVE|PREPARE_DOCUMENT|FYI|OTHER) accepted only when target owner_role==PHYSICIAN (else stored None); `referral_subtype` (REFERRAL_FOLLOWUP only). Derived `awaiting_physician` added to list items (not stored). Meta exposes option lists. Priority rules untouched.
+- `workHubParts.jsx`: Attention/Requested-action/ReferralSubtype/Awaiting badges; New dialog shows Attention + "What do you need from the doctor?" only when recipient is a physician and sender is non-physician; Referral outcome select; detail shows attention row + "From …".
+- `workHubSections.jsx`: ATTENTION_SECTIONS + groupByAttention (null → Routine display fallback only); summary "From clinic" counts.
+- `WorkHub.jsx`: physician My Work grouped by Attention; Sent keeps priority grouping; Awaiting/Returned badges only on non-physician side.
+- Scenarios A–I verified via API + screenshots (desktop/mobile). Test items cleaned.

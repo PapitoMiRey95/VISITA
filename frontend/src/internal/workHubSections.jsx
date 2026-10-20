@@ -24,6 +24,16 @@ export function sectionSort(a, b) {
     if (!!a.due_at !== !!b.due_at) return a.due_at ? -1 : 1;
     return (a.created_at || "") < (b.created_at || "") ? -1 : 1;
 }
+// Physician My Work: incoming clinic requests grouped by Attention. No attention_level (physician-created / Signed) → Routine as a display fallback only.
+export const ATTENTION_SECTIONS = [
+    { key: "NEEDS_ATTENTION", title: "Needs attention soon", accent: "text-red-700 border-red-300", icon: AlertTriangle },
+    { key: "IMPORTANT", title: "Important", accent: "text-amber-800 border-amber-300" },
+    { key: "ROUTINE", title: "Routine", accent: "text-emerald-700 border-emerald-200" },
+];
+export function groupByAttention(items) {
+    const active = items.filter((i) => i.status !== "COMPLETED");
+    return ATTENTION_SECTIONS.map((s) => ({ ...s, items: active.filter((i) => (i.attention_level || "ROUTINE") === s.key).sort(sectionSort) })).filter((s) => s.items.length > 0);
+}
 export function groupByPriority(items) {
     const active = items.filter((i) => i.status !== "COMPLETED");
     return SECTIONS.map((s) => ({ ...s, items: active.filter((i) => (i.priority || "NORMAL") === s.key).sort(sectionSort) })).filter((s) => s.items.length > 0);
@@ -56,6 +66,8 @@ export function PhysicianSummary() {
     const asap = items.filter((i) => i.priority === "ASAP").length;
     const overdue = items.filter((i) => overdueDays(i) !== null).length;
     const dueToday = items.filter((i) => isToday(i.due_at) && overdueDays(i) === null).length;
+    const incoming = (my.data?.items || []).filter((i) => i.status !== "COMPLETED" && i.attention_level); // active incoming clinic work only
+    const needs = incoming.filter((i) => i.attention_level === "NEEDS_ATTENTION").length, important = incoming.filter((i) => i.attention_level === "IMPORTANT").length;
     const today = new Date().toISOString().slice(0, 10);
     const tomorrow = new Date(Date.now() + 86400000).toISOString().slice(0, 10);
     const dayLabel = (d) => (d === today ? "Today" : d === tomorrow ? "Tomorrow" : formatDate(d));
@@ -69,6 +81,13 @@ export function PhysicianSummary() {
                 <Stat n={overdue} label="Overdue" tone={overdue ? "border-red-300 bg-red-50 text-red-700" : "border-slate-200 text-slate-500"} testid="work-summary-overdue" />
                 <Stat n={dueToday} label="Due today" tone={dueToday ? "border-amber-300 bg-amber-50 text-amber-800" : "border-slate-200 text-slate-500"} testid="work-summary-due-today" />
             </div>
+            {(needs > 0 || important > 0) && (
+                <div className="flex items-center gap-3 text-xs" data-testid="work-summary-incoming">
+                    <span className="text-slate-500 font-semibold uppercase tracking-wide text-[10px]">From clinic</span>
+                    {needs > 0 && <span className="inline-flex items-center gap-1 text-red-700 font-semibold" data-testid="work-summary-needs-attention"><span className="w-1.5 h-1.5 rounded-full bg-red-500" />Needs attention soon: {needs}</span>}
+                    {important > 0 && <span className="inline-flex items-center gap-1 text-amber-800 font-semibold" data-testid="work-summary-important"><span className="w-1.5 h-1.5 rounded-full bg-amber-400" />Important: {important}</span>}
+                </div>
+            )}
             <div>
                 <div className="text-[11px] font-bold uppercase tracking-wide text-indigo-600 flex items-center gap-1.5 mb-1"><Bell className="w-3.5 h-3.5" /> Reminders</div>
                 {reminders.length === 0 && <p className="text-xs text-slate-400" data-testid="work-summary-no-reminders">No personal reminders in the next few days.</p>}

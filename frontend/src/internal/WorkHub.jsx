@@ -4,24 +4,28 @@ import { Plus, Inbox, Check } from "lucide-react";
 import { api } from "../lib/api";
 import { useInvalidate } from "./hooks";
 import { Button } from "../components/ui/button";
-import { Chip, STATUS_TONE, STATUS_LABEL, ownerLabel, whenLabel, NewWorkDialog, WorkDetail, PriorityBadge, OverdueBadge, SignedBadge, CategoryTag, OutcomeBadge } from "./workHubParts";
-import { groupByPriority, PrioritySection, PhysicianSummary } from "./workHubSections";
+import { Chip, STATUS_TONE, STATUS_LABEL, ownerLabel, whenLabel, NewWorkDialog, WorkDetail, PriorityBadge, OverdueBadge, SignedBadge, CategoryTag, OutcomeBadge, AttentionBadge, RequestedActionBadge, ReferralSubtypeBadge, AwaitingBadge } from "./workHubParts";
+import { groupByPriority, groupByAttention, PrioritySection, PhysicianSummary } from "./workHubSections";
 
 const VIEWS = [["my", "My Work"], ["sent", "Sent"], ["waiting", "Waiting"], ["completed", "History"]];
 const HISTORY_PAGE = 30;
 
-function WorkCard({ item, selected, onClick }) {
+function WorkCard({ item, selected, onClick, side }) {
     return (
         <button data-testid="work-card" data-status={item.status} data-priority={item.priority || "NORMAL"} onClick={onClick}
             className={`w-full text-left bg-white border rounded-sm px-3 py-2 transition-colors ${selected ? "border-visita-green ring-1 ring-visita-green" : "border-slate-300 hover:border-visita-green/60"}`}>
-            <div className="flex items-center gap-1.5 min-w-0">
+            <div className="flex items-center gap-1.5 min-w-0 flex-wrap">
+                <AttentionBadge level={item.attention_level} testid="work-card-attention" />
                 <CategoryTag category={item.category} testid="work-card-category" className="shrink-0" />
+                <ReferralSubtypeBadge item={item} testid="work-card-referral-subtype" />
                 {item.patient_name && <span className="text-[11px] text-slate-500 uppercase tracking-wide font-semibold truncate">· {item.patient_name}</span>}
             </div>
             <div className="text-sm font-medium text-slate-900 truncate">{item.message}</div>
             <div className="mt-1 flex items-center justify-between gap-2 text-[11px] text-slate-500">
                 <span className="flex items-center gap-1 flex-wrap">
+                    <RequestedActionBadge action={item.requested_action} testid="work-card-requested-action" />
                     <PriorityBadge priority={item.priority} testid="work-card-priority" />
+                    {side !== "PHYSICIAN" && <AwaitingBadge item={item} testid="work-card-awaiting" />}
                     <OverdueBadge item={item} testid="work-card-overdue" />
                     <SignedBadge item={item} testid="work-card-signed" />
                     <Chip tone="bg-visita-greenLight text-visita-greenDark border-visita-green/40">With {ownerLabel(item)}</Chip>
@@ -101,10 +105,10 @@ export default function WorkHub() {
                     {list.isLoading && <p className="text-sm text-slate-400">Loading…</p>}
                     {!list.isLoading && items.length === 0 && <p className="text-sm text-slate-400 py-6 text-center" data-testid="work-empty">{view === "my" ? "Nothing needs your attention." : isHistory ? "No completed items yet." : "No items."}</p>}
                     {isHistory && items.map((it) => <HistoryCard key={it.id} item={it} selected={it.id === selectedId} onClick={() => setSelectedId(it.id)} />)}
-                    {view === "waiting" && items.map((it) => <WorkCard key={it.id} item={it} selected={it.id === selectedId} onClick={() => setSelectedId(it.id)} />)}
-                    {grouped && groupByPriority(items).map((s) => (
+                    {view === "waiting" && items.map((it) => <WorkCard key={it.id} item={it} side={side} selected={it.id === selectedId} onClick={() => setSelectedId(it.id)} />)}
+                    {grouped && (view === "my" && side === "PHYSICIAN" ? groupByAttention(items) : groupByPriority(items)).map((s) => (
                         <PrioritySection key={s.key} section={s}>
-                            {s.items.map((it) => <WorkCard key={it.id} item={it} selected={it.id === selectedId} onClick={() => setSelectedId(it.id)} />)}
+                            {s.items.map((it) => <WorkCard key={it.id} item={it} side={side} selected={it.id === selectedId} onClick={() => setSelectedId(it.id)} />)}
                         </PrioritySection>
                     ))}
                     {grouped && completedSent.length > 0 && (

@@ -69,9 +69,18 @@ export function whenLabel(iso) {
 // Canonical VIen patient search (same endpoint as Rx Intake / Patients). Optional for a work item.
 export function PatientPicker({ selected, onSelect, onClear }) {
     const [q, setQ] = useState("");
+    const [pin, setPin] = useState("");
     const [results, setResults] = useState([]);
     const [open, setOpen] = useState(false);
     const boxRef = useRef(null);
+    const searchPin = async () => {
+        if (!pin) return;
+        try {
+            const { data } = await api.get("/internal/patient-lookup/pin", { params: { pin } });
+            const r = Array.isArray(data) ? data[0] : data;
+            if (r) { onSelect(r); setPin(""); } else toast.error("No patient with that PIN.");
+        } catch (err) { toast.error(formatErr(err)); }
+    };
     const search = useCallback(async (term) => {
         if (term.trim().length < 2) { setResults([]); return; }
         try { setResults((await api.get("/internal/patient-lookup", { params: { q: term.trim() } })).data); setOpen(true); }
@@ -92,12 +101,19 @@ export function PatientPicker({ selected, onSelect, onClear }) {
         );
     }
     return (
-        <div ref={boxRef} className="relative">
-            <Search className="w-4 h-4 text-slate-400 absolute left-2 top-2.5" />
-            <Input data-testid="work-patient-search" value={q} onChange={(e) => setQ(e.target.value)} onFocus={() => results.length && setOpen(true)}
-                placeholder="Patient (optional) — name, DOB, phone, health card, PIN" className="pl-8" />
+        <div ref={boxRef} className="relative flex gap-2">
+            <div className="relative flex-1">
+                <Search className="w-4 h-4 text-slate-400 absolute left-2 top-2.5" />
+                <Input data-testid="work-patient-search" value={q} onChange={(e) => setQ(e.target.value)} onFocus={() => results.length && setOpen(true)}
+                    placeholder="Patient (optional) — name, DOB, phone, health card" className="pl-8" />
+            </div>
+            <div className="flex gap-1 w-36 shrink-0">
+                <Input data-testid="work-patient-pin" value={pin} inputMode="numeric" onChange={(e) => setPin(e.target.value.replace(/\D/g, ""))} placeholder="PIN"
+                    onKeyDown={(e) => { if (e.key === "Enter") { e.preventDefault(); e.stopPropagation(); searchPin(); } }} />
+                <Button type="button" size="sm" className="h-9 px-2" data-testid="work-patient-pin-btn" disabled={!pin} onClick={searchPin}>PIN</Button>
+            </div>
             {open && q.trim().length >= 2 && (
-                <div data-testid="work-patient-results" className="absolute z-30 mt-1 w-full bg-white border border-slate-300 rounded-sm shadow-lg divide-y max-h-64 overflow-y-auto">
+                <div data-testid="work-patient-results" className="absolute z-30 top-full left-0 right-0 mt-1 bg-white border border-slate-300 rounded-sm shadow-lg divide-y max-h-64 overflow-y-auto">
                     {results.length === 0 && <div className="px-3 py-2 text-xs text-slate-400">No matching patients found.</div>}
                     {results.map((r) => (
                         <button key={r.id} type="button" data-testid="work-patient-result" onClick={() => { onSelect(r); setOpen(false); setQ(""); }} className="w-full text-left px-3 py-1.5 hover:bg-slate-50">

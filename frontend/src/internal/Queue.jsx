@@ -24,7 +24,7 @@ function reasonFor(item, sourceType) {
     return item.reason || "";
 }
 
-export default function Queue({ title, subtitle, endpoint, patchBase, searchPlaceholder, statuses = [], columns, detail, actions, replyEnabled = false, enableBooking = false, enableVoid = false, sourceType, headerAction = null, attachmentEntity = null }) {
+export default function Queue({ title, subtitle, endpoint, patchBase, searchPlaceholder, statuses = [], columns, detail, actions, replyEnabled = false, enableBooking = false, enableVoid = false, sourceType, headerAction = null, attachmentEntity = null, wide = false, footerActions = null }) {
     const { user } = useAuth();
     const invalidate = useInvalidate();
     const [q, setQ] = useState("");
@@ -120,15 +120,15 @@ export default function Queue({ title, subtitle, endpoint, patchBase, searchPlac
             </div>
 
             <Dialog open={!!selected} onOpenChange={(o) => !o && close()}>
-                <DialogContent className="max-w-lg font-plex">
+                <DialogContent className={wide ? "font-plex w-[92vw] sm:w-[88vw] max-w-[1200px] max-h-[92vh] p-0 gap-0 flex flex-col overflow-hidden" : "max-w-lg font-plex"} data-testid={wide ? "queue-detail-wide" : undefined}>
                     {selected && (
                         <>
-                            <DialogHeader>
+                            <DialogHeader className={wide ? "px-4 sm:px-6 pt-4 pb-3 border-b border-slate-200 shrink-0" : ""}>
                                 <DialogTitle className="text-lg">{selected.ref_number} · {formatCombinedName(selected.patient_name)}</DialogTitle>
                                 <div className="text-sm font-semibold text-slate-700" data-testid="detail-pin">PIN <span className="font-mono">{selected.visita_patient_id || "Not assigned"}</span></div>
                                 <p className="text-xs text-slate-500" data-testid="detail-received">Request received: {selected.created_at ? formatDate(selected.created_at) : "—"}</p>
                             </DialogHeader>
-                            <div className="space-y-3 text-sm">
+                            <div className={wide ? "flex-1 min-h-0 overflow-y-auto overscroll-contain px-4 sm:px-6 py-4 space-y-3 text-sm" : "space-y-3 text-sm"} data-testid="queue-detail-scroll">
                                 {detail(selected)}
 
                                 {attachmentEntity && (
@@ -158,21 +158,23 @@ export default function Queue({ title, subtitle, endpoint, patchBase, searchPlac
                                             <Textarea data-testid="internal-note" value={note} onChange={(e) => setNote(e.target.value)} rows={2} />
                                         </div>
 
-                                        <div className="flex flex-wrap gap-2 pt-1">
-                                            {acts.map((a) => (
-                                                <Button key={a.label} data-testid={a.testid} disabled={busy} onClick={() => run(a.body)}
-                                                    variant={a.variant || "default"}
-                                                    className={a.variant ? "" : "bg-visita-green hover:bg-visita-greenDark text-white"}>
-                                                    {a.label}
-                                                </Button>
-                                            ))}
-                                            {enableBooking && selected.patient_id && (
-                                                <Button data-testid="act-book-appointment" disabled={busy} variant="outline"
-                                                    onClick={() => setBookOpen(true)} className="border-visita-green text-visita-greenDark">
-                                                    <CalendarPlus className="w-4 h-4 mr-1" /> Book Appointment
-                                                </Button>
-                                            )}
-                                        </div>
+                                        {!wide && (
+                                            <div className="flex flex-wrap gap-2 pt-1">
+                                                {acts.map((a) => (
+                                                    <Button key={a.label} data-testid={a.testid} disabled={busy} onClick={() => run(a.body)}
+                                                        variant={a.variant || "default"}
+                                                        className={a.variant ? "" : "bg-visita-green hover:bg-visita-greenDark text-white"}>
+                                                        {a.label}
+                                                    </Button>
+                                                ))}
+                                                {enableBooking && selected.patient_id && (
+                                                    <Button data-testid="act-book-appointment" disabled={busy} variant="outline"
+                                                        onClick={() => setBookOpen(true)} className="border-visita-green text-visita-greenDark">
+                                                        <CalendarPlus className="w-4 h-4 mr-1" /> Book Appointment
+                                                    </Button>
+                                                )}
+                                            </div>
+                                        )}
                                     </>
                                 )}
 
@@ -201,6 +203,24 @@ export default function Queue({ title, subtitle, endpoint, patchBase, searchPlac
                                     </div>
                                 )}
                             </div>
+                            {wide && selected.internal_status !== "voided" && (
+                                <div className="shrink-0 border-t border-slate-200 bg-white px-4 sm:px-6 py-3 flex flex-wrap items-center gap-2" data-testid="queue-action-bar">
+                                    {footerActions && footerActions(selected)}
+                                    {acts.map((a) => (
+                                        <Button key={a.label} data-testid={a.testid} disabled={busy} onClick={() => run(a.body)}
+                                            variant={a.variant || "default"} size="sm"
+                                            className={a.variant ? "" : "bg-visita-green hover:bg-visita-greenDark text-white"}>
+                                            {a.label}
+                                        </Button>
+                                    ))}
+                                    {enableBooking && selected.patient_id && (
+                                        <Button data-testid="act-book-appointment" disabled={busy} variant="outline" size="sm"
+                                            onClick={() => setBookOpen(true)} className="border-visita-green text-visita-greenDark">
+                                            <CalendarPlus className="w-4 h-4 mr-1" /> Book Appointment
+                                        </Button>
+                                    )}
+                                </div>
+                            )}
                         </>
                     )}
                 </DialogContent>

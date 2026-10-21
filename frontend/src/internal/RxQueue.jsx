@@ -116,8 +116,83 @@ export default function RxQueue() {
                 )
             }
             columns={physician ? PHYSICIAN_COLUMNS : COLUMNS}
+            wide
+            footerActions={(i) => (!i.linked_transmission_ref && physician && (i.medications_structured || []).length > 0 ? (
+                <Button size="sm" data-testid="rx-convert-to-prescription" onClick={() => convertToPrescription(i)}
+                    className="bg-visita-green hover:bg-visita-greenDark text-white" title="Creates an editable draft. Nothing is confirmed until you review and Send.">
+                    <FilePlus2 className="w-3.5 h-3.5 mr-1" /> Convert to Prescription
+                </Button>
+            ) : null)}
             detail={(i) => (
-                <div className="space-y-1.5">
+                <div className="grid gap-4 lg:grid-cols-[minmax(0,1fr)_minmax(280px,340px)]" data-testid="rx-detail-grid">
+                  <div className="space-y-2 min-w-0" data-testid="rx-detail-main">
+                    {i.source === "pharmacy" ? (
+                        <>
+                            {(i.medications_structured || []).length > 0 ? (
+                                <div className="space-y-1.5" data-testid="rx-structured-meds">
+                                    <div className="text-[11px] uppercase text-slate-400 font-medium">Requested medications ({i.medications_structured.length})</div>
+                                    <div className={`grid gap-2 ${i.medications_structured.length > 1 ? "md:grid-cols-2" : ""}`}>
+                                    {(i.medications_structured || []).map((m, idx) => (
+                                        <div key={idx} data-testid="rx-structured-med" className="border border-slate-200 rounded px-2.5 py-2 text-sm min-w-0 break-words">
+                                            <div className="font-semibold text-slate-800">{idx + 1}. {[m.drug, m.strength].filter(Boolean).join(" ")}{m.form ? <span className="font-normal text-slate-500"> — {m.form}</span> : null}</div>
+                                            {m.sig && <div className="text-slate-600 text-sm">{m.sig}</div>}
+                                            {(m.quantity || m.days_supply || m.requested_duration) && <div className="text-slate-500 text-xs">{[m.quantity && `Qty ${m.quantity}${m.quantity_unit ? ` ${m.quantity_unit}` : ""}`, m.days_supply && `${m.days_supply} days`, m.requested_duration && `Renew: ${m.requested_duration}`].filter(Boolean).join(" · ")}</div>}
+                                            {(m.existing_rx_number || m.last_filled_date || m.manufacturer || m.current_refills) && <div className="text-slate-400 text-[11px]">{[m.existing_rx_number && `Rx# ${m.existing_rx_number}`, m.last_filled_date && `Last filled ${m.last_filled_date}`, m.current_refills && `Refills left ${m.current_refills}`, m.manufacturer && `Mfr ${m.manufacturer}`].filter(Boolean).join(" · ")}</div>}
+                                            {m.pharmacy_note && <div className="text-slate-500 text-[11px]">Note: {m.pharmacy_note}</div>}
+                                        </div>
+                                    ))}
+                                    </div>
+                                </div>
+                            ) : (
+                                <KV label="Requested medication(s)">{(i.medications || []).join("; ")}</KV>
+                            )}
+                            <KV label="Duration / quantity">{i.duration_qty}</KV>
+                            {i.message_to_physician && <KV label="Message to physician">{i.message_to_physician}</KV>}
+                            {i.attachment && (
+                                <KV label="Attachment">
+                                    <button
+                                        data-testid="rx-attachment-view"
+                                        onClick={async () => {
+                                            try { await openAttachment(`/internal/prescriptions/${i.id}/attachment`); }
+                                            catch (err) { toast.error(formatErr(err)); }
+                                        }}
+                                        className="inline-flex items-center gap-1 text-indigo-600 hover:underline">
+                                        <Paperclip className="w-3.5 h-3.5" /> {i.attachment.original_filename || "View file"}
+                                    </button>
+                                </KV>
+                            )}
+                            {i.linked_transmission_ref && (
+                                <div className="mt-2 border border-emerald-200 bg-emerald-50/60 rounded p-2" data-testid="rx-converted-banner">
+                                    <div className="text-xs text-emerald-700 font-medium">Prescription sent from this request</div>
+                                    <KV label="Prescription">{i.linked_transmission_ref}</KV>
+                                    <KV label="Sent at">{formatDateTime(i.prescription_sent_at)}</KV>
+                                </div>
+                            )}
+                        </>
+                    ) : (
+                        <>
+                            <KV label="Medication">{i.medication_name} {i.strength}</KV>
+                            {(i.medication_entry_source === "MANUAL" || i.requires_medication_review) && (
+                                <div data-testid="manual-entry-detail-badge" className="my-1 inline-flex items-center gap-1.5 px-2 py-1 rounded bg-amber-100 text-amber-800 border border-amber-300 text-[11px] font-bold">
+                                    ⚠ MANUAL ENTRY — REVIEW REQUIRED
+                                </div>
+                            )}
+                            <KV label="Directions">{i.directions}</KV>
+                            <KV label="Supply">{i.requested_months} month(s)</KV>
+                            <KV label="Patient note">{i.patient_note}</KV>
+                        </>
+                    )}
+                    {i.physician_note && <KV label="Physician modification">{i.physician_note}</KV>}
+                    {i.internal_status === "voided" && (
+                        <div className="mt-2 border border-red-200 bg-red-50/60 rounded p-2 space-y-1" data-testid="voided-banner">
+                            <div className="text-xs uppercase text-red-600 font-medium">Voided / Archived</div>
+                            <KV label="Void reason">{i.void_reason}</KV>
+                            <KV label="Voided by">{i.voided_by}</KV>
+                            <KV label="Voided at">{formatDateTime(i.voided_at)}</KV>
+                        </div>
+                    )}
+                  </div>
+                  <div className="space-y-1.5 min-w-0 lg:border-l lg:border-slate-200 lg:pl-4" data-testid="rx-detail-context">
                     <KV label="Source">{i.source === "pharmacy" ? "PHARMACY REQUEST" : "PATIENT REQUEST"}</KV>
                     {i.source === "pharmacy" ? (
                         <>
@@ -133,83 +208,19 @@ export default function RxQueue() {
                                     <KV label="OHIP">{i.patient_snapshot.health_card_number ? `${i.patient_snapshot.health_card_number}${i.patient_snapshot.health_card_version ? ` ${i.patient_snapshot.health_card_version}` : ""}${i.patient_snapshot.health_card_expiry_date ? ` · exp ${formatDate(i.patient_snapshot.health_card_expiry_date)}` : ""}` : ""}</KV>
                                 </div>
                             )}
-                            {(i.medications_structured || []).length > 0 ? (
-                                <div className="space-y-1.5" data-testid="rx-structured-meds">
-                                    <div className="text-[11px] uppercase text-slate-400 font-medium">Requested medications</div>
-                                    {(i.medications_structured || []).map((m, idx) => (
-                                        <div key={idx} data-testid="rx-structured-med" className="border border-slate-200 rounded px-2 py-1.5 text-sm">
-                                            <div className="font-semibold text-slate-800">{idx + 1}. {[m.drug, m.strength].filter(Boolean).join(" ")}{m.form ? <span className="font-normal text-slate-500"> — {m.form}</span> : null}</div>
-                                            {m.sig && <div className="text-slate-600 text-xs">{m.sig}</div>}
-                                            {(m.quantity || m.days_supply || m.requested_duration) && <div className="text-slate-500 text-xs">{[m.quantity && `Qty ${m.quantity}${m.quantity_unit ? ` ${m.quantity_unit}` : ""}`, m.days_supply && `${m.days_supply} days`, m.requested_duration && `Renew: ${m.requested_duration}`].filter(Boolean).join(" · ")}</div>}
-                                            {(m.existing_rx_number || m.last_filled_date || m.manufacturer || m.current_refills) && <div className="text-slate-400 text-[11px]">{[m.existing_rx_number && `Rx# ${m.existing_rx_number}`, m.last_filled_date && `Last filled ${m.last_filled_date}`, m.current_refills && `Refills left ${m.current_refills}`, m.manufacturer && `Mfr ${m.manufacturer}`].filter(Boolean).join(" · ")}</div>}
-                                            {m.pharmacy_note && <div className="text-slate-500 text-[11px]">Note: {m.pharmacy_note}</div>}
-                                        </div>
-                                    ))}
-                                </div>
-                            ) : (
-                                <KV label="Requested medication(s)">{(i.medications || []).join("; ")}</KV>
-                            )}
-                            <KV label="Duration / quantity">{i.duration_qty}</KV>
                             <KV label="Received via">{i.received_via}</KV>
                             <KV label="Pharmacy note">{i.pharmacy_note}</KV>
-                            {i.message_to_physician && <KV label="Message to physician">{i.message_to_physician}</KV>}
-                            {i.attachment && (
-                                <KV label="Attachment">
-                                    <button
-                                        data-testid="rx-attachment-view"
-                                        onClick={async () => {
-                                            try { await openAttachment(`/internal/prescriptions/${i.id}/attachment`); }
-                                            catch (err) { toast.error(formatErr(err)); }
-                                        }}
-                                        className="inline-flex items-center gap-1 text-indigo-600 hover:underline">
-                                        <Paperclip className="w-3.5 h-3.5" /> {i.attachment.original_filename || "View file"}
-                                    </button>
-                                </KV>
-                            )}
                             <KV label="Intake by">{i.intake_by}</KV>
-                            {i.linked_transmission_ref ? (
-                                <div className="mt-2 border border-emerald-200 bg-emerald-50/60 rounded p-2" data-testid="rx-converted-banner">
-                                    <div className="text-xs text-emerald-700 font-medium">Prescription sent from this request</div>
-                                    <KV label="Prescription">{i.linked_transmission_ref}</KV>
-                                    <KV label="Sent at">{formatDateTime(i.prescription_sent_at)}</KV>
-                                </div>
-                            ) : (physician && (i.medications_structured || []).length > 0 && (
-                                <div className="mt-2 pt-2 border-t border-slate-200">
-                                    <Button size="sm" variant="outline" data-testid="rx-convert-to-prescription"
-                                        onClick={() => convertToPrescription(i)}
-                                        className="border-visita-green text-visita-greenDark hover:bg-visita-greenLight">
-                                        <FilePlus2 className="w-3.5 h-3.5 mr-1" /> Convert to Prescription
-                                    </Button>
-                                    <div className="text-[11px] text-slate-400 mt-1">Creates an editable draft. Nothing is confirmed until you review and Send.</div>
-                                </div>
-                            ))}
                         </>
                     ) : (
                         <>
-                            <KV label="Medication">{i.medication_name} {i.strength}</KV>
-                            {(i.medication_entry_source === "MANUAL" || i.requires_medication_review) && (
-                                <div data-testid="manual-entry-detail-badge" className="my-1 inline-flex items-center gap-1.5 px-2 py-1 rounded bg-amber-100 text-amber-800 border border-amber-300 text-[11px] font-bold">
-                                    ⚠ MANUAL ENTRY — REVIEW REQUIRED
-                                </div>
-                            )}
-                            <KV label="Directions">{i.directions}</KV>
-                            <KV label="Supply">{i.requested_months} month(s)</KV>
                             <KV label="Delivery">{i.delivery_method === "pharmacy" ? "Send to pharmacy" : "Pickup"}</KV>
                             <KV label="New pharmacy">{i.new_pharmacy_details}</KV>
-                            <KV label="Patient note">{i.patient_note}</KV>
                         </>
                     )}
-                    {i.physician_note && <KV label="Physician modification">{i.physician_note}</KV>}
                     <KV label="Staff note">{i.staff_note}</KV>
                     <KV label="Requested">{formatDateTime(i.created_at)}</KV>
-                    {i.internal_status === "voided" && (
-                        <div className="mt-2 border border-red-200 bg-red-50/60 rounded p-2 space-y-1" data-testid="voided-banner">
-                            <div className="text-xs uppercase text-red-600 font-medium">Voided / Archived</div>
-                            <KV label="Void reason">{i.void_reason}</KV>
-                            <KV label="Voided by">{i.voided_by}</KV>
-                            <KV label="Voided at">{formatDateTime(i.voided_at)}</KV>
-                        </div>
-                    )}
+                  </div>
                 </div>
             )}
             actions={actions}

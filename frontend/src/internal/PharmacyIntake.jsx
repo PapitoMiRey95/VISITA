@@ -256,7 +256,7 @@ export default function PharmacyIntake() {
                         </div>
                         <div>
                             <Label className="text-xs">Requested refill duration / quantity (if known)</Label>
-                            <div className="grid grid-cols-3 gap-2 mt-1 mb-1.5">
+                            <div className="grid grid-cols-3 gap-2 mt-1">
                                 {["1 month", "2 months", "3 months"].map((d) => (
                                     <button key={d} type="button" data-testid={`intake-duration-${d[0]}m`} onClick={() => set("duration_qty", f.duration_qty === d ? "" : d)}
                                         className={`py-1.5 rounded-sm border text-sm ${f.duration_qty === d ? "bg-visita-green text-white border-visita-green" : "bg-white text-slate-600 border-slate-300"}`}>
@@ -264,7 +264,6 @@ export default function PharmacyIntake() {
                                     </button>
                                 ))}
                             </div>
-                            <Input data-testid="intake-duration" value={f.duration_qty} onChange={(e) => set("duration_qty", e.target.value)} placeholder="Other, e.g. 6 months or Qty 90" />
                         </div>
                         <div><Label className="text-xs">Note (pharmacy or patient)</Label><Textarea value={f.pharmacy_note} onChange={(e) => set("pharmacy_note", e.target.value)} rows={2} /></div>
                         <div>

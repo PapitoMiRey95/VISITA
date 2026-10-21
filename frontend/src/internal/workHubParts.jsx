@@ -1,6 +1,7 @@
 import { useState, useEffect, useRef, useCallback } from "react";
 import { toast } from "sonner";
-import { Search, X, UserRound, Bell, ArrowRightLeft, Check, Clock, Play, RotateCcw, MessageSquare, FileCheck2, Flag, AlertTriangle, PhoneCall, FileOutput, Microscope, FileText, Scale, FolderOpen, CalendarDays, ClipboardList, Pill, ChevronDown, ChevronUp } from "lucide-react";
+import { Search, X, UserRound, Bell, ArrowRightLeft, Check, Clock, Play, RotateCcw, MessageSquare, FileCheck2, Flag, AlertTriangle, PhoneCall, FileOutput, Microscope, FileText, Scale, FolderOpen, CalendarDays, ClipboardList, Pill, ChevronDown, ChevronUp, Stethoscope, Scissors, ScanLine, FlaskConical } from "lucide-react";
+import { StructuredFields, structuredBody, structuredEnough, emptyStructured, StructuredSummary, ReasonLine, ClinicActionChip, TransferReasonChip } from "./workHubStructured";
 import { api, formatErr } from "../lib/api";
 import { formatPatientName } from "../lib/name";
 import { formatDate, formatDateTime } from "../lib/date";
@@ -15,8 +16,12 @@ import { DropdownMenu, DropdownMenuTrigger, DropdownMenuContent, DropdownMenuIte
 export const CATEGORY_META = {
     MESSAGE: { icon: MessageSquare, label: "Message", color: "text-cyan-600 dark:text-cyan-400" },
     CALL_BOOK_PATIENT: { icon: PhoneCall, label: "Call / Book", color: "text-teal-600 dark:text-teal-400" },
+    CONSULT_SPECIALIST: { icon: Stethoscope, label: "Consult / Specialist", color: "text-sky-700 dark:text-sky-400" },
+    PROCEDURE_SURGERY: { icon: Scissors, label: "Procedure / Surgery", color: "text-orange-600 dark:text-orange-400" },
     REFERRAL_FOLLOWUP: { icon: FileOutput, label: "Referral", color: "text-violet-600 dark:text-violet-400" },
-    RESULTS: { icon: Microscope, label: "Results / Exams", color: "text-indigo-600 dark:text-indigo-400" },
+    IMAGING: { icon: ScanLine, label: "Imaging", color: "text-indigo-600 dark:text-indigo-400" },
+    BLOODWORK: { icon: FlaskConical, label: "Bloodwork", color: "text-red-700 dark:text-red-400" },
+    RESULTS: { icon: Microscope, label: "Results / Imaging / BW", color: "text-indigo-600 dark:text-indigo-400" },
     INSURANCE_FORM: { icon: FileText, label: "Form", color: "text-amber-600 dark:text-amber-400" },
     LEGAL: { icon: Scale, label: "Legal", color: "text-rose-600 dark:text-rose-400" },
     CHART_REQUEST: { icon: FolderOpen, label: "Chart Request", color: "text-slate-500 dark:text-slate-300" },
@@ -34,7 +39,7 @@ export const ATTENTION_LABEL = { ROUTINE: "Routine", IMPORTANT: "Important", NEE
 export const ATTENTION_TONE = { ROUTINE: "bg-emerald-50 text-emerald-700 border-emerald-300", IMPORTANT: "bg-amber-50 text-amber-800 border-amber-400", NEEDS_ATTENTION: "bg-red-50 text-red-700 border-red-400" };
 export const ATTENTION_DOT = { ROUTINE: "bg-emerald-500", IMPORTANT: "bg-amber-400", NEEDS_ATTENTION: "bg-red-500" };
 export const REQUESTED_ACTION_LABEL = { REVIEW_DECISION: "Review / Decision", PATIENT_INSTRUCTIONS: "Instructions for patient", SIGN_APPROVE: "Sign / Approve", PREPARE_DOCUMENT: "Complete / Prepare document", FYI: "FYI only", OTHER: "Other" };
-export const REFERRAL_SUBTYPE_LABEL = { DECLINED: "Declined", MORE_INFO_REQUESTED: "More info requested", PROVIDER_UPDATE: "Provider moved / contact update", ACCEPTED_IN_PROCESS: "Accepted / In process", APPOINTMENT_BOOKED: "Appointment booked", FOLLOW_UP_NEEDED: "Follow-up needed" };
+export const REFERRAL_SUBTYPE_LABEL = { DECLINED: "Declined", MORE_INFO_REQUESTED: "More info requested", PROVIDER_UPDATE: "Provider moved / contact update", ACCEPTED_IN_PROCESS: "Accepted / In process", APPOINTMENT_BOOKED: "Appointment booked", FOLLOW_UP_NEEDED: "Follow-up needed", NEW_REFERRAL_NEEDED: "New referral needed" };
 export function AttentionBadge({ level, testid }) {
     if (!level) return null;
     return <Chip tone={ATTENTION_TONE[level]} testid={testid}><span className={`w-1.5 h-1.5 rounded-full mr-1 ${ATTENTION_DOT[level]}`} />{ATTENTION_LABEL[level]}</Chip>;
@@ -71,7 +76,7 @@ export const STATUS_TONE = {
 };
 export const STATUS_LABEL = { NEW: "New", IN_PROGRESS: "In progress", WAITING: "Waiting", COMPLETED: "Completed" };
 export const OWNER_LABEL = { PHYSICIAN: "Doctor", CLINIC: "Clinic" };
-export const PRIORITIES = ["NORMAL", "B1", "B2", "ASAP"];
+export const PRIORITIES = ["NORMAL", "B2", "B1", "ASAP"];
 export const QUEUE_LABEL = { PHYSICIAN: "Any Physician", CLINIC: "Clinic Staff" };
 // "With Dr. Pablo Aguayo · Physician" for a person, "With Clinic Staff" for a shared queue.
 export function ownerLabel(item) {
@@ -230,9 +235,9 @@ function dueFromPreset(p, custom) {
 }
 
 // Compact composer: Patient (optional) → Type → Send to → What needs doing → Due → Send.
-export function NewWorkDialog({ side, categories, members = [], queues = [], userId, onClose, onDone }) {
+export function NewWorkDialog({ side, categories, catalog, members = [], queues = [], userId, onClose, onDone }) {
     const [patient, setPatient] = useState(null);
-    const [category, setCategory] = useState("MESSAGE");
+    const [category, setCategoryRaw] = useState(side === "PHYSICIAN" ? "CALL_BOOK_PATIENT" : "MESSAGE");
     const [sendTo, setSendTo] = useState(side === "PHYSICIAN" ? "q:CLINIC" : (members.find((m) => m.side === "PHYSICIAN") ? `u:${members.find((m) => m.side === "PHYSICIAN").user_id}` : "q:PHYSICIAN"));
     const [message, setMessage] = useState("");
     const [due, setDue] = useState("");
@@ -240,17 +245,20 @@ export function NewWorkDialog({ side, categories, members = [], queues = [], use
     const [priority, setPriority] = useState("NORMAL");
     const [attention, setAttention] = useState("ROUTINE");
     const [requested, setRequested] = useState("REVIEW_DECISION");
-    const [refSub, setRefSub] = useState("");
+    const [struct, setStruct] = useState(emptyStructured());
     const [busy, setBusy] = useState(false);
+    const setCategory = (c) => { setCategoryRaw(c); setStruct(emptyStructured()); };
     const toPhysician = sendTo === "q:PHYSICIAN" || members.find((m) => `u:${m.user_id}` === sendTo)?.side === "PHYSICIAN";
     const showAttention = toPhysician && side !== "PHYSICIAN";
+    const clinical = Boolean(catalog?.clinical_types.includes(category));
+    const messageOptional = priority !== "NORMAL" || (clinical && structuredEnough(struct));
     const submit = async (e) => {
         e.preventDefault(); setBusy(true);
         try {
             await api.post("/internal/work", {
                 category, message, ...targetBody(sendTo), priority, due_at: dueFromPreset(due, custom),
                 ...(showAttention ? { attention_level: attention, requested_action: requested } : {}),
-                ...(category === "REFERRAL_FOLLOWUP" && refSub ? { referral_subtype: refSub } : {}),
+                ...structuredBody(category, catalog, struct),
                 patient_id: patient?.patient_id || (patient?.source === "portal" ? patient?.id : null) || null,
                 directory_id: patient?.directory_id || (patient?.source === "directory" ? patient?.id : null) || null,
                 patient_name: patient ? formatPatientName(patient) : null,
@@ -267,18 +275,13 @@ export function NewWorkDialog({ side, categories, members = [], queues = [], use
                     <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
                         <div><Label className="text-xs">Type</Label>
                             <select data-testid="work-category" value={category} onChange={(e) => setCategory(e.target.value)} className="w-full h-9 rounded-sm border border-slate-300 bg-white px-2 text-sm">
-                                {categories.map((c) => <option key={c.key} value={c.key}>{c.label}</option>)}
+                                <optgroup label="Clinical follow-up">{categories.filter((c) => catalog?.clinical_types.includes(c.key)).map((c) => <option key={c.key} value={c.key}>{c.label}</option>)}</optgroup>
+                                <optgroup label="Administrative">{categories.filter((c) => !catalog?.clinical_types.includes(c.key)).map((c) => <option key={c.key} value={c.key}>{c.label}</option>)}</optgroup>
                             </select></div>
                         <div><Label className="text-xs">Send to</Label>
                             <RecipientSelect value={sendTo} onChange={setSendTo} members={members} queues={queues} excludeUserId={userId} testid="work-send-to" className="w-full" /></div>
                     </div>
-                    {category === "REFERRAL_FOLLOWUP" && (
-                        <div><Label className="text-xs">Referral outcome <span className="text-slate-400 font-normal">(optional)</span></Label>
-                            <select data-testid="work-referral-subtype" value={refSub} onChange={(e) => setRefSub(e.target.value)} className="w-full h-9 rounded-sm border border-slate-300 bg-white px-2 text-sm">
-                                <option value="">— Not specified —</option>
-                                {Object.entries(REFERRAL_SUBTYPE_LABEL).map(([k, l]) => <option key={k} value={k}>{l}</option>)}
-                            </select></div>
-                    )}
+                    <StructuredFields category={category} catalog={catalog} value={struct} onChange={setStruct} />
                     {showAttention && (
                         <>
                             <div className="flex flex-wrap items-center gap-1.5" data-testid="work-attention">
@@ -303,8 +306,8 @@ export function NewWorkDialog({ side, categories, members = [], queues = [], use
                             <PriorityControl value={priority} onChange={setPriority} />
                         </div>
                     )}
-                    <div><Label className="text-xs">What needs to be done?{priority !== "NORMAL" && <span className="text-slate-400 font-normal" data-testid="work-message-optional"> (optional)</span>}</Label>
-                        <Input autoFocus required={priority === "NORMAL"} data-testid="work-message" value={message} onChange={(e) => setMessage(e.target.value)} placeholder={priority !== "NORMAL" ? `Defaults to “${PRIORITY_DEFAULT_TEXT[priority]}”` : "e.g. Complete insurance form"} maxLength={2000} /></div>
+                    <div><Label className="text-xs">What needs to be done?{messageOptional && <span className="text-slate-400 font-normal" data-testid="work-message-optional"> (optional)</span>}</Label>
+                        <Input autoFocus={!clinical} required={!messageOptional} data-testid="work-message" value={message} onChange={(e) => setMessage(e.target.value)} placeholder={messageOptional ? (clinical && structuredEnough(struct) ? "Optional — extra context only; your selections above are the instruction" : `Defaults to “${PRIORITY_DEFAULT_TEXT[priority]}”`) : "e.g. Complete insurance form"} maxLength={2000} /></div>
                     <div className="flex flex-wrap items-center gap-1.5">
                         <Label className="text-xs mr-1">Remind / Due</Label>
                         {DUE_PRESETS.map(([k, l]) => (
@@ -313,7 +316,7 @@ export function NewWorkDialog({ side, categories, members = [], queues = [], use
                         ))}
                         {due === "custom" && <Input type="date" data-testid="work-due-custom" value={custom} onChange={(e) => setCustom(e.target.value)} className="h-7 w-40 text-xs" />}
                     </div>
-                    <Button type="submit" disabled={busy || (priority === "NORMAL" && !message.trim())} data-testid="work-submit" className="w-full bg-visita-green hover:bg-visita-greenDark text-white">Send to {targetLabel(sendTo, members)}</Button>
+                    <Button type="submit" disabled={busy || (!messageOptional && !message.trim())} data-testid="work-submit" className="w-full bg-visita-green hover:bg-visita-greenDark text-white">Send to {targetLabel(sendTo, members)}</Button>
                 </form>
             </DialogContent>
         </Dialog>
@@ -373,8 +376,15 @@ export function WorkDetail({ item, side, userId, members = [], queues = [], cate
             <div className="flex flex-wrap items-start justify-between gap-2">
                 <div className="min-w-0 flex-1 basis-40">
                     {onBack && <button data-testid="work-detail-back" onClick={onBack} className="text-xs text-slate-400 hover:text-visita-greenDark mb-1 md:hidden">← Back to list</button>}
-                    <div className="text-xs text-slate-500 flex items-center gap-1.5 whitespace-nowrap">{item.ref_number} · <CategoryTag category={item.category} testid="work-detail-category" className="whitespace-nowrap" /><ReferralSubtypeBadge item={item} testid="work-detail-referral-subtype" /></div>
+                    <div className="text-xs text-slate-500 flex items-center gap-1.5 flex-wrap">{item.ref_number} · <CategoryTag category={item.category} testid="work-detail-category" className="whitespace-nowrap" /><StructuredSummary item={item} testid="work-detail-summary" /><ReferralSubtypeBadge item={item} testid="work-detail-referral-subtype" /></div>
                     <div className="font-bold text-slate-900 truncate" data-testid="work-detail-patient">{item.patient_name || "No patient"}</div>
+                    {(item.reason_label || item.clinic_action_label) && (
+                        <div className="mt-1 flex flex-wrap items-center gap-1.5" data-testid="work-detail-structured">
+                            <ReasonLine item={item} testid="work-detail-reason" />
+                            <ClinicActionChip item={item} testid="work-detail-clinic-action" />
+                            <TransferReasonChip item={item} testid="work-detail-transfer" />
+                        </div>
+                    )}
                     {(item.attention_level || item.requested_action) && (
                         <div className="mt-1 flex flex-wrap items-center gap-1 text-xs" data-testid="work-detail-attention-row">
                             <AttentionBadge level={item.attention_level} testid="work-detail-attention" />

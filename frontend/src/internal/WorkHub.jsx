@@ -5,6 +5,7 @@ import { api } from "../lib/api";
 import { useInvalidate } from "./hooks";
 import { Button } from "../components/ui/button";
 import { Chip, STATUS_TONE, STATUS_LABEL, ownerLabel, whenLabel, NewWorkDialog, WorkDetail, PriorityBadge, OverdueBadge, SignedBadge, CategoryTag, OutcomeBadge, AttentionBadge, RequestedActionBadge, ReferralSubtypeBadge, AwaitingBadge } from "./workHubParts";
+import { StructuredSummary, ReasonLine, ClinicActionChip, TransferReasonChip, showMessage } from "./workHubStructured";
 import { groupByPriority, groupByAttention, PrioritySection, PhysicianSummary } from "./workHubSections";
 
 const VIEWS = [["my", "My Work"], ["sent", "Sent"], ["waiting", "Waiting"], ["completed", "History"]];
@@ -17,12 +18,16 @@ function WorkCard({ item, selected, onClick, side }) {
             <div className="flex items-center gap-1.5 min-w-0 flex-wrap">
                 <AttentionBadge level={item.attention_level} testid="work-card-attention" />
                 <CategoryTag category={item.category} testid="work-card-category" className="shrink-0" />
+                <StructuredSummary item={item} testid="work-card-summary" />
                 <ReferralSubtypeBadge item={item} testid="work-card-referral-subtype" />
                 {item.patient_name && <span className="text-[11px] text-slate-500 uppercase tracking-wide font-semibold truncate">· {item.patient_name}</span>}
             </div>
-            <div className="text-sm font-medium text-slate-900 truncate">{item.message}</div>
+            <ReasonLine item={item} testid="work-card-reason" />
+            {showMessage(item) && <div className={`text-sm truncate ${item.reason_label && item.reason_code !== item.referral_subtype ? "text-slate-600" : "font-medium text-slate-900"}`}>{item.message}</div>}
             <div className="mt-1 flex items-center justify-between gap-2 text-[11px] text-slate-500">
                 <span className="flex items-center gap-1 flex-wrap">
+                    <ClinicActionChip item={item} testid="work-card-clinic-action" />
+                    <TransferReasonChip item={item} testid="work-card-transfer" />
                     <RequestedActionBadge action={item.requested_action} testid="work-card-requested-action" />
                     <PriorityBadge priority={item.priority} testid="work-card-priority" />
                     {side !== "PHYSICIAN" && <AwaitingBadge item={item} testid="work-card-awaiting" />}
@@ -44,10 +49,11 @@ function HistoryCard({ item, selected, onClick }) {
             className={`w-full text-left bg-slate-50 border rounded-sm px-3 py-1.5 transition-colors ${selected ? "border-visita-green ring-1 ring-visita-green" : "border-slate-200 hover:border-visita-green/60"}`}>
             <div className="flex items-center gap-1.5 min-w-0">
                 <CategoryTag category={item.category} testid="work-card-category" className="shrink-0" />
+                <StructuredSummary item={item} testid="work-card-summary" />
                 {item.patient_name && <span className="text-[11px] text-slate-500 uppercase tracking-wide font-semibold truncate">· {item.patient_name}</span>}
                 <span className="ml-auto text-[10px] text-slate-400 shrink-0">{item.ref_number}</span>
             </div>
-            <div className="text-sm text-slate-800 truncate">{item.message}</div>
+            <div className="text-sm text-slate-800 truncate">{item.reason_label ? `${item.reason_label}${item.clinic_action_label ? ` · ${item.clinic_action_label}` : ""}` : item.message}</div>
             <div className="text-[11px] flex items-center gap-1.5 flex-wrap">
                 <OutcomeBadge item={item} testid="work-card-outcome" />
                 <span className="text-emerald-700 inline-flex items-center gap-1"><Check className="w-3 h-3" /> {item.completion_outcome && item.completion_outcome !== "COMPLETED" ? "Closed" : "Completed"} {whenLabel(item.completed_at)} · {item.completed_by}</span>
@@ -126,7 +132,7 @@ export default function WorkHub() {
                         : <div className="hidden md:flex h-40 items-center justify-center rounded-sm border border-dashed border-slate-300 text-sm text-slate-400">Select an item to see its history and actions.</div>}
                 </div>
             </div>
-            {creating && side && <NewWorkDialog side={side} categories={categories} members={meta.data?.members || []} queues={meta.data?.queues || []} userId={meta.data?.user_id} onClose={() => setCreating(false)} onDone={refresh} />}
+            {creating && side && <NewWorkDialog side={side} categories={categories} catalog={meta.data?.catalog} members={meta.data?.members || []} queues={meta.data?.queues || []} userId={meta.data?.user_id} onClose={() => setCreating(false)} onDone={refresh} />}
         </div>
     );
 }

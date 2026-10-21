@@ -12,15 +12,20 @@ from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel
 
 from db import audit, db, next_ref, now_iso
+from work_hub_catalog import CLINICAL_TYPES, REFERRAL_REASONS, auto_message, catalog, detail_summary, validate_structured
 
 COLL = "work_items"
-CATEGORIES = ["MESSAGE", "CALL_BOOK_PATIENT", "REFERRAL_FOLLOWUP", "RESULTS", "INSURANCE_FORM", "LEGAL", "CHART_REQUEST", "APPOINTMENT_CALL", "ADMIN_OTHER"]
+# Clinical workflow types first (physician reminders), then administrative. RESULTS is legacy-only: readable, not creatable.
+CATEGORIES = ["CALL_BOOK_PATIENT", "CONSULT_SPECIALIST", "PROCEDURE_SURGERY", "REFERRAL_FOLLOWUP", "IMAGING", "BLOODWORK",
+              "MESSAGE", "INSURANCE_FORM", "LEGAL", "CHART_REQUEST", "APPOINTMENT_CALL", "ADMIN_OTHER"]
+LEGACY_CATEGORIES = ("RESULTS",)
 DOCUMENT_CATEGORIES = ("INSURANCE_FORM", "LEGAL", "CHART_REQUEST")  # eligible for "Signed → Send to Clinic"
 PRIORITIES = ("NORMAL", "B2", "B1", "ASAP")  # urgency: ASAP > B1 (~1 wk) > B2 (regular follow-up ~3–4 wks) > NORMAL  # clinic working labels only — no clinical time definition enforced
 # Deterministic display text when a physician sends a priority without a written message (never AI-generated).
 PRIORITY_DEFAULT_TEXT = {"B1": "Book patient in about 1 week.", "B2": "Book patient within about 3–4 weeks.", "ASAP": "Book patient as soon as possible."}
 CATEGORY_LABELS = {
-    "MESSAGE": "Message", "CALL_BOOK_PATIENT": "Call / Book Patient", "REFERRAL_FOLLOWUP": "Referral / Follow-up", "RESULTS": "Results / Imaging / BW",
+    "MESSAGE": "Message", "CALL_BOOK_PATIENT": "Call / Book Patient", "CONSULT_SPECIALIST": "Consult / Specialist", "PROCEDURE_SURGERY": "Procedure / Surgery",
+    "REFERRAL_FOLLOWUP": "Referral", "IMAGING": "Imaging", "BLOODWORK": "Bloodwork", "RESULTS": "Results / Imaging / BW",
     "INSURANCE_FORM": "Insurance / Form", "LEGAL": "Legal", "CHART_REQUEST": "Chart Request",
     "APPOINTMENT_CALL": "Appointment / Call", "ADMIN_OTHER": "Admin / Other",
 }
@@ -30,7 +35,7 @@ OUTCOMES = ("COMPLETED", "ALREADY_DONE", "NO_LONGER_NEEDED", "DUPLICATE")  # why
 # Staff → Physician context (workflow metadata only, never authorization; separate from physician booking priority).
 ATTENTION_LEVELS = ("ROUTINE", "IMPORTANT", "NEEDS_ATTENTION")  # "how soon should the physician review this?"
 REQUESTED_ACTIONS = ("REVIEW_DECISION", "PATIENT_INSTRUCTIONS", "SIGN_APPROVE", "PREPARE_DOCUMENT", "FYI", "OTHER")
-REFERRAL_SUBTYPES = ("DECLINED", "MORE_INFO_REQUESTED", "PROVIDER_UPDATE", "ACCEPTED_IN_PROCESS", "APPOINTMENT_BOOKED", "FOLLOW_UP_NEEDED")
+REFERRAL_SUBTYPES = tuple(c for c, _ in REFERRAL_REASONS if c != "OTHER")  # badge-worthy referral outcomes (shared with structured reasons)
 SOURCE_TYPES = ("PRESCRIPTION_REQUEST", "REFERRAL", "PATIENT_MESSAGE", "APPOINTMENT_REQUEST")
 CLINIC_ROLES = ("staff", "physician", "admin")
 
@@ -90,7 +95,11 @@ class CreateBody(BaseModel):
     source_id: Optional[str] = None
     attention_level: Optional[str] = None  # physician-targeted only; None = never assigned (UI falls back to Routine)
     requested_action: Optional[str] = None  # physician-targeted only
-    referral_subtype: Optional[str] = None  # REFERRAL_FOLLOWUP only
+    referral_subtype: Optional[str] = None  # REFERRAL_FOLLOWUP only (legacy path; structured reason_code preferred)
+    # Structured clinical follow-up (clinical types only; all optional; codes validated against work_hub_catalog)
+    reason_code: Optional[str] = None
+    clinical_detail: Optional[dict] = None  # {procedure | modality | body_site: code, bloodwork_tests: [codes], other_text}
+    clinic_action: Optional[str] = None
 
 
 class ActionBody(BaseModel):
@@ -205,6 +214,7 @@ def build_router(require_roles) -> APIRouter:
     @r.get("/internal/work/meta")
     async def work_meta(user: dict = guard):
         return {"attention_levels": list(ATTENTION_LEVELS), "requested_actions": list(REQUESTED_ACTIONS), "referral_subtypes": list(REFERRAL_SUBTYPES), "categories": [{"key": k, "label": CATEGORY_LABELS[k]} for k in CATEGORIES], "document_categories": list(DOCUMENT_CATEGORIES),
+                "catalog": catalog(),
                 "priorities": list(PRIORITIES), "side": side_of(user), "user_id": user["id"],
                 "members": await practice_members(user.get("practice_id")), "queues": [{"key": k, "label": v} for k, v in QUEUE_LABEL.items()]}
 
@@ -220,11 +230,15 @@ def build_router(require_roles) -> APIRouter:
             raise HTTPException(status_code=400, detail="Please choose a valid priority.")
         if body.priority != "NORMAL" and side_of(user) != "PHYSICIAN":
             raise HTTPException(status_code=403, detail="Only a physician can set B2 / B1 / ASAP priority.")
+        reason_label, detail_snap, action_label, err = validate_structured(body.category, body.reason_code, body.clinical_detail, body.clinic_action)
+        if err:
+            raise HTTPException(status_code=400, detail=err)
+        summary = detail_summary(detail_snap)
         message_auto = False
         if not msg:
-            if body.priority == "NORMAL":
+            if body.priority == "NORMAL" and not reason_label and not summary:
                 raise HTTPException(status_code=400, detail="Please describe what needs to be done.")
-            msg, message_auto = PRIORITY_DEFAULT_TEXT[body.priority], True
+            msg, message_auto = auto_message(CATEGORY_LABELS[body.category], summary, reason_label, action_label, PRIORITY_DEFAULT_TEXT.get(body.priority)), True
         if body.source_type and body.source_type not in SOURCE_TYPES:
             raise HTTPException(status_code=400, detail="Unknown source type.")
         attention, requested = None, None
@@ -242,10 +256,15 @@ def build_router(require_roles) -> APIRouter:
             if body.category != "REFERRAL_FOLLOWUP" or body.referral_subtype not in REFERRAL_SUBTYPES:
                 raise HTTPException(status_code=400, detail="Referral outcome applies to Referral items only.")
             referral_subtype = body.referral_subtype
+        if body.category == "REFERRAL_FOLLOWUP" and body.reason_code in REFERRAL_SUBTYPES:
+            referral_subtype = body.reason_code  # structured reason doubles as the referral outcome badge
         doc = {
             "id": str(uuid.uuid4()), "ref_number": await next_ref("WRK"), "practice_id": user.get("practice_id"),
             "patient_id": body.patient_id, "directory_id": body.directory_id, "patient_name": (body.patient_name or "").strip() or None,
             "category": body.category, "message": msg, "message_auto": message_auto,
+            "reason_code": body.reason_code if reason_label else None, "reason_label": reason_label,
+            "clinical_detail": detail_snap, "structured_summary": summary,
+            "clinic_action": body.clinic_action if action_label else None, "clinic_action_label": action_label,
             "created_by": user["id"], "created_by_name": user.get("name"), "created_by_role": user.get("role"),
             **target,
             "status": "NEW", "priority": body.priority, "due_at": _valid_iso(body.due_at), "waiting_until": None,

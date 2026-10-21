@@ -236,7 +236,7 @@ def build_router(require_roles) -> APIRouter:
         summary = detail_summary(detail_snap)
         message_auto = False
         if not msg:
-            if body.priority == "NORMAL" and not reason_label and not summary:
+            if body.priority == "NORMAL" and not reason_label:  # a detail alone (e.g. "PSA") is not an instruction
                 raise HTTPException(status_code=400, detail="Please describe what needs to be done.")
             msg, message_auto = auto_message(CATEGORY_LABELS[body.category], summary, reason_label, action_label, PRIORITY_DEFAULT_TEXT.get(body.priority)), True
         if body.source_type and body.source_type not in SOURCE_TYPES:

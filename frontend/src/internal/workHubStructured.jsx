@@ -75,7 +75,8 @@ export function structuredBody(category, catalog, v) {
     const detail = Object.fromEntries(Object.entries(v.detail).filter(([, x]) => (Array.isArray(x) ? x.length : x)));
     return { ...(v.reason_code ? { reason_code: v.reason_code } : {}), ...(Object.keys(detail).length ? { clinical_detail: detail } : {}), ...(v.clinic_action ? { clinic_action: v.clinic_action } : {}) };
 }
-export const structuredEnough = (v) => Boolean(v.reason_code || Object.values(v.detail).some((x) => (Array.isArray(x) ? x.length : x && x !== "")));
+// Blank message allowed only when a Reason exists (deterministic instruction); detail-only selections still need text.
+export const structuredEnough = (v) => Boolean(v.reason_code);
 
 // ---- Card / detail presentation (reads label snapshots stored on the item; old items without them render nothing) ----
 const isTransfer = (item) => item.clinic_action === "CALL_TRANSFER_ON_ARRIVAL" || item.reason_code === "CALL_TRANSFER_ON_ARRIVAL";

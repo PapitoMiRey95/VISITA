@@ -200,7 +200,7 @@ function ProfileView({ p, tax, onClose, onEdit, onManageEditors }) {
 
     return (
         <div className="fixed inset-0 z-50 flex items-start justify-center bg-black/40 p-4 overflow-y-auto" onClick={onClose} data-testid="prof-profile-modal">
-            <div className="bg-white rounded-lg border border-slate-200 shadow-xl w-full max-w-lg my-6" onClick={(e) => e.stopPropagation()}>
+            <div className="bg-white rounded-lg border border-slate-200 shadow-xl w-full max-w-[1200px] my-4 max-h-[92vh] flex flex-col overflow-hidden" onClick={(e) => e.stopPropagation()}>
                 <div className="flex items-start justify-between px-5 py-3 border-b border-slate-200">
                     <div>
                         <h2 className="text-lg font-bold text-slate-900" data-testid="prof-profile-name">{p.display_name || p.surname}</h2>
@@ -217,7 +217,8 @@ function ProfileView({ p, tax, onClose, onEdit, onManageEditors }) {
                         <button onClick={onClose} className="text-slate-400 hover:text-slate-700" data-testid="prof-profile-close"><X className="w-5 h-5" /></button>
                     </div>
                 </div>
-                <dl className="p-5 space-y-2 text-sm">
+                <div className="flex-1 min-h-0 overflow-y-auto">
+                <dl className="p-5 grid grid-cols-1 lg:grid-cols-2 gap-x-8 gap-y-2 text-sm">
                     <Row label="Classification">{[maps.spheres[p.sphere_id], maps.areas[p.area_id], maps.specialties[p.specialty_id]].filter(Boolean).join(" → ") || <span className="text-slate-400">—</span>}</Row>
                     <Row label="Registration #">{p.registration_number}</Row>
                     <Row label="Credentials">{chips(p.credential_ids, maps.credentials, "prof-view-credentials")}</Row>
@@ -232,7 +233,7 @@ function ProfileView({ p, tax, onClose, onEdit, onManageEditors }) {
                     <Row label="Sex">{p.sex}</Row>
                     <Row label="Professorship">{p.professorship}</Row>
                     <Row label="Accepting patients">{p.accepting_patients == null ? "—" : p.accepting_patients ? "Yes" : "No"}</Row>
-                    <div className="pt-2 mt-2 border-t border-slate-100">
+                    <div className="pt-2 mt-2 border-t border-slate-100 lg:col-span-2">
                         <div className="text-xs font-semibold uppercase tracking-wide text-slate-500 mb-1">Public professional contact</div>
                         <Row label="Phone">{p.public_phone ? <a className="text-visita-greenDark hover:underline" href={`tel:${p.public_phone}`} data-testid="prof-view-phone">{p.public_phone}</a> : null}</Row>
                         <Row label="Fax">{p.public_fax ? <span data-testid="prof-view-fax">{p.public_fax}</span> : null}</Row>
@@ -240,8 +241,9 @@ function ProfileView({ p, tax, onClose, onEdit, onManageEditors }) {
                         <Row label="Clinic address">{formatAddress(p.public_address) ? <span data-testid="prof-view-address">{formatAddress(p.public_address)}</span> : null}</Row>
                     </div>
                 </dl>
-                <div className="pt-3 mt-3 border-t border-slate-100">
+                <div className="px-5 pb-5 pt-3 mt-1 border-t border-slate-100">
                     <LocationsPanel entityType="professional" entityId={p.id} title="Practice locations" canEdit={["admin", "staff", "physician"].includes(user?.role)} />
+                </div>
                 </div>
             </div>
         </div>

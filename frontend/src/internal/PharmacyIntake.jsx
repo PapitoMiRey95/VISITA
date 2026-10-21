@@ -10,7 +10,8 @@ import { Input } from "../components/ui/input";
 import { Textarea } from "../components/ui/textarea";
 import { Label } from "../components/ui/label";
 
-const RECEIVED = ["fax", "phone", "other"];
+const RECEIVED = ["fax", "phone", "call", "email", "message", "other"];
+const DELIVERY = [["pharmacy", "Delivery"], ["pickup", "Pick up at pharmacy"]];
 const DEFAULT_PHARMACY = "1670 Dufferin Drug Mart";
 
 function medDisplay(m) {
@@ -33,7 +34,7 @@ export default function PharmacyIntake() {
     const [organizing, setOrganizing] = useState(false);
     const [parsedMeds, setParsedMeds] = useState([]);
     const [parseWarnings, setParseWarnings] = useState([]);
-    const [f, setF] = useState({ pharmacy: "", meds_text: "", duration_qty: "", pharmacy_note: "", received_via: "fax", internal_note: "" });
+    const [f, setF] = useState({ pharmacy: "", meds_text: "", duration_qty: "", pharmacy_note: "", received_via: "fax", delivery_method: "pharmacy", internal_note: "" });
     const set = (k, v) => setF((s) => ({ ...s, [k]: v }));
 
     // Pharmacy dropdown options: portal pharmacies (future) + the default 1670 DDM.
@@ -111,7 +112,7 @@ export default function PharmacyIntake() {
             await api.post("/internal/pharmacy-rx", {
                 directory_id: snap.directory_id, patient_id: snap.patient_id, pharmacy: f.pharmacy, medications,
                 medications_structured: parsedMeds, selected_active_meds: selectedActive, duration_qty: f.duration_qty || null,
-                pharmacy_note: f.pharmacy_note || null, received_via: f.received_via,
+                pharmacy_note: f.pharmacy_note || null, received_via: f.received_via, delivery_method: f.delivery_method,
                 internal_note: f.internal_note || null,
             });
             toast.success("Sent to physician Rx queue.");
@@ -143,7 +144,7 @@ export default function PharmacyIntake() {
                                 }}
                                 placeholder="Patient name or VISITA Patient ID / PIN" className="pl-8" />
                         </div>
-                        <Button type="submit" disabled={searching} data-testid="intake-search-btn">{searching ? "…" : "Search"}</Button>
+                        <Button type="submit" disabled={searching} data-testid="intake-search-btn" className="w-24 shrink-0 justify-start pl-3 bg-visita-green hover:bg-visita-greenDark text-white"><Search className="w-4 h-4 mr-1" />{searching ? "…" : "Search"}</Button>
                     </form>
 
                     <div className="my-3 flex items-center gap-2 text-[11px] uppercase tracking-wide text-slate-400">
@@ -160,7 +161,7 @@ export default function PharmacyIntake() {
                                 }}
                                 placeholder="VISITA PIN (numbers only)" className="pl-8" />
                         </div>
-                        <Button type="submit" variant="outline" disabled={pinSearching} data-testid="intake-pin-search-btn">{pinSearching ? "…" : "Find by PIN"}</Button>
+                        <Button type="submit" disabled={pinSearching} data-testid="intake-pin-search-btn" className="w-24 shrink-0 justify-start pl-3 bg-visita-green hover:bg-visita-greenDark text-white"><Search className="w-4 h-4 mr-1" />{pinSearching ? "…" : "PIN"}</Button>
                     </form>
                     <div className="mt-3 divide-y border border-slate-200 rounded-sm max-h-80 overflow-y-auto">
                         {results.length === 0 && <div className="px-3 py-4 text-slate-400 text-sm">Search VISITA patients (directory + portal accounts) by name, DOB, phone or VISITA PIN.</div>}
@@ -215,12 +216,12 @@ export default function PharmacyIntake() {
                         </div>
 
                         {/* Smart paste & organize */}
-                        <div className="border border-indigo-200 bg-indigo-50/40 rounded-sm p-2.5 space-y-2">
-                            <div className="flex items-center gap-1.5 text-xs font-semibold text-indigo-800"><Wand2 className="w-3.5 h-3.5" /> Smart Rx — paste &amp; organize</div>
+                        <div className="border border-slate-300 bg-slate-50 rounded-sm p-2.5 space-y-2">
+                            <div className="flex items-center gap-1.5 text-xs font-semibold text-slate-700"><Wand2 className="w-3.5 h-3.5" /> Smart Rx — paste &amp; organize</div>
                             <Textarea data-testid="intake-paste" value={pasteText} onChange={(e) => setPasteText(e.target.value)} rows={4}
                                 placeholder={"Paste the full prescription here, e.g.\nRamipril 10 mg — 1 tab daily, Qty 90\nMetformin 500 mg BID\nNumber of months: 3"} />
                             <Button type="button" size="sm" variant="outline" data-testid="intake-organize" disabled={organizing}
-                                onClick={organize} className="border-indigo-400 text-indigo-700 hover:bg-indigo-100">
+                                onClick={organize} className="border-visita-green text-visita-greenDark hover:bg-visita-greenLight">
                                 <Wand2 className="w-3.5 h-3.5 mr-1" /> {organizing ? "Organizing…" : "Organize"}
                             </Button>
 
@@ -257,11 +258,22 @@ export default function PharmacyIntake() {
                         <div><Label className="text-xs">Note (pharmacy or patient)</Label><Textarea value={f.pharmacy_note} onChange={(e) => set("pharmacy_note", e.target.value)} rows={2} /></div>
                         <div>
                             <Label className="text-xs">Received via</Label>
-                            <div className="flex gap-2 mt-1">
+                            <div className="grid grid-cols-3 gap-2 mt-1">
                                 {RECEIVED.map((r) => (
                                     <button key={r} type="button" data-testid={`intake-via-${r}`} onClick={() => set("received_via", r)}
-                                        className={`flex-1 py-1.5 rounded-sm border text-sm capitalize ${f.received_via === r ? "bg-visita-green text-white border-visita-green" : "bg-white text-slate-600 border-slate-300"}`}>
+                                        className={`py-1.5 rounded-sm border text-sm capitalize ${f.received_via === r ? "bg-visita-green text-white border-visita-green" : "bg-white text-slate-600 border-slate-300"}`}>
                                         {r}
+                                    </button>
+                                ))}
+                            </div>
+                        </div>
+                        <div>
+                            <Label className="text-xs">Delivery</Label>
+                            <div className="grid grid-cols-2 gap-2 mt-1">
+                                {DELIVERY.map(([v, l]) => (
+                                    <button key={v} type="button" data-testid={`intake-delivery-${v}`} onClick={() => set("delivery_method", v)}
+                                        className={`py-1.5 rounded-sm border text-sm ${f.delivery_method === v ? "bg-visita-green text-white border-visita-green" : "bg-white text-slate-600 border-slate-300"}`}>
+                                        {l}
                                     </button>
                                 ))}
                             </div>

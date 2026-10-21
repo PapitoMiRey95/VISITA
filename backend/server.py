@@ -3884,7 +3884,8 @@ class PharmacyRxBody(BaseModel):
     selected_active_meds: Optional[List[str]] = []
     duration_qty: Optional[str] = None
     pharmacy_note: Optional[str] = None
-    received_via: str  # fax | phone | other
+    received_via: str  # fax | phone | call | email | message | other
+    delivery_method: Optional[str] = None  # pharmacy (delivery) | pickup
     internal_note: Optional[str] = None
 
 
@@ -3975,7 +3976,7 @@ async def create_pharmacy_rx(body: PharmacyRxBody, user: dict = Depends(require_
         "selected_active_meds": body.selected_active_meds or [],
         "pharmacy": body.pharmacy, "duration_qty": body.duration_qty,
         "pharmacy_note": body.pharmacy_note, "received_via": body.received_via,
-        "requested_months": None, "delivery_method": "pharmacy",
+        "requested_months": None, "delivery_method": body.delivery_method if body.delivery_method in ("pharmacy", "pickup") else "pharmacy",
         "directions": None, "patient_note": None,
         "staff_note": body.internal_note, "intake_by": user["name"],
         "internal_status": "waiting_physician", "assigned_to": None,

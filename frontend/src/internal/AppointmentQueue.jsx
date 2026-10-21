@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { toast } from "sonner";
 import { Search, CalendarClock, UserX, Phone, CheckCircle2, XCircle, AlertTriangle } from "lucide-react";
@@ -50,6 +50,7 @@ export default function AppointmentQueue() {
         queryFn: async () => (await api.get("/internal/appointments", { params: { status: "requested" } })).data,
     });
     const legacy = legacyQ.data || [];
+    useEffect(() => { if (view === "legacy" && legacyQ.data && legacy.length === 0) setView("bookings"); }, [view, legacyQ.data, legacy.length]);
     const followupsQ = useQuery({
         queryKey: ["queue", "/internal/appointments/followups"],
         queryFn: async () => (await api.get("/internal/appointments/followups")).data,
@@ -133,7 +134,8 @@ export default function AppointmentQueue() {
             <p className="text-sm text-slate-500 mb-3">Verified patients book directly — appointments are confirmed instantly. Use the Calendar to change or cancel a booking.</p>
 
             <div className="flex gap-1 mb-3 border-b border-slate-200 flex-wrap">
-                {[["bookings", "Recent Bookings"], ["legacy", `Legacy pending requests (${legacy.length})`], ["no_show", "No-Shows"], ["reschedule", "Reschedule Requested"], ["review", `Review (${reviewCount})`]].map(([v, l]) => (
+                {/* Legacy approval tab only appears while unresolved old-style requests remain; it disappears once the list is empty. */}
+                {[["bookings", "Recent Bookings"], ...(legacy.length ? [["legacy", `Legacy pending requests (${legacy.length})`]] : []), ["no_show", "No-Shows"], ["reschedule", "Reschedule Requested"], ["review", `Review (${reviewCount})`]].map(([v, l]) => (
                     <button key={v} data-testid={`appt-tab-${v}`} onClick={() => setView(v)}
                         className={`px-3 py-2 text-sm font-semibold -mb-px border-b-2 ${view === v ? "border-visita-green text-visita-greenDark" : "border-transparent text-slate-500 hover:text-slate-700"} ${(v === "legacy" && legacy.length) || (v === "review" && reviewCount) ? "text-amber-700" : ""}`}>
                         {v === "no_show" && <UserX className="w-4 h-4 inline mr-1" />}

@@ -76,7 +76,7 @@ export const STATUS_TONE = {
 };
 export const STATUS_LABEL = { NEW: "New", IN_PROGRESS: "In progress", WAITING: "Waiting", COMPLETED: "Completed" };
 export const OWNER_LABEL = { PHYSICIAN: "Doctor", CLINIC: "Clinic" };
-export const PRIORITIES = ["NORMAL", "B1", "B2", "ASAP"];
+export const PRIORITIES = ["NORMAL", "B2", "B1", "ASAP"];
 export const QUEUE_LABEL = { PHYSICIAN: "Any Physician", CLINIC: "Clinic Staff" };
 // "With Dr. Pablo Aguayo · Physician" for a person, "With Clinic Staff" for a shared queue.
 export function ownerLabel(item) {

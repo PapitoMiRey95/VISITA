@@ -207,7 +207,7 @@ export function PatientPicker({ selected, onSelect, onClear }) {
             <div className="flex gap-1 w-36 shrink-0">
                 <Input data-testid="work-patient-pin" value={pin} inputMode="numeric" onChange={(e) => setPin(e.target.value.replace(/\D/g, ""))} placeholder="PIN"
                     onKeyDown={(e) => { if (e.key === "Enter") { e.preventDefault(); e.stopPropagation(); searchPin(); } }} />
-                <Button type="button" size="sm" className="h-9 px-2" data-testid="work-patient-pin-btn" disabled={!pin} onClick={searchPin}>PIN</Button>
+                <Button type="button" size="sm" className="h-9 px-2 bg-visita-green hover:bg-visita-greenDark text-white" data-testid="work-patient-pin-btn" disabled={!pin} onClick={searchPin}><Search className="w-3.5 h-3.5 mr-1" />PIN</Button>
             </div>
             {open && q.trim().length >= 2 && (
                 <div data-testid="work-patient-results" className="absolute z-30 top-full left-0 right-0 mt-1 bg-white border border-slate-300 rounded-sm shadow-lg divide-y max-h-64 overflow-y-auto">

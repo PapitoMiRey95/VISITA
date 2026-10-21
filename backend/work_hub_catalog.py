@@ -138,13 +138,20 @@ def detail_summary(snap: Optional[dict]) -> Optional[str]:
     if not snap:
         return None
     parts = []
+    other, used_other = snap.get("other_text"), False
+    def lab(v):
+        nonlocal used_other
+        if v["code"] == "OTHER" and other and not used_other:
+            used_other = True
+            return other
+        return v["label"]
     for key in ("procedure", "modality", "body_site"):
         v = snap.get(key)
         if v:
-            parts.append(v["label"] if v["code"] != "OTHER" or not snap.get("other_text") else snap["other_text"])
+            parts.append(lab(v))
     tests = snap.get("bloodwork_tests")
     if tests:
-        parts.append(" + ".join(t["label"] if t["code"] != "OTHER" or not snap.get("other_text") else snap["other_text"] for t in tests))
+        parts.append(" + ".join(lab(t) for t in tests))
     return " · ".join(parts) or None
 
 
@@ -152,5 +159,7 @@ def auto_message(type_label: str, summary: Optional[str], reason_label: Optional
     """Fallback 'What needs to be done?' text when the physician leaves it blank."""
     head = " · ".join(p for p in (type_label, summary) if p)
     body = " — ".join(p for p in (head, reason_label) if p)
+    if CALL_TRANSFER_LABEL in (reason_label, action_label):
+        priority_text = None  # transfer instruction already says what to do; the priority badge carries urgency
     tail = [p for p in (action_label if action_label != reason_label else None, priority_text) if p]
     return ". ".join([body, *tail]).rstrip(".") + "."

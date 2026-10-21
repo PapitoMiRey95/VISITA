@@ -85,7 +85,7 @@ export function StructuredSummary({ item, testid }) {
     return <span data-testid={testid} className="text-[11px] text-slate-800 uppercase tracking-wide font-bold truncate">· {item.structured_summary}</span>;
 }
 export function ReasonLine({ item, testid, className = "" }) {
-    if (!item.reason_label || item.reason_code === item.referral_subtype) return null;  // referral outcome already shown as badge
+    if (!item.reason_label || item.reason_code === item.referral_subtype || item.reason_code === "CALL_TRANSFER_ON_ARRIVAL") return null;  // shown as badge/chip instead
     return <div data-testid={testid} className={`text-sm font-medium text-slate-900 ${className}`}>{item.reason_label}</div>;
 }
 // "Put through to me when I arrive" is visually distinct from ordinary booking/calling instructions.
@@ -96,7 +96,7 @@ export function ClinicActionChip({ item, testid }) {
 }
 export function TransferReasonChip({ item, testid }) {
     if (item.reason_code !== "CALL_TRANSFER_ON_ARRIVAL" || item.clinic_action === "CALL_TRANSFER_ON_ARRIVAL") return null;
-    return <Chip tone="bg-fuchsia-600 text-white border-fuchsia-700" testid={testid}><PhoneForwarded className="w-3 h-3 mr-1" />Put through to me on arrival</Chip>;
+    return <Chip tone="bg-fuchsia-600 text-white border-fuchsia-700" testid={testid}><PhoneForwarded className="w-3 h-3 mr-1" />{item.reason_label}</Chip>;
 }
 // Message is hidden on cards when it was auto-generated from the structured fields (would repeat them).
 export const showMessage = (item) => !(item.message_auto && (item.reason_label || item.structured_summary));

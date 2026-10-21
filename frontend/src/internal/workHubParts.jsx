@@ -268,7 +268,7 @@ export function NewWorkDialog({ side, categories, catalog, members = [], queues 
     };
     return (
         <Dialog open onOpenChange={(o) => !o && onClose()}>
-            <DialogContent className="max-w-lg" data-testid="work-new-dialog">
+            <DialogContent className="max-w-lg max-h-[90vh] overflow-y-auto" data-testid="work-new-dialog">
                 <DialogHeader><DialogTitle>New work item</DialogTitle></DialogHeader>
                 <form onSubmit={submit} className="space-y-3 text-sm">
                     <PatientPicker selected={patient} onSelect={setPatient} onClear={() => setPatient(null)} />

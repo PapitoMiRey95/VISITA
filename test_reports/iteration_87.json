@@ -1,0 +1,41 @@
+{
+  "summary": "Tested Work Hub structured clinical follow-up on the backend and frontend (PREVIEW). Backend: 20/20 pytest pass covering meta/catalog (12 categories, RESULTS excluded, catalog keys, priorities order), IMAGING auto message (deterministic, 'MRI · Liver', labels, message_auto), BLOODWORK order preserved, REFERRAL DECLINED->referral_subtype, ASAP CALL_TRANSFER with empty message, OTHER free text, 8 validation 400 cases, staff B1 403, staff Attention/Requested action unchanged, legacy MESSAGE path, and legacy RESULTS still listed. Frontend: every requested flow passed for physician and staff (optgroups, IMAGING/BLOODWORK detail selectors, aria-pressed chips, optional-message label, submit with empty message, card summary/reason/clinic-action chips, detail panel + history event, priority order Normal/B2/B1/ASAP, MESSAGE has no structured block and needs a message, staff has no priority control and shows attention/requested-action only when sending to the physician, referral reasons and clinic action). Legacy RESULTS cards (WRK-000068/69) still show 'Results / Imaging / BW' unchanged. Mobile 390x844 has no horizontal overflow. One responsive bug: the dialog has no scroll, so it overflows on shorter phones.",
+  "backend_issues": {
+    "critical": [],
+    "minor": [
+      {"endpoint": "POST /api/internal/work", "issue": "There is one shared clinical_detail.other_text for all detail fields. For IMAGING with modality=OTHER and body_site=OTHER, detail_summary uses other_text for both fields and gives 'X · X'."},
+      {"endpoint": "POST /api/internal/work", "issue": "Staff can also send a clinical type with only a reason and an empty message, which creates an auto message. The spec describes this as physician-only. This may be intended (the frontend allows it too), but please confirm."},
+      {"endpoint": "POST /api/internal/work", "issue": "The auto message for CALL_BOOK_PATIENT + reason CALL_TRANSFER_ON_ARRIVAL + ASAP is 'Call / Book Patient — Call patient — put through to me when I arrive. Book patient as soon as possible.' The two instructions conflict (transfer vs book ASAP)."}
+    ]
+  },
+  "frontend_issues": {
+    "ui_bugs": [
+      {"component": "NewWorkDialog (DialogContent)", "issue": "The dialog has no max-height or overflow-y, and it is a fixed, centred grid. At 390x667 with IMAGING + modality OTHER (Specify field visible), the dialog is about 814px tall: top=-59px, bottom=740px. The title, close X and the Send button are off-screen and cannot be reached by scrolling. At 390x844 it only just fits (about 780px). Fix: add className 'max-h-[90vh] overflow-y-auto' to the DialogContent in workHubParts.jsx line 271.", "selector": "[data-testid='work-new-dialog']", "priority": "MEDIUM"}
+    ],
+    "integration_issues": [],
+    "design_issues": [
+      {"screen": "Work Hub Sent (desktop)", "issues": ["The detail panel on the right is not sticky. If you click a card far down a long list, the detail renders at the top of the right column, out of view, and the visible right side looks blank."]},
+      {"screen": "Work card for CALL_BOOK_PATIENT with reason CALL_TRANSFER_ON_ARRIVAL", "issues": ["The reason line 'Call patient — put through to me when I arrive' and the fuchsia chip 'Put through to me on arrival' repeat the same information."]}
+    ]
+  },
+  "test_report_links": ["/app/backend/tests/test_work_hub_structured.py", "/app/test_reports/pytest/pytest_work_hub_structured.xml", "/app/test_reports/work_hub_structured_created_ids.json"],
+  "action_items": [
+    "Make NewWorkDialog scrollable on short viewports (max-h-[90vh] overflow-y-auto on DialogContent).",
+    "Optional: separate other_text per detail field (or one 'Other' per field) to avoid 'X · X' summaries.",
+    "Optional: decide whether a clinic-staff auto message (no written message) is allowed for clinical types.",
+    "Optional: make the WorkHub detail column sticky (md:sticky md:top-4) for long lists."
+  ],
+  "critical_code_review_comments": [
+    "work_hub_catalog.validate_structured is solid: codes are validated against the catalog, labels are snapshotted, single vs multi is enforced, and there are no mongo _id leaks (confirmed through GET).",
+    "The frontend gets every option list from /meta catalog, so nothing is duplicated in React. Good.",
+    "ReasonLine hides the reason when reason_code === referral_subtype, which works as intended for referral badges.",
+    "The backend err log has an old 'CreateBody object has no attribute attention_level' traceback from before the last reload (before 05:17). It did not happen again during testing."
+  ],
+  "updated_files": ["/app/backend/tests/test_work_hub_structured.py"],
+  "success_rate": {"backend": "100% (20/20)", "frontend": "95% (all requested flows pass; one responsive overflow bug on short phones)"},
+  "seed_data_creation": "Created work_items (no deletes or edits to existing items). Via API with patient_name 'QA TEMP Patient': WRK-000091 b4c9848c-e394-4e45-a0f4-cda83c7b4abf, WRK-000092 9864b04c-2fe9-49d6-b54f-02b76f8403d8, WRK-000093 544fbc29-bd42-49e8-a8a4-31d15357326d, WRK-000094 25a25b07-1abc-46d9-bc97-8a9e5a19982c, WRK-000095 24c6469c-8ad7-462a-991f-98adcb9eaed1, WRK-000096 8acd25a9-f85c-45fc-8313-2ae0abad19d2, WRK-000097 79352f65-511c-4e5b-834f-337fd3abf0b9, WRK-000098 f2673757-ac7d-4b46-842b-ed748e926880, WRK-000099 c9f0420b-11cb-47b8-a9b8-e16f9d19dbe3, WRK-000100 a4629d9f-240c-4b7f-b477-8b287f1e85a2. Via UI with no patient (the UI patient picker only allows real directory patients, so 'QA TEMP Patient' could not be set): WRK-000101 3b9cbcb6-bc66-44b5-bff6-8488050d7a82 (IMAGING MRI Liver), WRK-000102 a5d472d1-0d70-4c65-8773-ad181863c90a (BLOODWORK), WRK-000103 43967b54-6d22-4594-8130-a39798b242c2 (CALL_BOOK ASAP), WRK-000104 725a92b0-d5e4-4266-9cbb-bffbdf8526ad (staff REFERRAL 'QA TEMP staff UI referral'). Cleanup: delete these ids plus any items with patient_name 'QA TEMP Patient' created by the tester. Note: the main agent also created several QA TEMP items at 05:15.",
+  "test_credentials": "Physician PAGUAYO / Aguayo-Preview-2026#Tmp (must_change_password=false), staff staff@visita.demo / Staff2026! — both work.",
+  "retest_needed": false,
+  "should_main_agent_self_test": true,
+  "context_for_next_testing_agent": "Run: REACT_APP_BACKEND_URL=... pytest /app/backend/tests/test_work_hub_structured.py (each run creates about 10 'QA TEMP Patient' work items; ids are added to /app/test_reports/work_hub_structured_created_ids.json). Login at /signin?internal=1 with login-email/login-password/login-submit. Legacy RESULTS items WRK-000068/69 are in the physician's Sent view."
+}

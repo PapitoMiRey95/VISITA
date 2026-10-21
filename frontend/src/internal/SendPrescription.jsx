@@ -322,7 +322,7 @@ export default function SendPrescription() {
                                 <Search className="w-4 h-4 text-slate-400 absolute left-2 top-2.5" />
                                 <Input data-testid="sendrx-search" value={query} onChange={(e) => { setQuery(e.target.value); if (!e.target.value.trim()) setResults([]); }} placeholder="Patient name, VIen / VISITA Patient ID, DOB or phone" className="pl-8" />
                             </div>
-                            <Button type="submit" disabled={searching} data-testid="sendrx-search-btn">{searching ? "…" : "Search"}</Button>
+                            <Button type="submit" disabled={searching} data-testid="sendrx-search-btn" className="w-24 shrink-0 justify-start pl-3 bg-visita-green hover:bg-visita-greenDark text-white"><Search className="w-4 h-4 mr-1" />{searching ? "…" : "Search"}</Button>
                         </form>
                         <div className="my-3 flex items-center gap-2 text-[11px] uppercase tracking-wide text-slate-400"><span className="flex-1 border-t border-slate-200" />or search by PIN<span className="flex-1 border-t border-slate-200" /></div>
                         <form onSubmit={(e) => runSearch(e, true)} className="flex gap-2">
@@ -330,7 +330,7 @@ export default function SendPrescription() {
                                 <Search className="w-4 h-4 text-slate-400 absolute left-2 top-2.5" />
                                 <Input data-testid="sendrx-pin" value={pin} inputMode="numeric" onChange={(e) => { const v = e.target.value.replace(/[^\d]/g, ""); setPin(v); if (!v) setResults([]); }} placeholder="VISITA PIN (numbers only)" className="pl-8" />
                             </div>
-                            <Button type="submit" variant="outline" disabled={searching} data-testid="sendrx-pin-btn">Find by PIN</Button>
+                            <Button type="submit" disabled={searching} data-testid="sendrx-pin-btn" className="w-24 shrink-0 justify-start pl-3 bg-visita-green hover:bg-visita-greenDark text-white"><Search className="w-4 h-4 mr-1" />PIN</Button>
                         </form>
                         <div className="mt-3 divide-y border border-slate-200 rounded-sm max-h-72 overflow-y-auto">
                             {results.length === 0 && <div className="px-3 py-4 text-slate-400 text-sm">Search the patient directory by name, ID, PIN, DOB or phone.</div>}

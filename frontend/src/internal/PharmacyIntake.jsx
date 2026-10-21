@@ -10,6 +10,7 @@ import { Input } from "../components/ui/input";
 import { Textarea } from "../components/ui/textarea";
 import { Label } from "../components/ui/label";
 import { RxRequestHistory } from "./RxRequestHistory";
+import { LastRxProvided, PlanHistory } from "./IntakeContext";
 
 const RECEIVED = ["fax", "phone", "call", "email", "message", "other"];
 const DELIVERY = [["pharmacy", "Delivery"], ["pickup", "Pick up at pharmacy"]];
@@ -211,6 +212,7 @@ export default function PharmacyIntake() {
                                 })}
                             </div>
                         )}
+                        <LastRxProvided patientRef={snap.directory_id || snap.patient_id} />
                     </div>
 
                     {/* CENTER — Rx request / refill */}
@@ -326,6 +328,7 @@ export default function PharmacyIntake() {
                         <p className="text-[11px] text-slate-400 mt-3 leading-relaxed">
                             Quick physician context only. Clinical medication and visit data remain in VISITA (read-only sync pending).
                         </p>
+                        <PlanHistory patientRef={snap.directory_id || snap.patient_id} />
                     </div>
                 </div>
             )}

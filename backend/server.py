@@ -7600,8 +7600,9 @@ async def internal_patient_prescriptions(patient_ref: str, user: dict = Depends(
     if not snap:
         raise HTTPException(status_code=404, detail="Patient not found.")
     pid = snap["patient_id"]
+    refs = list({r for r in (pid, snap.get("directory_id")) if r})  # same canonical identity: linked patient id and/or directory id
     docs = await db.rx_transmissions.find(
-        {"patient_id": pid, "direction": "PHYSICIAN_TO_PHARMACY"}
+        {"direction": "PHYSICIAN_TO_PHARMACY", "$or": [{"patient_id": {"$in": refs}}, {"patient_directory_id": {"$in": refs}}]}
     ).sort("created_at", -1).to_list(50)
     active = await db.patient_medications.find(
         {"patient_id": pid, "active": True}, {"_id": 0}

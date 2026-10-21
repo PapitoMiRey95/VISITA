@@ -44,7 +44,7 @@ export default function Landing() {
                 <div className="w-full max-w-2xl text-center px-8 py-8 lg:px-12 lg:py-10">
                     <Logo variant="dark" text="VIsita EMR Network" iconClass="h-16 w-16 lg:h-24 lg:w-24 drop-shadow-[0_0_30px_rgba(23,179,196,0.35)]"
                         textClass="text-3xl sm:text-4xl lg:text-5xl" className="justify-center" />
-                    <p className="mt-2 text-sm sm:text-base tracking-[0.3em] uppercase text-slate-300/90" data-testid="landing-vien-tag">(VIen)</p>
+                    <p className="mt-2 text-sm sm:text-base tracking-[0.3em] text-slate-300/90" data-testid="landing-vien-tag">(VIen)</p>
                 </div>
 
                 {mode === "home" ? (

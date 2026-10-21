@@ -185,7 +185,7 @@ export default function Queue({ title, subtitle, endpoint, patchBase, searchPlac
                                 )}
 
                                 {enableVoid && ["admin", "staff"].includes(user?.role) && selected.internal_status !== "voided" && (
-                                    <div className="border border-red-200 bg-red-50/50 rounded p-2.5 space-y-2">
+                                    <div className="border border-red-200 bg-slate-50 rounded p-2.5 space-y-2" data-testid="void-panel">
                                         <div className="text-xs uppercase text-red-600 font-medium">Void / Archive request</div>
                                         <p className="text-[11px] text-slate-500">The request is preserved read-only for audit history — it is not deleted.</p>
                                         <select data-testid="void-reason" value={voidReason} onChange={(e) => setVoidReason(e.target.value)}

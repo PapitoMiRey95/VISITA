@@ -3163,12 +3163,12 @@ async def create_rx(body: PrescriptionBody, ctx: PortalCtx = Depends(portal_acce
         "id": str(uuid.uuid4()), "ref_number": ref, "patient_id": p["id"],
         "patient_name": f"{p['last_name']}, {p['first_name']}",
         "practice_id": p.get("practice_id"),
-        **body.model_dump(), "internal_status": "received", "assigned_to": None,
-        "internal_notes": [], "history": [{"status": "received", "at": now_iso(), "by": "patient"}],
+        **body.model_dump(), "internal_status": "waiting_physician", "assigned_to": None,
+        "internal_notes": [], "history": [{"status": "waiting_physician", "at": now_iso(), "by": "patient", "note": "Patient portal request — routed directly to physician"}],
         "created_at": now_iso(), "updated_at": now_iso(), "completed_at": None,
     }
     await db.prescription_requests.insert_one({**doc})
-    await audit("create", "prescription", doc["id"], ctx.audit_actor(), new_status="received",
+    await audit("create", "prescription", doc["id"], ctx.audit_actor(), new_status="waiting_physician",
                 meta=ctx.audit_meta())
     doc.pop("_id", None)
     return doc
@@ -3238,12 +3238,12 @@ async def create_refill_requests(body: RefillRequestBody,
             "travel_note": ((body.travel_note or "").strip() or None) if longer else None,
             "delivery_method": "pharmacy", "destination_pharmacy_label": pharmacy_label,
             "patient_note": (body.patient_note or "").strip() or None,
-            "internal_status": "received", "assigned_to": None, "internal_notes": [],
-            "history": [{"status": "received", "at": now, "by": "patient"}],
+            "internal_status": "waiting_physician", "assigned_to": None, "internal_notes": [],
+            "history": [{"status": "waiting_physician", "at": now, "by": "patient", "note": "Patient portal request — routed directly to physician"}],
             "created_at": now, "updated_at": now, "completed_at": None,
         }
         await db.prescription_requests.insert_one({**doc})
-        await audit("create", "prescription", doc["id"], ctx.audit_actor(), new_status="received",
+        await audit("create", "prescription", doc["id"], ctx.audit_actor(), new_status="waiting_physician",
                     meta=ctx.audit_meta({"batch_id": batch_id, "source": "patient_refill",
                                          "supply_type": body.supply_type}))
         doc.pop("_id", None)
@@ -3277,12 +3277,12 @@ async def create_rx_photo(
         "destination_pharmacy_label": await _refill_pharmacy_label(p),
         "patient_note": (patient_note or "").strip() or None,
         "attachment": attachment,
-        "internal_status": "received", "assigned_to": None, "internal_notes": [],
-        "history": [{"status": "received", "at": now, "by": "patient"}],
+        "internal_status": "waiting_physician", "assigned_to": None, "internal_notes": [],
+        "history": [{"status": "waiting_physician", "at": now, "by": "patient", "note": "Patient portal request — routed directly to physician"}],
         "created_at": now, "updated_at": now, "completed_at": None,
     }
     await db.prescription_requests.insert_one({**doc})
-    await audit("create", "prescription", doc["id"], ctx.audit_actor(), new_status="received",
+    await audit("create", "prescription", doc["id"], ctx.audit_actor(), new_status="waiting_physician",
                 meta=ctx.audit_meta({"source": "patient_photo", "has_attachment": True}))
     doc.pop("_id", None)
     return doc
@@ -3362,12 +3362,12 @@ async def create_prescription_request(body: PrescriptionRequestBody,
         "requested_months": None, "delivery_method": "pharmacy",
         "destination_pharmacy_label": await _refill_pharmacy_label(p),
         "patient_note": (body.patient_note or "").strip() or None,
-        "internal_status": "received", "assigned_to": None, "internal_notes": [],
-        "history": [{"status": "received", "at": now, "by": ("delegate" if ctx.is_delegate else "patient")}],
+        "internal_status": "waiting_physician", "assigned_to": None, "internal_notes": [],
+        "history": [{"status": "waiting_physician", "at": now, "by": ("delegate" if ctx.is_delegate else "patient"), "note": "Patient portal request — routed directly to physician"}],
         "created_at": now, "updated_at": now, "completed_at": None,
     }
     await db.prescription_requests.insert_one({**doc})
-    await audit("create", "prescription", doc["id"], ctx.audit_actor(), new_status="received",
+    await audit("create", "prescription", doc["id"], ctx.audit_actor(), new_status="waiting_physician",
                 meta=ctx.audit_meta({"source": "patient_request", "entry_source": doc["medication_entry_source"]}))
     doc.pop("_id", None)
     return doc

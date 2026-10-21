@@ -94,8 +94,10 @@ export default function RxQueue() {
             ];
         }
         const base = [];
-        if (item.internal_status === "received") base.push({ label: "Mark Under Review", testid: "act-review", variant: "outline", body: { action: "review" } });
-        if (item.internal_status !== "waiting_physician") base.push({ label: "Send to Physician", testid: "act-send-physician", variant: "outline", body: { action: "send_to_physician" } });
+        // Patient-portal requests route straight to the physician queue — staff only view them (no review / send step).
+        const fromPatient = item.source !== "pharmacy";
+        if (!fromPatient && item.internal_status === "received") base.push({ label: "Mark Under Review", testid: "act-review", variant: "outline", body: { action: "review" } });
+        if (!fromPatient && item.internal_status !== "waiting_physician") base.push({ label: "Send to Physician", testid: "act-send-physician", variant: "outline", body: { action: "send_to_physician" } });
         base.push({ label: "Mark Completed", testid: "act-complete", body: { action: "complete" } });
         base.push({ label: "Appointment Required", testid: "act-appt-req", variant: "outline", body: { action: "appointment_required" } });
         return base;

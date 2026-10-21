@@ -213,13 +213,13 @@ export default function RxQueue() {
                                 </div>
                             )}
                             <KV label="Received via">{i.received_via}</KV>
-                            <KV label="Delivery">{i.delivery_method === "pickup" ? "Pick up at pharmacy" : i.delivery_method === "pharmacy" ? "Delivery" : ""}</KV>
+                            <KV label="Delivery mode">{i.delivery_method === "pickup" ? "Pick up at pharmacy" : i.delivery_method === "pharmacy" ? "Delivery" : ""}</KV>
                             <KV label="Pharmacy note">{i.pharmacy_note}</KV>
                             <KV label="Intake by">{i.intake_by}</KV>
                         </>
                     ) : (
                         <>
-                            <KV label="Delivery">{i.delivery_method === "pharmacy" ? "Send to pharmacy" : "Pickup"}</KV>
+                            <KV label="Delivery mode">{i.delivery_method === "pharmacy" ? "Send to pharmacy" : "Pickup"}</KV>
                             <KV label="New pharmacy">{i.new_pharmacy_details}</KV>
                         </>
                     )}

@@ -3834,22 +3834,29 @@ async def _attach_pins(rows: list) -> list:
     """Backfill each queue row's patient PIN (visita_patient_id) from portal patient or directory so staff/physician can see it."""
     pids = {r.get("patient_id") for r in rows if r.get("patient_id")}
     dids = {r.get("directory_id") for r in rows if r.get("directory_id")}
-    pin_map = {}
+    pin_map, phone_map = {}, {}
     if pids:
-        async for p in db.patients.find({"id": {"$in": list(pids)}}, {"_id": 0, "id": 1, "visita_patient_id": 1, "matched_directory_id": 1}):
+        async for p in db.patients.find({"id": {"$in": list(pids)}}, {"_id": 0, "id": 1, "visita_patient_id": 1, "matched_directory_id": 1, "phone": 1}):
+            if p.get("phone"):
+                phone_map[p["id"]] = p["phone"]
             if p.get("visita_patient_id"):
                 pin_map[p["id"]] = p["visita_patient_id"]
             elif p.get("matched_directory_id"):
                 dids.add(p["matched_directory_id"]); pin_map.setdefault(("via", p["id"]), p["matched_directory_id"])
     if dids:
-        async for d in db.patient_directory.find({"id": {"$in": list(dids)}}, {"_id": 0, "id": 1, "visita_patient_id": 1}):
+        async for d in db.patient_directory.find({"id": {"$in": list(dids)}}, {"_id": 0, "id": 1, "visita_patient_id": 1, "cell_phone": 1, "home_phone": 1}):
             if d.get("visita_patient_id"):
                 pin_map[d["id"]] = d["visita_patient_id"]
+            if d.get("cell_phone") or d.get("home_phone"):
+                phone_map[d["id"]] = d.get("cell_phone") or d.get("home_phone")
     for r in rows:
+        via = pin_map.get(("via", r.get("patient_id")))
         if not r.get("visita_patient_id"):
-            via = pin_map.get(("via", r.get("patient_id")))
             r["visita_patient_id"] = pin_map.get(r.get("patient_id")) or pin_map.get(r.get("directory_id")) or (pin_map.get(via) if via else None) \
                 or (r.get("patient_snapshot") or {}).get("visita_patient_id")
+        snap = r.get("patient_snapshot") or {}
+        r["patient_phone"] = phone_map.get(r.get("patient_id")) or phone_map.get(r.get("directory_id")) or (phone_map.get(via) if via else None) \
+            or snap.get("cell_phone") or snap.get("home_phone")
     return rows
 
 

@@ -1,7 +1,7 @@
 import { useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { toast } from "sonner";
-import { Search, CalendarPlus } from "lucide-react";
+import { Search, CalendarPlus, Phone } from "lucide-react";
 import { api, formatErr } from "../lib/api";
 import { formatCombinedName } from "../lib/name";
 import { formatDate } from "../lib/date";
@@ -35,6 +35,7 @@ export default function Queue({ title, subtitle, endpoint, patchBase, searchPlac
     const [busy, setBusy] = useState(false);
     const [bookOpen, setBookOpen] = useState(false);
     const [voidReason, setVoidReason] = useState("Duplicate");
+    const [showPhone, setShowPhone] = useState(false);
 
     const list = useQuery({
         queryKey: ["queue", endpoint, q, status],
@@ -42,7 +43,7 @@ export default function Queue({ title, subtitle, endpoint, patchBase, searchPlac
     });
 
     const open = (item) => { setSelected(item); setNote(""); setReply(""); };
-    const close = () => setSelected(null);
+    const close = () => { setSelected(null); setShowPhone(false); };
 
     const run = async (body) => {
         setBusy(true);
@@ -212,11 +213,13 @@ export default function Queue({ title, subtitle, endpoint, patchBase, searchPlac
                                             {a.label}
                                         </Button>
                                     ))}
-                                    {enableBooking && selected.patient_id && (
-                                        <Button data-testid="act-book-appointment" disabled={busy} variant="outline" size="sm"
-                                            onClick={() => setBookOpen(true)} className="border-visita-green text-visita-greenDark">
-                                            <CalendarPlus className="w-4 h-4 mr-1" /> Book Appointment
-                                        </Button>
+                                    <Button data-testid="act-call-patient" variant="outline" size="sm" disabled={!selected.patient_phone}
+                                        onClick={() => setShowPhone((v) => !v)} className="border-visita-green text-visita-greenDark"
+                                        title={selected.patient_phone ? "Show patient phone number" : "No phone number on file"}>
+                                        <Phone className="w-4 h-4 mr-1" /> Call patient
+                                    </Button>
+                                    {showPhone && selected.patient_phone && (
+                                        <a href={`tel:${selected.patient_phone.replace(/[^+\d]/g, "")}`} data-testid="patient-phone" className="font-mono text-sm font-semibold text-visita-greenDark underline underline-offset-2">{selected.patient_phone}</a>
                                     )}
                                 </div>
                             )}

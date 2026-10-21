@@ -9,6 +9,7 @@ import { Button } from "../components/ui/button";
 import { Input } from "../components/ui/input";
 import { Textarea } from "../components/ui/textarea";
 import { Label } from "../components/ui/label";
+import { RxRequestHistory } from "./RxRequestHistory";
 
 const RECEIVED = ["fax", "phone", "call", "email", "message", "other"];
 const DELIVERY = [["pharmacy", "Delivery"], ["pickup", "Pick up at pharmacy"]];
@@ -100,6 +101,16 @@ export default function PharmacyIntake() {
     };
 
     const removeParsed = (idx) => setParsedMeds((s) => s.filter((_, i) => i !== idx));
+
+    // Repeat a previous request: prefill pharmacy / meds / duration / delivery. Nothing is sent until "Send to Physician".
+    const repeatRequest = (r) => {
+        const structured = (r.medications_structured || []);
+        setParsedMeds(structured);
+        setParseWarnings([]);
+        setF((s) => ({ ...s, pharmacy: r.pharmacy || s.pharmacy, duration_qty: r.duration_qty || "", delivery_method: r.delivery_method === "pickup" ? "pickup" : "pharmacy",
+            meds_text: structured.length ? "" : ((r.medications || []).length ? r.medications : [[r.medication_name, r.strength].filter(Boolean).join(" ")]).filter(Boolean).join("\n") }));
+        toast.success(`Prefilled from ${r.ref_number} — review and send.`);
+    };
 
     const submit = async () => {
         const manual = f.meds_text.split("\n").map((x) => x.trim()).filter(Boolean);
@@ -205,6 +216,7 @@ export default function PharmacyIntake() {
                     {/* CENTER — Rx request / refill */}
                     <div className="bg-white border border-slate-300 rounded-sm p-4 space-y-3">
                         <div className="flex items-center gap-2 text-slate-700 font-semibold"><ClipboardList className="w-4 h-4" /> Rx Request / Refill</div>
+                        <RxRequestHistory directoryId={snap.directory_id} patientId={snap.patient_id} onRepeat={repeatRequest} />
                         <div>
                             <Label className="text-xs">Pharmacy</Label>
                             <select data-testid="intake-pharmacy" value={f.pharmacy || ""} onChange={(e) => set("pharmacy", e.target.value)}

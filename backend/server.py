@@ -3868,6 +3868,19 @@ async def rx_queue(q: Optional[str] = None, status: Optional[str] = None, user: 
     return await _attach_pins(rows)
 
 
+@api.get("/internal/prescriptions/history")
+async def rx_history(directory_id: Optional[str] = None, patient_id: Optional[str] = None, user: dict = Depends(require_roles(*CLINIC_ROLES))):
+    """Past Rx requests for one patient (read-only) so staff can review history and repeat a request from the intake form."""
+    ors = [c for c in ([{"directory_id": directory_id}] if directory_id else []) + ([{"patient_id": patient_id}] if patient_id else [])]
+    if not ors:
+        return []
+    query = {**pscope(user), "$or": ors, "internal_status": {"$ne": "voided"}}
+    fields = {"_id": 0, "id": 1, "ref_number": 1, "source": 1, "received_via": 1, "pharmacy": 1, "medications": 1, "medications_structured": 1,
+              "medication_name": 1, "strength": 1, "duration_qty": 1, "delivery_method": 1, "internal_status": 1, "created_at": 1, "completed_at": 1,
+              "linked_transmission_ref": 1, "prescription_sent_at": 1, "physician_note": 1}
+    return await db.prescription_requests.find(query, fields).sort("created_at", -1).to_list(25)
+
+
 @api.patch("/internal/prescriptions/{item_id}")
 async def rx_update(item_id: str, body: UpdateBody, user: dict = Depends(require_roles(*CLINIC_ROLES))):
     return await _update_request(db.prescription_requests, "prescription", item_id, body, user,

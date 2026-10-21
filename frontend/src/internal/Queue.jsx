@@ -185,19 +185,18 @@ export default function Queue({ title, subtitle, endpoint, patchBase, searchPlac
                                 )}
 
                                 {enableVoid && ["admin", "staff"].includes(user?.role) && selected.internal_status !== "voided" && (
-                                    <div className="border border-red-200 bg-slate-50 rounded p-2.5 space-y-2" data-testid="void-panel">
-                                        <div className="text-xs uppercase text-red-600 font-medium">Void / Archive request</div>
-                                        <p className="text-[11px] text-slate-500">The request is preserved read-only for audit history — it is not deleted.</p>
+                                    <div className="inline-flex flex-wrap items-center gap-2 border border-red-200 bg-slate-50 rounded px-2.5 py-1.5 w-fit max-w-full" data-testid="void-panel">
+                                        <span className="text-xs uppercase text-red-600 font-medium">Void / Archive</span>
                                         <select data-testid="void-reason" value={voidReason} onChange={(e) => setVoidReason(e.target.value)}
-                                            className="w-full h-9 border border-slate-300 rounded px-2 text-sm bg-white">
+                                            className="h-8 border border-slate-300 rounded px-2 text-sm bg-white">
                                             <option>Duplicate</option>
                                             <option>Entered by mistake</option>
                                             <option>No longer needed</option>
                                             <option>Other</option>
                                         </select>
-                                        <Button data-testid="act-void" disabled={busy} variant="outline"
+                                        <Button data-testid="act-void" disabled={busy} variant="outline" size="sm"
                                             onClick={() => run({ action: "void", void_reason: voidReason })}
-                                            className="border-red-300 text-red-700 hover:bg-red-100">
+                                            className="h-8 border-red-300 text-red-700 hover:bg-red-100" title="Preserved read-only for audit history — not deleted.">
                                             Void Request
                                         </Button>
                                     </div>

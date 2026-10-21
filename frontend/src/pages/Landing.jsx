@@ -44,6 +44,7 @@ export default function Landing() {
                 <div className="w-full max-w-2xl text-center px-8 py-8 lg:px-12 lg:py-10">
                     <Logo variant="dark" text="VIsita EMR Network" iconClass="h-16 w-16 lg:h-24 lg:w-24 drop-shadow-[0_0_30px_rgba(23,179,196,0.35)]"
                         textClass="text-3xl sm:text-4xl lg:text-5xl" className="justify-center" />
+                    <p className="mt-2 text-sm sm:text-base tracking-[0.3em] uppercase text-slate-300/90" data-testid="landing-vien-tag">(VIen)</p>
                 </div>
 
                 {mode === "home" ? (
@@ -87,7 +88,7 @@ export default function Landing() {
 
                 <p className="w-full max-w-md text-[11px] leading-relaxed text-center text-slate-300 rounded-2xl border border-white/10 bg-gradient-to-br from-[rgba(8,20,35,0.72)] to-[rgba(8,20,35,0.55)] backdrop-blur-md px-4 py-3 shadow-[0_20px_60px_-15px_rgba(0,0,0,0.7)]">{t("common:emergencyNotice")}</p>
                 <button type="button" onClick={() => nav("/platform-access")} data-testid="landing-platform-access"
-                    className="mt-3 text-[10px] uppercase tracking-[0.2em] text-slate-500 hover:text-slate-300 transition-colors duration-150">Platform Access</button>
+                    className="mt-3 text-[10px] uppercase tracking-[0.2em] text-slate-500 hover:text-slate-300 transition-colors duration-150">Division of Aerotyne</button>
             </div>
         </div>
     );

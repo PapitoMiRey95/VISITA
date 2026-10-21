@@ -3706,6 +3706,8 @@ async def mark_notes_read(user: dict = Depends(get_current_user)):
 @api.get("/internal/counters")
 async def counters(user: dict = Depends(require_roles(*CLINIC_ROLES))):
     ps = pscope(user)
+    # Registered portal patients (verified, active) — informational total shown in the sidebar.
+    registered = await db.patients.count_documents({**ps, "verification_status": "verified", "active_status": {"$ne": False}})
     if user["role"] == "physician":
         rx = await db.prescription_requests.count_documents({**ps, "internal_status": "waiting_physician"})
         img = await db.imaging_requests.count_documents({**ps, "internal_status": "waiting_physician"})
@@ -3717,7 +3719,7 @@ async def counters(user: dict = Depends(require_roles(*CLINIC_ROLES))):
         results_review = await db.exam_results.count_documents({**ps, "status": "READY_FOR_PHYSICIAN"})
         result_access = await db.exam_results.count_documents({**ps, "status": "REVIEWED", "shared_with_patient": False, "access_requested": True})
         work = await work_mod.actionable_count(user)
-        return {"role": "physician", "counters": {"rx": rx, "imaging": img, "bloodwork": bld, "messages": pmsg, "doctor_tasks": dmsg, "work_hub": work, "applications": apps, "portal_access": par, "results_review": results_review, "result_access": result_access}}
+        return {"role": "physician", "registered_patients": registered, "counters": {"rx": rx, "imaging": img, "bloodwork": bld, "messages": pmsg, "doctor_tasks": dmsg, "work_hub": work, "applications": apps, "portal_access": par, "results_review": results_review, "result_access": result_access}}
     rx = await db.prescription_requests.count_documents({**ps, "internal_status": {"$in": RX_ACTIVE}})
     referrals = await db.referrals.count_documents({**ps, "ready_to_fax": True, "faxed": False})
     img = await db.imaging_requests.count_documents({**ps, "internal_status": {"$in": IMG_ACTIVE}})
@@ -3729,7 +3731,7 @@ async def counters(user: dict = Depends(require_roles(*CLINIC_ROLES))):
     apps = await db.patient_applications.count_documents({**ps, "internal_status": {"$in": APP_ACTIVE}})
     par = await db.portal_access_requests.count_documents({**ps, "status": "PENDING"})
     exams = await db.exam_results.count_documents({**ps, "status": {"$in": ["NEEDS_PATIENT_MATCH", "RECEIVED"]}})
-    return {"role": user["role"], "counters": {
+    return {"role": user["role"], "registered_patients": registered, "counters": {
         "rx": rx, "referrals": referrals, "imaging": img, "bloodwork": bld, "messages": msgs,
         "appointments": appts, "doctor_tasks": tasks, "work_hub": await work_mod.actionable_count(user), "verifications": pending_verif, "applications": apps,
         "portal_access": par, "exams": exams,

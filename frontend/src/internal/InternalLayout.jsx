@@ -199,8 +199,14 @@ export default function InternalLayout() {
             </header>
 
             <div className="flex flex-1 min-h-0">
-                <aside className="w-52 bg-white border-r border-slate-300 flex-shrink-0 py-2 overflow-y-auto hidden md:block">
-                    {renderNav()}
+                <aside className="w-52 bg-white border-r border-slate-300 flex-shrink-0 py-2 overflow-y-auto hidden md:flex md:flex-col">
+                    <div className="flex-1">{renderNav()}</div>
+                    {counters.data?.registered_patients != null && (
+                        <div className="mx-3 mt-3 mb-1 border-t border-slate-200 pt-2 flex items-center justify-between text-[11px] text-slate-500" data-testid="registered-patients-total" title="Verified, active portal patients in this practice">
+                            <span className="flex items-center gap-1"><Users className="w-3.5 h-3.5" /> Registered patients</span>
+                            <span className="font-mono font-bold text-slate-800 text-sm">{counters.data.registered_patients.toLocaleString()}</span>
+                        </div>
+                    )}
                 </aside>
 
                 <Sheet open={hubOpen} onOpenChange={setHubOpen}>

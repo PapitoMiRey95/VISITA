@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef, useCallback } from "react";
 import { toast } from "sonner";
-import { Search, X, UserRound, Bell, ArrowRightLeft, Check, Clock, Play, RotateCcw, MessageSquare, FileCheck2, Flag, AlertTriangle, PhoneCall, FileOutput, Microscope, FileText, Scale, FolderOpen, CalendarDays, ClipboardList, Pill, ChevronDown, ChevronUp, Stethoscope, Scissors, ScanLine, FlaskConical } from "lucide-react";
+import { Search, X, UserRound, Bell, ArrowRightLeft, Check, Clock, Play, RotateCcw, MessageSquare, FileCheck2, Flag, AlertTriangle, PhoneCall, FileOutput, Microscope, FileText, Scale, FolderOpen, CalendarDays, ClipboardList, Pill, ChevronDown, ChevronUp, Undo2, Stethoscope, Scissors, ScanLine, FlaskConical } from "lucide-react";
 import { StructuredFields, structuredBody, structuredEnough, emptyStructured, StructuredSummary, ReasonLine, ClinicActionChip, TransferReasonChip } from "./workHubStructured";
 import { api, formatErr } from "../lib/api";
 import { formatPatientName } from "../lib/name";
@@ -59,7 +59,7 @@ export function AwaitingBadge({ item, testid }) {
     if (item.owner_role === "CLINIC" && (item.events || []).some((e) => e.type === "handoff" && e.to_role === "CLINIC")) return <Chip tone="bg-emerald-50 text-emerald-800 border-emerald-300" testid={testid}>Returned to Clinic</Chip>;
     return null;
 }
-export const OUTCOME_LABEL = { COMPLETED: "Completed", ALREADY_DONE: "Already done", NO_LONGER_NEEDED: "No longer needed", DUPLICATE: "Duplicate" };
+export const OUTCOME_LABEL = { COMPLETED: "Completed", ALREADY_DONE: "Already done", NO_LONGER_NEEDED: "No longer needed", DUPLICATE: "Duplicate", WITHDRAWN: "Withdrawn" };
 export const CLOSE_OUTCOMES = ["ALREADY_DONE", "NO_LONGER_NEEDED", "DUPLICATE"];
 // Outcome badge only when the close was not an ordinary Complete.
 export function OutcomeBadge({ item, testid }) {
@@ -331,7 +331,7 @@ function EventRow({ ev }) {
         created: `sent to ${who(ev.to_name, ev.to_position, ev.to_role)}`,
         handoff: `${who(ev.from_name, ev.from_position, ev.from_role)} → ${who(ev.to_name, ev.to_position, ev.to_role)}`,
         waiting: ev.waiting_until ? `waiting until ${formatDate(ev.waiting_until.slice(0, 10))}` : "waiting",
-        completed: ev.outcome && ev.outcome !== "COMPLETED" ? `closed as ${OUTCOME_LABEL[ev.outcome]}` : "completed task", status: STATUS_LABEL[ev.status] || ev.status, reply: "note", reopened: "reopened",
+        completed: ev.outcome && ev.outcome !== "COMPLETED" ? `closed as ${OUTCOME_LABEL[ev.outcome]}` : "completed task", status: STATUS_LABEL[ev.status] || ev.status, reply: "note", reopened: "reopened", withdrawn: "withdrew this item",
         PRIORITY_CHANGED: `changed priority ${PRIORITY_LABEL[ev.from_priority] || ev.from_priority} → ${PRIORITY_LABEL[ev.to_priority] || ev.to_priority}`,
         DOCUMENT_SIGNED: `document signed → ${who(ev.to_name, ev.to_position, ev.to_role || "CLINIC")}`,
     }[ev.type] || ev.type;
@@ -355,9 +355,10 @@ export function WorkDetail({ item, side, userId, members = [], queues = [], cate
     const [busy, setBusy] = useState(false);
     const [showAll, setShowAll] = useState(false);
     const [closing, setClosing] = useState(null);
+    const [withdrawing, setWithdrawing] = useState(false);
     const [closeNote, setCloseNote] = useState("");
     const events = item.events || [];
-    useEffect(() => { setShowAll(false); setClosing(null); setCloseNote(""); }, [item.id]);
+    useEffect(() => { setShowAll(false); setClosing(null); setCloseNote(""); setWithdrawing(false); }, [item.id]);
     const defaultTarget = item.owner_role === "PHYSICIAN" ? "q:CLINIC" : "q:PHYSICIAN";
     const [target, setTarget] = useState(defaultTarget);
     const owned = item.owner_user_id ? item.owner_user_id === userId : item.owner_role === side;
@@ -366,8 +367,8 @@ export function WorkDetail({ item, side, userId, members = [], queues = [], cate
         setBusy(true);
         try {
             await api.post(`/internal/work/${item.id}/action`, { action, note: note || null, ...extra });
-            setNote(""); setWaitUntil(""); setClosing(null); setCloseNote(""); onChanged();
-            toast.success(action === "complete" && extra.outcome && extra.outcome !== "COMPLETED" ? `Closed as ${OUTCOME_LABEL[extra.outcome]}.` : { handoff: `Sent to ${targetLabel(target, members)}.`, complete: "Completed.", waiting: "Set to waiting.", in_progress: "In progress.", reply: "Note added.", reopen: "Reopened.", signed: `Signed — sent to ${targetLabel(target, members)}.`, priority: "Priority updated." }[action]);
+            setNote(""); setWaitUntil(""); setClosing(null); setCloseNote(""); setWithdrawing(false); onChanged();
+            toast.success(action === "complete" && extra.outcome && extra.outcome !== "COMPLETED" ? `Closed as ${OUTCOME_LABEL[extra.outcome]}.` : { handoff: `Sent to ${targetLabel(target, members)}.`, complete: "Completed.", waiting: "Set to waiting.", in_progress: "In progress.", reply: "Note added.", reopen: "Reopened.", withdraw: "Withdrawn — removed from active work.", signed: `Signed — sent to ${targetLabel(target, members)}.`, priority: "Priority updated." }[action]);
         } catch (e) { toast.error(formatErr(e)); } finally { setBusy(false); }
     };
     const other = targetLabel(target, members);
@@ -463,7 +464,18 @@ export function WorkDetail({ item, side, userId, members = [], queues = [], cate
                             </span>
                         )}
                         <Button size="sm" variant="ghost" disabled={busy || !note.trim()} data-testid="work-action-reply" onClick={() => act("reply")} className="h-8"><MessageSquare className="w-3.5 h-3.5 mr-1" /> Add note</Button>
+                        {item.created_by === userId && (
+                            <Button size="sm" variant="ghost" disabled={busy} data-testid="work-action-withdraw" onClick={() => setWithdrawing(true)} className="h-8 ml-auto text-red-700 hover:text-red-800 hover:bg-red-50" title="Sent by mistake? Withdraw this item (kept in history)."><Undo2 className="w-3.5 h-3.5 mr-1" /> Withdraw</Button>
+                        )}
                     </div>
+                    {withdrawing && (
+                        <div className="flex flex-wrap items-center gap-1.5 rounded-sm border border-red-300 bg-red-50 p-2 text-xs" data-testid="work-withdraw-panel">
+                            <span className="font-semibold text-red-800">Withdraw this item? It is removed from active work and kept in History.</span>
+                            <Input data-testid="work-withdraw-note" autoFocus value={note} onChange={(e) => setNote(e.target.value)} placeholder="Optional reason, e.g. Wrong patient" maxLength={500} className="h-7 flex-1 min-w-[12rem] text-xs" />
+                            <Button size="sm" disabled={busy} data-testid="work-withdraw-confirm" onClick={() => act("withdraw")} className="h-7 bg-red-600 hover:bg-red-700 text-white text-xs">Withdraw</Button>
+                            <Button size="sm" variant="ghost" disabled={busy} data-testid="work-withdraw-cancel" onClick={() => setWithdrawing(false)} className="h-7 text-xs">Cancel</Button>
+                        </div>
+                    )}
                     {closing && (
                         <div className="flex flex-wrap items-center gap-1.5 rounded-sm border border-slate-300 bg-slate-50 p-2 text-xs" data-testid="work-close-panel">
                             <span className="font-semibold text-slate-700">Close as {OUTCOME_LABEL[closing]}</span>

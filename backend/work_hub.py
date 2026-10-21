@@ -31,7 +31,7 @@ CATEGORY_LABELS = {
 }
 OWNERS = ("PHYSICIAN", "CLINIC")
 STATUSES = ("NEW", "IN_PROGRESS", "WAITING", "COMPLETED")
-OUTCOMES = ("COMPLETED", "ALREADY_DONE", "NO_LONGER_NEEDED", "DUPLICATE")  # why an item left active work; status stays COMPLETED
+OUTCOMES = ("COMPLETED", "ALREADY_DONE", "NO_LONGER_NEEDED", "DUPLICATE", "WITHDRAWN")  # why an item left active work; status stays COMPLETED
 # Staff → Physician context (workflow metadata only, never authorization; separate from physician booking priority).
 ATTENTION_LEVELS = ("ROUTINE", "IMPORTANT", "NEEDS_ATTENTION")  # "how soon should the physician review this?"
 REQUESTED_ACTIONS = ("REVIEW_DECISION", "PATIENT_INSTRUCTIONS", "SIGN_APPROVE", "PREPARE_DOCUMENT", "FYI", "OTHER")
@@ -103,7 +103,7 @@ class CreateBody(BaseModel):
 
 
 class ActionBody(BaseModel):
-    action: str  # handoff | signed | in_progress | waiting | complete | reply | reopen | priority
+    action: str  # handoff | signed | in_progress | waiting | complete | reply | reopen | priority | withdraw
     note: Optional[str] = None
     waiting_until: Optional[str] = None
     priority: Optional[str] = None
@@ -330,6 +330,15 @@ def build_router(require_roles) -> APIRouter:
                 raise HTTPException(status_code=400, detail="Please choose a valid close outcome.")
             upd.update({"status": "COMPLETED", "completed_at": now_iso(), "completed_by": user.get("name"), "completion_outcome": outcome, "waiting_until": None})
             ev = _event("completed", user, note, outcome=outcome)
+        elif body.action == "withdraw":
+            # Sender-only correction: retracts a mistaken item. Kept in history (never deleted) and closed as WITHDRAWN.
+            if doc.get("created_by") != user["id"]:
+                raise HTTPException(status_code=403, detail="Only the person who sent this item can withdraw it.")
+            if doc["status"] == "COMPLETED":
+                raise HTTPException(status_code=400, detail="This item is already closed.")
+            upd.update({"status": "COMPLETED", "completed_at": now_iso(), "completed_by": user.get("name"), "completion_outcome": "WITHDRAWN", "waiting_until": None,
+                        "owner_role": side, "owner_user_id": user["id"], "owner_name": user.get("name"), "owner_position": await _position_of(user)})
+            ev = _event("withdrawn", user, note or "Withdrawn by sender (sent by mistake).")
         elif body.action == "reopen":
             upd.update({"status": "NEW", "completed_at": None, "completed_by": None, "completion_outcome": None, "owner_role": side, "owner_user_id": user["id"], "owner_name": user.get("name"), "owner_position": await _position_of(user)})
             ev = _event("reopened", user, note)

@@ -55,6 +55,7 @@ import system_state as sys_mod
 import platform_config as pc_mod
 import storage
 import work_hub as work_mod
+import locations as locations_mod
 import booking_types as bt_mod
 import profile_completion as prof_mod
 from db import (APPT_PATIENT_STATUS, BLD_ACTIVE, BLD_PATIENT_STATUS, IMG_ACTIVE,
@@ -10736,6 +10737,7 @@ async def maintenance_mode_gate(request: Request, call_next):
 
 
 api.include_router(work_mod.build_router(require_roles))
+api.include_router(locations_mod.build_router(require_roles))
 api.include_router(prof_mod.build_router(get_current_user, get_patient_record, validate_hc_dates, require_roles))
 app.include_router(api)
 

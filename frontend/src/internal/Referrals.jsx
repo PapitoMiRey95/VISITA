@@ -10,6 +10,8 @@ import { Button } from "../components/ui/button";
 import { Input } from "../components/ui/input";
 import { Label } from "../components/ui/label";
 import { formatDateTime } from "../lib/date";
+import LocationsPanel from "./LocationsPanel";
+import { DestinationPicker } from "./DestinationPicker";
 
 const SPECIALTIES = [
     "Allergy & Immunology", "Anesthesiology", "Cardiology", "Cardiac Surgery",
@@ -183,6 +185,7 @@ export default function Referrals() {
                                 </div>
                             )}
                         </div>
+                        <DestinationPicker onPick={(l) => setMeta({ ...meta, specialist_name: l.entity_name || l.label || meta.specialist_name, clinic_name: l.entity_name ? (l.label || l.city || "") : (l.label || ""), fax_number: l.fax || meta.fax_number, specialty: meta.specialty || l.specialty || "" })} />
                         <div><Label className="text-xs">Specialist / Clinic</Label><Input value={meta.specialist_name} onChange={(e) => setMeta({ ...meta, specialist_name: e.target.value })} data-testid="ref-specialist" /></div>
                         <div><Label className="text-xs">Destination fax</Label><Input value={meta.fax_number} onChange={(e) => setMeta({ ...meta, fax_number: e.target.value })} data-testid="ref-fax" /></div>
                         <div className="md:col-span-2">
@@ -196,6 +199,10 @@ export default function Referrals() {
                 </form>
             )}
 
+            <details className="mb-4 bg-white border border-slate-300 rounded-sm p-3" data-testid="referral-destinations">
+                <summary className="cursor-pointer text-sm font-semibold text-slate-700">Referral destinations (hospitals, departments, specialty intake — no named physician required)</summary>
+                <div className="mt-3"><LocationsPanel entityType="destination" title="Destinations" canEdit={["admin", "staff", "physician"].includes(user?.role)} /></div>
+            </details>
             <div className="flex gap-1 mb-3">
                 <button onClick={() => setTab("active")} data-testid="tab-active" className={`px-3 py-1.5 rounded-sm text-sm font-medium border ${tab === "active" ? "bg-visita-green text-white border-visita-green" : "bg-white text-slate-600 border-slate-300"}`}>Ready to Fax ({activeItems.length})</button>
                 <button onClick={() => setTab("history")} data-testid="tab-history" className={`px-3 py-1.5 rounded-sm text-sm font-medium border flex items-center gap-1 ${tab === "history" ? "bg-visita-green text-white border-visita-green" : "bg-white text-slate-600 border-slate-300"}`}><History className="w-4 h-4" /> Faxed History</button>

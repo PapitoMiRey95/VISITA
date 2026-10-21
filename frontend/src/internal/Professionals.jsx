@@ -8,6 +8,7 @@ import { Button } from "../components/ui/button";
 import { Badge } from "../components/ui/badge";
 import ProfessionalEditor from "./ProfessionalEditor";
 import AuthorizedEditors from "./AuthorizedEditors";
+import LocationsPanel from "./LocationsPanel";
 
 // Shared VIen Professionals module (Dr. Aguayo's Professional Construct).
 // ONE Professional Profile model reused for both Directory Contacts and VIen Users;
@@ -176,6 +177,7 @@ function formatAddress(a) {
 
 
 function ProfileView({ p, tax, onClose, onEdit, onManageEditors }) {
+    const { user } = useAuth();
     const [aopMap, setAopMap] = useState({});
     useEffect(() => {
         if (!p.specialty_id || !(p.areas_of_practice_ids || []).length) { setAopMap({}); return; }
@@ -238,6 +240,9 @@ function ProfileView({ p, tax, onClose, onEdit, onManageEditors }) {
                         <Row label="Clinic address">{formatAddress(p.public_address) ? <span data-testid="prof-view-address">{formatAddress(p.public_address)}</span> : null}</Row>
                     </div>
                 </dl>
+                <div className="pt-3 mt-3 border-t border-slate-100">
+                    <LocationsPanel entityType="professional" entityId={p.id} title="Practice locations" canEdit={["admin", "staff", "physician"].includes(user?.role)} />
+                </div>
             </div>
         </div>
     );

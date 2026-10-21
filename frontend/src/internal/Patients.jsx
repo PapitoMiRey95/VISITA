@@ -226,8 +226,8 @@ export default function Patients() {
                                     onFocus={() => { if (results.length) setShowResults(true); }}
                                     placeholder="Name, health card #, or phone" className="pl-8" />
                             </div>
-                            <Button type="submit" disabled={searching} data-testid="patient-lookup-search-btn">
-                                {searching ? "…" : "Search"}
+                            <Button type="submit" disabled={searching} data-testid="patient-lookup-search-btn" className="w-24 shrink-0">
+                                <Search className="w-4 h-4 mr-1" />{searching ? "…" : "Search"}
                             </Button>
                         </div>
                     </form>
@@ -237,7 +237,7 @@ export default function Patients() {
                             <Input data-testid="patient-pin-search" value={pinQuery} inputMode="numeric"
                                 onChange={(e) => setPinQuery(e.target.value.replace(/\D/g, ""))}
                                 placeholder="VISITA PIN" className="flex-1" />
-                            <Button type="submit" disabled={searching} data-testid="patient-pin-search-btn">PIN</Button>
+                            <Button type="submit" disabled={searching} data-testid="patient-pin-search-btn" className="w-24 shrink-0"><Search className="w-4 h-4 mr-1" />PIN</Button>
                         </div>
                     </form>
                 </div>

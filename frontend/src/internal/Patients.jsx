@@ -1,7 +1,7 @@
 import { useState, useRef, useEffect } from "react";
 import { useSearchParams } from "react-router-dom";
 import { toast } from "sonner";
-import { UserSearch, Search, MapPin, Phone, IdCard, Building2, Lock, RefreshCw, Pencil, ShieldCheck, X, Copy, AlertTriangle } from "lucide-react";
+import { UserSearch, Search, MapPin, Phone, IdCard, Building2, Lock, RefreshCw, Pencil, ShieldCheck, X, Copy, AlertTriangle, UserPlus } from "lucide-react";
 import { api, formatErr } from "../lib/api";
 import { formatDate } from "../lib/date";
 import { formatPatientName } from "../lib/name";
@@ -17,6 +17,7 @@ import PortalAccountPanel from "./PortalAccountPanel";
 import MedicalRecord from "./MedicalRecord";
 import { StartEncounterButton, patientRefOf } from "../encounter/StartEncounter";
 import { VisitHistory } from "../encounter/VisitHistory";
+import { AddPatientDialog } from "./AddPatientDialog";
 
 const ANNUAL_MONTHS = ["January", "February", "March", "April", "May", "June", "July", "August", "September", "October", "November", "December"];
 
@@ -77,6 +78,7 @@ export default function Patients() {
     const [busy, setBusy] = useState(false);
     const { user } = useAuth();
     const canEdit = ["admin", "staff", "physician"].includes(user?.role);
+    const [adding, setAdding] = useState(false);
     const searchRef = useRef(null);
     const [params, setParams] = useSearchParams();
     const returnRef = params.get("patient_ref");
@@ -209,7 +211,13 @@ export default function Patients() {
             <div className="flex items-center gap-2 mb-1">
                 <UserSearch className="w-5 h-5 text-visita-green" />
                 <h1 className="text-2xl font-bold text-slate-900 tracking-tight">Patients</h1>
+                {canEdit && (
+                    <Button size="sm" data-testid="add-patient-btn" onClick={() => setAdding(true)} className="ml-auto bg-visita-green hover:bg-visita-greenDark text-white">
+                        <UserPlus className="w-4 h-4 mr-1" /> Add patient
+                    </Button>
+                )}
             </div>
+            {adding && <AddPatientDialog open onClose={() => setAdding(false)} onCreated={(d) => { setPinQuery(d.visita_patient_id); api.get("/internal/patient-lookup/pin", { params: { pin: d.visita_patient_id } }).then(({ data }) => { if (data[0]) setSelected(data[0]); }).catch(() => {}); }} />}
             <p className="text-sm text-slate-500 mb-4 flex items-center gap-1">
                 <UserSearch className="w-3.5 h-3.5" /> Search current patients by name, health card number, or phone — or look up an exact VISITA PIN. Admin, staff & physicians can edit patient information, including unregistered directory records.
             </p>

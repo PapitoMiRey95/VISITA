@@ -10466,6 +10466,62 @@ async def internal_edit_patient(patient_id: str, body: InternalPatientEditBody,
     return {"ok": True, "changes": len(changes)}
 
 
+class ManualPatientBody(InternalPatientEditBody):
+    allow_duplicate: bool = False  # staff confirms after a name+DOB match warning
+
+
+@api.post("/internal/patient-directory")
+async def internal_create_directory_patient(body: ManualPatientBody, user: dict = Depends(require_roles("staff", "admin", "physician"))):
+    """Staff manual registration: creates an ACTIVE directory record (same fields as the portal
+    registration, no portal login) with a VIen PIN. Duplicate health card → 409; name+DOB match → 409 unless allow_duplicate."""
+    _validate_edit_common(body)
+    first, last = (body.first_name or "").strip(), (body.last_name or "").strip()
+    dob = (body.date_of_birth or "").strip()
+    if not first or not last or not dob:
+        raise HTTPException(status_code=400, detail="First name, last name and date of birth are required.")
+    if not (body.phone or "").strip() and not (body.home_phone or "").strip():
+        raise HTTPException(status_code=400, detail="A phone number is required.")
+    provided, sex_val = _sex_value(body)
+    if not provided or not sex_val:
+        raise HTTPException(status_code=400, detail="Sex is required.")
+    hc_num = hc_ver = None
+    if (body.health_card_number or "").strip():
+        try:
+            hc_num, hc_ver = identity_mod.normalize_health_card(body.health_card_number, body.health_card_version or "")
+        except ValueError as e:
+            raise HTTPException(status_code=400, detail=str(e))
+        if await db.patient_directory.find_one({"norm_hcn": directory_mod.norm_hcn(hc_num)}, {"_id": 1}):
+            raise HTTPException(status_code=409, detail="A patient with this health card number already exists. Use search to open that record.")
+    for f in ("health_card_issue_date", "health_card_expiry_date"):
+        val = getattr(body, f)
+        if val and not identity_mod.valid_date(val):
+            raise HTTPException(status_code=400, detail="Health card dates must be valid dates (YYYY-MM-DD).")
+    dup = await db.patient_directory.find_one({"norm_first": directory_mod.norm_name(first), "norm_last": directory_mod.norm_name(last), "norm_dob": directory_mod.norm_dob(dob)}, {"_id": 0, "id": 1, "visita_patient_id": 1})
+    if dup and not body.allow_duplicate:
+        raise HTTPException(status_code=409, detail=f"A patient with the same name and date of birth already exists (PIN {dup.get('visita_patient_id') or '—'}). Search for them, or confirm to add anyway.")
+    dir_id = str(uuid.uuid4())
+    pin = await identity_mod.assign_visita_pin(db, dir_id)
+    clean = lambda v: (v or "").strip() or None
+    doc = {
+        "id": dir_id, "visita_patient_id": pin, "first_name": first, "last_name": last,
+        "date_of_birth": directory_mod.norm_dob(dob), "sex": sex_val,
+        "health_card_number": hc_num, "health_card_version_code": hc_ver, "sex_code": None,
+        "health_card_issue_date": clean(body.health_card_issue_date), "health_card_expiry_date": clean(body.health_card_expiry_date),
+        "address": clean(body.address), "unit": clean(body.unit), "city": clean(body.city), "province": clean(body.province),
+        "postal_code": clean(body.postal_code), "country": clean(body.country),
+        "home_phone": identity_mod.normalize_phone(body.home_phone) if clean(body.home_phone) else None,
+        "cell_phone": identity_mod.normalize_phone(body.phone) if clean(body.phone) else None,
+        "email": (body.email or "").strip().lower() or None,
+        "patient_status": directory_mod.ACTIVE, "source_close_marker": None, "linked_patient_id": None,
+        "norm_first": directory_mod.norm_name(first), "norm_last": directory_mod.norm_name(last),
+        "norm_dob": directory_mod.norm_dob(dob), "norm_hcn": directory_mod.norm_hcn(hc_num) if hc_num else "",
+        "import_source": "manual_staff_entry", "created_by": user.get("name"), "imported_at": now_iso(), "updated_at": now_iso(),
+    }
+    await db.patient_directory.insert_one({**doc})
+    await audit("create_manual_patient", "patient_directory", dir_id, user, meta={"visita_patient_id": pin, "duplicate_override": bool(dup)})
+    return {"ok": True, "id": dir_id, "visita_patient_id": pin}
+
+
 @api.patch("/internal/patient-directory/{directory_id}")
 async def internal_edit_directory(directory_id: str, body: InternalPatientEditBody,
                                   user: dict = Depends(require_roles("staff", "admin", "physician"))):

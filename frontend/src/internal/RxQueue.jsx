@@ -19,11 +19,15 @@ const STATUSES = [
     { label: "Voided / Archived", value: "voided" },
 ];
 
-function SourceBadge({ source }) {
-    const pharmacy = source === "pharmacy";
+// Display origin: pharmacy-portal submissions = PHARMACY; clinic staff/admin intake (fax/phone) = ADMIN; portal = PATIENT.
+// Stored `source` stays "pharmacy" for scoping — this is presentation only.
+const originOf = (i) => (i.source === "pharmacy" ? (i.received_via === "pharmacy_portal" ? "PHARMACY" : "ADMIN") : "PATIENT");
+const ORIGIN_TONE = { PHARMACY: "bg-indigo-100 text-indigo-700", ADMIN: "bg-amber-100 text-amber-800", PATIENT: "bg-slate-100 text-slate-600" };
+function SourceBadge({ item }) {
+    const o = originOf(item);
     return (
-        <span className={`inline-block px-2 py-0.5 rounded-sm text-[10px] font-bold tracking-wide ${pharmacy ? "bg-indigo-100 text-indigo-700" : "bg-slate-100 text-slate-600"}`}>
-            {pharmacy ? "PHARMACY" : "PATIENT"}
+        <span data-testid="rx-source-badge" className={`inline-block px-2 py-0.5 rounded-sm text-[10px] font-bold tracking-wide ${ORIGIN_TONE[o]}`}>
+            {o}
         </span>
     );
 }
@@ -38,7 +42,7 @@ function ManualReviewBadge({ item }) {
 }
 
 const COLUMNS = [
-    { header: "Source", cell: (i) => <SourceBadge source={i.source} /> },
+    { header: "Source", cell: (i) => <SourceBadge item={i} /> },
     { header: "Ref", cell: (i) => <span className="text-slate-500">{i.ref_number}</span> },
     { header: "Patient", cell: (i) => <span className="font-semibold">{formatCombinedName(i.patient_name)}</span> },
     { header: "PIN", cell: (i) => <span className="font-mono text-slate-700" data-testid="rx-row-pin">{i.visita_patient_id || "—"}</span> },
@@ -193,7 +197,7 @@ export default function RxQueue() {
                     )}
                   </div>
                   <div className="space-y-1.5 min-w-0 lg:border-l lg:border-slate-200 lg:pl-4" data-testid="rx-detail-context">
-                    <KV label="Source">{i.source === "pharmacy" ? "PHARMACY REQUEST" : "PATIENT REQUEST"}</KV>
+                    <KV label="Source">{{ PHARMACY: "PHARMACY REQUEST", ADMIN: "ADMIN INTAKE (ON BEHALF OF PHARMACY)", PATIENT: "PATIENT REQUEST" }[originOf(i)]}</KV>
                     {i.source === "pharmacy" ? (
                         <>
                             <KV label="Pharmacy">{i.pharmacy}</KV>

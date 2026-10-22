@@ -1,4 +1,5 @@
 import { useState, useEffect, useCallback } from "react";
+import { PasswordRequirements, passwordMeetsPolicy } from "../components/PasswordRequirements";
 import { postalAssist, queuePostalCandidate } from "../lib/postalAssist";
 import { useNavigate, Link, useSearchParams, useParams } from "react-router-dom";
 import { useTranslation } from "react-i18next";
@@ -179,7 +180,7 @@ export default function Register() {
         req("address"); req("city"); req("province"); req("postal_code"); req("country");
         if ((form.phone || "").replace(/\D/g, "").length < 10) errs.phone = t("auth:register.errPhone");
         if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(form.email || "")) errs.email = t("auth:register.errEmail");
-        if ((form.password || "").length < 6) errs.password = t("auth:register.errPwShort");
+        if (!passwordMeetsPolicy(form.password)) errs.password = t("auth:register.errPwPolicy", "Password doesn't meet all the requirements below.");
         else if (form.password !== form.confirm_password) errs.confirm_password = t("auth:register.errPwMismatch");
         return errs;
     };
@@ -408,7 +409,8 @@ export default function Register() {
                         <Field required error={err("email")} label={t("auth:register.email")} testid="reg-email"><Input type="email" required value={form.email} onChange={set("email")} /></Field>
                         <div data-testid="reg-password-field">
                             <Label className="text-sm font-semibold text-slate-700">{t("auth:register.password")}<span className="text-rose-500 ml-0.5">*</span></Label>
-                            <PasswordInput testid="reg-password" value={form.password} onChange={(v) => { clearErr("password"); setForm({ ...form, password: v }); }} minLength={6} required />
+                            <PasswordInput testid="reg-password" value={form.password} onChange={(v) => { clearErr("password"); setForm({ ...form, password: v }); }} minLength={8} required />
+                            <PasswordRequirements password={form.password} testid="reg-pw-rules" />
                             {err("password") && <p className="text-xs text-rose-600 font-semibold mt-1" data-testid="reg-password-field-error">{err("password")}</p>}
                         </div>
                         <div data-testid="reg-confirm-password-field">
@@ -658,7 +660,7 @@ function CaregiverRequestForm({ practice, t, onBack, onDone }) {
     const [busy, setBusy] = useState(false);
     const set = (k) => (e) => setF({ ...f, [k]: e.target.value });
     const setHc = (k) => (v) => setF((prev) => ({ ...prev, [k]: v }));
-    const pwValid = f.password.length >= 6 && f.password === f.confirm_password;
+    const pwValid = passwordMeetsPolicy(f.password) && f.password === f.confirm_password;
 
     const submit = async (e) => {
         e.preventDefault();
@@ -669,7 +671,7 @@ function CaregiverRequestForm({ practice, t, onBack, onDone }) {
         if (!f.patient_health_card_expiry_date) { toast.error(t("auth:register.errExpiryDate")); return; }
         if (!f.relationship) { toast.error(t("auth:register.caregiver.errRelationship")); return; }
         if (!f.authorization_basis) { toast.error(t("auth:register.caregiver.errBasis")); return; }
-        if (f.password.length < 6) { toast.error(t("auth:register.errPwShort")); return; }
+        if (!passwordMeetsPolicy(f.password)) { toast.error(t("auth:register.errPwPolicy", "Password doesn't meet all the requirements below.")); return; }
         if (f.password !== f.confirm_password) { toast.error(t("auth:register.errPwMismatch")); return; }
         setBusy(true);
         try {
@@ -751,11 +753,12 @@ function CaregiverRequestForm({ practice, t, onBack, onDone }) {
                 <p className="text-xs text-slate-500 mb-2">{t("auth:register.caregiver.passwordHelp")}</p>
                 <div>
                     <Label className="text-sm font-semibold text-slate-700">{t("auth:register.password")}</Label>
-                    <PasswordInput testid="cg-password" value={f.password} onChange={(v) => setF({ ...f, password: v })} minLength={6} required />
+                    <PasswordInput testid="cg-password" value={f.password} onChange={(v) => setF({ ...f, password: v })} minLength={8} required />
+                    <PasswordRequirements password={f.password} testid="cg-pw-rules" />
                 </div>
                 <div className="mt-3">
                     <Label className="text-sm font-semibold text-slate-700">{t("auth:register.confirmPassword")}</Label>
-                    <PasswordInput testid="cg-confirm-password" value={f.confirm_password} onChange={(v) => setF({ ...f, confirm_password: v })} minLength={6} required />
+                    <PasswordInput testid="cg-confirm-password" value={f.confirm_password} onChange={(v) => setF({ ...f, confirm_password: v })} minLength={8} required />
                     {f.confirm_password.length > 0 && (
                         f.password === f.confirm_password
                             ? <p className="text-xs text-emerald-600 font-semibold mt-1" data-testid="cg-pw-match">{t("auth:register.pwMatch")}</p>

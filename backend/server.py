@@ -990,8 +990,16 @@ def _register_missing(body: "RegisterBody") -> list:
     return missing
 
 
+def validate_password_policy(password: str):
+    failed = authlib.password_policy_failures(password)
+    if failed:
+        raise HTTPException(status_code=400, detail={"code": "WEAK_PASSWORD", "failed": failed,
+                            "message": "Password must have at least 8 characters, one uppercase letter and one special character."})
+
+
 @api.post("/auth/register")
 async def register(body: RegisterBody):
+    validate_password_policy(body.password)
     missing = _register_missing(body)
     if missing:
         raise HTTPException(status_code=400, detail={
@@ -6574,8 +6582,7 @@ async def create_portal_access_request(body: PortalAccessRequestBody):
         raise HTTPException(status_code=400, detail="A valid email is required.")
     if not (body.patient_health_card_number or "").strip():
         raise HTTPException(status_code=400, detail="The health card (OHIP) number of the person you are helping is required.")
-    if len(body.password or "") < 6:
-        raise HTTPException(status_code=400, detail="Your password must be at least 6 characters.")
+    validate_password_policy(body.password)
     if body.relationship not in delegates_mod.RELATIONSHIPS:
         raise HTTPException(status_code=400, detail="Please select a relationship.")
     if body.authorization_basis not in delegates_mod.CONSENT_TYPES:

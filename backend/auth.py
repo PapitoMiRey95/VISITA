@@ -37,3 +37,20 @@ def create_access_token(user_id: str, email: str, role: str, extra: dict | None 
 
 def decode_token(token: str) -> dict:
     return jwt.decode(token, _secret(), algorithms=[JWT_ALGORITHM])
+
+
+PASSWORD_SPECIALS = r"""!@#$%^&*()_+\-=\[\]{};':"\\|,.<>/?~`"""
+
+
+def password_policy_failures(password: str) -> list:
+    """Patient-portal password policy: ≥8 chars, ≥1 uppercase, ≥1 special. Returns the failed rule codes."""
+    import re
+    pw = password or ""
+    failed = []
+    if len(pw) < 8:
+        failed.append("min_length")
+    if not re.search(r"[A-Z]", pw):
+        failed.append("uppercase")
+    if not re.search(f"[{PASSWORD_SPECIALS}]", pw):
+        failed.append("special")
+    return failed

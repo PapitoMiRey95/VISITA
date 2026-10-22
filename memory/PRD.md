@@ -1012,4 +1012,4 @@ PROD FOLLOW-UPS (need explicit GO, scripts not yet written): stamp practice_id o
 
 ## 2026-10-22 — Production on Launch tier (0.5 vCPU / 2 GB) + Enter Encounter perf (PREVIEW ONLY, awaiting GO)
 - Prod resource-only republish dispatched (deploy job 7e7c2f10); bench script `memory/qa/prod_bench.sh`.
-- Preview delta awaiting Production GO: Password Requirements checkmarks + Enter Encounter perf optimization (readyCache prefetch, /visits/ready gather + trimmed context, reference-data caching, patient_directory.id index). Details: CHANGELOG 2026-10-22, audit `memory/qa/enter_encounter_perf_audit.md`, test report iteration_89.
+- DEPLOYED 2026-10-22 (bundle main.38b194bd.js): Password Requirements checkmarks + Enter Encounter perf optimization (readyCache prefetch, /visits/ready gather + trimmed context, reference-data caching, patient_directory.id index). Details: CHANGELOG 2026-10-22, audit `memory/qa/enter_encounter_perf_audit.md`, test report iteration_89.

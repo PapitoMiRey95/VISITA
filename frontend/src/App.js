@@ -53,7 +53,16 @@ import Settings from "./internal/Settings";
 import ClinicProfile from "./internal/ClinicProfile";
 import NotificationsPage from "./portal/NotificationCenter";
 import DeveloperPortal from "./developer/DeveloperPortal";
-import { SystemStatusProvider } from "./components/SystemStatus";
+import { SystemStatusProvider, ManagedNotice } from "./components/SystemStatus";
+import { OutageBoundary } from "./components/OutageBoundary";
+import { useLocation } from "react-router-dom";
+
+// Public VIen pages (login, sign-in, registration, activation…) show the managed notice; authenticated shells get it via RoleRoute.
+const PUBLIC_NOTICE_PATHS = ["/login", "/signin", "/register", "/platform-access", "/partners/register", "/change-password", "/forgot-password", "/activate"];
+function PublicNotice() {
+    const { pathname } = useLocation();
+    return PUBLIC_NOTICE_PATHS.some((p) => pathname === p || pathname.startsWith(p + "/")) ? <ManagedNotice /> : null;
+}
 import AuditCompliance from "./internal/AuditCompliance";
 import Patients from "./internal/Patients";
 import EncounterPage from "./encounter/EncounterPage";
@@ -81,6 +90,8 @@ function App() {
             <SystemStatusProvider>
             <Toaster position="top-center" richColors />
             <BrowserRouter>
+                <OutageBoundary>
+                <PublicNotice />
                 <Routes>
                     <Route path="/" element={<HomeRedirect />} />
                     <Route path="/login" element={<Landing />} />
@@ -209,6 +220,7 @@ function App() {
                         <Route path="account" element={<PharmacyAccount />} />
                     </Route>
                 </Routes>
+                </OutageBoundary>
             </BrowserRouter>
             </SystemStatusProvider>
         </AuthProvider>

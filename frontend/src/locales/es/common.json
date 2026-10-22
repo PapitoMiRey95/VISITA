@@ -94,5 +94,20 @@
     "E_INVALID_CREDENTIALS": "Credenciales inválidas. Verifique su correo/usuario y contraseña.",
     "E_ACCOUNT_DISABLED": "Esta cuenta ha sido deshabilitada. Comuníquese con la clínica.",
     "E_ENTER_IDENTIFIER": "Por favor ingrese su correo electrónico o usuario."
+  },
+  "system": {
+    "noticeUpdate": "VIen se está actualizando. Algunos servicios podrían no estar disponibles por un momento. Vuelva a intentarlo si algo no carga.",
+    "noticeIssue": "VIen no está disponible temporalmente. Estamos completando una breve actualización del sistema. Inténtelo de nuevo en unos minutos.",
+    "maintenanceTitle": "VIen no está disponible temporalmente",
+    "maintenanceBody": "Estamos completando una breve actualización del sistema. Inténtelo de nuevo en unos minutos.",
+    "maintenanceAuto": "Esta página se verifica automáticamente y lo devolverá a VIen cuando el servicio se restablezca.",
+    "emergency": "En caso de emergencia, llame al 911.",
+    "retry": "Reintentar",
+    "retrying": "Comprobando…",
+    "autoRetry": "Reintentando automáticamente en {{seconds}} s",
+    "keptWork": "Su trabajo sin guardar en esta página se conserva.",
+    "outageTitle": "VIen no está disponible temporalmente",
+    "outageBody": "Estamos completando una breve actualización del sistema. Inténtelo de nuevo en unos minutos.",
+    "reload": "Recargar VIen"
   }
 }

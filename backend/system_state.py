@@ -15,7 +15,7 @@ CACHE_TTL = 5.0
 
 # Paths that must keep working during maintenance (infra probes, banner, login, developer portal).
 ALLOW_PREFIXES = ("/api/health", "/api/system/", "/api/me/theme", "/api/auth/login", "/api/auth/me", "/api/auth/logout",
-                  "/api/developer/", "/health", "/api/practices", "/api/settings/public")
+                  "/api/developer/", "/health", "/api/practices", "/api/settings/public", "/api/cron/")
 
 
 def _default():
@@ -67,8 +67,12 @@ async def set_maintenance(on: bool, message: str, user: dict) -> dict:
 
 def public_view(state: dict) -> dict:
     a, m = state["announcement"], state["maintenance"]
+    import deployment as dep_mod
+    dep = dep_mod._dep(state)
     return {"announcement": {"active": a["active"], "type": a["type"], "message": a["message"], "updated_at": a["updated_at"]} if a["active"] else None,
-            "maintenance": {"on": m["on"], "message": m["message"], "since": m["since"]}}
+            "maintenance": {"on": m["on"], "message": m["message"], "since": m["since"]},
+            "state": "MAINTENANCE" if m["on"] else dep["state"],
+            "notice": dep_mod.notice_for(dep, m["on"])}
 
 
 def path_allowed(path: str) -> bool:

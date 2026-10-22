@@ -4,5 +4,20 @@
     "exactHint": "Choisissez le mois et le jour exactement comme imprimés sur la carte pour",
     "exactNote": "Saisi exactement comme imprimé sur la carte.",
     "derivedNote": "Basé sur la date de naissance. Si votre carte indique un autre jour ou mois, utilisez le lien ci-dessous."
+  },
+  "system": {
+    "noticeUpdate": "VIen est en cours de mise à jour. Certains services peuvent être brièvement indisponibles. Réessayez si quelque chose ne se charge pas.",
+    "noticeIssue": "VIen est temporairement indisponible. Nous terminons une brève mise à jour du système. Veuillez réessayer dans quelques instants.",
+    "maintenanceTitle": "VIen est temporairement indisponible",
+    "maintenanceBody": "Nous terminons une brève mise à jour du système. Veuillez réessayer dans quelques instants.",
+    "maintenanceAuto": "Cette page vérifie automatiquement et vous ramène à VIen dès que le service reprend.",
+    "emergency": "En cas d’urgence, composez le 911.",
+    "retry": "Réessayer",
+    "retrying": "Vérification…",
+    "autoRetry": "Nouvelle tentative automatique dans {{seconds}} s",
+    "keptWork": "Votre travail non enregistré sur cette page est conservé.",
+    "outageTitle": "VIen est temporairement indisponible",
+    "outageBody": "Nous terminons une brève mise à jour du système. Veuillez réessayer dans quelques instants.",
+    "reload": "Recharger VIen"
   }
 }

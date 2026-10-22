@@ -13,6 +13,7 @@ import { formatDateTime } from "../lib/date";
 import { usePlatformConfigAdmin } from "./platformConfig";
 import { FeaturesSection, PublicSiteSection } from "./sections";
 import { DataOperations } from "./DataOperations";
+import { DeploymentOps } from "./DeploymentOps";
 
 const GOOD = new Set(["ONLINE", "CONNECTED", "READY"]);
 const Indicator = ({ label, value }) => (
@@ -132,6 +133,7 @@ function Overview({ d, pc }) {
                 <Indicator label="Live version" value={`v${live?.version ?? 0}`} />
                 <Indicator label="Draft" value={pc?.draft ? "PENDING" : "NONE"} />
                 <Indicator label="Features ON / PILOT" value={`${on} / ${pilot}`} />
+                <Indicator label="System state" value={d?.deployment?.state || "NORMAL"} />
                 <Indicator label="Maintenance mode" value={d?.maintenance?.on ? "ON" : "OFF"} />
                 <Indicator label="Global message" value={d?.announcement?.active ? d.announcement.type : "NONE"} />
                 <p className="text-[11px] text-slate-500 mt-3">Operator controls the installation only. Organization admins manage their own clinic/pharmacy; users control their own appearance. Clinical records are never accessible from here.</p>
@@ -167,30 +169,18 @@ export default function DeveloperPortal() {
                         className={`px-3 py-2 text-xs font-bold tracking-wide border-b-2 -mb-px ${tab === t ? "border-emerald-400 text-emerald-300" : "border-transparent text-slate-500 hover:text-slate-300"}`}>{t}</button>
                 ))}
             </nav>
-            <main className="max-w-5xl mx-auto p-6">
+            <main className={`${tab === "OPERATIONS" ? "max-w-7xl" : "max-w-5xl"} mx-auto p-6`}>
                 {tab === "OVERVIEW" && <Overview d={d} pc={pcq.data} />}
                 {tab === "FEATURES" && <FeaturesSection cfg={pcq.data} onChanged={changed} />}
                 {tab === "PUBLIC SITE" && pcq.data && <PublicSiteSection key={pcq.data.draft?.updated_at || pcq.data.published?.version} cfg={pcq.data} onChanged={changed} />}
                 {tab === "DATA OPS" && <DataOperations cfg={pcq.data} onChanged={changed} />}
                 {tab === "OPERATIONS" && (
-                    <div className="grid md:grid-cols-2 gap-5" data-testid="dev-operations">
-                        <Card icon={Server} title="System status" testid="dev-system-status">
-                            {q.error && <div className="text-sm text-red-400">{formatErr(q.error)}</div>}
-                            {d && (
-                                <>
-                                    <Indicator label="Application / API" value={d.api} />
-                                    <Indicator label="Database" value={d.database} />
-                                    <Indicator label="Storage" value={d.storage} />
-                                    <Indicator label="Readiness" value={d.readiness} />
-                                    <div className="text-xs text-slate-500 mt-3 space-y-0.5">
-                                        <div>Environment: <span className="text-slate-300 uppercase">{d.environment}</span></div>
-                                        <div>Release: <span className="text-slate-300 font-mono">{d.release?.commit || "n/a"}</span> · started {formatDateTime(d.release?.started_at)}</div>
-                                    </div>
-                                </>
-                            )}
-                        </Card>
-                        {d && <MaintenanceMode key={String(d.maintenance?.on)} current={d.maintenance} onChanged={changed} />}
-                        {d && <div className="md:col-span-2"><Announcement key={d.announcement?.updated_at || "new"} current={d.announcement} onChanged={changed} /></div>}
+                    <div className="space-y-5" data-testid="dev-operations">
+                        <DeploymentOps announcement={d?.announcement} onChanged={changed} />
+                        <div className="grid md:grid-cols-2 gap-5">
+                            {d && <MaintenanceMode key={String(d.maintenance?.on)} current={d.maintenance} onChanged={changed} />}
+                            {d && <Announcement key={d.announcement?.updated_at || "new"} current={d.announcement} onChanged={changed} />}
+                        </div>
                     </div>
                 )}
             </main>

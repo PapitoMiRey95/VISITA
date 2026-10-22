@@ -94,5 +94,20 @@
     "E_INVALID_CREDENTIALS": "Invalid credentials. Please check your email/username and password.",
     "E_ACCOUNT_DISABLED": "This account has been disabled. Contact the clinic.",
     "E_ENTER_IDENTIFIER": "Please enter your email or username."
+  },
+  "system": {
+    "noticeUpdate": "VIen is being updated. Some services may be briefly unavailable. Please try again if something does not load.",
+    "noticeIssue": "VIen is temporarily unavailable. We’re completing a brief system update. Please try again shortly.",
+    "maintenanceTitle": "VIen is temporarily unavailable",
+    "maintenanceBody": "We’re completing a brief system update. Please try again shortly.",
+    "maintenanceAuto": "This page checks automatically and returns you to VIen when service resumes.",
+    "emergency": "In an emergency, call 911.",
+    "retry": "Retry",
+    "retrying": "Checking…",
+    "autoRetry": "Retrying automatically in {{seconds}} s",
+    "keptWork": "Your unsaved work on this page is kept.",
+    "outageTitle": "VIen is temporarily unavailable",
+    "outageBody": "We’re completing a brief system update. Please try again shortly.",
+    "reload": "Reload VIen"
   }
 }

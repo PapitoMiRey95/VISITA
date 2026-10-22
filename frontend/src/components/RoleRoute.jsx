@@ -24,7 +24,7 @@ export function RoleRoute({ roles, children, requireEncounter = false }) {
     }
     // Installation maintenance mode: everyone except the developer_ops operator sees the maintenance screen.
     if (sys.maintenance?.on && user.role !== "developer_ops") {
-        return <MaintenanceScreen message={sys.maintenance.message} />;
+        return <MaintenanceScreen />;
     }
     return (
         <>

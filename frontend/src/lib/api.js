@@ -28,6 +28,28 @@ api.interceptors.request.use((cfg) => {
     return cfg;
 });
 
+// Outage detection: gateway/origin failures (502/504/52x, network errors, non-JSON 503) → friendly in-app card.
+// MAINTENANCE_MODE 503s are intentional and handled by the maintenance screen, not the outage card.
+const OUTAGE_STATUSES = new Set([502, 504, 520, 521, 522, 523, 524, 525, 526, 527, 530]);
+const outageListeners = new Set();
+export const onOutage = (fn) => { outageListeners.add(fn); return () => outageListeners.delete(fn); };
+const isOutage = (err) => {
+    if (err?.code === "ERR_CANCELED") return false;
+    const r = err?.response;
+    if (!r) return !!err?.request; // request sent, no response (network/origin unreachable)
+    if (OUTAGE_STATUSES.has(r.status)) return true;
+    if (r.status === 503) return !(r.data && typeof r.data === "object" && r.data.detail?.code === "MAINTENANCE_MODE");
+    return false;
+};
+api.interceptors.response.use((res) => res, (err) => {
+    if (isOutage(err)) {
+        if (err.response) err.response.data = { detail: i18n.t("common:system.outageBody") }; // never surface origin/CDN HTML
+        else err.message = i18n.t("common:system.outageBody");
+        outageListeners.forEach((fn) => fn(err));
+    }
+    return Promise.reject(err);
+});
+
 // Known patient-facing backend error strings → stable codes, localized via i18n
 // (common:apiErrors.*). Falls back to the raw server detail when unmapped.
 const SERVER_ERR_CODES = {

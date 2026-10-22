@@ -52,6 +52,7 @@ import appt_guard as guard_mod
 import index_bootstrap as ib_mod
 import catalog_import as catalog_import_mod
 import system_state as sys_mod
+import deployment as dep_mod
 import platform_config as pc_mod
 import storage
 import work_hub as work_mod
@@ -9491,26 +9492,110 @@ async def system_banner():
     return sys_mod.public_view(await sys_mod.get_state())
 
 
-@api.get("/developer/status")
-async def developer_status(user: dict = Depends(require_roles(*OPS_ROLES))):
-    """Simple installation status for the Developer portal (no secrets, no PHI)."""
+async def _readiness_probe() -> dict:
+    """Shared read-only probe for the Developer portal + deployment verification (no secrets, no PHI)."""
     try:
         await asyncio.wait_for(db.command("ping"), timeout=3)
         database = "CONNECTED"
     except Exception:
         database = "DEGRADED"
     storage_state = "CONNECTED" if BOOTSTRAP["steps"].get("storage") == "ok" else ("DEGRADED" if "storage" in BOOTSTRAP["steps"] else "PENDING")
+    return {"api": "ONLINE", "database": database, "storage": storage_state,
+            "readiness": "READY" if BOOTSTRAP["ready"] else "NOT READY", "commit": RELEASE_INFO.get("commit")}
+
+
+@api.get("/developer/status")
+async def developer_status(user: dict = Depends(require_roles(*OPS_ROLES))):
+    """Simple installation status for the Developer portal (no secrets, no PHI)."""
+    probe = await _readiness_probe()
     base = os.environ.get("APP_BASE_URL", "")
     state = await sys_mod.get_state(fresh=True)
     return {
-        "api": "ONLINE", "database": database, "storage": storage_state,
-        "readiness": "READY" if BOOTSTRAP["ready"] else "NOT READY",
+        **{k: probe[k] for k in ("api", "database", "storage", "readiness")},
         "bootstrap": BOOTSTRAP["status"], "steps": {k: ("ok" if v == "ok" else "failed") for k, v in BOOTSTRAP["steps"].items()},
         "environment": "production" if "visitaemr.com" in base.lower() else "preview",
         "release": RELEASE_INFO, "time": now_iso(),
         "announcement": state["announcement"], "maintenance": state["maintenance"],
+        "deployment": dep_mod._dep(state),
         "operator": pc_mod.operator_profile((await pc_mod.published())["config"], user),
     }
+
+
+# ---- Deployment & Maintenance (Operations) ----
+class BeginUpdateBody(BaseModel):
+    kind: str = "CODE"
+    note: Optional[str] = None
+    expected_commit: Optional[str] = None
+
+
+class ConfirmNoteBody(BaseModel):
+    confirm: str
+    note: Optional[str] = None
+    rolled_back: bool = False
+
+
+class BuildInfoBody(BaseModel):
+    tier: Optional[str] = None
+
+
+@api.get("/developer/deployment")
+async def developer_deployment(user: dict = Depends(require_roles(*OPS_ROLES))):
+    base = os.environ.get("APP_BASE_URL", "")
+    return {"deployment": await dep_mod.get(), "history": await dep_mod.history(20), "release": RELEASE_INFO,
+            "environment": "production" if "visitaemr.com" in base.lower() else "preview", "probe": await _readiness_probe(),
+            "kinds": dep_mod.KINDS, "required_ok": dep_mod.REQUIRED_OK, "timeout_min": dep_mod.TIMEOUT_MIN, "time": now_iso()}
+
+
+@api.post("/developer/deployment/begin-update")
+async def developer_begin_update(body: BeginUpdateBody, user: dict = Depends(require_roles(*OPS_ROLES))):
+    try:
+        return await dep_mod.begin_update(user, body.kind, body.note or "", body.expected_commit, RELEASE_INFO.get("commit"))
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+
+
+@api.post("/developer/deployment/verify")
+async def developer_verify(user: dict = Depends(require_roles(*OPS_ROLES))):
+    return await dep_mod.verify(await _readiness_probe(), source="operator")
+
+
+@api.post("/developer/deployment/service-issue")
+async def developer_service_issue(body: ConfirmNoteBody, user: dict = Depends(require_roles(*OPS_ROLES))):
+    if body.confirm != "ISSUE":
+        raise HTTPException(status_code=400, detail="Type ISSUE to confirm.")
+    try:
+        return await dep_mod.enter_service_issue(user, body.note or "")
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+
+
+@api.post("/developer/deployment/resolve")
+async def developer_resolve(body: ConfirmNoteBody, user: dict = Depends(require_roles(*OPS_ROLES))):
+    if body.confirm != "RESOLVE":
+        raise HTTPException(status_code=400, detail="Type RESOLVE to confirm.")
+    try:
+        return await dep_mod.resolve(user, body.note or "", body.rolled_back, RELEASE_INFO.get("commit"))
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+
+
+@api.put("/developer/deployment/build-info")
+async def developer_build_info(body: BuildInfoBody, user: dict = Depends(require_roles(*OPS_ROLES))):
+    return await dep_mod.set_build_info(user, body.tier)
+
+
+@api.post("/cron/deployment-verify")
+async def cron_deployment_verify(background: BackgroundTasks, authorization: Optional[str] = Header(None)):
+    # Cron endpoints must ack 2xx immediately; enqueue/background the actual work.
+    secret = os.environ.get("WEBHOOK_CRON_SECRET")
+    token = (authorization or "").replace("Bearer ", "", 1)
+    if not secret or not token or not secrets.compare_digest(token, secret):
+        raise HTTPException(status_code=401, detail="Unauthorized")
+
+    async def _run():
+        await dep_mod.verify(await _readiness_probe(), source="cron")
+    background.add_task(_run)
+    return {"ok": True, "queued": True}
 
 
 class AnnouncementBody(BaseModel):
@@ -9552,6 +9637,7 @@ async def developer_maintenance_mode(body: MaintenanceModeBody, user: dict = Dep
         raise HTTPException(status_code=400, detail=f'Type {expected} to confirm.')
     prev = (await sys_mod.get_state(fresh=True))["maintenance"]
     m = await sys_mod.set_maintenance(body.on, body.message, user)
+    await dep_mod.sync_maintenance(body.on, user, m["message"])
     await audit("maintenance_mode_entered" if body.on else "maintenance_mode_exited", "system_state", "global", user,
                 old_status="ON" if prev.get("on") else "OFF", new_status="ON" if body.on else "OFF", meta={"message": m["message"]})
     return m

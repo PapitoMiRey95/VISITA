@@ -1,0 +1,23 @@
+{
+  "summary": "Tested the preview performance work on Enter Encounter (backend + frontend). Everything requested passes and I found no regressions. Backend: GET /internal/visits/ready returns the expected shape: snapshot, visita_patient_id, Maria's 3 active meds, recent_appointments/documents set to null, active with id/ref_number/started_at/timer_state, and server_time. Staff gets 403, an invalid ref gets 400, an unknown patient gets 400/404, no auth gets 401/403. GET /visits/{id} returns the context (3 meds, documents null) and a missing id gets 404. Index patient_directory.id_1 exists. Frontend as PAGUAYO: exactly 1 /visits/ready request (prefetch) and 0 /visits/active requests on the Patients page; click to [data-testid=encounter-mode] took 161ms (Maria) and 144ms (John Smith), with 0 extra /visits/ready requests after the click; LOPEZ, Maria workspace shows Atorvastatin/Ramipril/Metformin. Patient switch Maria -> SMITH, John fires a new /ready for John's ref; his encounter header says SMITH, John with no Maria name or meds. Start Visit (IN_CLINIC) goes to /internal/encounter/56845507-... with timer RUNNING. Exit (keep running) shows 'Visit in progress · since 2026 Oct - 22 · 4:04 AM'. Enter Encounter again lands on the SAME visit URL. Stop and Sign then gave STOPPED_UNSIGNED followed by SIGNED/locked. SOAP helper shows 23 templates on open without typing; typing filters (10); nonsense text shows the no-results state. Service selector shows 29 items on focus and 5 for 'A00'; service-catalog was fetched once. Issue/Plan history request fires at about 0.85s with no typing. Opening a direct URL (no prefetch) falls back to fetching (2x under StrictMode, expected). Visit Hx lists VIS-000139. An existing visit route (VIS-000135, IN_PROGRESS) loads with no errors and no 4xx/5xx.",
+  "backend_issues": {"critical": [], "minor": []},
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [],
+    "design_issues": []
+  },
+  "test_report_links": ["/app/backend/tests/test_encounter_ready_perf.py", "/app/test_reports/pytest/pytest_iter89.xml"],
+  "action_items": [],
+  "critical_code_review_comments": [
+    "readyCache can serve a stale shell. A prefetched entry (up to 60s old, not yet consumed) is reused even if a visit for that patient was started meanwhile in another tab or device. The workspace then shows READY instead of redirecting to the active visit, and Start Visit hits the existing 409 guard. Low risk; consider a shorter max age (e.g. 15s) or re-checking active after render.",
+    "After the cache is consumed there is a 1.5s window where prefetchReady/takeReady return the same promise. If a physician starts a visit and exits within 1.5s, the Patients page can briefly miss the 'Visit in progress' label. This is an edge case. Calling clearReady(ref) on a successful visit create or stop/sign would close it.",
+    "The react-query caches (soap-helpers 10 min, service-catalog 30 min) are never invalidated or cleared. queryClient.clear() is not called on logout, and the soap-helpers key has no user id. If template or favourite edits happen elsewhere, or a different physician logs in on the same tab, they may see a stale list for up to 10 minutes. Consider calling queryClient.clear() on logout and invalidateQueries(['soap-helpers']) after template edits.",
+    "Dev-only (StrictMode): GET /visits/{id} fires twice, so the visit_read audit row is written twice in preview. Production builds are not affected."
+  ],
+  "updated_files": ["/app/backend/tests/test_encounter_ready_perf.py"],
+  "success_rate": {"backend": "100% (7/7)", "frontend": "100%"},
+  "seed_data_creation": "Created QA visit VIS-000139 (id 56845507-2fe6-4a37-b758-a5129ffe350f) for Maria Lopez through the UI. It is now STOPPED and SIGNED (clean state, no active visit for Maria). No demographics were modified.",
+  "retest_needed": false,
+  "should_main_agent_self_test": false,
+  "context_for_next_testing_agent": "Token injection: sessionStorage visita_token. Test file test_encounter_ready_perf.py. Maria has one SIGNED visit (VIS-000139) by PAGUAYO. Single search results auto-select the patient (no patient-lookup-result list). Exit Encounter returns to /internal/patients without patient_ref, but the selection is kept."
+}

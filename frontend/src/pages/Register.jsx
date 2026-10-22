@@ -119,7 +119,7 @@ export default function Register() {
         if (!r) return;
         setForm(r.next); setPostalHint(r.found ? `${r.city}, ${r.province}` : "unknown");
     };
-    const postalHintEl = postalHint && <p className="text-[11px] mt-1 text-slate-500" data-testid="reg-postal-hint">{postalHint === "unknown" ? t("auth:register.postalUnknown", "Postal code not recognized — please enter your city and province.") : t("auth:register.postalSuggested", "City and province suggested from your postal code: {{v}}", { v: postalHint })}</p>;
+    const postalHintEl = postalHint && <p className={`text-[11px] mt-1 ${postalHint === "unknown" ? "text-amber-700" : "text-emerald-700"}`} data-testid="reg-postal-hint">{postalHint === "unknown" ? t("auth:register.postalUnknown", "Postal code not found. Please enter your City and Province.") : t("auth:register.postalSuggested", "✓ City and Province found from your postal code: {{v}}", { v: postalHint })}</p>;
     const submit = async (e) => {
         e.preventDefault();
         const errs = validateCurrent();
@@ -385,6 +385,8 @@ export default function Register() {
                         <div className="pt-1">
                             <div className="text-sm font-semibold text-slate-700 mb-2">{t("auth:register.addressSection")}</div>
                             <div className="space-y-3">
+                                <Field required error={err("postal_code")} label={t("auth:register.addressPostal")} testid="reg-postal"><Input required placeholder="M6E 4H1" maxLength={7} value={form.postal_code} onChange={set("postal_code")} onBlur={onPostalBlur} />{postalHintEl}</Field>
+                                <p className="text-[11px] text-slate-500 -mt-1 mb-1" data-testid="reg-postal-helper">{t("auth:register.postalHelper", "Enter your Ontario postal code to help fill your address faster.")}</p>
                                 <div className="grid grid-cols-3 gap-3">
                                     <div className="col-span-2">
                                         <Field required error={err("address")} label={t("auth:register.addressStreet")} testid="reg-address"><Input required value={form.address} onChange={set("address")} placeholder="123 Main St" /></Field>
@@ -396,7 +398,7 @@ export default function Register() {
                                     <Field required error={err("province")} label={t("auth:register.addressProvince")} testid="reg-address-province"><Input required value={form.province} onChange={set("province")} /></Field>
                                 </div>
                                 <div className="grid grid-cols-2 gap-3">
-                                    <Field required error={err("postal_code")} label={t("auth:register.addressPostal")} testid="reg-postal"><Input required value={form.postal_code} onChange={set("postal_code")} onBlur={onPostalBlur} />{postalHintEl}</Field>
+                                    
                                     <Field required error={err("country")} label={t("auth:register.addressCountry")} testid="reg-address-country"><Input required value={form.country} onChange={set("country")} /></Field>
                                 </div>
                             </div>
@@ -457,6 +459,8 @@ export default function Register() {
                         <div className="pt-1">
                             <div className="text-sm font-semibold text-slate-700 mb-2">{t("auth:register.addressSection")}</div>
                             <div className="space-y-3">
+                                <Field label={t("auth:register.addressPostal")} testid="np-postal"><Input required placeholder="M6E 4H1" maxLength={7} value={form.postal_code} onChange={set("postal_code")} onBlur={onPostalBlur} />{postalHintEl}</Field>
+                                <p className="text-[11px] text-slate-500 -mt-1 mb-1" data-testid="reg-postal-helper">{t("auth:register.postalHelper", "Enter your Ontario postal code to help fill your address faster.")}</p>
                                 <div className="grid grid-cols-3 gap-3">
                                     <div className="col-span-2">
                                         <Field label={t("auth:register.addressStreet")} testid="np-address"><Input required value={form.address} onChange={set("address")} placeholder="123 Main St" /></Field>
@@ -468,7 +472,7 @@ export default function Register() {
                                     <Field label={t("auth:register.addressProvince")} testid="np-province"><Input required value={form.province} onChange={set("province")} /></Field>
                                 </div>
                                 <div className="grid grid-cols-2 gap-3">
-                                    <Field label={t("auth:register.addressPostal")} testid="np-postal"><Input required value={form.postal_code} onChange={set("postal_code")} onBlur={onPostalBlur} />{postalHintEl}</Field>
+                                    
                                     <Field label={t("auth:register.addressCountry")} testid="np-country"><Input required value={form.country} onChange={set("country")} /></Field>
                                 </div>
                             </div>

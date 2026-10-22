@@ -44,17 +44,21 @@ export function useProvinces(internal = true) {
 }
 
 // Postal → City/Province assistance shared by every form (patients use the public endpoint).
-export function usePostalAssist({ value, onChange, internal, touched }) {
+// `latest` is a ref to the most recent form value so an async lookup never resurrects stale fields
+// (the earlier "Boulevard, ON" bug: a postal response built from a pre-typing snapshot wiped Street No./Address).
+export function usePostalAssist({ latest, onChange, internal, touched }) {
     const [hint, setHint] = useState(null);
     const lookup = async (raw) => {
         const n = normPostal(raw);
         if (n.length !== 6) { setHint(null); return; }
         try {
             const { data } = await api.get(internal ? "/internal/address/postal-lookup" : "/public/address/postal-lookup", { params: { postal: n } });
-            const next = { ...value, postal_code: data.postal_code };
+            const cur = latest.current;
+            const next = { ...cur, postal_code: data.postal_code };
             if (data.found) {
-                if (!touched.current.city || !value.city) next.city = data.city;
-                if (!touched.current.province || !value.province) next.province = data.province;
+                if (!touched.current.city || !cur.city) next.city = data.city;
+                if (!touched.current.province || !cur.province) next.province = data.province;
+                if (!cur.country) next.country = "Canada";
                 setHint({ kind: "found", postal: data.postal_code, city: data.city, province: data.province });
             } else setHint({ kind: "unknown", postal: data.postal_code });
             onChange(next);
@@ -65,10 +69,11 @@ export function usePostalAssist({ value, onChange, internal, touched }) {
 
 export function AddressFields({ value, onChange, internal = true, showStreetNumber = true, showUnit = true, requireAddress = true, testid = "addr" }) {
     const touched = useRef({ city: false, province: false });
+    const latest = useRef(value); latest.current = value;
     const provinces = useProvinces(internal);
-    const { hint, setHint, lookup } = usePostalAssist({ value, onChange, internal, touched });
+    const { hint, setHint, lookup } = usePostalAssist({ latest, onChange, internal, touched });
     const [addPostal, setAddPostal] = useState(false);
-    const set = (k, v) => onChange({ ...value, [k]: v });
+    const set = (k, v) => { const next = { ...latest.current, [k]: v }; latest.current = next; onChange(next); };
     const streets = (q) => api.get("/internal/address/streets", { params: { q } }).then((r) => r.data);
     const types = (q) => api.get("/internal/address/street-types", { params: { q } }).then((r) => r.data);
     const cities = (q) => api.get("/internal/address/cities", { params: { q, province: value.province || undefined } }).then((r) => r.data);
@@ -120,7 +125,7 @@ export function AddressFields({ value, onChange, internal = true, showStreetNumb
                     <Button type="button" size="sm" variant="ghost" onClick={() => setAddPostal(false)} className="h-6 px-2 text-[11px]">Cancel</Button>
                 </div>
             )}
-            {preview && <div className="col-span-6 text-xs text-slate-600" data-testid={`${testid}-preview`}>Address line: <span className="font-medium text-slate-800">{preview}</span>{value.city && `, ${value.city}`}{value.province && `, ${value.province}`}{value.postal_code && ` ${value.postal_code}`}</div>}
+            {preview && <div className="col-span-6 text-xs text-slate-600" data-testid={`${testid}-preview`}>Address line: <span className="font-medium text-slate-800">{[preview, value.city, value.province, value.postal_code].filter((x) => (x || "").trim()).join(", ")}</span></div>}
         </div>
     );
 }

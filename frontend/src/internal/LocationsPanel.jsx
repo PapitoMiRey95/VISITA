@@ -75,7 +75,7 @@ export function LocationForm({ entityType, entityId, initial, onSaved, onCancel 
                         <option value="">— None —</option>{options.location_subtypes.map((o) => <option key={o.code} value={o.code}>{o.label}</option>)}
                     </select></div>
             </div>
-            <AddressFields value={f} onChange={(v) => setF({ ...f, ...v })} internal testid="location" />
+            <AddressFields value={f} onChange={(v) => setF((s) => ({ ...s, ...v }))} internal testid="location" />
             <div className="grid grid-cols-2 gap-2">
                 <div><Label className="text-xs">Phone at this location</Label><Input data-testid="location-phone" value={f.phone} onChange={(e) => setF({ ...f, phone: e.target.value })} placeholder="416-555-0100" /></div>
                 <div><Label className="text-xs">Fax at this location</Label><Input data-testid="location-fax" value={f.fax} onChange={(e) => setF({ ...f, fax: e.target.value })} placeholder="416-555-0101" /></div>

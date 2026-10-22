@@ -87,10 +87,10 @@ export function SmartMedPaste({ patientId, onApplied, onClose }) {
     const changes = rows?.filter((r) => ["add", "replace", "update_sig", "restart"].includes(r.decision)).length || 0;
     const flags = rows?.filter((r) => r.decision === "flag").length || 0;
     return (
-        <div className="border border-sky-200 bg-sky-50/60 rounded-sm p-3 mb-3" data-testid="smart-paste-panel">
+        <div className="border border-slate-700 bg-slate-800 text-slate-100 rounded-sm p-3 mb-3" data-testid="smart-paste-panel">
             <div className="flex items-center justify-between mb-2">
-                <div className="text-xs font-bold text-slate-700 inline-flex items-center gap-1"><Sparkles className="w-3.5 h-3.5 text-sky-600" /> Paste & Organize</div>
-                <div className="text-[11px] text-slate-500">Updates the medication list only — no prescription, nothing sent to a pharmacy.</div>
+                <div className="text-xs font-bold text-slate-100 inline-flex items-center gap-1"><Sparkles className="w-3.5 h-3.5 text-sky-300" /> Paste & Organize</div>
+                <div className="text-[11px] text-slate-400">Updates the medication list only — no prescription, nothing sent to a pharmacy.</div>
             </div>
             {stage === "paste" && (<>
                 <Textarea value={text} onChange={(e) => setText(e.target.value)} rows={4} placeholder={"One medication per line, e.g.\nMetformin 500 mg BID\nRamipril 10 mg OD"} className="font-mono text-xs bg-white" data-testid="smart-paste-text" />

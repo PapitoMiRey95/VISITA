@@ -1,0 +1,47 @@
+{
+  "summary": "Tested Smart Medication Paste & Organize, the reconcile endpoint, the portal-visibility toggle, the Rx 'Mark Completed' outcome dialog and the Admin Patient Portal Preview, on both backend (new pytest file, 10 tests) and frontend (Playwright). Most features work end to end. 1) Smart Paste UI: cards get the right classification badges; flag, add and restart decisions work; the review summary is correct; Apply shows the toast; the list refreshes with the 'Reconciled from list' label and a review-flag row. 2) The visibility toggle hides and shows the med in the patient's GET /api/portal/medications. 3) Rx completion: the 'sent via VIen' outcome is disabled when there is no transmission; the external-verified outcome shows the preview and needs the confirm checkbox; the stored status, verified_by and reconciliation are correct; the patient sees 'Processed by clinic — external prescription verified'; NO_PRESCRIPTION_ISSUED gives completed_no_prescription; Appointment Required still works. 4) Portal Preview: banner, all 6 cards, meds identical to the patient's portal meds, no actions, unlinked state shown, 403 for the patient role, audit log written. FAILURES: (a) the parser joins 'Vitamin D 1000 IU daily' onto the previous line, so the requested 5-line organize returns 4 items, Atorvastatin becomes REVIEW_REQUIRED with no match, and Vitamin D is dropped; (b) cross-patient write through an unscoped match_id; (c) REGRESSION: '+ Add medication' save fails with 422 when Refills is left at its default; (d) after Stop or Resume, all med action buttons stay disabled until the page reloads; (e) Portal Preview status and secondary text is invisible (white on white).",
+  "backend_issues": {
+    "critical": [
+      {"endpoint": "POST /api/internal/patients/{id}/medications/organize (rx_parser.parse_access_rx)", "issue": "For the requested text 'Metformin 500 mg BID\\nRamipril 10 mg BID\\nAmlodipine 5 mg OD\\nAtorvastatin 40 mg HS\\nVitamin D 1000 IU daily' it returns 4 items instead of 5. The Atorvastatin item comes back with original_text 'Atorvastatin 40 mg HS Vitamin D' and needs_review=['directions'], so it is REVIEW_REQUIRED with match=null instead of POSSIBLE_DOSE_CHANGE. The parser also emits a drug=None '1000 IU daily' item, which classify() drops silently, so Vitamin D (expected POSSIBLE_RESTART) is lost. Same with 'Amlodipine 5 mg OD\\nVitamin D 1000 IU daily'. RCA: in rx_parser._find_name_start, _is_stopword_sig treats the single capital token 'D' as a SIG abbreviation (the [A-Z]{1,4} rule), so the backward search for the drug name stops at 'Vitamin D'. Newlines are also not treated as hard boundaries between meds.", "priority": "HIGH"},
+      {"endpoint": "POST /api/internal/patients/{id}/medications/reconcile and POST /internal/prescriptions/{id}/complete (med_reconcile.apply)", "issue": "Security (IDOR): flag, replace, update_sig and restart run update_one({'id': match_id}) without checking that match_id belongs to the patient's refs. Verified: a physician posting a flag decision on Maria with another patient's med id set review_flag on that other patient's medication. Fix: add 'patient_id': {'$in': refs} to every match_id update and pass refs into apply().", "priority": "HIGH"}
+    ],
+    "minor": [
+      {"endpoint": "POST /api/internal/patients/{id}/medications (MedWriteBody.refills: Optional[int])", "issue": "Returns 422 'Input should be a valid integer, unable to parse string as an integer' when the frontend sends refills:'' (the default in EMPTY_MED). Fix either side: send null for an empty refills value, or add a validator that turns '' into None."},
+      {"endpoint": "med_reconcile.apply add duplicate check", "issue": "_regimen_key compares the exact SIG text, so 'Amlodipine 5 mg OD' and 'Amlodipine 5 mg daily' are not treated as duplicates and could create two active rows. Consider using the canonical _sig_key or the classification. The server also does not check that an 'add' decision matches an ADD_MISSING classification (the client can send 'add' for a conflict). External verification limits decisions to add/skip/flag but does not block adding a conflicting dose."},
+      {"endpoint": "med_reconcile.apply flag on POSSIBLE_RESTART", "issue": "Flagging a POSSIBLE_RESTART card writes review_flag onto the DISCONTINUED med. That flag never shows in the UI because review flags only render on active rows, so the flag is effectively invisible."}
+    ]
+  },
+  "frontend_issues": {
+    "ui_bugs": [
+      {"component": "MedicalRecord '+ Add medication' (regression)", "issue": "Saving with only drug, strength and SIG filled (Refills left at its '0' placeholder) shows the toast 'Input should be a valid integer...' and nothing is saved. The payload sends refills:''.", "selector": "[data-testid='mr-med-save']", "priority": "HIGH"},
+      {"component": "MedicalRecord medAction (Stop/Resume/Continue)", "issue": "busy is cleared only in the catch block, never on success. After a successful Resume or Stop, every Stop, Edit and Continue button in the list stays disabled until the page is reloaded. Verified: after Resume, the Stop button stayed disabled for 30 seconds. Fix: move setBusy('') into a finally block (as saveAdd and saveEdit already do).", "selector": "[data-testid='mr-med-stop']", "priority": "MEDIUM"}
+    ],
+    "integration_issues": [],
+    "design_issues": [
+      {"screen": "Admin Portal Preview (/internal/patients/:id/portal-preview)", "issues": ["text-slate-500 and text-slate-400 are remapped by the dark theme to light colours (computed rgb(255,255,255)). On the forced-white cards, the request statuses ('Processed by clinic — external prescription verified'), appointment statuses, referral status, med SIGs, the PIN next to the name and the Empty placeholders are all invisible. Use inline colours, e.g. style={{color:'#64748b'}}, like the Card titles do.", "The page's light background ends after the content, leaving a dark area under the cards. Use min-h-screen or fill the viewport height."]},
+      {"screen": "Smart Paste cards", "issues": ["Decision buttons are very small (text-[11px]) and the selected state is low contrast on the amber cards."]}
+    ]
+  },
+  "test_report_links": ["/app/backend/tests/test_smart_med_reconcile.py", "/app/test_reports/pytest/pytest_smart_med.xml"],
+  "action_items": [
+    "Fix rx_parser so 'Vitamin D 1000 IU daily' (single capital letter in a drug name) is not split into the previous line's SIG. Treat newlines as hard med boundaries in organize, or parse line by line.",
+    "Scope every match_id update in med_reconcile.apply to the patient's refs (IDOR).",
+    "Fix '+ Add medication' 422 on empty refills (frontend send null, or backend coerce '' to None).",
+    "MedicalRecord.medAction: clear busy in finally so buttons re-enable after Stop/Resume.",
+    "PortalPreview.jsx: replace text-slate-500/400 with inline dark-grey colours so statuses and SIGs are visible; make the background fill the full height.",
+    "Optional: use the canonical SIG for duplicate detection; restrict 'add' decisions to ADD_MISSING on the server."
+  ],
+  "critical_code_review_comments": [
+    "med_reconcile.apply: unscoped match_id writes (IDOR), see above.",
+    "_rx_request_meds ignores the `medications` string array and relies on medication_name joined with ';'. This works for current data but is fragile.",
+    "rx_complete PRESCRIPTION_VERIFIED_EXTERNAL with decisions=[] still succeeds and stores an empty reconciliation. That is acceptable, but the UI should make sure it sends the decisions.",
+    "portal_preview is allowed for every CLINIC_ROLES role, including staff. The spec mentions admin; confirm whether staff should see it."
+  ],
+  "updated_files": ["/app/backend/tests/test_smart_med_reconcile.py"],
+  "success_rate": {"backend": "80% (8/10 pytest; failures = parser classification, IDOR)", "frontend": "~80% (Smart Paste, visibility, Rx completion, Portal Preview, Appointment Required pass; Add-medication save and post-action button state fail)"},
+  "seed_data_creation": "Cloned prescription_requests from RX-000028 for Maria (TEST_Ramipril / TEST_Metformin, TEST_UIX_ / TEST_UIY_ prefixes, ref RX-T*****). All were completed (verified_external, no_prescription, appointment_required). Created and then discontinued Amlodipine, Pantoprazole and TEST_UIX_Ramipril on Maria. Also discontinued Rosuvastatin and cleared all review_flags. Maria's active list is back to Metformin, Ramipril, Atorvastatin.",
+  "retest_needed": true,
+  "should_main_agent_self_test": false,
+  "context_for_next_testing_agent": "Run: cd /app/backend && python -m pytest tests/test_smart_med_reconcile.py -n 0 (it must run serially because tests share Maria's state; pytest.ini enables xdist by default). Amlodipine is now in Maria's discontinued history, so pasting Amlodipine classifies as POSSIBLE_RESTART. Use Pantoprazole or another fresh drug for ADD_MISSING UI tests. Physician PAGUAYO login works without a forced password change.",
+  "rca of the issue": "Parser: rx_parser._is_stopword_sig matches the single capital 'D' (regex [A-Z]{1,4}), which stops the backward name capture, so 'Vitamin D' is appended to the previous segment's text. Add Medication 422: EMPTY_MED.refills='' sent to MedWriteBody.refills: Optional[int]. Disabled buttons: MedicalRecord.medAction has no finally block to reset busy."
+}

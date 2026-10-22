@@ -383,3 +383,6 @@ no-appt state = maria.lopez@demo.com. All 15 user verification points pass. NOT 
 
 ## 2026-10-22 — DEPLOYED to Production: Deployment & Maintenance Phase 1+2, SIMPLE|ADVANCED Control Center, operations_operator capability (no account seeded)
 - Bundle main.38b194bd.js → main.8c149d97.js. /api/health ready, bootstrap attempts=1, all steps ok. /api/system/banner: state NORMAL, notice null, announcement null, maintenance.on=false (preserved). Bundle contains operations_operator / simple-ops / wizard / outage-card markers. Unauth probes OK (/login, /signin 200; /api/developer/deployment 401; cron 401 without secret). Authenticated Prod smoke (devops login, SIMPLE/ADVANCED, Check VIen, Global message, audit) left to owner; deployer debug query dispatched for secrets/users/system_state/cron confirmation.
+
+## 2026-10-22 — Calendar Appointment Details: PHONE line (PREVIEW ONLY, NOT deployed)
+- `GET /internal/calendar` rows add `patient_phone` (patients: cell_phone → phone → home_phone; patient_directory: cell_phone → home_phone; linked portal patient wins over directory). `Calendar.jsx` detail popup shows PHONE below PIN as a `tel:` link (digits only) or "Not available". No booking/notification logic touched.

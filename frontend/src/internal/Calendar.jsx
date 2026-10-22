@@ -2,7 +2,7 @@ import { useState } from "react";
 import { useAuth } from "../context/AuthContext";
 import { useQuery } from "@tanstack/react-query";
 import { toast } from "sonner";
-import { ChevronLeft, ChevronRight, CalendarDays, Ban, Plus, Search, Bell, X } from "lucide-react";
+import { ChevronLeft, ChevronRight, CalendarDays, Ban, Plus, Search, Bell, X, Phone } from "lucide-react";
 import { api, formatErr } from "../lib/api";
 import { formatLastFirst, formatCombinedName } from "../lib/name";
 import { formatDate } from "../lib/date";
@@ -448,6 +448,12 @@ function AppointmentDetail({ appt, onClose, onReschedule, onCancel, onNoteSaved,
                         <div className="text-[11px] font-bold uppercase tracking-wide text-slate-400 mb-1">Patient</div>
                         <div className="text-lg font-bold text-slate-900" data-testid="cal-detail-name">{formatCombinedName(appt.patient_name)}</div>
                         <div className="text-xs text-slate-500">{appt.visita_patient_id ? `PIN: ${appt.visita_patient_id}` : "PIN: Not assigned"}</div>
+                        <div className="text-xs text-slate-500 flex items-center gap-1.5" data-testid="cal-detail-phone">
+                            <span>PHONE:</span>
+                            {appt.patient_phone
+                                ? <a href={`tel:${appt.patient_phone.replace(/[^\d+]/g, "")}`} className="inline-flex items-center gap-1 text-sky-700 hover:underline font-medium" data-testid="cal-detail-phone-link"><Phone className="w-3 h-3" />{appt.patient_phone}</a>
+                                : <span data-testid="cal-detail-phone-none">Not available</span>}
+                        </div>
                     </div>
                     {appt.status === "cancelled" && (
                         <div className="bg-red-50 border border-red-200 rounded-sm p-2 text-xs text-red-800" data-testid="cal-detail-cancellation">

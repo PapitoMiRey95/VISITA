@@ -2118,15 +2118,18 @@ async def internal_calendar(start: Optional[str] = None, days: int = 7,
     # Batch-resolve VISITA PINs so the calendar can be searched by PIN.
     pids = {a.get("patient_id") for a in appts if a.get("patient_id")}
     dids = {a.get("directory_id") for a in appts if a.get("directory_id")}
-    pin_map = {}
+    pin_map, phone_map = {}, {}
+    _ph = lambda *vals: next((str(v).strip() for v in vals if v and str(v).strip()), None)  # cell first, then home
     if pids:
-        async for p in db.patients.find({"id": {"$in": list(pids)}}, {"_id": 0, "id": 1, "visita_patient_id": 1}):
+        async for p in db.patients.find({"id": {"$in": list(pids)}}, {"_id": 0, "id": 1, "visita_patient_id": 1, "phone": 1, "cell_phone": 1, "home_phone": 1}):
             if p.get("visita_patient_id"):
                 pin_map[p["id"]] = p["visita_patient_id"]
+            phone_map[p["id"]] = _ph(p.get("cell_phone"), p.get("phone"), p.get("home_phone"))
     if dids:
-        async for d in db.patient_directory.find({"id": {"$in": list(dids)}}, {"_id": 0, "id": 1, "visita_patient_id": 1}):
+        async for d in db.patient_directory.find({"id": {"$in": list(dids)}}, {"_id": 0, "id": 1, "visita_patient_id": 1, "cell_phone": 1, "home_phone": 1}):
             if d.get("visita_patient_id"):
                 pin_map[d["id"]] = d["visita_patient_id"]
+            phone_map[d["id"]] = _ph(d.get("cell_phone"), d.get("home_phone"))
     by_day = {}
     for a in appts:
         ds, t = _appt_when(a)
@@ -2138,6 +2141,7 @@ async def internal_calendar(start: Optional[str] = None, days: int = 7,
             "label": a.get("confirmed_time") or (avail_mod._label(avail_mod._to_min(t)) if t else None),
             "patient_name": a.get("patient_name"),
             "visita_patient_id": pin_map.get(a.get("patient_id")) or pin_map.get(a.get("directory_id")),
+            "patient_phone": phone_map.get(a.get("patient_id")) or phone_map.get(a.get("directory_id")),
             "status": a.get("status"), "reason": a.get("reason"),
             "appointment_type": a.get("appointment_type"),
             "is_private": bool(a.get("is_private")),
@@ -2192,15 +2196,18 @@ async def internal_appointment_search(q: str = "", limit: int = 30,
     # Batch-resolve VISITA PINs for the matched set.
     pids = {a.get("patient_id") for a in appts if a.get("patient_id")}
     dids = {a.get("directory_id") for a in appts if a.get("directory_id")}
-    pin_map = {}
+    pin_map, phone_map = {}, {}
+    _ph = lambda *vals: next((str(v).strip() for v in vals if v and str(v).strip()), None)  # cell first, then home
     if pids:
-        async for p in db.patients.find({"id": {"$in": list(pids)}}, {"_id": 0, "id": 1, "visita_patient_id": 1}):
+        async for p in db.patients.find({"id": {"$in": list(pids)}}, {"_id": 0, "id": 1, "visita_patient_id": 1, "phone": 1, "cell_phone": 1, "home_phone": 1}):
             if p.get("visita_patient_id"):
                 pin_map[p["id"]] = p["visita_patient_id"]
+            phone_map[p["id"]] = _ph(p.get("cell_phone"), p.get("phone"), p.get("home_phone"))
     if dids:
-        async for d in db.patient_directory.find({"id": {"$in": list(dids)}}, {"_id": 0, "id": 1, "visita_patient_id": 1}):
+        async for d in db.patient_directory.find({"id": {"$in": list(dids)}}, {"_id": 0, "id": 1, "visita_patient_id": 1, "cell_phone": 1, "home_phone": 1}):
             if d.get("visita_patient_id"):
                 pin_map[d["id"]] = d["visita_patient_id"]
+            phone_map[d["id"]] = _ph(d.get("cell_phone"), d.get("home_phone"))
 
     today = _date.today().isoformat()
     results = []
@@ -2214,6 +2221,7 @@ async def internal_appointment_search(q: str = "", limit: int = 30,
             "time": a.get("confirmed_slot_time") or avail_mod._norm_time(a.get("confirmed_time") or ""),
             "label": a.get("confirmed_time"), "patient_name": a.get("patient_name"),
             "visita_patient_id": pin_map.get(a.get("patient_id")) or pin_map.get(a.get("directory_id")),
+            "patient_phone": phone_map.get(a.get("patient_id")) or phone_map.get(a.get("directory_id")),
             "status": a.get("status"), "reason": a.get("reason"),
             "appointment_type": a.get("appointment_type"),
             "is_private": bool(a.get("is_private")),

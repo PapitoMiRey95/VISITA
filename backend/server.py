@@ -53,6 +53,7 @@ import index_bootstrap as ib_mod
 import catalog_import as catalog_import_mod
 import system_state as sys_mod
 import deployment as dep_mod
+import med_reconcile as recon_mod
 import platform_config as pc_mod
 import storage
 import work_hub as work_mod
@@ -3305,7 +3306,7 @@ async def portal_medications(ctx: PortalCtx = Depends(portal_access(delegates_mo
     Send). `medications` = current/known (active); `previously_prescribed` = discontinued/inactive VIen history,
     offered for refill selection with a distinct label. Reads across all linked ids — never rewrites records."""
     refs = await _portal_patient_refs(ctx.patient)
-    docs = await db.patient_medications.find({"patient_id": {"$in": refs}}, {"_id": 0}).sort("last_prescribed_at", -1).to_list(200)
+    docs = await db.patient_medications.find({"patient_id": {"$in": refs}, "portal_visible": {"$ne": False}}, {"_id": 0}).sort("last_prescribed_at", -1).to_list(200)
     seen, meds, previous = set(), [], []
     for d in docs:
         ident = "|".join([(d.get("drug") or "").lower(), (d.get("strength") or "").lower(), (d.get("form") or "").lower(), (d.get("sig") or "").lower()])
@@ -11138,6 +11139,97 @@ api.include_router(locations_mod.build_router(require_roles))
 api.include_router(address_pools_mod.build_router(require_roles))
 api.include_router(med_history_mod.build_router(require_roles))
 api.include_router(clinic_profile_mod.build_router(require_roles, CLINIC_ROLES))
+api.include_router(recon_mod.build_router(require_roles, MED_RECORD_ROLES, _scoped_med_refs, _regimen_key, _remember_med_catalog, _med_public))
+
+
+# ---- Rx request structured completion (outcome-aware; never implies a VIen Rx was sent) ----
+RX_OUTCOMES = ("PRESCRIPTION_SENT_VIEN", "PRESCRIPTION_VERIFIED_EXTERNAL", "APPOINTMENT_REQUIRED", "NO_PRESCRIPTION_ISSUED", "OTHER")
+
+
+class RxCompleteBody(BaseModel):
+    outcome: str
+    note: Optional[str] = None
+    confirm_external: bool = False
+    decisions: Optional[List[recon_mod.Decision]] = None  # reconciliation decisions for PRESCRIPTION_VERIFIED_EXTERNAL
+
+
+def _rx_request_meds(doc: dict) -> list:
+    """Medications contained in a request: structured items (refill redesign / pharmacy intake) or the single portal pick."""
+    out = []
+    for it in (doc.get("items") or doc.get("medications_structured") or []):
+        if isinstance(it, dict) and (it.get("drug") or it.get("name") or it.get("medication_name")):
+            out.append({"drug": it.get("drug") or it.get("name") or it.get("medication_name"), "strength": it.get("strength"), "form": it.get("form"),
+                        "sig": it.get("sig") or it.get("directions"), "original_text": it.get("original_text") or it.get("label"), "needs_review": []})
+    if not out and doc.get("medication_name"):
+        parsed = rx_parser.parse_access_rx(re.sub(r"\s*;\s*", "\n", doc["medication_name"])).get("medications") or []
+        out = parsed or [{"drug": doc.get("catalog_drug") or doc["medication_name"], "strength": doc.get("strength"), "sig": doc.get("directions"),
+                          "original_text": doc["medication_name"], "needs_review": ["manual entry"] if doc.get("medication_entry_source") == "MANUAL" else []}]
+    return out
+
+
+@api.get("/internal/prescriptions/{item_id}/completion-preview")
+async def rx_completion_preview(item_id: str, user: dict = Depends(require_roles(*CLINIC_ROLES))):
+    doc = await db.prescription_requests.find_one({"id": item_id}, {"_id": 0})
+    if not doc:
+        raise HTTPException(status_code=404, detail="Not found")
+    assert_practice(doc, user)
+    tx = await db.rx_transmissions.find_one({"$or": [{"request_id": item_id}, {"prescription_request_id": item_id}, {"source_request_ids": item_id}]}, {"_id": 0, "id": 1, "sent_at": 1})
+    pid = await med_history_mod.canonical_patient_id({"patient_id": doc.get("patient_id"), "patient_directory_id": doc.get("directory_id")}) if (doc.get("patient_id") or doc.get("directory_id")) else None
+    refs = [x for x in {pid, doc.get("patient_id"), doc.get("directory_id")} if x]
+    recon = await recon_mod.organize(refs, items=_rx_request_meds(doc)) if refs else {"items": [], "existing_count": 0}
+    return {"request_id": item_id, "vien_transmission": tx, "canonical_patient_id": pid, "reconciliation": recon, "outcomes": RX_OUTCOMES}
+
+
+@api.post("/internal/prescriptions/{item_id}/complete")
+async def rx_complete(item_id: str, body: RxCompleteBody, user: dict = Depends(require_roles(*CLINIC_ROLES))):
+    if body.outcome not in RX_OUTCOMES:
+        raise HTTPException(status_code=400, detail="Unknown completion outcome")
+    doc = await db.prescription_requests.find_one({"id": item_id})
+    if not doc:
+        raise HTTPException(status_code=404, detail="Not found")
+    assert_practice(doc, user)
+    if doc.get("internal_status") == "voided":
+        raise HTTPException(status_code=409, detail="This request is archived (voided) and is read-only.")
+    now = now_iso()
+    tx = await db.rx_transmissions.find_one({"$or": [{"request_id": item_id}, {"prescription_request_id": item_id}, {"source_request_ids": item_id}]}, {"_id": 0, "id": 1})
+    if body.outcome == "PRESCRIPTION_SENT_VIEN" and not tx:
+        raise HTTPException(status_code=400, detail="No VIen Rx transmission exists for this request. Choose another outcome.")
+    status = {"PRESCRIPTION_SENT_VIEN": "prescription_sent", "PRESCRIPTION_VERIFIED_EXTERNAL": "completed_external_verified",
+              "APPOINTMENT_REQUIRED": "appointment_required", "NO_PRESCRIPTION_ISSUED": "completed_no_prescription", "OTHER": "completed"}[body.outcome]
+    recon = None
+    if body.outcome == "PRESCRIPTION_VERIFIED_EXTERNAL":
+        if not body.confirm_external:
+            raise HTTPException(status_code=400, detail="Confirm that the physician prescribed these medications outside VIen.")
+        pid = await med_history_mod.canonical_patient_id({"patient_id": doc.get("patient_id"), "patient_directory_id": doc.get("directory_id")}) or doc.get("patient_id") or doc.get("directory_id")
+        safe = [d.model_dump() for d in (body.decisions or []) if d.decision in ("add", "skip", "flag")]  # external verification never replaces/stops
+        recon = await recon_mod.apply(pid, safe, "CLINIC_VERIFIED_EXTERNAL_RX", user, _regimen_key, _remember_med_catalog,
+                                      context={"request_id": item_id, "ref_number": doc.get("ref_number")}) if pid else None
+    updates = {"internal_status": status, "completion_outcome": body.outcome, "completion_note": (body.note or "").strip() or None,
+               "completed_at": now, "completed_by": user["name"], "updated_at": now,
+               "verified_by": {"id": user["id"], "name": user["name"], "role": user["role"], "at": now} if body.outcome == "PRESCRIPTION_VERIFIED_EXTERNAL" else None,
+               "reconciliation": recon, "vien_transmission_id": (tx or {}).get("id")}
+    await db.prescription_requests.update_one({"id": item_id}, {"$set": updates, "$push": {"history": {"status": status, "at": now, "by": user["name"], "note": f"Completed — {body.outcome}"}}})
+    await audit("rx_request_completed", "prescription_request", item_id, user, old_status=doc.get("internal_status"), new_status=status,
+                meta={"outcome": body.outcome, "reconciliation": recon})
+    if doc.get("patient_id"):
+        label = RX_PATIENT_STATUS.get(status, "Completed")
+        await notify_svc.generic_update(db, doc["patient_id"], "Prescription request update", f"{label}. Sign in to the Patient Portal for details.", f"prescription_{status}", ref=doc.get("ref_number"))
+    return await db.prescription_requests.find_one({"id": item_id}, {"_id": 0})
+
+
+# ---- Admin read-only Patient Portal Preview (NOT impersonation: computed with the viewer's session, no patient token) ----
+@api.get("/internal/patients/{patient_ref}/portal-preview")
+async def portal_preview(patient_ref: str, user: dict = Depends(require_roles(*CLINIC_ROLES))):
+    refs, _, p = await _scoped_med_refs(patient_ref, user)
+    if not p:
+        return {"linked": False, "message": "No Patient Portal account is linked to this record."}
+    ctx = PortalCtx(p, user)
+    overview = await portal_overview(ctx)
+    meds = await portal_medications(ctx)
+    docs = await db.attachments.find({"patient_id": {"$in": refs}, "shared_with_patient": True, "deleted_at": None}, {"_id": 0, "id": 1, "title": 1, "original_filename": 1, "uploaded_at": 1, "shared_at": 1, "result_category": 1}).sort("uploaded_at", -1).to_list(50)
+    await audit("portal_preview_viewed", "patient", p["id"], user, meta={"patient_ref": patient_ref})
+    return {"linked": True, "patient": {k: p.get(k) for k in ("id", "first_name", "last_name", "email", "phone", "date_of_birth", "visita_patient_id", "profile_completion", "address")},
+            "overview": overview, "medications": meds, "documents": docs}
 api.include_router(prof_mod.build_router(get_current_user, get_patient_record, validate_hc_dates, require_roles))
 app.include_router(api)
 

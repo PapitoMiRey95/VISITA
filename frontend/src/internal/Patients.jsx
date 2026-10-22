@@ -1,5 +1,5 @@
 import { useState, useRef, useEffect } from "react";
-import { useSearchParams } from "react-router-dom";
+import { useSearchParams, useNavigate } from "react-router-dom";
 import { toast } from "sonner";
 import { UserSearch, Search, MapPin, Phone, IdCard, Building2, Lock, RefreshCw, Pencil, ShieldCheck, X, Copy, AlertTriangle, UserPlus } from "lucide-react";
 import { api, formatErr } from "../lib/api";
@@ -67,6 +67,7 @@ function Row({ label, children, testid }) {
 }
 
 export default function Patients() {
+    const navigate = useNavigate();
     const [query, setQuery] = useState("");
     const [pinQuery, setPinQuery] = useState("");
     const [results, setResults] = useState([]);
@@ -296,6 +297,9 @@ export default function Patients() {
                         </div>
                         <div className="flex items-center justify-start sm:justify-end flex-wrap gap-2 w-full sm:w-auto">
                             {user?.role === "physician" && user?.encounter_enabled && !editing && <StartEncounterButton patient={selected} />}
+                            {!editing && selected?.id && (
+                                <Button size="sm" variant="outline" data-testid="portal-preview-btn" onClick={() => navigate(`/internal/patients/${selected.patient_id || selected.id}/portal-preview`)}>👁 Preview Patient Portal</Button>
+                            )}
                             {canEdit && !editing && (
                                 <Button variant="outline" size="sm" data-testid="patient-edit-btn" onClick={startEdit}>
                                     <Pencil className="w-3.5 h-3.5 mr-1" /> Edit Patient Information

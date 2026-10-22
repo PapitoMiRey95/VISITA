@@ -6,6 +6,8 @@ import { formatDate } from "../lib/date";
 import { Button } from "../components/ui/button";
 import { Input } from "../components/ui/input";
 import { MedEditPanel } from "./MedEditPanel";
+import { SmartMedPaste } from "./SmartMedPaste";
+import { Sparkles } from "lucide-react";
 
 const EMPTY_MED = { drug: "", strength: "", form: "", action: "", sig: "", attributes: [], quantity: "", quantity_unit: "", refills: "", note: "", additional_instructions: "" };
 
@@ -61,6 +63,11 @@ export default function MedicalRecord({ patientId }) {
         setEditingId(m.id); setAddMode(false); loadDrugs();
     };
     const cancelForm = () => { setAddMode(false); setEditingId(null); setMed(EMPTY_MED); };
+    const [smartOpen, setSmartOpen] = useState(false);
+    const toggleVisible = async (m) => {
+        try { await api.patch(`/internal/patients/${patientId}/medications/${m.id}/portal-visibility`, { portal_visible: m.portal_visible === false }); setRec(null); await load(); }
+        catch (e) { toast.error(formatErr(e)); }
+    };
 
     const setMedField = (_i, k, v) => setMed((prev) => ({ ...prev, [k]: v }));
 
@@ -151,11 +158,19 @@ export default function MedicalRecord({ patientId }) {
                                 <div className="flex items-center justify-between mb-1">
                                     <div className="text-[11px] font-bold uppercase tracking-wide text-slate-400 flex items-center gap-1"><Pill className="w-3.5 h-3.5" /> Medications</div>
                                     {!addMode && !editingId && (
-                                        <Button size="sm" variant="outline" data-testid="mr-add-med-btn" onClick={startAdd}>
-                                            <Plus className="w-3.5 h-3.5 mr-1" /> Add medication
-                                        </Button>
+                                        <div className="flex items-center gap-1.5">
+                                            <Button size="sm" variant="outline" data-testid="mr-add-med-btn" onClick={() => { setSmartOpen(false); startAdd(); }}>
+                                                <Plus className="w-3.5 h-3.5 mr-1" /> Add medication
+                                            </Button>
+                                            <Button size="sm" data-testid="mr-smart-paste-btn" onClick={() => setSmartOpen((o) => !o)} className="bg-[#0b2545] hover:bg-[#143a6b] text-white">
+                                                <Sparkles className="w-3.5 h-3.5 mr-1" /> Paste & Organize
+                                            </Button>
+                                        </div>
                                     )}
                                 </div>
+                                {smartOpen && !addMode && !editingId && (
+                                    <SmartMedPaste patientId={patientId} onClose={() => setSmartOpen(false)} onApplied={async () => { setRec(null); await load(); }} />
+                                )}
 
                                 {(addMode || editingId) && (
                                     <div className="border border-slate-700 bg-slate-800 text-slate-100 rounded-sm p-3 mb-3" data-testid="mr-med-form">
@@ -182,6 +197,11 @@ export default function MedicalRecord({ patientId }) {
                                                 <div className="min-w-0">
                                                     <div className="font-semibold text-slate-800 text-sm">{medLabel(m)}</div>
                                                     {m.sig && <div className="text-xs text-slate-500 truncate">{m.sig}</div>}
+                                                    <div className="text-[11px] text-slate-400 flex flex-wrap items-center gap-x-2" data-testid="mr-med-meta">
+                                                        {m.source && <span>{({ VIEN_RX_SENT: "VIen Rx sent", historical_backfill: "VIen Rx sent", physician_manual: "Added manually", MEDICATION_RECONCILIATION: "Reconciled from list", CLINIC_VERIFIED_EXTERNAL_RX: "External Rx verified by clinic", LEGACY_IMPORT: "Legacy import" })[m.source] || m.source}</span>}
+                                                        {m.review_flag && <span className="text-amber-700 font-semibold" data-testid="mr-med-review-flag">⚠ Needs review: {m.review_flag.pasted?.strength || ""} {m.review_flag.pasted?.sig || ""} pasted {String(m.review_flag.at).slice(0, 10)}</span>}
+                                                        <button type="button" onClick={() => toggleVisible(m)} className={`inline-flex items-center gap-0.5 ${m.portal_visible === false ? "text-slate-500" : "text-sky-700"}`} data-testid="mr-med-visibility">{m.portal_visible === false ? "Hidden from Patient Portal" : "👁 Visible in Patient Portal"}</button>
+                                                    </div>
                                                     {m.coverage_days && m.last_prescribed_at && <div className="text-[11px] text-slate-400" data-testid="mr-med-coverage">Last sent {String(m.last_prescribed_at).slice(0, 10)} · ~{m.coverage_days} days supply{m.physician_name ? ` · ${m.physician_name}` : ""}</div>}
                                                 </div>
                                                 {stopId === m.id ? (

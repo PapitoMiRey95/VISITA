@@ -61,6 +61,8 @@ RX_PATIENT_STATUS = {
     "appointment_required": "Appointment Required",
     "appointment_booked": "Appointment Booked",
     "prescription_sent": "Prescription Sent",
+    "completed_external_verified": "Processed by clinic — external prescription verified",
+    "completed_no_prescription": "Completed — no prescription issued",
 }
 
 APPT_PATIENT_STATUS = {

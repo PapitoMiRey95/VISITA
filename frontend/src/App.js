@@ -83,6 +83,7 @@ import PharmacyRx from "./pharmacy/PharmacyRx";
 import PharmacyMessages from "./pharmacy/PharmacyMessages";
 import PharmacyIncoming from "./pharmacy/PharmacyIncoming";
 import PharmacyAccount from "./pharmacy/PharmacyAccount";
+import PortalPreview from "./internal/PortalPreview";
 
 function App() {
     return (
@@ -139,6 +140,7 @@ function App() {
                     <Route path="/network" element={<RoleRoute roles={["network", "physician", "admin", "staff"]}><NetworkHome /></RoleRoute>} />
                     <Route path="/network/people/:id" element={<RoleRoute roles={["network", "physician", "admin", "staff"]}><PersonProfile /></RoleRoute>} />
                     <Route path="/network/orgs/:id" element={<RoleRoute roles={["network", "physician", "admin", "staff"]}><OrgProfile /></RoleRoute>} />
+                    <Route path="/internal/patients/:patientId/portal-preview" element={<RoleRoute roles={["admin", "physician", "staff"]}><PortalPreview /></RoleRoute>} />
                     <Route
                         path="/internal/encounter"
                         element={

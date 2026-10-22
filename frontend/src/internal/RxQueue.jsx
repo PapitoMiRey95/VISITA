@@ -1,6 +1,8 @@
+import { useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import { Plus, Paperclip, FilePlus2 } from "lucide-react";
 import { toast } from "sonner";
+import { RxCompleteDialog } from "./RxCompleteDialog";
 import Queue, { KV } from "./Queue";
 import { useAuth } from "../context/AuthContext";
 import { StatusPill } from "./statusPill";
@@ -73,6 +75,7 @@ const PHYSICIAN_COLUMNS = [
 ];
 
 export default function RxQueue() {
+    const [completing, setCompleting] = useState(null);
     const { user } = useAuth();
     const physician = user?.role === "physician";
     const navigate = useNavigate();
@@ -107,12 +110,13 @@ export default function RxQueue() {
         const fromPatient = item.source !== "pharmacy";
         if (!fromPatient && item.internal_status === "received") base.push({ label: "Mark Under Review", testid: "act-review", variant: "outline", body: { action: "review" } });
         if (!fromPatient && item.internal_status !== "waiting_physician") base.push({ label: "Send to Physician", testid: "act-send-physician", variant: "outline", body: { action: "send_to_physician" } });
-        base.push({ label: "Mark Completed", testid: "act-complete", body: { action: "complete" } });
+        base.push({ label: "Mark Completed", testid: "act-complete", onClick: (sel, h) => setCompleting({ item: sel, done: h.done }) });
         base.push({ label: "Appointment Required", testid: "act-appt-req", variant: "outline", body: { action: "appointment_required" } });
         return base;
     };
 
-    return (
+    return (<>
+        {completing && <RxCompleteDialog item={completing.item} onClose={() => setCompleting(null)} onDone={completing.done} />}
         <Queue
             title="Prescription Requests"
             subtitle="Actionable prescription requests — patient and pharmacy"
@@ -266,5 +270,5 @@ export default function RxQueue() {
             )}
             actions={actions}
         />
-    );
+    </>);
 }

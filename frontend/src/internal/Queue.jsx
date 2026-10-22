@@ -162,7 +162,7 @@ export default function Queue({ title, subtitle, endpoint, patchBase, searchPlac
                                         {!wide && (
                                             <div className="flex flex-wrap gap-2 pt-1">
                                                 {acts.map((a) => (
-                                                    <Button key={a.label} data-testid={a.testid} disabled={busy} onClick={() => run(a.body)}
+                                                    <Button key={a.label} data-testid={a.testid} disabled={busy} onClick={() => (a.onClick ? a.onClick(selected, { done: () => { invalidate(); list.refetch(); close(); } }) : run(a.body))}
                                                         variant={a.variant || "default"}
                                                         className={a.variant ? "" : "bg-visita-green hover:bg-visita-greenDark text-white"}>
                                                         {a.label}
@@ -207,7 +207,7 @@ export default function Queue({ title, subtitle, endpoint, patchBase, searchPlac
                                 <div className="shrink-0 border-t border-slate-200 bg-white px-4 sm:px-6 py-3 flex flex-wrap items-center gap-2" data-testid="queue-action-bar">
                                     {footerActions && footerActions(selected)}
                                     {acts.map((a) => (
-                                        <Button key={a.label} data-testid={a.testid} disabled={busy} onClick={() => run(a.body)}
+                                        <Button key={a.label} data-testid={a.testid} disabled={busy} onClick={() => (a.onClick ? a.onClick(selected, { done: () => { invalidate(); list.refetch(); close(); } }) : run(a.body))}
                                             variant={a.variant || "default"} size="sm"
                                             className={a.variant ? "" : "bg-visita-green hover:bg-visita-greenDark text-white"}>
                                             {a.label}

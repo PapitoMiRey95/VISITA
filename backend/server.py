@@ -58,6 +58,7 @@ import work_hub as work_mod
 import locations as locations_mod
 import address_pools as address_pools_mod
 import med_history as med_history_mod
+import clinic_profile as clinic_profile_mod
 import booking_types as bt_mod
 import profile_completion as prof_mod
 from db import (APPT_PATIENT_STATUS, BLD_ACTIVE, BLD_PATIENT_STATUS, IMG_ACTIVE,
@@ -3264,7 +3265,9 @@ async def create_rx_batch_request(body: RxBatchRequestBody, ctx: PortalCtx = Dep
     work unchanged. Routing unchanged: waiting_physician. Never writes patient_medications or the catalog."""
     p = ctx.patient
     await prof_mod.require_complete(p)
-    mode = body.request_mode if body.request_mode in RX_REQUEST_MODES else "selected"
+    if body.request_mode not in RX_REQUEST_MODES:
+        raise HTTPException(status_code=400, detail="Unknown request type.")
+    mode = body.request_mode
     change = mode == "medication_change"
     if not body.items and not change:
         raise HTTPException(status_code=400, detail="Select at least one medication.")
@@ -8715,8 +8718,9 @@ def _dedupe_meds(docs: list) -> list:
 @api.get("/internal/patients/{patient_id}/medical-record")
 async def patient_medical_record(patient_id: str, user: dict = Depends(require_roles(*MED_RECORD_ROLES))):
     refs, summary, p = await _scoped_med_refs(patient_id, user)
+    portal_id = p["id"] if p else patient_id
     appts = await db.appointment_requests.find(
-        {"patient_id": patient_id}, {"_id": 0}).sort("created_at", -1).to_list(100) if p else []
+        {"patient_id": portal_id}, {"_id": 0}).sort("created_at", -1).to_list(100) if p else []
     encounters = [{
         "id": a.get("id"), "ref_number": a.get("ref_number"),
         "status": a.get("status"), "reason": a.get("reason"),
@@ -8730,7 +8734,7 @@ async def patient_medical_record(patient_id: str, user: dict = Depends(require_r
     meds_discontinued = _dedupe_meds(await db.patient_medications.find(
         {"patient_id": {"$in": refs}, "active": False}, {"_id": 0}).sort("updated_at", -1).to_list(200))
     try:
-        documents = await attach_mod.list_shared_for_patient(db, patient_id) if p else []
+        documents = await attach_mod.list_shared_for_patient(db, portal_id) if p else []
     except Exception:
         documents = []
     return {
@@ -8854,8 +8858,8 @@ async def physician_update_medication(patient_id: str, med_id: str, body: MedAct
                     meta={"patient_id": patient_id, "drug": med.get("drug")})
     elif act == "continue":
         event = {"action": "continued", "at": now, "by": user["name"], "by_role": user["role"]}
-        await db.patient_medications.update_one({"id": med_id}, {
-            "$set": {"active": True, "discontinued_at": None, "last_prescribed_at": now, "updated_at": now},
+        await db.patient_medications.update_one({"id": med_id}, {  # continue never fakes a SENT date: coverage clock untouched
+            "$set": {"active": True, "discontinued_at": None, "continued_at": now, "updated_at": now},
             "$push": {"history": event}})
         await audit("medication_continued", "patient_medication", med_id, user,
                     meta={"patient_id": patient_id, "drug": med.get("drug")})
@@ -10937,6 +10941,7 @@ api.include_router(work_mod.build_router(require_roles))
 api.include_router(locations_mod.build_router(require_roles))
 api.include_router(address_pools_mod.build_router(require_roles))
 api.include_router(med_history_mod.build_router(require_roles))
+api.include_router(clinic_profile_mod.build_router(require_roles, CLINIC_ROLES))
 api.include_router(prof_mod.build_router(get_current_user, get_patient_record, validate_hc_dates, require_roles))
 app.include_router(api)
 

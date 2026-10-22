@@ -50,6 +50,7 @@ import Referrals from "./internal/Referrals";
 import Verifications from "./internal/Verifications";
 import Applications from "./internal/Applications";
 import Settings from "./internal/Settings";
+import ClinicProfile from "./internal/ClinicProfile";
 import DeveloperPortal from "./developer/DeveloperPortal";
 import { SystemStatusProvider } from "./components/SystemStatus";
 import AuditCompliance from "./internal/AuditCompliance";
@@ -175,6 +176,7 @@ function App() {
                         <Route path="providers" element={<Providers />} />
                         <Route path="professionals" element={<Professionals />} />
                         <Route path="settings" element={<Settings />} />
+                        <Route path="clinic" element={<ClinicProfile />} />
                         <Route path="settings/audit" element={<AuditCompliance />} />
                         <Route path="system/provision-developer" element={<ProvisionDeveloper />} />
                     </Route>

@@ -85,6 +85,7 @@ export default function RxQueue() {
             pharmacy_id: i.pharmacy_id,
             pharmacy_name: i.pharmacy,
             ref_number: i.ref_number,
+            source: i.source, request_mode_label: i.request_mode_label || null,
             medications_structured: i.medications_structured || [],
         };
         try { sessionStorage.setItem("visita_rx_convert", JSON.stringify(payload)); } catch { /* ignore */ }

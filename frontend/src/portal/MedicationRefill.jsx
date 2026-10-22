@@ -45,6 +45,7 @@ export default function MedicationRefill({ onBehalfOf = null, onSubmitted }) {
     const detailRef = useRef(null);
 
     const toggle = (id) => setSelected((prev) => {
+        setDueNudge(null);
         const next = new Set(prev);
         next.has(id) ? next.delete(id) : next.add(id);
         return next;
@@ -57,7 +58,7 @@ export default function MedicationRefill({ onBehalfOf = null, onSubmitted }) {
 
     const regular = useMemo(() => meds.filter((m) => m.regular), [meds]);
     const chooseMode = (m) => {
-        setMode(m); setDueNudge(null);
+        setMode(m); setDueNudge(null); setNote("");
         if (m === "all_regular" || m === "blister_pack") setSelected(new Set(regular.map((x) => x.id)));
         if (m === "medication_change") { setSelected(new Set()); setExtras([]); }
     };
@@ -152,7 +153,7 @@ export default function MedicationRefill({ onBehalfOf = null, onSubmitted }) {
                 {isChange ? (
                     <div className="space-y-3" data-testid="medication-change-panel">
                         <p className="text-sm font-semibold text-amber-800 bg-amber-50 border border-amber-200 rounded-lg p-2.5">{t("rx.changeNotice", "Medication changes require review by your doctor.")}</p>
-                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                        <div className="grid grid-cols-1 gap-2">
                             <Button asChild variant="outline" className="h-11 rounded-xl" data-testid="change-book-appt"><Link to="/portal/appointments"><CalendarPlus className="w-4 h-4 mr-1.5" /> {t("rx.bookAppointment", "Book an appointment")}</Link></Button>
                             <Button asChild variant="outline" className="h-11 rounded-xl" disabled={!clinicPhone} data-testid="change-call-clinic"><a href={clinicPhone ? `tel:${clinicPhone.replace(/[^+\d]/g, "")}` : undefined}><Phone className="w-4 h-4 mr-1.5" /> <span className="truncate">{clinicPhone ? t("rx.callClinic", "Call the clinic · {{p}}", { p: clinicPhone }) : t("rx.callClinicNoPhone", "Call the clinic")}</span></a></Button>
                         </div>
@@ -179,7 +180,7 @@ export default function MedicationRefill({ onBehalfOf = null, onSubmitted }) {
                     </div>
                 )}
 
-                {previous.length > 0 && (
+                {!isChange && previous.length > 0 && (
                     <div className="mt-4" data-testid="previously-prescribed">
                         <button type="button" data-testid="previously-toggle" onClick={() => setShowPrevious((v) => !v)}
                             className="text-sm font-semibold text-slate-600 underline underline-offset-2">

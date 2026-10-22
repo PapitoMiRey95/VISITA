@@ -73,6 +73,7 @@ export default function InternalLayout() {
               { to: "/internal/verifications", icon: UserCheck, label: "Verifications", key: "verifications" },
               { to: "/internal/providers", icon: Stethoscope, label: "Providers", key: null },
               { to: "/internal/professionals", icon: Contact, label: "Professional profile", key: null },
+              { to: "/internal/clinic", icon: Building2, label: "Clinic profile", key: null },
               { to: "/internal/settings", icon: SettingsIcon, label: "Settings", key: null },
           ]
         : [
@@ -96,6 +97,7 @@ export default function InternalLayout() {
               { to: "/internal/organizations", icon: Building2, label: "Organizations", key: null },
               { to: "/internal/providers", icon: Stethoscope, label: "Providers", key: null },
               { to: "/internal/professionals", icon: Contact, label: "Professional profile", key: null },
+              { to: "/internal/clinic", icon: Building2, label: "Clinic profile", key: null },
               ...(role === "admin" ? [{ to: "/internal/settings", icon: SettingsIcon, label: "Settings", key: null }] : []),
           ];
 
@@ -107,7 +109,7 @@ export default function InternalLayout() {
     const netItem = !ws && ["physician", "admin", "staff"].includes(role) && navVisible("network", audience, role) ? [{ to: "/network", icon: Building2, label: "VIen Network", key: null }] : [];
     const visibleItems = [...wsItems, ...netItem].filter((it) => !NAV_FEATURE[it.to] || navVisible(NAV_FEATURE[it.to], audience, role));
     const QUICK = new Set(["/internal/patients", "/internal/work", "/internal/rx", "/internal/send-rx", "/internal/exams", "/internal/calendar", "/network", "/internal/verifications",
-                           "/internal/registration-qr", "/internal/settings"]);
+                           "/internal/registration-qr", "/internal/clinic", "/internal/settings"]);
     // Physicians keep Verifications inside All Queues; staff/admin see it in the quick sidebar.
     const isQuick = (it) => QUICK.has(it.to) && !(isPhysician && it.to === "/internal/verifications");
     const quickItems = visibleItems.filter(isQuick);
@@ -155,8 +157,9 @@ export default function InternalLayout() {
     const QUICK_ORDER = ["/internal/patients", "/internal/work", "/internal/calendar"];
     const renderNav = (onNavigate, prefix = "sidebar") => {
         const first = QUICK_ORDER.map((to) => quickItems.find((it) => it.to === to)).filter(Boolean);
-        const rest = quickItems.filter((it) => !QUICK_ORDER.includes(it.to) && it.to !== "/internal/settings" && it.to !== "/network");
-        const tail = quickItems.filter((it) => it.to === "/internal/settings" || it.to === "/network");
+        const TAIL = ["/internal/clinic", "/internal/settings", "/network"];
+        const rest = quickItems.filter((it) => !QUICK_ORDER.includes(it.to) && !TAIL.includes(it.to));
+        const tail = TAIL.map((to) => quickItems.find((it) => it.to === to)).filter(Boolean);
         return [...first.map((it) => renderItem(it, onNavigate, prefix)), ...rest.map((it) => renderItem(it, onNavigate, prefix)),
             workHubButton(onNavigate, prefix), ...tail.map((it) => renderItem(it, onNavigate, prefix))];
     };

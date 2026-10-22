@@ -44,7 +44,7 @@ function mapConvertMed(m) {
         (m.current_refills || m.current_refills === 0) && m.current_refills !== "" && `Current refills: ${m.current_refills}`,
     ].filter(Boolean).join(" · ");
     return {
-        ...EMPTY_MED,
+        ...EMPTY_MED, entry_source: m.entry_source || null,
         drug: m.drug || "", strength: m.strength || "", form: m.form || "", sig: m.sig || "",
         attributes: m.attributes || [], quantity: m.quantity || "", quantity_unit: m.quantity_unit || "",
         manufacturer: m.manufacturer || "", note: m.pharmacy_note || "",
@@ -154,13 +154,15 @@ export default function SendPrescription() {
                 const pref = data.directory_id || data.patient_id || payload.patient_ref;
                 patientRefRef.current = pref;
                 setPharmacyId(payload.pharmacy_id || "");
-                setConvertMeta({ source_request_id: payload.source_request_id, pharmacy_name: payload.pharmacy_name, ref_number: payload.ref_number });
+                setConvertMeta({ source_request_id: payload.source_request_id, pharmacy_name: payload.pharmacy_name, ref_number: payload.ref_number,
+                    source: payload.source, request_mode_label: payload.request_mode_label });
                 setStoredDraft(null);
                 setMeds((payload.medications_structured || []).map(mapConvertMed));
                 api.get(`/internal/patients/${pref}/medications`).then(({ data: pm }) => setPrevMeds(pm)).catch(() => {});
                 api.get(`/internal/patients/${pref}/prescriptions`).then(({ data: rxs }) => setPrescriptions(rxs)).catch(() => {});
                 api.get("/internal/rx/suggest", { params: { patient_ref: pref } }).then(({ data: sg }) => setDrugOptions(sg.drugs || [])).catch(() => {});
-                toast.success(`Draft prepared from ${payload.pharmacy_name || "pharmacy"} request. Review, edit, then Send.`);
+                toast.success(payload.source === "pharmacy" ? `Draft prepared from ${payload.pharmacy_name || "pharmacy"} request. Review, edit, then Send.`
+                    : "Draft prepared from the patient's request. Review, edit, then Send.");
             } catch (err) { toast.error(formatErr(err)); }
         })();
     }, [setMeds]);
@@ -363,8 +365,10 @@ export default function SendPrescription() {
                         <div className="bg-indigo-50 border border-indigo-300 rounded-sm p-3 mb-4 flex items-start gap-2" data-testid="sendrx-convert-banner">
                             <Building2 className="w-4 h-4 text-indigo-600 mt-0.5 shrink-0" />
                             <div className="text-sm text-indigo-900">
-                                Prepared from <b>{convertMeta.pharmacy_name || "pharmacy"}</b> renewal request{convertMeta.ref_number ? ` (${convertMeta.ref_number})` : ""}.
-                                <div className="text-xs text-indigo-700 mt-0.5">These values are pharmacy-supplied and are <b>not</b> physician-confirmed until you review and press Send Prescription.</div>
+                                {convertMeta.source === "pharmacy"
+                                    ? <>Prepared from <b>{convertMeta.pharmacy_name || "pharmacy"}</b> renewal request{convertMeta.ref_number ? ` (${convertMeta.ref_number})` : ""}.</>
+                                    : <>Prepared from the <b>patient's request</b>{convertMeta.request_mode_label ? ` · ${convertMeta.request_mode_label}` : ""}{convertMeta.ref_number ? ` (${convertMeta.ref_number})` : ""}.</>}
+                                <div className="text-xs text-indigo-700 mt-0.5">These values are {convertMeta.source === "pharmacy" ? "pharmacy-supplied" : "patient-requested"} and are <b>not</b> physician-confirmed until you review and press Send Prescription. Your final sent prescription is what updates the patient's medication list.</div>
                             </div>
                         </div>
                     )}
@@ -476,6 +480,8 @@ export default function SendPrescription() {
                                                         <div className="flex items-center gap-2 flex-wrap">
                                                             <span className="text-slate-400 text-xs font-semibold">{i + 1}.</span>
                                                             <span className="font-semibold text-slate-800">{[m.drug || "(medication?)", m.strength].filter(Boolean).join(" ")}</span>
+                                                            {m.entry_source === "MANUAL" && <span data-testid="sendrx-manual-flag" className="px-1.5 py-0.5 rounded-sm text-[10px] font-bold tracking-wide bg-amber-100 text-amber-800 border border-amber-300">MANUAL ENTRY — REVIEW REQUIRED</span>}
+                                                            {m.entry_source === "CATALOG" && <span className="px-1.5 py-0.5 rounded-sm text-[10px] font-bold tracking-wide bg-sky-100 text-sky-800">PATIENT CATALOG PICK — CONFIRM STRENGTH/SIG</span>}
                                                             {m.action ? <span className={`px-1.5 py-0.5 rounded-sm text-[10px] font-bold tracking-wide ${ACTION_STYLE[m.action] || "bg-slate-100 text-slate-600"}`} data-testid="sendrx-action-badge">{m.action}</span> : null}
                                                         </div>
                                                         <div className="text-slate-500 text-xs mt-0.5">{[m.form, ...(m.attributes || [])].filter(Boolean).join(" · ") || "—"}</div>

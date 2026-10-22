@@ -1,0 +1,47 @@
+{
+  "summary": "Final pre-GO regression of the Patient Portal Rx Refill redesign (PREVIEW only, nothing deployed). Backend B1-B11 + R1/R2: 15/15 pytest passing. Frontend F1-F7 all pass end to end (portal mode chooser, catalog + manual extras, blister preselect, medication-change panel, due nudge skip/add/absent, physician Rx queue banners/cards/Convert to Prescription draft, Medical Record stop→discontinued, Pharmacy intake blister toggle). I found no blocking defects. There are a few UX/copy and code-quality issues, listed below. Note: /app/test_reports/iteration_10.json already existed from an older run, so this report is iteration_88.json and does not overwrite it.",
+  "backend_issues": {
+    "critical": [],
+    "minor": [
+      {"endpoint": "PATCH /api/internal/patients/{id}/medications/{med_id} action_type=continue", "issue": "'continue' sets last_prescribed_at=now even though no Rx is sent. That resets the coverage/due clock (likely_due and refill reminders) and the 'Last sent' label in the Medical Record, so a click without sending looks like a sent Rx. Suggest leaving last_prescribed_at alone (or using a separate continued_at)."},
+      {"endpoint": "GET /api/internal/patients/{patient_id}/medical-record", "issue": "encounters/documents query uses the raw patient_id path param. With 'directory:<id>', appointments keyed by the portal id are not returned even though the medications resolve via _scoped_med_refs. Should use p['id'] once resolved. ROMERO has no encounters, so this was found by code review and not shown live."},
+      {"endpoint": "POST /api/portal/rx-requests", "issue": "An unknown request_mode silently falls back to 'selected' instead of returning 400. all_regular/blister_pack do not check that the items match the patient's regular list (acceptable, but worth knowing)."}
+    ]
+  },
+  "frontend_issues": {
+    "ui_bugs": [
+      {"component": "SendPrescription convert banner/toast", "issue": "After Convert to Prescription from a PATIENT portal request, the toast says 'Draft prepared from pharmacy request' and the banner says 'Prepared from pharmacy renewal request … values are pharmacy-supplied'. The copy is wrong for source=patient_refill.", "selector": "[data-testid='sendrx-convert-banner']", "priority": "MEDIUM"},
+      {"component": "SendPrescription draft", "issue": "The manual-entry card ('Blue pill') shows up as a normal draft medication with no MANUAL ENTRY / review flag on the Send Rx page.", "selector": "[data-testid='sendrx-med-card']", "priority": "MEDIUM"}
+    ],
+    "integration_issues": [
+      {"flow": "Pharmacy intake blister renewal", "issue": "medications_structured is sent only from Smart-paste parsed meds. Ticked active meds and the manual text box are plain strings, so a blister intake built that way has no individual cards and no Convert button. The intake snapshot also shows 'No synchronized medications yet' for maria, who has 3 active patient_medications, so staff have to re-paste.", "affected_selectors": ["[data-testid='active-med']", "[data-testid='intake-blister-toggle']"]}
+    ],
+    "design_issues": [
+      {"screen": "Portal /portal/prescriptions medication-change panel (desktop 1920)", "issues": ["The 'Call the clinic · (416) 652-7667' button is truncated to '(416) 6…' in the 2-column grid inside the narrow card. Mobile (390) is fine. Use 1 column or shorter text."]},
+      {"screen": "Portal medication-change mode", "issues": ["'Previously prescribed through VIen' toggle and selectable cards still render under the change panel. Clicking them toggles a selection that is ignored on submit, which is confusing.", "The note textarea state is shared between change mode and refill mode, so text carries over when switching modes."]},
+      {"screen": "Internal Pharmacy intake (dark theme)", "issues": ["When checked, the blister toggle has a grey background with light violet text: low contrast."]},
+      {"screen": "Send Rx convert banner (dark theme)", "issues": ["Banner title text (indigo on dark indigo) is barely legible."]}
+    ]
+  },
+  "test_report_links": ["/app/backend/tests/test_rx_refill_redesign.py", "/app/backend/tests/_qa_inspect_rx.py", "/app/test_reports/pytest/rx_refill_redesign.xml"],
+  "action_items": [
+    "Fix the SendPrescription convert toast/banner copy for patient-sourced requests (patient_refill) and carry the MANUAL / review flag onto draft cards",
+    "Stop overwriting last_prescribed_at on 'continue' (it skews due/reminder logic and the 'Last sent' label)",
+    "medical-record: use the resolved portal id for encounters/documents when called with directory:<id>",
+    "Medication-change panel: fix phone truncation on desktop and hide the Previously-prescribed selectable list in change mode",
+    "Optional: pharmacy intake should build structured cards for ticked active meds and show authoritative patient_medications"
+  ],
+  "critical_code_review_comments": [
+    "server.py is 11k lines; the portal Rx (rx-requests, medications) and medical-record sections should move into modules",
+    "continue action resets the coverage clock (see backend minor)",
+    "medical-record encounters use the raw path id (see backend minor)",
+    "The due nudge only re-evaluates on submit; that is fine, but dueNudge is not cleared when the selection changes"
+  ],
+  "updated_files": ["/app/backend/tests/test_rx_refill_redesign.py (new)", "/app/backend/tests/_qa_inspect_rx.py (new QA helper)"],
+  "success_rate": {"backend": "100% (15/15)", "frontend": "100% of F1-F7 flows functional; copy/design issues noted"},
+  "seed_data_creation": "QA records created and confirmed deleted. prescription_requests: 9 from pytest (B2-B7, B11 x2, R1) deleted in fixture teardown; 6 from UI (RX-000178..RX-000183: F1 selected 4 cards, F2 blister, F3 medication_change, F4 skip, F4-absent check, F7 pharmacy blister) deleted. Total is back to the baseline of 64. patient_medications: 6 temp pytest meds (QA-* ids incl. 'QA Reminder Drug') + 'QA-DUE-DRUG-0001' (F4) deleted; maria's meds are unchanged (3 active + 2 inactive). notifications titled 'Refill reminder': 1 created by B8, deleted (count 0, same as baseline). refill_reminders: 1 created, deleted (count 0). Bisoprolol 1f3d6d34…: discontinued/continued in B9 and F6, then restored (active true, last_prescribed_at = tx sent_at 2026-09-28T21:57:06.390356+00:00, history [] as it was originally, discontinued_at null). audit_logs rows from QA were left in place. Backfill was NOT run with confirm APPLY. Nothing deployed.",
+  "retest_needed": false,
+  "should_main_agent_self_test": true,
+  "test_credentials": "Used /app/memory/test_credentials.md. The PAGUAYO temp password works without a forced change (must_change_password=false).",
+  "context_for_next_testing_agent": "Run: cd /app/backend && python -m pytest tests/test_rx_refill_redesign.py -v. It self-cleans and writes created ids to /app/test_reports/rx_refill_qa_created_ids.json. UI QA requests can be listed/cleaned with tests/_qa_inspect_rx.py (reads /tmp/qa_start ISO timestamp; 'cleanup' arg deletes requests created after it). Maria med ids: Atorvastatin af0e53b7-dc14-4456-8172-55d7c1cedd0b, Ramipril c46cb23f-d838-453f-8bb3-4de374dc57a2, Metformin e3c29cff-0b05-4ca9-b7db-58b924d08d50. System date in this container is 2026-10-22."
+}

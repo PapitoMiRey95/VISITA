@@ -280,10 +280,10 @@ export default function PharmacyIntake() {
                             </div>
                         </div>
                         <div><Label className="text-xs">Note (pharmacy or patient)</Label><Textarea value={f.pharmacy_note} onChange={(e) => set("pharmacy_note", e.target.value)} rows={2} /></div>
-                        <label className="flex items-center gap-2 cursor-pointer select-none rounded-sm border border-violet-300 bg-violet-50/50 px-2.5 py-2" data-testid="intake-blister-toggle">
+                        <label className="flex items-center gap-2 cursor-pointer select-none rounded-sm border border-violet-700 bg-violet-900 px-2.5 py-2" data-testid="intake-blister-toggle">
                             <input type="checkbox" checked={!!f.blister_pack} onChange={(e) => set("blister_pack", e.target.checked)} className="w-4 h-4" />
-                            <span className="text-sm font-semibold text-violet-900">Blister / compliance pack renewal</span>
-                            <span className="text-xs text-violet-700">— the pharmacy is renewing a multi-medication pack; each medication above stays its own card</span>
+                            <span className="text-sm font-semibold text-white">Blister / compliance pack renewal</span>
+                            <span className="text-xs text-violet-200">— the pharmacy is renewing a multi-medication pack; each medication above stays its own card</span>
                         </label>
                         <div>
                             <Label className="text-xs">Received via</Label>

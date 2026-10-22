@@ -3188,10 +3188,39 @@ async def _portal_patient_refs(p: dict) -> list:
     return list(refs)
 
 
+_DUR_DAYS = {"day": 1, "days": 1, "d": 1, "week": 7, "weeks": 7, "wk": 7, "month": 30, "months": 30, "mo": 30}
+
+
+def _coverage_days(d: dict) -> Optional[int]:
+    """Days of supply from the SENT prescription evidence only (months/refills or prescribed duration). None = unknown."""
+    try:
+        if d.get("months"):
+            return int(d["months"]) * 30 * (int(d.get("refills") or 0) + 1)
+        if d.get("duration_value") and d.get("duration_unit"):
+            unit = _DUR_DAYS.get(str(d["duration_unit"]).lower().strip())
+            return int(float(d["duration_value"]) * unit) if unit else None
+    except (TypeError, ValueError):
+        return None
+    return None
+
+
 def _portal_med_view(d: dict, status: str) -> dict:
+    """Adds assistance-only continuity fields: due_on = last SENT date + coverage; regular = active, not short-course.
+    No due suggestion when coverage is unknown, the medication is inactive, or the course is < 21 days."""
+    days = _coverage_days(d)
+    due_on = days_left = None
+    regular = d.get("active", True) and (days is None or days >= 28)
+    if days and d.get("active", True) and d.get("last_prescribed_at") and days >= 21:
+        try:
+            due_dt = datetime.fromisoformat(str(d["last_prescribed_at"]).replace("Z", "+00:00")) + timedelta(days=days)
+            due_on = due_dt.date().isoformat()
+            days_left = (due_dt.date() - datetime.now(timezone.utc).date()).days
+        except ValueError:
+            due_on = days_left = None
     return {"id": d.get("id"), "regimen_key": d.get("regimen_key"), "drug": d.get("drug"), "strength": _med_strength_display(d),
             "form": d.get("form"), "directions": d.get("sig"), "status": status, "last_prescribed_at": d.get("last_prescribed_at"),
-            "physician_name": d.get("physician_name")}
+            "physician_name": d.get("physician_name"), "regular": bool(regular), "coverage_days": days, "due_on": due_on,
+            "days_left": days_left, "likely_due": bool(due_on and days_left is not None and days_left <= 14)}
 
 
 @api.get("/portal/medications")
@@ -3208,7 +3237,9 @@ async def portal_medications(ctx: PortalCtx = Depends(portal_access(delegates_mo
             continue
         seen.add(ident)
         (meds if d.get("active", True) else previous).append(_portal_med_view(d, "Active" if d.get("active", True) else "Previously prescribed"))
-    return {"pharmacy_label": await _refill_pharmacy_label(ctx.patient), "medications": meds, "previously_prescribed": previous}
+    pr = await db.practices.find_one({"id": ctx.patient.get("practice_id")}, {"_id": 0, "clinic_phone": 1}) if ctx.patient.get("practice_id") else None
+    return {"pharmacy_label": await _refill_pharmacy_label(ctx.patient), "clinic_phone": (pr or {}).get("clinic_phone"),
+            "medications": meds, "previously_prescribed": previous, "request_modes": RX_REQUEST_MODES}
 
 
 class RxRequestItem(BaseModel):
@@ -3220,8 +3251,13 @@ class RxRequestItem(BaseModel):
     text: Optional[str] = None                 # manual free text, preserved exactly
 
 
+RX_REQUEST_MODES = {"selected": "Selected refills", "all_regular": "All regular medications",
+                    "blister_pack": "Blister / Compliance Pack", "medication_change": "Medication change request"}
+
+
 class RxBatchRequestBody(BaseModel):
-    items: List[RxRequestItem]
+    items: List[RxRequestItem] = []
+    request_mode: str = "selected"             # selected | all_regular | blister_pack | medication_change
     supply_type: str = "standard"
     requested_months: Optional[int] = None
     requested_supply_text: Optional[str] = None
@@ -3237,8 +3273,12 @@ async def create_rx_batch_request(body: RxBatchRequestBody, ctx: PortalCtx = Dep
     work unchanged. Routing unchanged: waiting_physician. Never writes patient_medications or the catalog."""
     p = ctx.patient
     await prof_mod.require_complete(p)
-    if not body.items:
+    mode = body.request_mode if body.request_mode in RX_REQUEST_MODES else "selected"
+    change = mode == "medication_change"
+    if not body.items and not change:
         raise HTTPException(status_code=400, detail="Select at least one medication.")
+    if change and not (body.patient_note or "").strip() and not body.items:
+        raise HTTPException(status_code=400, detail="Tell us which medication the change concerns or add a short note.")
     refs = await _portal_patient_refs(p)
     structured, names, manual_any = [], [], False
     for it in body.items:
@@ -3281,12 +3321,13 @@ async def create_rx_batch_request(body: RxBatchRequestBody, ctx: PortalCtx = Dep
         "id": str(uuid.uuid4()), "ref_number": await next_ref("RX"),
         "patient_id": p["id"], "directory_id": p.get("matched_directory_id"), "visita_patient_id": p.get("visita_patient_id"),
         "patient_name": f"{p['last_name']}, {p['first_name']}", "practice_id": p.get("practice_id"),
-        "source": "patient_refill",
-        "medication_name": "; ".join(names), "medications": names, "medications_structured": structured,
+        "source": "patient_refill", "request_mode": mode, "request_mode_label": RX_REQUEST_MODES[mode],
+        "medication_name": "; ".join(names) or RX_REQUEST_MODES[mode], "medications": names, "medications_structured": structured,
         "medication_entry_source": "MANUAL" if manual_any else ("CATALOG" if any(s["entry_source"] == "CATALOG" for s in structured) else "LIST"),
-        "requires_medication_review": manual_any, "review_required": manual_any,
+        "requires_medication_review": manual_any or change, "review_required": manual_any or change,
         "strength": None, "directions": None,
-        "requested_months": months, "supply_type": body.supply_type, "requested_supply_text": supply_text,
+        "requested_months": None if change else months, "supply_type": None if change else body.supply_type,
+        "requested_supply_text": None if change else supply_text,
         "travel_note": ((body.travel_note or "").strip() or None) if longer else None,
         "delivery_method": "pharmacy", "destination_pharmacy_label": await _refill_pharmacy_label(p),
         "patient_note": (body.patient_note or "").strip() or None,
@@ -3296,7 +3337,7 @@ async def create_rx_batch_request(body: RxBatchRequestBody, ctx: PortalCtx = Dep
     }
     await db.prescription_requests.insert_one({**doc})
     await audit("create", "prescription", doc["id"], ctx.audit_actor(), new_status="waiting_physician",
-                meta=ctx.audit_meta({"source": "patient_refill", "med_count": len(structured), "manual_entries": sum(1 for s in structured if s["entry_source"] == "MANUAL")}))
+                meta=ctx.audit_meta({"source": "patient_refill", "request_mode": mode, "med_count": len(structured), "manual_entries": sum(1 for s in structured if s["entry_source"] == "MANUAL")}))
     doc.pop("_id", None)
     return doc
 
@@ -4017,6 +4058,7 @@ class PharmacyRxBody(BaseModel):
     pharmacy_note: Optional[str] = None
     received_via: str  # fax | phone | call | email | message | other
     delivery_method: Optional[str] = None  # pharmacy (delivery) | pickup
+    request_mode: Optional[str] = None  # blister_pack when the pharmacy renews a compliance pack (meds stay individual cards)
     internal_note: Optional[str] = None
 
 
@@ -4105,6 +4147,8 @@ async def create_pharmacy_rx(body: PharmacyRxBody, user: dict = Depends(require_
         "medication_name": "; ".join(meds), "strength": None,
         "medications": meds, "medications_structured": body.medications_structured or [],
         "selected_active_meds": body.selected_active_meds or [],
+        "request_mode": "blister_pack" if body.request_mode == "blister_pack" else None,
+        "request_mode_label": RX_REQUEST_MODES["blister_pack"] if body.request_mode == "blister_pack" else None,
         "pharmacy": body.pharmacy, "duration_qty": body.duration_qty,
         "pharmacy_note": body.pharmacy_note, "received_via": body.received_via,
         "requested_months": None, "delivery_method": body.delivery_method if body.delivery_method in ("pharmacy", "pickup") else "pharmacy",

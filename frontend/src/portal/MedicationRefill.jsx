@@ -2,7 +2,8 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { toast } from "sonner";
 import { useTranslation } from "react-i18next";
-import { Pill, Camera, Upload, Plane, ChevronLeft, Check, Search } from "lucide-react";
+import { Pill, Camera, Upload, Plane, ChevronLeft, Check, Search, Package, Layers, Stethoscope, Phone, CalendarPlus } from "lucide-react";
+import { Link } from "react-router-dom";
 import { api, formatErr } from "../lib/api";
 import { Button } from "../components/ui/button";
 import { Input } from "../components/ui/input";
@@ -26,8 +27,12 @@ export default function MedicationRefill({ onBehalfOf = null, onSubmitted }) {
     const meds = useMemo(() => medsQ.data?.medications || [], [medsQ.data]);
     const previous = useMemo(() => medsQ.data?.previously_prescribed || [], [medsQ.data]);
     const pharmacyLabel = medsQ.data?.pharmacy_label || "";
+    const clinicPhone = medsQ.data?.clinic_phone || "";
 
     const [view, setView] = useState("list"); // list | photo
+    const [mode, setMode] = useState("selected"); // selected | all_regular | blister_pack | medication_change
+    const [dueNudge, setDueNudge] = useState(null); // meds likely due but not selected (confirmation only — never auto-added)
+    const [changeMedId, setChangeMedId] = useState("");
     const [selected, setSelected] = useState(() => new Set());
     const [extras, setExtras] = useState([]); // [{kind:'catalog'|'manual', label, drug, brand, text}]
     const [showPrevious, setShowPrevious] = useState(false);
@@ -50,18 +55,31 @@ export default function MedicationRefill({ onBehalfOf = null, onSubmitted }) {
         setOtherText("");
     }, [supplyMode]);
 
+    const regular = useMemo(() => meds.filter((m) => m.regular), [meds]);
+    const chooseMode = (m) => {
+        setMode(m); setDueNudge(null);
+        if (m === "all_regular" || m === "blister_pack") setSelected(new Set(regular.map((x) => x.id)));
+        if (m === "medication_change") { setSelected(new Set()); setExtras([]); }
+    };
     const total = selected.size + extras.length;
-    const canSubmit = total > 0 && !busy;
+    const isChange = mode === "medication_change";
+    const canSubmit = !busy && (isChange ? (note.trim().length > 0 || !!changeMedId) : total > 0);
     const byId = useMemo(() => Object.fromEntries([...meds, ...previous].map((m) => [m.id, m])), [meds, previous]);
 
-    const submitRefill = async () => {
-        if (total === 0) return toast.error(t("rx.selectAtLeastOne"));
+    const submitRefill = async (skipNudge = false) => {
+        if (!isChange && total === 0) return toast.error(t("rx.selectAtLeastOne"));
+        if (!isChange && !skipNudge) {
+            const missing = meds.filter((m) => m.likely_due && m.regular && !selected.has(m.id));
+            if (missing.length) { setDueNudge(missing); return; }
+        }
+        setDueNudge(null);
         setBusy(true);
         try {
             const longer = supplyMode === "longer";
             const body = {
+                request_mode: mode,
                 items: [
-                    ...Array.from(selected).map((id) => ({ kind: "list", patient_medication_id: id })),
+                    ...(isChange ? (changeMedId ? [{ kind: "list", patient_medication_id: changeMedId }] : []) : Array.from(selected).map((id) => ({ kind: "list", patient_medication_id: id }))),
                     ...extras.map((x) => (x.kind === "manual" ? { kind: "manual", text: x.text } : { kind: "catalog", drug: x.drug, brand: x.brand, label: x.label })),
                 ],
                 supply_type: supplyMode,
@@ -71,8 +89,8 @@ export default function MedicationRefill({ onBehalfOf = null, onSubmitted }) {
                 patient_note: note.trim() || null,
             };
             await api.post("/portal/rx-requests", body, { params });
-            toast.success(t("rx.submitted"));
-            setSelected(new Set()); setExtras([]);
+            toast.success(isChange ? t("rx.changeSubmitted", "Medication change request sent to your doctor for review.") : t("rx.submitted"));
+            setSelected(new Set()); setExtras([]); setMode("selected"); setChangeMedId("");
             setSupplyMode("standard"); setMonths(1); setOtherText(""); setTravelNote(""); setNote("");
             onSubmitted && onSubmitted();
         } catch (e) {
@@ -99,6 +117,7 @@ export default function MedicationRefill({ onBehalfOf = null, onSubmitted }) {
                 <span className="flex-1 min-w-0">
                     <span className="block font-bold text-slate-800">{m.drug} {m.strength}</span>
                     {m.directions && <span className="block text-sm text-slate-500">{m.directions}</span>}
+                    {!previousRow && m.due_on && <span className={`block text-xs mt-0.5 ${m.likely_due ? "text-amber-700 font-semibold" : "text-slate-400"}`} data-testid={`medicine-due-${m.id}`}>{m.likely_due ? t("rx.likelyDue", "Likely due — estimated around {{d}}", { d: m.due_on }) : t("rx.dueAround", "Covered until about {{d}}", { d: m.due_on })}</span>}
                     {previousRow
                         ? <span className="inline-block mt-1 px-2 py-0.5 rounded-full text-[11px] font-bold bg-slate-100 text-slate-600">{t("rx.previouslyPrescribed", "Previously prescribed through VIen")}{m.last_prescribed_at ? ` · ${String(m.last_prescribed_at).slice(0, 10)}` : ""}</span>
                         : <span className="inline-block mt-1 px-2 py-0.5 rounded-full text-[11px] font-bold bg-emerald-100 text-emerald-700">{t("rx.active")}</span>}
@@ -116,7 +135,42 @@ export default function MedicationRefill({ onBehalfOf = null, onSubmitted }) {
                 </div>
                 <p className="text-xs text-slate-500 mb-3">{t("rx.readOnlyHint")}</p>
 
-                {meds.length === 0 ? (
+                <div className="grid grid-cols-2 gap-2 mb-4" data-testid="rx-mode-chooser">
+                    {[["selected", Pill, t("rx.modeSelected", "Selected medicines")], ["all_regular", Layers, t("rx.modeAllRegular", "All my regular medicines")],
+                      ["blister_pack", Package, t("rx.modeBlister", "My blister pack")], ["medication_change", Stethoscope, t("rx.modeChange", "I need a medication change")]].map(([k, Icon, label]) => (
+                        <button key={k} type="button" data-testid={`rx-mode-${k}`} onClick={() => chooseMode(k)}
+                            className={`flex items-center gap-2 p-2.5 rounded-xl border text-left text-sm font-semibold transition ${mode === k ? "border-portal-blue bg-portal-blue/5 text-portal-blueDark" : "border-slate-200 bg-white text-slate-600 hover:border-slate-300"}`}>
+                            <Icon className="w-4 h-4 flex-shrink-0" /> <span className="leading-tight">{label}</span>
+                        </button>
+                    ))}
+                </div>
+                {(mode === "all_regular" || mode === "blister_pack") && (
+                    <p className="text-xs text-portal-blueDark bg-portal-blue/5 border border-portal-blue/20 rounded-lg p-2 mb-3" data-testid="rx-mode-confirm-hint">
+                        {mode === "blister_pack" ? t("rx.blisterHint", "These are the regular medicines VIen currently associates with your blister pack. Please confirm the list — untick anything that no longer belongs.") : t("rx.allRegularHint", "We pre-selected your regular medicines. Please confirm the list — untick anything you don't need.")}
+                    </p>
+                )}
+                {isChange ? (
+                    <div className="space-y-3" data-testid="medication-change-panel">
+                        <p className="text-sm font-semibold text-amber-800 bg-amber-50 border border-amber-200 rounded-lg p-2.5">{t("rx.changeNotice", "Medication changes require review by your doctor.")}</p>
+                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                            <Button asChild variant="outline" className="h-11 rounded-xl" data-testid="change-book-appt"><Link to="/portal/appointments"><CalendarPlus className="w-4 h-4 mr-1.5" /> {t("rx.bookAppointment", "Book an appointment")}</Link></Button>
+                            <Button asChild variant="outline" className="h-11 rounded-xl" disabled={!clinicPhone} data-testid="change-call-clinic"><a href={clinicPhone ? `tel:${clinicPhone.replace(/[^+\d]/g, "")}` : undefined}><Phone className="w-4 h-4 mr-1.5" /> <span className="truncate">{clinicPhone ? t("rx.callClinic", "Call the clinic · {{p}}", { p: clinicPhone }) : t("rx.callClinicNoPhone", "Call the clinic")}</span></a></Button>
+                        </div>
+                        <div>
+                            <Label className="font-semibold text-slate-700">{t("rx.changeWhich", "Which medication does this concern? (optional)")}</Label>
+                            <select data-testid="change-med-select" value={changeMedId} onChange={(e) => setChangeMedId(e.target.value)} className="mt-1 flex h-11 w-full rounded-xl border border-slate-200 bg-white px-3 text-sm">
+                                <option value="">{t("rx.changeNotSure", "— Not sure / several —")}</option>
+                                {[...meds, ...previous].map((m) => <option key={m.id} value={m.id}>{m.drug} {m.strength}</option>)}
+                            </select>
+                        </div>
+                        <div>
+                            <Label className="font-semibold text-slate-700">{t("rx.changeNote", "What would you like to change? (short note)")}</Label>
+                            <Textarea data-testid="change-note" className="mt-1" rows={3} value={note} onChange={(e) => setNote(e.target.value)} />
+                        </div>
+                        <p className="text-xs text-slate-500">{t("rx.changeNoUpdate", "Your current medication list is not changed until your doctor actually prescribes the change.")}</p>
+                        <Button data-testid="change-submit" disabled={!canSubmit} onClick={() => submitRefill(true)} className="w-full h-12 rounded-xl bg-portal-blue hover:bg-portal-blueDark text-white text-base">{busy ? t("rx.submitting") : t("rx.sendChange", "Send change request")}</Button>
+                    </div>
+                ) : meds.length === 0 ? (
                     <p className="text-sm text-slate-500" data-testid="no-medications">{t("rx.noMedsSelect", "We don't have any current medications on file for you yet. Use \"Find another medication\" below.")}</p>
                 ) : (
                     <div className="space-y-2.5">
@@ -141,14 +195,14 @@ export default function MedicationRefill({ onBehalfOf = null, onSubmitted }) {
                 )}
             </Card>
 
-            <FindAnotherMedication params={params} extras={extras} setExtras={setExtras} onPhoto={() => setView("photo")} />
+            {!isChange && <FindAnotherMedication params={params} extras={extras} setExtras={setExtras} onPhoto={() => setView("photo")} />}
 
-            {total > 0 && (
+            {!isChange && total > 0 && (
                 <Card data-testid="refill-details">
                     <div ref={detailRef} />
                     <div className="space-y-4">
                         <div className="rounded-xl bg-emerald-50 border border-emerald-200 p-3" data-testid="refill-summary">
-                            <p className="text-xs font-bold uppercase tracking-wide text-emerald-700">{t("rx.requesting", "Requesting ({{n}})", { n: total })}</p>
+                            <p className="text-xs font-bold uppercase tracking-wide text-emerald-700">{t("rx.requesting", "Requesting ({{n}})", { n: total })} · {mode === "blister_pack" ? t("rx.modeBlister", "My blister pack") : mode === "all_regular" ? t("rx.modeAllRegular", "All my regular medicines") : t("rx.modeSelected", "Selected medicines")}</p>
                             <ul className="mt-1 text-sm text-slate-800 space-y-0.5">
                                 {Array.from(selected).map((id) => byId[id] && <li key={id} data-testid="summary-item">{byId[id].drug} {byId[id].strength}</li>)}
                                 {extras.map((x, i) => <li key={`x${i}`} data-testid="summary-item">{x.kind === "manual" ? x.text : x.label}{x.kind === "manual" && <span className="ml-1 text-[10px] font-bold uppercase text-amber-700">{t("rx.manualFlag", "manual entry")}</span>}</li>)}
@@ -203,7 +257,16 @@ export default function MedicationRefill({ onBehalfOf = null, onSubmitted }) {
                             <Textarea data-testid="refill-note" className="mt-1" rows={2} value={note} onChange={(e) => setNote(e.target.value)} />
                         </div>
 
-                        <Button data-testid="refill-submit" disabled={!canSubmit} onClick={submitRefill}
+                        {dueNudge && (
+                            <div className="rounded-xl bg-amber-50 border border-amber-300 p-3 space-y-2" data-testid="due-nudge">
+                                {dueNudge.map((m) => <p key={m.id} className="text-sm font-semibold text-amber-900">{t("rx.dueNudge", "You may also be due for {{m}}. Did you mean to include it?", { m: `${m.drug} ${m.strength}` })}</p>)}
+                                <div className="flex gap-2">
+                                    <Button type="button" size="sm" data-testid="due-nudge-add" onClick={() => { setSelected((prev) => new Set([...prev, ...dueNudge.map((m) => m.id)])); setDueNudge(null); }} className="rounded-xl bg-portal-blue text-white">{t("rx.dueAdd", "Yes, include it")}</Button>
+                                    <Button type="button" size="sm" variant="outline" data-testid="due-nudge-skip" onClick={() => submitRefill(true)} className="rounded-xl">{t("rx.dueSkip", "No, continue without it")}</Button>
+                                </div>
+                            </div>
+                        )}
+                        <Button data-testid="refill-submit" disabled={!canSubmit} onClick={() => submitRefill(false)}
                             className="w-full h-12 rounded-xl bg-portal-blue hover:bg-portal-blueDark text-white text-base">
                             {busy ? t("rx.submitting") : t("rx.requestSelected", "Request selected refills ({{n}})", { n: total })}
                         </Button>

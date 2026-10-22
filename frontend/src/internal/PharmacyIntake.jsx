@@ -36,7 +36,7 @@ export default function PharmacyIntake() {
     const [organizing, setOrganizing] = useState(false);
     const [parsedMeds, setParsedMeds] = useState([]);
     const [parseWarnings, setParseWarnings] = useState([]);
-    const [f, setF] = useState({ pharmacy: "", meds_text: "", duration_qty: "", pharmacy_note: "", received_via: "fax", delivery_method: "pharmacy", internal_note: "" });
+    const [f, setF] = useState({ pharmacy: "", meds_text: "", duration_qty: "", pharmacy_note: "", received_via: "fax", delivery_method: "pharmacy", blister_pack: false, internal_note: "" });
     const set = (k, v) => setF((s) => ({ ...s, [k]: v }));
 
     // Pharmacy dropdown options: portal pharmacies (future) + the default 1670 DDM.
@@ -124,7 +124,7 @@ export default function PharmacyIntake() {
             await api.post("/internal/pharmacy-rx", {
                 directory_id: snap.directory_id, patient_id: snap.patient_id, pharmacy: f.pharmacy, medications,
                 medications_structured: parsedMeds, selected_active_meds: selectedActive, duration_qty: f.duration_qty || null,
-                pharmacy_note: f.pharmacy_note || null, received_via: f.received_via, delivery_method: f.delivery_method,
+                pharmacy_note: f.pharmacy_note || null, received_via: f.received_via, delivery_method: f.delivery_method, request_mode: f.blister_pack ? "blister_pack" : null,
                 internal_note: f.internal_note || null,
             });
             toast.success("Sent to physician Rx queue.");
@@ -280,6 +280,11 @@ export default function PharmacyIntake() {
                             </div>
                         </div>
                         <div><Label className="text-xs">Note (pharmacy or patient)</Label><Textarea value={f.pharmacy_note} onChange={(e) => set("pharmacy_note", e.target.value)} rows={2} /></div>
+                        <label className="flex items-center gap-2 cursor-pointer select-none rounded-sm border border-violet-300 bg-violet-50/50 px-2.5 py-2" data-testid="intake-blister-toggle">
+                            <input type="checkbox" checked={!!f.blister_pack} onChange={(e) => set("blister_pack", e.target.checked)} className="w-4 h-4" />
+                            <span className="text-sm font-semibold text-violet-900">Blister / compliance pack renewal</span>
+                            <span className="text-xs text-violet-700">— the pharmacy is renewing a multi-medication pack; each medication above stays its own card</span>
+                        </label>
                         <div>
                             <Label className="text-xs">Received via</Label>
                             <div className="grid grid-cols-3 gap-2 mt-1">

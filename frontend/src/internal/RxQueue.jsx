@@ -32,6 +32,13 @@ function SourceBadge({ item }) {
     );
 }
 
+const MODE_STYLE = { selected: "bg-emerald-100 text-emerald-800 border-emerald-300", all_regular: "bg-sky-100 text-sky-800 border-sky-300",
+    blister_pack: "bg-violet-100 text-violet-800 border-violet-300", medication_change: "bg-amber-100 text-amber-800 border-amber-300" };
+function RequestModeBadge({ item }) {
+    if (!item?.request_mode) return null;
+    return <span data-testid="request-mode-badge" className={`inline-block px-2 py-0.5 rounded-sm text-[10px] font-bold tracking-wide border ${MODE_STYLE[item.request_mode] || MODE_STYLE.selected}`}>{(item.request_mode_label || item.request_mode).toUpperCase()}</span>;
+}
+
 function ManualReviewBadge({ item }) {
     if (!(item?.medication_entry_source === "MANUAL" || item?.requires_medication_review)) return null;
     return (
@@ -46,7 +53,7 @@ const COLUMNS = [
     { header: "Ref", cell: (i) => <span className="text-slate-500">{i.ref_number}</span> },
     { header: "Patient", cell: (i) => <span className="font-semibold">{formatCombinedName(i.patient_name)}</span> },
     { header: "PIN", cell: (i) => <span className="font-mono text-slate-700" data-testid="rx-row-pin">{i.visita_patient_id || "—"}</span> },
-    { header: "Medication", cell: (i) => (<span className="flex flex-col gap-1"><span>{i.medication_name || "—"}</span><ManualReviewBadge item={i} /></span>) },
+    { header: "Medication", cell: (i) => (<span className="flex flex-col gap-1"><span>{i.medication_name || "—"}</span><RequestModeBadge item={i} /><ManualReviewBadge item={i} /></span>) },
     { header: "Status", cell: (i) => <StatusPill status={i.internal_status} /> },
 ];
 
@@ -59,6 +66,7 @@ const PHYSICIAN_COLUMNS = [
         <span className="flex flex-col gap-1">
             <StatusPill status={i.internal_status} />
             <span className="text-[11px] text-slate-500" data-testid="rx-row-med-count">{medCount(i)} medication{medCount(i) === 1 ? "" : "s"}</span>
+            <RequestModeBadge item={i} />
             <ManualReviewBadge item={i} />
         </span>
     ) },
@@ -132,6 +140,13 @@ export default function RxQueue() {
             detail={(i) => (
                 <div className="grid gap-4 lg:grid-cols-[minmax(0,1fr)_minmax(280px,340px)]" data-testid="rx-detail-grid">
                   <div className="space-y-2 min-w-0" data-testid="rx-detail-main">
+                    {i.request_mode && (
+                        <div data-testid="request-mode-banner" className={`flex flex-wrap items-center gap-2 rounded px-2.5 py-1.5 border text-xs font-bold ${MODE_STYLE[i.request_mode] || MODE_STYLE.selected}`}>
+                            {i.request_mode_label || i.request_mode}
+                            {i.request_mode === "medication_change" && <span className="font-normal">— not a refill; patient asks for a change. Current medication record unchanged until you prescribe.</span>}
+                            {i.request_mode === "blister_pack" && <span className="font-normal">— renewal of a compliance pack; each medication is tracked individually below.</span>}
+                        </div>
+                    )}
                     {i.source === "pharmacy" ? (
                         <>
                             {(i.medications_structured || []).length > 0 ? (
@@ -201,7 +216,7 @@ export default function RxQueue() {
                                 </div>
                             )}
                             {i.directions && <KV label="Directions">{i.directions}</KV>}
-                            <KV label="Supply">{i.requested_supply_text || `${i.requested_months} month(s)`}</KV>
+                            {i.request_mode !== "medication_change" && <KV label="Supply">{i.requested_supply_text || `${i.requested_months} month(s)`}</KV>}
                             {i.travel_note && <KV label="Travel note">{i.travel_note}</KV>}
                             <KV label="Patient note">{i.patient_note}</KV>
                         </>

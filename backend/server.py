@@ -8261,23 +8261,13 @@ def _lifecycle_meta(v: dict, user: dict, **extra) -> dict:
 
 
 async def _visit_context(ident) -> dict:
-    pid, did = ident.get("patient_id"), ident.get("directory_id")
-    ids = [x for x in (pid, did) if x]
+    # Critical-path context: only what the Encounter workspace renders. Other datasets are
+    # loaded by their own panels (None = not loaded in this request, same convention as pmhx).
+    pid = ident.get("patient_id")
     meds = await db.patient_medications.find({"patient_id": pid, "active": True}, {"_id": 0}).sort(
         "last_prescribed_at", -1).to_list(100) if pid else []
-    appts = await db.appointment_requests.find(
-        {"$or": [{"patient_id": {"$in": ids}}, {"directory_id": {"$in": ids}}],
-         "status": {"$in": ["confirmed", "rescheduled", "completed", "no_show"]}},
-        {"_id": 0, "ref_number": 1, "status": 1, "reason": 1, "appointment_type": 1,
-         "slot_date": 1, "confirmed_date": 1, "slot_time": 1, "confirmed_slot_time": 1}).sort("created_at", -1).to_list(10)
-    try:
-        docs = await attach_mod.list_shared_for_patient(db, pid) if pid else []
-    except Exception:
-        docs = []
     return {"medications_active": [_med_public(m) for m in meds],
-            "recent_appointments": [{**a, "date": a.get("slot_date") or a.get("confirmed_date"),
-                                     "time": a.get("slot_time") or a.get("confirmed_slot_time")} for a in appts],
-            "documents": docs,
+            "recent_appointments": None, "documents": None,
             "diagnoses": None, "pmhx": None, "allergies": None}
 
 
@@ -8292,12 +8282,13 @@ async def visit_active(patient_ref: str, user: dict = Depends(require_visit_acce
 async def visit_ready(patient_ref: str, user: dict = Depends(require_visit_access(*VISIT_WRITE_ROLES))):
     """Enter-Encounter workspace shell: identity + context + this physician's open visit (if any). Creates nothing."""
     ident = await _visit_identity_or_400(patient_ref, None, None)
-    v = await visits_mod.find_active(db, user.get("practice_id"), ident["patient_ref"], user["id"])
+    v, ctx = await asyncio.gather(visits_mod.find_active(db, user.get("practice_id"), ident["patient_ref"], user["id"]),
+                                  _visit_context(ident))
     snap = _visit_snapshot(ident)
     return {"patient_ref": ident["patient_ref"], "patient_id": ident["patient_id"], "directory_id": ident["directory_id"],
             "patient_snapshot": {k: snap.get(k) for k in visits_mod.SNAPSHOT_FIELDS}, "visita_patient_id": snap.get("visita_patient_id"),
-            "physician_name": user.get("name"), "context": await _visit_context(ident),
-            "active": {"id": v["id"], "ref_number": v.get("ref_number"), **visits_mod.timer_of(v)} if v else None,
+            "physician_name": user.get("name"), "context": ctx,
+            "active": {"id": v["id"], "ref_number": v.get("ref_number"), "started_at": v.get("started_at"), **visits_mod.timer_of(v)} if v else None,
             "server_time": now_iso()}
 
 
@@ -8344,8 +8335,9 @@ async def visit_create(body: VisitCreateBody, user: dict = Depends(require_visit
 async def visit_get(visit_id: str, user: dict = Depends(require_visit_access(*VISIT_READ_ROLES))):
     v = await _get_visit_scoped(visit_id, user)
     ident = await visits_mod.resolve_identity(db, v["patient_ref"], v.get("patient_id"), v.get("directory_id"))
-    ctx = await _visit_context(ident) if ident else {}
-    await audit("visit_read", "visit", v["id"], user, meta={"patient_ref": v["patient_ref"], "ref_number": v.get("ref_number")})
+    ctx, _ = await asyncio.gather(
+        _visit_context(ident) if ident else asyncio.sleep(0, result={}),
+        audit("visit_read", "visit", v["id"], user, meta={"patient_ref": v["patient_ref"], "ref_number": v.get("ref_number")}))
     return {**v, "vitals": {**visits_mod.EMPTY_VITALS, **(v.get("vitals") or {})}, **visits_mod.timer_of(v), "context": ctx, "server_time": now_iso()}
 
 
@@ -11080,6 +11072,7 @@ async def _bootstrap_step(name, coro_factory, timeout=120) -> bool:
 async def _ensure_core_indexes():
     await ib_mod.ensure_missing(db, "users", [{"keys": [("email", 1)], "unique": True}])
     await ib_mod.ensure_missing(db, "patients", [{"keys": [("id", 1)]}])
+    await ib_mod.ensure_missing(db, "patient_directory", [{"keys": [("id", 1)]}])
     # One canonical self-owned profile per user (null linked_user_id excluded).
     await ib_mod.ensure_missing(db, "professional_profiles", [{"keys": [("linked_user_id", 1)], "unique": True,
                                                               "partialFilterExpression": {"linked_user_id": {"$type": "string"}}}])

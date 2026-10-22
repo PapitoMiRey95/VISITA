@@ -17,7 +17,7 @@ export function IssuePlanHistory({ patientRef, currentVisitId }) {
         timer.current = setTimeout(() => {
             api.get(`/internal/patients/${encodeURIComponent(patientRef)}/issue-plan-history`, { params: { search: q, exclude: currentVisitId } })
                 .then(({ data }) => setRows(data.entries)).catch(() => setRows([]));
-        }, 250);
+        }, q ? 250 : 0);
         return () => clearTimeout(timer.current);
     }, [patientRef, currentVisitId, q]);
     return (

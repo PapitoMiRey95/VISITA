@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from "react";
+import { useQueryClient } from "@tanstack/react-query";
 import { Search, Star, X, Plus, ClipboardList } from "lucide-react";
 import { api, formatErr } from "../lib/api";
 
@@ -18,7 +19,12 @@ export function ServiceSelector({ visitId, initial, onChange }) {
     const wrap = useRef(null);
 
     useEffect(() => { setSvc(initial || { primary: null, additional_codes: [] }); }, [initial]);
-    useEffect(() => { api.get("/internal/service-catalog").then(({ data }) => setCatalog(data.items)).catch(() => setCatalog([])); }, []);
+    // Static reference data (no PHI): cached for the session so re-entering an encounter does not refetch it.
+    const queryClient = useQueryClient();
+    useEffect(() => {
+        queryClient.fetchQuery({ queryKey: ["service-catalog"], staleTime: 30 * 60_000, queryFn: () => api.get("/internal/service-catalog").then(({ data }) => data.items) })
+            .then(setCatalog).catch(() => setCatalog([]));
+    }, [queryClient]);
     useEffect(() => {
         const onDoc = (e) => { if (wrap.current && !wrap.current.contains(e.target)) setOpen(false); };
         document.addEventListener("mousedown", onDoc);

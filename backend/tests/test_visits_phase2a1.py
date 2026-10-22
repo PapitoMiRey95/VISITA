@@ -81,6 +81,7 @@ async def main():
         ctx = full["context"]
         for k in ("medications_active", "recent_appointments", "documents"):
             assert k in ctx
+        assert ctx["recent_appointments"] is None and ctx["documents"] is None  # not loaded on the critical path
         for k in ("diagnoses", "pmhx", "allergies"):
             assert ctx[k] is None, (k, ctx[k])
         # audit visit_read

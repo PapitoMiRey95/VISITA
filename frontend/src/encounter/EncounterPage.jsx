@@ -22,6 +22,7 @@ import { MetricsGrid } from "./MetricsGrid";
 import { VitalsPanel } from "./VitalsPanel";
 import { IssuePlanHistory } from "./IssuePlanHistory";
 import { SoapHelperTool } from "./SoapHelperTool";
+import { takeReady } from "./readyCache";
 
 const SOAP = [
     { k: "subjective", letter: "S", label: "Subjective" },
@@ -298,7 +299,9 @@ export default function EncounterPage() {
         if (visitId) {
             api.get(`/internal/visits/${visitId}`).then(({ data }) => { setVisit(data); setShell(data); }).catch((e) => setErr(formatErr(e)));
         } else if (patientRef) {
-            api.get("/internal/visits/ready", { params: { patient_ref: patientRef } }).then(({ data }) => {
+            // Reuse the same-patient shell prefetched from the Enter Encounter button (consumed once); otherwise fetch.
+            const cached = takeReady(patientRef);
+            (cached || api.get("/internal/visits/ready", { params: { patient_ref: patientRef } }).then(({ data }) => data)).then((data) => {
                 if (data.active) nav(`/internal/encounter/${data.active.id}`, { replace: true });
                 else setShell(data);
             }).catch((e) => setErr(formatErr(e)));

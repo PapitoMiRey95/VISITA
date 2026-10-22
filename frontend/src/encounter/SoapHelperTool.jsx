@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import { Search, Wand2, X, ChevronDown, ChevronUp, Star } from "lucide-react";
 import { toast } from "sonner";
+import { useQueryClient } from "@tanstack/react-query";
 import { api, formatErr } from "../lib/api";
 
 const SECTIONS = [["subjective", "S", "subjective_text"], ["objective", "O", "objective_text"], ["plan", "P", "plan_text"]];
@@ -20,16 +21,21 @@ export function SoapHelperTool({ visitId, patientRef, onInsert }) {
     const timer = useRef(null);
     const box = useRef(null);
 
+    const queryClient = useQueryClient();
     useEffect(() => {
         clearTimeout(timer.current);
+        // Initial (empty) query runs immediately; typing is debounced. Helper list is cached per patient/visit (patient-scoped key, no cross-patient reuse).
         timer.current = setTimeout(() => {
             // visit_id lets the server filter by the CANONICAL visit encounter_type (no separate frontend type state)
-            api.get("/internal/soap-helpers", { params: { search: q, patient_ref: patientRef, visit_id: visitId || undefined } })
-                .then(({ data }) => { setResults(data.helpers); setPatientSex(data.patient_sex); setProfile(data.template_profile); setSexHidden(data.sex_hidden_count || 0); setHi(0); })
+            queryClient.fetchQuery({
+                queryKey: ["soap-helpers", q, patientRef, visitId || null], staleTime: 10 * 60_000,
+                queryFn: () => api.get("/internal/soap-helpers", { params: { search: q, patient_ref: patientRef, visit_id: visitId || undefined } }).then(({ data }) => data),
+            })
+                .then((data) => { setResults(data.helpers); setPatientSex(data.patient_sex); setProfile(data.template_profile); setSexHidden(data.sex_hidden_count || 0); setHi(0); })
                 .catch(() => setResults([]));
-        }, 250);
+        }, q ? 250 : 0);
         return () => clearTimeout(timer.current);
-    }, [q, patientRef, visitId]);
+    }, [q, patientRef, visitId, queryClient]);
 
     useEffect(() => {
         const h = (e) => { if (box.current && !box.current.contains(e.target)) setOpen(false); };

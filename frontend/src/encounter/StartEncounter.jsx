@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { DoorOpen, Hospital, Phone, Video, Users, ClipboardList } from "lucide-react";
 import { api } from "../lib/api";
+import { prefetchReady, clearReady } from "./readyCache";
 import { formatDateTime } from "../lib/date";
 import { Button } from "../components/ui/button";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from "../components/ui/dialog";
@@ -64,17 +65,16 @@ export function StartEncounterButton({ patient }) {
     useEffect(() => {
         let alive = true;
         setActive(null);
-        if (!ref) return undefined;
-        api.get("/internal/visits/active", { params: { patient_ref: ref } })
-            .then(({ data }) => { if (alive) setActive(data.active); })
-            .catch(() => {});
+        if (!ref) { clearReady(); return undefined; }
+        // Prefetch the Enter-Encounter shell for THIS patient only (single slot: any other patient's entry is replaced).
+        prefetchReady(ref).then((data) => { if (alive) setActive(data.active); }).catch(() => {});
         return () => { alive = false; };
     }, [ref]);
 
     if (!ref) return null;
     return (
         <div className="flex flex-col items-start gap-0.5 shrink-0" data-testid="encounter-controls">
-            <Button size="sm" data-testid="enter-encounter-btn" onClick={() => nav(`/internal/encounter?patient_ref=${encodeURIComponent(ref)}`)}
+            <Button size="sm" data-testid="enter-encounter-btn" onClick={() => { prefetchReady(ref); nav(`/internal/encounter?patient_ref=${encodeURIComponent(ref)}`); }}
                 className="bg-visita-ribbon hover:bg-[#162c49] text-white">
                 <DoorOpen className="w-3.5 h-3.5 mr-1" /> Enter Encounter
             </Button>

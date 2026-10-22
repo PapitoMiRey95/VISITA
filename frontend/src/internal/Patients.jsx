@@ -18,7 +18,7 @@ import MedicalRecord from "./MedicalRecord";
 import { StartEncounterButton, patientRefOf } from "../encounter/StartEncounter";
 import { VisitHistory } from "../encounter/VisitHistory";
 import { AddPatientDialog } from "./AddPatientDialog";
-import { postalAssist } from "../lib/postalAssist";
+import { PatientAddressFields } from "../components/AddressFields";
 
 const ANNUAL_MONTHS = ["January", "February", "March", "April", "May", "June", "July", "August", "September", "October", "November", "December"];
 
@@ -384,14 +384,7 @@ export default function Patients() {
                             </div>
                             <div>
                                 <div className="text-[11px] font-bold uppercase tracking-wide text-slate-400 mb-1.5">Address</div>
-                                <div className="grid grid-cols-6 gap-2">
-                                    <div className="col-span-4"><Label className="text-xs">Street Address</Label><Input data-testid="edit-address" value={form.address} onChange={(e) => setForm({ ...form, address: e.target.value })} /></div>
-                                    <div className="col-span-2"><Label className="text-xs">Unit</Label><Input data-testid="edit-unit" value={form.unit} onChange={(e) => setForm({ ...form, unit: e.target.value })} /></div>
-                                    <div className="col-span-3"><Label className="text-xs">City</Label><Input data-testid="edit-city" value={form.city} onChange={(e) => setForm({ ...form, city: e.target.value })} /></div>
-                                    <div className="col-span-3"><Label className="text-xs">Province</Label><Input data-testid="edit-province" value={form.province} onChange={(e) => setForm({ ...form, province: e.target.value })} /></div>
-                                    <div className="col-span-3"><Label className="text-xs">Postal Code</Label><Input data-testid="edit-postal" value={form.postal_code} onChange={(e) => setForm({ ...form, postal_code: e.target.value })} onBlur={async () => { const r = await postalAssist(form.postal_code, form, { internal: true }); if (r) setForm(r.next); }} /></div>
-                                    <div className="col-span-3"><Label className="text-xs">Country</Label><Input data-testid="edit-country" value={form.country} onChange={(e) => setForm({ ...form, country: e.target.value })} /></div>
-                                </div>
+                                <PatientAddressFields value={form} onChange={(next) => setForm((s) => ({ ...s, ...next }))} internal testid="edit" />
                             </div>
                             <div>
                                 <div className="text-[11px] font-bold uppercase tracking-wide text-slate-400 mb-1.5">Health Card</div>

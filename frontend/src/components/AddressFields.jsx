@@ -67,22 +67,79 @@ export function usePostalAssist({ latest, onChange, internal, touched }) {
     return { hint, setHint, lookup };
 }
 
+// Shared postal hint + trusted "+ Add Postal Code" panel (same master-pool endpoint everywhere).
+function PostalHint({ hint, setHint, value, internal, testid }) {
+    const [addPostal, setAddPostal] = useState(false);
+    const savePostal = async () => {
+        try { await api.post("/internal/address/postal-codes", { postal_code: value.postal_code, city: value.city, province: value.province }); setAddPostal(false); setHint({ kind: "added", postal: value.postal_code }); }
+        catch (e) { setHint({ kind: "error", msg: e?.response?.data?.detail || "Could not save postal code." }); }
+    };
+    if (!hint) return null;
+    return (<>
+        <div className="col-span-6 text-[11px] flex flex-wrap items-center gap-2" data-testid={`${testid}-postal-hint`}>
+            {hint.kind === "found" && <span className="text-emerald-700">✓ City and Province suggested from {hint.postal} ({hint.city}, {hint.province}) — edit if this address differs.</span>}
+            {hint.kind === "unknown" && <><span className="text-slate-500">{hint.postal} is not in the Postal Code Pool yet — enter City and Province manually.</span>
+                {internal && !addPostal && <Button type="button" size="sm" variant="outline" data-testid={`${testid}-add-postal`} onClick={() => setAddPostal(true)} className="h-6 px-2 text-[11px] border-visita-green text-visita-greenDark"><Plus className="w-3 h-3 mr-1" /> Add Postal Code</Button>}</>}
+            {hint.kind === "added" && <span className="text-emerald-700">{hint.postal} saved to the Postal Code Pool — future lookups will suggest {value.city}, {value.province}.</span>}
+            {hint.kind === "error" && <span className="text-red-600">{hint.msg}</span>}
+        </div>
+        {addPostal && (
+            <div className="col-span-6 flex flex-wrap items-center gap-2 rounded-sm border border-slate-300 bg-slate-50 p-2 text-xs" data-testid={`${testid}-add-postal-panel`}>
+                <span className="font-semibold">Add {value.postal_code} → {value.city || "City?"}, {value.province || "Province?"}</span>
+                <Button type="button" size="sm" disabled={!value.city || !value.province} data-testid={`${testid}-add-postal-save`} onClick={savePostal} className="h-6 px-2 text-[11px] bg-visita-green hover:bg-visita-greenDark text-white">Save to pool</Button>
+                <Button type="button" size="sm" variant="ghost" onClick={() => setAddPostal(false)} className="h-6 px-2 text-[11px]">Cancel</Button>
+            </div>
+        )}
+    </>);
+}
+
+function ProvinceField({ value, provinces, onChange, testid }) {
+    return provinces.length ? (
+        <select data-testid={testid} value={value || ""} onChange={(e) => onChange(e.target.value)} className={SELECT}>
+            {provinces.map((p) => <option key={p.code} value={p.code}>{p.code} — {p.name}</option>)}
+        </select>
+    ) : <Input data-testid={testid} value={value} onChange={(e) => onChange(e.target.value.toUpperCase())} placeholder="ON" />;
+}
+
+// Patient demographics (internal staff entry): Postal first → Street Address (free text, unchanged storage) → Unit → City → Province → Country.
+// Same pools, lookup, hint and "+ Add Postal Code" as AddressFields; no professional-location concepts.
+export function PatientAddressFields({ value, onChange, internal = true, testid = "paddr", labels = {} }) {
+    const touched = useRef({ city: false, province: false });
+    const latest = useRef(value); latest.current = value;
+    const provinces = useProvinces(internal);
+    const { hint, setHint, lookup } = usePostalAssist({ latest, onChange, internal, touched });
+    const set = (k, v) => { const next = { ...latest.current, [k]: v }; latest.current = next; onChange(next); };
+    const cities = (q) => api.get("/internal/address/cities", { params: { q, province: value.province || undefined } }).then((r) => r.data);
+    return (
+        <div className="grid grid-cols-6 gap-2" data-testid={`${testid}-fields`}>
+            <div className="col-span-3 sm:col-span-2"><Label className="text-xs">{labels.postal || "Postal Code"}</Label>
+                <Input data-testid={`${testid}-postal`} value={value.postal_code || ""} maxLength={7} placeholder="M6E 4H1"
+                    onChange={(e) => { const v = e.target.value.toUpperCase(); set("postal_code", v); if (normPostal(v).length === 6) lookup(v); }} onBlur={(e) => lookup(e.target.value)} /></div>
+            <div className="col-span-6 sm:col-span-4 text-[11px] text-slate-500 self-end pb-2">Enter the postal code first — City and Province are suggested from the Postal Code Pool.</div>
+            <PostalHint hint={hint} setHint={setHint} value={value} internal={internal} testid={testid} />
+            <div className="col-span-4"><Label className="text-xs">{labels.address || "Street Address"}</Label><Input data-testid={`${testid}-address`} value={value.address || ""} onChange={(e) => set("address", e.target.value)} placeholder="1214 Lansdowne Avenue" /></div>
+            <div className="col-span-2"><Label className="text-xs">{labels.unit || "Unit / Apt."}</Label><Input data-testid={`${testid}-unit`} value={value.unit || ""} onChange={(e) => set("unit", e.target.value)} placeholder="Suite 203" /></div>
+            <div className="col-span-3 sm:col-span-2"><Label className="text-xs">{labels.city || "City"}</Label>
+                {internal ? <Suggest testid={`${testid}-city`} value={value.city || ""} onChange={(v) => { touched.current.city = true; set("city", v); }} onPick={(i) => { touched.current.city = true; set("city", i.name); }} fetcher={cities} minChars={1} placeholder="Toronto York" />
+                    : <Input data-testid={`${testid}-city`} value={value.city || ""} onChange={(e) => { touched.current.city = true; set("city", e.target.value); }} />}</div>
+            <div className="col-span-3 sm:col-span-2"><Label className="text-xs">{labels.province || "Province"}</Label>
+                <ProvinceField testid={`${testid}-province`} value={value.province} provinces={provinces} onChange={(v) => { touched.current.province = true; set("province", v); }} /></div>
+            <div className="col-span-6 sm:col-span-2"><Label className="text-xs">{labels.country || "Country"}</Label><Input data-testid={`${testid}-country`} value={value.country || ""} onChange={(e) => set("country", e.target.value)} /></div>
+        </div>
+    );
+}
+
 export function AddressFields({ value, onChange, internal = true, showStreetNumber = true, showUnit = true, requireAddress = true, testid = "addr" }) {
     const touched = useRef({ city: false, province: false });
     const latest = useRef(value); latest.current = value;
     const provinces = useProvinces(internal);
     const { hint, setHint, lookup } = usePostalAssist({ latest, onChange, internal, touched });
-    const [addPostal, setAddPostal] = useState(false);
     const set = (k, v) => { const next = { ...latest.current, [k]: v }; latest.current = next; onChange(next); };
     const streets = (q) => api.get("/internal/address/streets", { params: { q } }).then((r) => r.data);
     const types = (q) => api.get("/internal/address/street-types", { params: { q } }).then((r) => r.data);
     const cities = (q) => api.get("/internal/address/cities", { params: { q, province: value.province || undefined } }).then((r) => r.data);
     const [dirs, setDirs] = useState([]);
     useEffect(() => { if (internal) api.get("/internal/address/street-directions").then(({ data }) => setDirs(data)).catch(() => {}); }, [internal]);
-    const savePostal = async () => {
-        try { await api.post("/internal/address/postal-codes", { postal_code: value.postal_code, city: value.city, province: value.province }); setAddPostal(false); setHint({ kind: "added", postal: value.postal_code }); }
-        catch (e) { setHint({ kind: "error", msg: e?.response?.data?.detail || "Could not save postal code." }); }
-    };
     const preview = assembleStreet(value);
     return (
         <div className="grid grid-cols-6 gap-2" data-testid={`${testid}-fields`}>
@@ -104,27 +161,8 @@ export function AddressFields({ value, onChange, internal = true, showStreetNumb
                 {internal ? <Suggest testid={`${testid}-city`} value={value.city} onChange={(v) => { touched.current.city = true; set("city", v); }} onPick={(i) => { touched.current.city = true; set("city", i.name); }} fetcher={cities} minChars={1} placeholder="Toronto York" />
                     : <Input data-testid={`${testid}-city`} value={value.city} onChange={(e) => { touched.current.city = true; set("city", e.target.value); }} />}</div>
             <div className="col-span-3 sm:col-span-2"><Label className="text-xs">Province *</Label>
-                {provinces.length ? (
-                    <select data-testid={`${testid}-province`} value={value.province || ""} onChange={(e) => { touched.current.province = true; set("province", e.target.value); }} className={SELECT}>
-                        {provinces.map((p) => <option key={p.code} value={p.code}>{p.code} — {p.name}</option>)}
-                    </select>
-                ) : <Input data-testid={`${testid}-province`} value={value.province} onChange={(e) => { touched.current.province = true; set("province", e.target.value.toUpperCase()); }} placeholder="ON" />}</div>
-            {hint && (
-                <div className="col-span-6 text-[11px] flex flex-wrap items-center gap-2" data-testid={`${testid}-postal-hint`}>
-                    {hint.kind === "found" && <span className="text-emerald-700">City and Province suggested from {hint.postal} ({hint.city}, {hint.province}) — edit if this address differs.</span>}
-                    {hint.kind === "unknown" && <><span className="text-slate-500">{hint.postal} is not in the Postal Code Pool yet — enter City and Province manually.</span>
-                        {internal && !addPostal && <Button type="button" size="sm" variant="outline" data-testid={`${testid}-add-postal`} onClick={() => setAddPostal(true)} className="h-6 px-2 text-[11px] border-visita-green text-visita-greenDark"><Plus className="w-3 h-3 mr-1" /> Add Postal Code</Button>}</>}
-                    {hint.kind === "added" && <span className="text-emerald-700">{hint.postal} saved to the Postal Code Pool — future lookups will suggest {value.city}, {value.province}.</span>}
-                    {hint.kind === "error" && <span className="text-red-600">{hint.msg}</span>}
-                </div>
-            )}
-            {addPostal && (
-                <div className="col-span-6 flex flex-wrap items-center gap-2 rounded-sm border border-slate-300 bg-slate-50 p-2 text-xs" data-testid={`${testid}-add-postal-panel`}>
-                    <span className="font-semibold">Add {value.postal_code} → {value.city || "City?"}, {value.province || "Province?"}</span>
-                    <Button type="button" size="sm" disabled={!value.city || !value.province} data-testid={`${testid}-add-postal-save`} onClick={savePostal} className="h-6 px-2 text-[11px] bg-visita-green hover:bg-visita-greenDark text-white">Save to pool</Button>
-                    <Button type="button" size="sm" variant="ghost" onClick={() => setAddPostal(false)} className="h-6 px-2 text-[11px]">Cancel</Button>
-                </div>
-            )}
+                <ProvinceField testid={`${testid}-province`} value={value.province} provinces={provinces} onChange={(v) => { touched.current.province = true; set("province", v); }} /></div>
+            <PostalHint hint={hint} setHint={setHint} value={value} internal={internal} testid={testid} />
             {preview && <div className="col-span-6 text-xs text-slate-600" data-testid={`${testid}-preview`}>Address line: <span className="font-medium text-slate-800">{[preview, value.city, value.province, value.postal_code].filter((x) => (x || "").trim()).join(", ")}</span></div>}
         </div>
     );

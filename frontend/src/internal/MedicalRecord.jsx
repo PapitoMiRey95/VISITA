@@ -158,8 +158,8 @@ export default function MedicalRecord({ patientId }) {
                                 </div>
 
                                 {(addMode || editingId) && (
-                                    <div className="border border-visita-green/40 bg-visita-greenLight/30 rounded-sm p-3 mb-3" data-testid="mr-med-form">
-                                        <div className="text-xs font-bold text-slate-700 mb-2">{editingId ? "Edit medication" : "Add medication"}</div>
+                                    <div className="border border-slate-700 bg-slate-800 text-slate-100 rounded-sm p-3 mb-3" data-testid="mr-med-form">
+                                        <div className="text-xs font-bold text-slate-100 mb-2">{editingId ? "Edit medication" : "Add medication"}</div>
                                         <MedEditPanel m={med} i={0} setMed={setMedField} removeMed={cancelForm} toggleEdit={cancelForm}
                                             fieldSuggest={fieldSuggest} drugOptions={drugOptions} ensureDrugSuggest={ensureDrugSuggest} />
                                         <div className="flex justify-end gap-2 mt-2">

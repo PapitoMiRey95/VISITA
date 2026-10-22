@@ -1,27 +1,25 @@
 {
  "prescription_requests": [
-  "a5229f67-aa8b-409f-9eac-be87981d4602",
-  "93d65ce7-3aef-4c4e-9470-43ce15494d92",
-  "8ba82e69-f7f2-48a4-81b4-aa4d0abe4817",
-  "e8e87031-ea64-4ca4-b2e7-6c6ee9f62562",
-  "c31f6147-376c-4025-978a-426487b4220a",
-  "f7649f27-b3bf-4933-83d8-8ee5a120d632",
-  "f98bd04a-f62a-49fd-bcc9-77ff099979f9",
-  "4f66bc0d-4376-46d4-8a0c-ff2258049858",
-  "4f66bc0d-4376-46d4-8a0c-ff2258049858"
+  "cfce54ce-e879-4b2a-b984-7af26ed0a959",
+  "e616b93e-50fb-4c1d-9b76-594be992facf",
+  "a464bd12-2693-4914-9838-eec59b916764",
+  "df55eb90-d17b-45b3-898d-c9a747fa97e7",
+  "7e1be6ee-0ea3-458e-9add-8545f11955ca",
+  "a4193e6c-f43e-4098-a290-fbaaf8d3302b",
+  "3f894e9b-aeb0-4de9-ab58-146d542633aa",
+  "c7022c9b-fc61-46b9-b54a-2fce31ab4787",
+  "c7022c9b-fc61-46b9-b54a-2fce31ab4787"
  ],
  "patient_medications": [
-  "QA-e4696208-f8c3-4869-a8b7-926eab2db9f4",
-  "QA-19debda5-aa8f-4cbe-a27b-49e18f9876f7",
-  "QA-1b3cf378-8337-4469-864c-235f6e3f9ca8",
-  "QA-21708fd6-fe8d-4963-b364-ec7b67862b93",
-  "QA-233b6558-b789-4e57-870d-722c614c5a92",
-  "QA-f5094dcf-ac38-44ea-926e-936b13e5b3a6"
+  "QA-1812a037-b97b-4a50-8444-781692108e7d",
+  "QA-fb6a93ec-7290-4a7c-bf89-ee686b93c7bc",
+  "QA-9aac1994-c3cf-4cef-9180-d8c512fca6d9",
+  "QA-a596cb55-7754-4ba4-827b-cc34147a3c84",
+  "QA-288b7322-6f0a-45d8-9139-51624aa40153",
+  "QA-d01e11f1-be15-4c85-a3a9-aac20bbf5561"
  ],
- "notifications_deleted": [
-  "9627f9b4-3a8f-40fe-98ac-7e0ff873f4ab"
- ],
+ "notifications_deleted": [],
  "refill_reminders_deleted": [
-  "QA-f5094dcf-ac38-44ea-926e-936b13e5b3a6|2026-09-27T02:13:07.495485+00:00"
+  "QA-d01e11f1-be15-4c85-a3a9-aac20bbf5561|2026-09-27T02:36:20.695493+00:00"
  ]
 }

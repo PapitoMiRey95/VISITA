@@ -229,8 +229,8 @@ def portal_access(permission: str = None):
 
 
 NOTIF_CATEGORIES = ("appointment", "prescription", "results", "referral", "invoice", "account", "action_required")
-_NOTIF_RULES = (("health card update not approved", "action_required"), ("not approved", "action_required"), ("more information", "action_required"),
-                ("cancel", "action_required"), ("appointment", "appointment"), ("prescription", "prescription"), ("refill", "prescription"),
+_NOTIF_RULES = (("health card update not approved", "action_required"), ("not approved", "action_required"), ("more information needed", "action_required"),
+                ("cancel", "action_required"), ("imaging", "results"), ("bloodwork", "results"), ("appointment", "appointment"), ("prescription", "prescription"), ("refill", "prescription"),
                 ("result", "results"), ("referral", "referral"), ("invoice", "invoice"), ("payment", "invoice"), ("fee", "invoice"),
                 ("message", "account"), ("pin", "account"), ("account", "account"), ("health card", "account"))
 _NOTIF_LINKS = {"appointment": "/portal/appointments", "prescription": "/portal/prescriptions", "results": "/portal/documents",
@@ -238,8 +238,11 @@ _NOTIF_LINKS = {"appointment": "/portal/appointments", "prescription": "/portal/
 
 
 _DATE_RX = re.compile(r"(\d{4} [A-Z][a-z]{2} - \d{2}(?: \([A-Za-z]{3}\))?(?: · \d{1,2}:\d{2} ?[AP]M)?)")
-_LEGACY_TITLES = {"your results have been reviewed": "Results reviewed", "appointment update": "More information needed",
-                  "message update": "Clinic replied", "account update": "Account reviewed", "health card update approved": "Health Card updated"}
+_LEGACY_TITLES = {"your results have been reviewed": "Results reviewed", "appointment update": "Appointment updated",
+                  "message update": "Clinic replied", "account update": "Account reviewed", "health card update approved": "Health Card updated",
+                  "your prescription request has been updated.": "Prescription request updated", "your imaging request has been updated.": "Imaging request updated",
+                  "your bloodwork request has been updated.": "Bloodwork request updated", "your appointment request has been updated.": "Appointment request updated",
+                  "your referral has been updated.": "Referral updated", "your message has been updated.": "Message updated"}
 
 
 def compact_copy(n: dict) -> dict:
@@ -252,6 +255,11 @@ def compact_copy(n: dict) -> dict:
         date = re.sub(r"^\d{4} ([A-Z][a-z]{2}) - (\d{2})(?: \([A-Za-z]{3}\))?", lambda m: f"{m.group(1)} {int(m.group(2))}", date)
     if tl in _LEGACY_TITLES:
         title = _LEGACY_TITLES[tl]
+    if tl == "appointment update" and "more information" in body.lower():
+        title = "More information needed"
+    orig = tl.rstrip(".")
+    if orig and body.lower().startswith(orig):
+        body = body[len(orig):].lstrip(". ").strip()  # legacy rows where body starts by repeating the title
     if "results" in tl and "review" in tl:
         body = "Book a visit if you'd like to discuss."
     elif tl.startswith("appointment cancelled"):
@@ -262,12 +270,11 @@ def compact_copy(n: dict) -> dict:
         body = f"{date} with Dr. Aguayo." if date else body
     elif tl.startswith("prescription sent"):
         body = "Your pharmacy will let you know when it's ready."
-    elif tl == "message update" or tl == "clinic replied":
+    elif tl in ("message update", "clinic replied"):
         body = "Open your messages to read the reply."
     else:
         sentences = [x.strip() for x in re.split(r"(?<=[.!])\s+", body) if x.strip()]
-        keep = [x for x in sentences if not re.search(r"patient portal|log in|sign in|see your", x, re.I)] or sentences[:1]
-        body = " ".join(keep)
+        body = " ".join(x for x in sentences if not re.search(r"patient portal|log in|sign in|see your|there is an update", x, re.I))
     if len(body) > 90:
         body = body[:87].rstrip(" ,;") + "…"
     return {**n, "title": title, "body": body}
@@ -280,7 +287,9 @@ def classify_notification(n: dict) -> dict:
     if cat not in NOTIF_CATEGORIES:
         t = (n.get("title") or "").lower()
         cat = next((c for k, c in _NOTIF_RULES if k in t), "account")
-    link = n.get("link") or ("/portal/appointments" if "appointment" in (n.get("title") or "").lower() else _NOTIF_LINKS[cat])
+    tl = (n.get("title") or "").lower()
+    link = n.get("link") or ("/portal/appointments" if "appointment" in tl else "/portal/messages" if ("replied" in tl or "message" in tl)
+                             else "/portal/requests" if ("imaging" in tl or "bloodwork" in tl or "request" in tl) else _NOTIF_LINKS[cat])
     return {**n, "category": cat, "link": link}
 
 

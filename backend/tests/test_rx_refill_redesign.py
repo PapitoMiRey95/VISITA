@@ -193,7 +193,7 @@ def test_b8_reminder_run_idempotent(admin):
     mid = _temp_med(drug="QA Reminder Drug", months=1, refills=0, last_prescribed_at=_ago(25))
     r1 = admin.post(f"{BASE_URL}/api/internal/system/refill-reminders/run").json()
     assert r1["patients_notified"] == 1 and r1["medications"] == 1, r1
-    n = MONGO.notifications.find_one({"patient_id": MARIA_PID, "title": "Refill reminder", "body": {"$regex": "QA Reminder Drug"}})
+    n = MONGO.notifications.find_one({"patient_id": MARIA_PID, "title": "Refill due soon", "body": {"$regex": "QA Reminder Drug"}})
     assert n is not None
     r2 = admin.post(f"{BASE_URL}/api/internal/system/refill-reminders/run").json()
     assert r2["patients_notified"] == 0, r2

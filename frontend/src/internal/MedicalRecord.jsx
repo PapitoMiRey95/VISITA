@@ -4,6 +4,7 @@ import { Stethoscope, Pill, FileText, CalendarDays, Plus, Check, Pencil, Ban, Ch
 import { api, formatErr } from "../lib/api";
 import { formatDate } from "../lib/date";
 import { Button } from "../components/ui/button";
+import { Input } from "../components/ui/input";
 import { MedEditPanel } from "./MedEditPanel";
 
 const EMPTY_MED = { drug: "", strength: "", form: "", action: "", sig: "", attributes: [], quantity: "", quantity_unit: "", refills: "", note: "", additional_instructions: "" };
@@ -80,10 +81,12 @@ export default function MedicalRecord({ patientId }) {
             cancelForm(); setRec(null); await load();
         } catch (e) { toast.error(formatErr(e)); } finally { setBusy(""); }
     };
-    const medAction = async (id, action_type, label) => {
+    const [stopId, setStopId] = useState(null);
+    const [stopNote, setStopNote] = useState("");
+    const medAction = async (id, action_type, label, note = "") => {
         setBusy(id + action_type);
         try {
-            await api.patch(`/internal/patients/${patientId}/medications/${id}`, { action_type });
+            await api.patch(`/internal/patients/${patientId}/medications/${id}`, { action_type, ...(note ? { note } : {}) });
             toast.success(label);
             setRec(null); await load();
         } catch (e) { toast.error(formatErr(e)); setBusy(""); }
@@ -179,7 +182,16 @@ export default function MedicalRecord({ patientId }) {
                                                 <div className="min-w-0">
                                                     <div className="font-semibold text-slate-800 text-sm">{medLabel(m)}</div>
                                                     {m.sig && <div className="text-xs text-slate-500 truncate">{m.sig}</div>}
+                                                    {m.coverage_days && m.last_prescribed_at && <div className="text-[11px] text-slate-400" data-testid="mr-med-coverage">Last sent {String(m.last_prescribed_at).slice(0, 10)} · ~{m.coverage_days} days supply{m.physician_name ? ` · ${m.physician_name}` : ""}</div>}
                                                 </div>
+                                                {stopId === m.id ? (
+                                                    <div className="flex items-center gap-1.5 shrink-0" data-testid="mr-med-stop-confirm">
+                                                        <Input value={stopNote} onChange={(e) => setStopNote(e.target.value)} placeholder="Reason (optional)" className="h-8 w-40 text-xs" data-testid="mr-med-stop-note" />
+                                                        <Button size="sm" disabled={!!busy} data-testid="mr-med-stop-confirm-btn" className="h-8 bg-red-600 hover:bg-red-700 text-white"
+                                                            onClick={async () => { await medAction(m.id, "discontinue", "Medication marked as stopped — removed from the patient's current list and blister pack.", stopNote); setStopId(null); setStopNote(""); }}>Stop</Button>
+                                                        <Button size="sm" variant="ghost" className="h-8" onClick={() => { setStopId(null); setStopNote(""); }}>Cancel</Button>
+                                                    </div>
+                                                ) : (
                                                 <div className="flex gap-1.5 shrink-0">
                                                     <Button size="sm" variant="outline" disabled={!!busy} data-testid="mr-med-continue"
                                                         onClick={() => medAction(m.id, "continue", "Medication continued.")} title="Continue">
@@ -190,11 +202,12 @@ export default function MedicalRecord({ patientId }) {
                                                         <Pencil className="w-3.5 h-3.5" />
                                                     </Button>
                                                     <Button size="sm" variant="outline" disabled={!!busy} data-testid="mr-med-stop"
-                                                        onClick={() => medAction(m.id, "discontinue", "Medication discontinued.")}
+                                                        onClick={() => setStopId(m.id)}
                                                         className="border-red-200 text-red-600 hover:bg-red-50" title="Stop / Discontinue">
-                                                        <Ban className="w-3.5 h-3.5" />
+                                                        <Ban className="w-3.5 h-3.5 mr-1" /> Stop
                                                     </Button>
                                                 </div>
+                                                )}
                                             </div>
                                         ))}
                                     </div>

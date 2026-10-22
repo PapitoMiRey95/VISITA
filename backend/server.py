@@ -3188,20 +3188,7 @@ async def _portal_patient_refs(p: dict) -> list:
     return list(refs)
 
 
-_DUR_DAYS = {"day": 1, "days": 1, "d": 1, "week": 7, "weeks": 7, "wk": 7, "month": 30, "months": 30, "mo": 30}
-
-
-def _coverage_days(d: dict) -> Optional[int]:
-    """Days of supply from the SENT prescription evidence only (months/refills or prescribed duration). None = unknown."""
-    try:
-        if d.get("months"):
-            return int(d["months"]) * 30 * (int(d.get("refills") or 0) + 1)
-        if d.get("duration_value") and d.get("duration_unit"):
-            unit = _DUR_DAYS.get(str(d["duration_unit"]).lower().strip())
-            return int(float(d["duration_value"]) * unit) if unit else None
-    except (TypeError, ValueError):
-        return None
-    return None
+_coverage_days = med_history_mod.coverage_days
 
 
 def _portal_med_view(d: dict, status: str) -> dict:
@@ -8686,12 +8673,46 @@ def _med_public(d: dict) -> dict:
     return d
 
 
+async def _scoped_med_refs(patient_ref: str, user: dict) -> tuple:
+    """(record ids, summary, portal patient or None) for a portal patient id OR a directory id, practice-scoped.
+    Rx sent before a directory record was linked are keyed by the directory id, so medications are read/updated
+    across all linked ids — nothing is rewritten."""
+    if ":" in patient_ref and patient_ref.split(":", 1)[0] in ("patient", "directory"):
+        patient_ref = patient_ref.split(":", 1)[1]
+    p = await db.patients.find_one({"id": patient_ref})
+    if p:
+        assert_practice(p, user)
+        return await _portal_patient_refs(p), _portal_patient_snapshot(p), p
+    d = await db.patient_directory.find_one({"id": patient_ref}, {"_id": 0})
+    if not d:
+        raise HTTPException(status_code=404, detail="Patient not found.")
+    if d.get("linked_patient_id"):
+        lp = await db.patients.find_one({"id": d["linked_patient_id"]})
+        if lp:
+            assert_practice(lp, user)
+            return await _portal_patient_refs(lp), _portal_patient_snapshot(lp), lp
+    if d.get("practice_id"):  # legacy directory rows carry no practice_id; linked rows are scoped via the portal patient above
+        assert_practice(d, user)
+    refs = {patient_ref}
+    return list(refs), {"first_name": d.get("first_name"), "last_name": d.get("last_name"), "visita_patient_id": d.get("visita_patient_id"),
+                        "date_of_birth": d.get("date_of_birth"), "age": _age_from_dob(d.get("date_of_birth")),
+                        "health_card_display": d.get("health_card_number"), "directory_only": True}, None
+
+
+def _dedupe_meds(docs: list) -> list:
+    seen, out = set(), []
+    for d in docs:
+        k = "|".join([(d.get(f) or "").lower() for f in ("drug", "strength", "form", "sig")])
+        if k not in seen:
+            seen.add(k); out.append(d)
+    return out
+
+
 @api.get("/internal/patients/{patient_id}/medical-record")
 async def patient_medical_record(patient_id: str, user: dict = Depends(require_roles(*MED_RECORD_ROLES))):
-    p = await _get_scoped_patient(patient_id, user)
-    summary = _portal_patient_snapshot(p)
+    refs, summary, p = await _scoped_med_refs(patient_id, user)
     appts = await db.appointment_requests.find(
-        {"patient_id": patient_id}, {"_id": 0}).sort("created_at", -1).to_list(100)
+        {"patient_id": patient_id}, {"_id": 0}).sort("created_at", -1).to_list(100) if p else []
     encounters = [{
         "id": a.get("id"), "ref_number": a.get("ref_number"),
         "status": a.get("status"), "reason": a.get("reason"),
@@ -8700,12 +8721,12 @@ async def patient_medical_record(patient_id: str, user: dict = Depends(require_r
         "time": a.get("confirmed_time") or a.get("requested_time") or a.get("time"),
         "source_type": a.get("source_type"), "created_at": a.get("created_at"),
     } for a in appts]
-    meds_active = await db.patient_medications.find(
-        {"patient_id": patient_id, "active": True}, {"_id": 0}).sort("last_prescribed_at", -1).to_list(200)
-    meds_discontinued = await db.patient_medications.find(
-        {"patient_id": patient_id, "active": False}, {"_id": 0}).sort("updated_at", -1).to_list(200)
+    meds_active = _dedupe_meds(await db.patient_medications.find(
+        {"patient_id": {"$in": refs}, "active": True}, {"_id": 0}).sort("last_prescribed_at", -1).to_list(200))
+    meds_discontinued = _dedupe_meds(await db.patient_medications.find(
+        {"patient_id": {"$in": refs}, "active": False}, {"_id": 0}).sort("updated_at", -1).to_list(200))
     try:
-        documents = await attach_mod.list_shared_for_patient(db, patient_id)
+        documents = await attach_mod.list_shared_for_patient(db, patient_id) if p else []
     except Exception:
         documents = []
     return {
@@ -8713,7 +8734,7 @@ async def patient_medical_record(patient_id: str, user: dict = Depends(require_r
         "summary": summary,
         "encounters": encounters,
         "medications": {
-            "active": [_med_public(m) for m in meds_active],
+            "active": [{**_med_public(m), "coverage_days": med_history_mod.coverage_days(m)} for m in meds_active],
             "discontinued": [_med_public(m) for m in meds_discontinued],
         },
         "documents": documents,
@@ -8776,7 +8797,8 @@ async def _remember_med_catalog(m: dict):
 async def physician_add_medication(patient_id: str, body: MedWriteBody,
                                    user: dict = Depends(require_roles(*MED_RECORD_ROLES))):
     """Physician adds an authoritative medication to the patient's active list."""
-    await _get_scoped_patient(patient_id, user)
+    refs, _, p = await _scoped_med_refs(patient_id, user)
+    patient_id = p["id"] if p else patient_id
     if not (body.drug or "").strip():
         raise HTTPException(status_code=400, detail="A medication name is required.")
     now = now_iso()
@@ -8812,8 +8834,8 @@ async def physician_update_medication(patient_id: str, med_id: str, body: MedAct
                                       user: dict = Depends(require_roles(*MED_RECORD_ROLES))):
     """Continue / Edit / Discontinue an existing medication. History is preserved;
     discontinue sets active=False (never deletes)."""
-    await _get_scoped_patient(patient_id, user)
-    med = await db.patient_medications.find_one({"id": med_id, "patient_id": patient_id})
+    refs, _, _ = await _scoped_med_refs(patient_id, user)
+    med = await db.patient_medications.find_one({"id": med_id, "patient_id": {"$in": refs}})
     if not med:
         raise HTTPException(status_code=404, detail="Medication not found for this patient.")
     now = now_iso()
@@ -10856,6 +10878,17 @@ async def cron_appointment_reminders(background: BackgroundTasks,
     if not secret or not token or not secrets.compare_digest(token, secret):
         raise HTTPException(status_code=401, detail="Unauthorized")
     background.add_task(notify_svc.send_due_reminders, db)
+    return {"ok": True, "queued": True}
+
+
+@api.post("/cron/refill-reminders")
+async def cron_refill_reminders(background: BackgroundTasks, authorization: Optional[str] = Header(None)):
+    # Cron endpoints must ack 2xx immediately; enqueue/background the actual work.
+    secret = os.environ.get("WEBHOOK_CRON_SECRET")
+    token = (authorization or "").replace("Bearer ", "", 1)
+    if not secret or not token or not secrets.compare_digest(token, secret):
+        raise HTTPException(status_code=401, detail="Unauthorized")
+    background.add_task(med_history_mod.send_refill_reminders, notify_patient)
     return {"ok": True, "queued": True}
 
 

@@ -1,12 +1,88 @@
 """Medication-history reconciliation: SENT rx_transmissions (authoritative) vs patient_medications.
 Read-only audit + bounded backfill (dry-run default). Never reads prescription_requests as evidence."""
 import uuid
+from datetime import datetime, timedelta, timezone
 from typing import Optional
 
 from fastapi import APIRouter, Depends
 from pydantic import BaseModel
 
 from db import audit, db, now_iso
+
+
+_DUR_DAYS = {"day": 1, "days": 1, "d": 1, "week": 7, "weeks": 7, "wk": 7, "month": 30, "months": 30, "mo": 30}
+
+
+def coverage_days(d: dict) -> Optional[int]:
+    """Days of supply from SENT prescription evidence only (months/refills or prescribed duration). None = unknown."""
+    try:
+        if d.get("months"):
+            return int(d["months"]) * 30 * (int(d.get("refills") or 0) + 1)
+        if d.get("duration_value") and d.get("duration_unit"):
+            unit = _DUR_DAYS.get(str(d["duration_unit"]).lower().strip())
+            return int(float(d["duration_value"]) * unit) if unit else None
+    except (TypeError, ValueError):
+        return None
+    return None
+
+
+def due_date(d: dict):
+    days = coverage_days(d)
+    if not days or days < 21 or not d.get("last_prescribed_at") or not d.get("active", True):
+        return None
+    try:
+        return (datetime.fromisoformat(str(d["last_prescribed_at"]).replace("Z", "+00:00")) + timedelta(days=days)).date()
+    except ValueError:
+        return None
+
+
+async def _portal_pid_for_med(med: dict) -> Optional[str]:
+    pid = med.get("patient_id")
+    if await db.patients.find_one({"id": pid}, {"_id": 1}):
+        return pid
+    d = await db.patient_directory.find_one({"id": pid}, {"_id": 0, "linked_patient_id": 1})
+    return (d or {}).get("linked_patient_id")
+
+
+async def send_refill_reminders(notify, window_days: int = 7) -> dict:
+    """Daily: one portal notification per patient for regular (>=28d) active medicines estimated to run out within
+    `window_days`. Idempotent per (medication, last_prescribed_at); skipped when an open request already covers it."""
+    today = datetime.now(timezone.utc).date()
+    per_patient: dict = {}
+    async for med in db.patient_medications.find({"active": True, "last_prescribed_at": {"$ne": None}}, {"_id": 0}):
+        days = coverage_days(med)
+        due = due_date(med)
+        if not due or (days or 0) < 28:
+            continue
+        left = (due - today).days
+        if left < 0 or left > window_days:
+            continue
+        key = f"{med['id']}|{med.get('last_prescribed_at')}"
+        if await db.refill_reminders.find_one({"key": key}, {"_id": 1}):
+            continue
+        pid = await _portal_pid_for_med(med)
+        if not pid:
+            continue
+        # only requests newer than the last SENT Rx count — older ones were answered by that prescription
+        open_req = await db.prescription_requests.find_one({"patient_id": pid, "internal_status": {"$nin": ["completed", "declined", "cancelled", "withdrawn", "voided"]},
+                                                           "created_at": {"$gte": med.get("last_prescribed_at")},
+                                                           "$or": [{"medications_structured.patient_medication_id": med["id"]},
+                                                                   {"medications_structured.drug": med.get("drug")}, {"medication_name": med.get("drug")}]}, {"_id": 1})
+        if open_req:
+            continue
+        per_patient.setdefault(pid, []).append((med, due, key))
+    sent = 0
+    for pid, items in per_patient.items():
+        names = [" ".join(x for x in (m.get("drug"), m.get("strength")) if x) for m, _, _ in items]
+        soonest = min(d for _, d, _ in items).isoformat()
+        body = (f"{names[0]} is estimated to run out around {soonest}." if len(names) == 1
+                else f"{', '.join(names[:-1])} and {names[-1]} are estimated to run out soon (first around {soonest}).") + \
+               " Open Prescriptions to request a refill when you're ready."
+        await notify(pid, "Refill reminder", body)
+        now = now_iso()
+        await db.refill_reminders.insert_many([{"key": k, "medication_id": m["id"], "patient_id": pid, "due_on": d.isoformat(), "sent_at": now} for m, d, k in items])
+        sent += 1
+    return {"patients_notified": sent, "medications": sum(len(v) for v in per_patient.values())}
 
 
 def regimen_key(patient_id: str, m: dict) -> str:
@@ -98,6 +174,11 @@ def build_router(require_roles) -> APIRouter:
     @r.get("/internal/system/medication-history/audit")
     async def med_audit(user: dict = Depends(require_roles("admin", "physician", "developer_ops"))):
         return await reconcile(apply=False)
+
+    @r.post("/internal/system/refill-reminders/run")
+    async def run_reminders_now(user: dict = Depends(require_roles("admin", "developer_ops"))):
+        from server import notify_patient  # noqa: lazy import avoids a cycle
+        return await send_refill_reminders(notify_patient)
 
     @r.post("/internal/system/medication-history/backfill")
     async def med_backfill(body: BackfillBody, user: dict = Depends(require_roles("admin", "developer_ops"))):

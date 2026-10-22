@@ -435,8 +435,8 @@ export default function Patients() {
                     {!editing && (user?.role === "admin" || (user?.role === "physician" && user?.encounter_enabled)) && (
                         <VisitHistory patientRef={patientRefOf(selected)} />
                     )}
-                    {!editing && selected.patient_id && ["admin", "physician"].includes(user?.role) && (
-                        <MedicalRecord patientId={selected.patient_id} />
+                    {!editing && patientRefOf(selected) && ["admin", "physician"].includes(user?.role) && (
+                        <MedicalRecord patientId={patientRefOf(selected)} />
                     )}
                     <FamilyAccess patient={selected} />
                     {!editing && selected.patient_id && ["admin", "staff"].includes(user?.role) && (

@@ -3225,7 +3225,11 @@ async def portal_medications(ctx: PortalCtx = Depends(portal_access(delegates_mo
         seen.add(ident)
         (meds if d.get("active", True) else previous).append(_portal_med_view(d, "Active" if d.get("active", True) else "Previously prescribed"))
     pr = await db.practices.find_one({"id": ctx.patient.get("practice_id")}, {"_id": 0, "clinic_phone": 1}) if ctx.patient.get("practice_id") else None
-    return {"pharmacy_label": await _refill_pharmacy_label(ctx.patient), "clinic_phone": (pr or {}).get("clinic_phone"),
+    if not pr:
+        pr = await db.practices.find_one({"slug": DEFAULT_PRACTICE_SLUG, "active": True}, {"_id": 0, "clinic_phone": 1})
+    digits = re.sub(r"\D", "", (pr or {}).get("clinic_phone") or "")
+    clinic_phone = f"({digits[:3]}) {digits[3:6]}-{digits[6:]}" if len(digits) == 10 else ((pr or {}).get("clinic_phone") or None)
+    return {"pharmacy_label": await _refill_pharmacy_label(ctx.patient), "clinic_phone": clinic_phone,
             "medications": meds, "previously_prescribed": previous, "request_modes": RX_REQUEST_MODES}
 
 

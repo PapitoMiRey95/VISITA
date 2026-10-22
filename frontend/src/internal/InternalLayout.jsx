@@ -2,7 +2,7 @@ import { Outlet, NavLink, useNavigate } from "react-router-dom";
 import { useState, useRef, useCallback } from "react";
 import {
     ClipboardList, Pill, Calendar, MessageSquare, ClipboardCheck,
-    Send, UserCheck, UserPlus, CalendarDays, Settings as SettingsIcon, LogOut, UserSearch, Menu, Building2, Stethoscope, Users, Receipt, AlertTriangle, Truck, Contact, QrCode, ShieldCheck, Microscope, CreditCard, LayoutGrid,
+    Send, UserCheck, UserPlus, CalendarDays, Settings as SettingsIcon, LogOut, UserSearch, Menu, Building2, Stethoscope, Users, Receipt, AlertTriangle, Truck, Contact, QrCode, ShieldCheck, Microscope, CreditCard, LayoutGrid, ChevronsLeft, ChevronsRight,
 } from "lucide-react";
 import { useAuth } from "../context/AuthContext";
 import { useCounters } from "./hooks";
@@ -27,6 +27,8 @@ export default function InternalLayout() {
     const c = counters.data?.counters || {};
     const isPhysician = role === "physician";
     const [mobileOpen, setMobileOpen] = useState(false);
+    const [collapsed, setCollapsed] = useState(() => localStorage.getItem("vien.sidebar.collapsed") === "1");
+    const toggleCollapsed = () => setCollapsed((v) => { localStorage.setItem("vien.sidebar.collapsed", v ? "0" : "1"); return !v; });
 
     const guardRef = useRef({ dirty: false, save: null });
     const setGuard = useCallback((g) => { guardRef.current = g || { dirty: false, save: null }; }, []);
@@ -117,36 +119,37 @@ export default function InternalLayout() {
     const hubBadge = hubItems.reduce((n, it) => n + (it.key && c[it.key] > 0 ? c[it.key] : 0), 0);
     const [hubOpen, setHubOpen] = useState(false);
 
-    const renderItem = (it, onNavigate, prefix) => (
+    const renderItem = (it, onNavigate, prefix, compact = false) => (
         <NavLink
             key={it.to}
             to={it.to}
             end={it.end}
+            title={compact ? it.label : undefined}
             onClick={guarded(() => { nav(it.to); onNavigate?.(); })}
             data-testid={`${prefix}-${it.label.toLowerCase().replace(/[^a-z]/g, "-")}`}
             className={({ isActive }) =>
-                `flex items-center justify-between px-3 py-2 mx-2 my-0.5 rounded-sm text-sm font-medium transition-colors duration-75 ${
+                `relative flex items-center ${compact ? "justify-center px-0 py-2.5 mx-1.5" : "justify-between px-3 py-2 mx-2"} my-0.5 rounded-sm text-sm font-medium transition-colors duration-75 ${
                     isActive ? "bg-visita-green text-white" : "text-slate-700 hover:bg-visita-greenLight"
                 }`
             }
         >
             <span className="flex items-center gap-2">
-                <it.icon className={`w-4 h-4 ${it.iconClass || ""}`} /> {it.label}
+                <it.icon className={`${compact ? "w-5 h-5" : "w-4 h-4"} ${it.iconClass || ""}`} /> {!compact && it.label}
             </span>
             {it.key && c[it.key] > 0 && (
-                <span className="bg-red-600 text-white text-xs font-bold rounded-full min-w-[20px] h-5 px-1 flex items-center justify-center">
+                <span className={`bg-red-600 text-white text-xs font-bold rounded-full min-w-[20px] h-5 px-1 flex items-center justify-center ${compact ? "absolute -top-0.5 -right-0.5 scale-[0.8]" : ""}`}>
                     {c[it.key]}
                 </span>
             )}
         </NavLink>
     );
 
-    const workHubButton = (onNavigate, prefix) => (
-        <button key="work-hub" type="button" data-testid={`${prefix}-work-hub`} onClick={() => { onNavigate?.(); setHubOpen(true); }}
-            className="w-[calc(100%-1rem)] flex items-center justify-between px-3 py-2 mx-2 my-0.5 rounded-sm text-sm font-semibold text-visita-greenDark bg-visita-greenLight/60 hover:bg-visita-greenLight border border-visita-green/30 transition-colors duration-75">
-            <span className="flex items-center gap-2"><LayoutGrid className="w-4 h-4" /> All Queues</span>
+    const workHubButton = (onNavigate, prefix, compact = false) => (
+        <button key="work-hub" type="button" data-testid={`${prefix}-work-hub`} onClick={() => { onNavigate?.(); setHubOpen(true); }} title={compact ? "All Queues" : undefined}
+            className={`relative flex items-center my-0.5 rounded-sm text-sm font-semibold text-visita-greenDark bg-visita-greenLight/60 hover:bg-visita-greenLight border border-visita-green/30 transition-colors duration-75 ${compact ? "w-[calc(100%-0.75rem)] justify-center px-0 py-2.5 mx-1.5" : "w-[calc(100%-1rem)] justify-between px-3 py-2 mx-2"}`}>
+            <span className="flex items-center gap-2"><LayoutGrid className={compact ? "w-5 h-5" : "w-4 h-4"} /> {!compact && "All Queues"}</span>
             {hubBadge > 0 && (
-                <span className="bg-red-600 text-white text-xs font-bold rounded-full min-w-[20px] h-5 px-1 flex items-center justify-center" data-testid={`${prefix}-work-hub-badge`}>
+                <span className={`bg-red-600 text-white text-xs font-bold rounded-full min-w-[20px] h-5 px-1 flex items-center justify-center ${compact ? "absolute -top-0.5 -right-0.5 scale-[0.8]" : ""}`} data-testid={`${prefix}-work-hub-badge`}>
                     {hubBadge}
                 </span>
             )}
@@ -155,13 +158,13 @@ export default function InternalLayout() {
 
     // Sidebar order: Patients, Work Hub, Calendar, then the remaining quick items, All Queues, Settings, Network.
     const QUICK_ORDER = ["/internal/patients", "/internal/work", "/internal/calendar"];
-    const renderNav = (onNavigate, prefix = "sidebar") => {
+    const renderNav = (onNavigate, prefix = "sidebar", compact = false) => {
         const first = QUICK_ORDER.map((to) => quickItems.find((it) => it.to === to)).filter(Boolean);
         const TAIL = ["/internal/clinic", "/internal/settings", "/network"];
         const rest = quickItems.filter((it) => !QUICK_ORDER.includes(it.to) && !TAIL.includes(it.to));
         const tail = TAIL.map((to) => quickItems.find((it) => it.to === to)).filter(Boolean);
-        return [...first.map((it) => renderItem(it, onNavigate, prefix)), ...rest.map((it) => renderItem(it, onNavigate, prefix)),
-            workHubButton(onNavigate, prefix), ...tail.map((it) => renderItem(it, onNavigate, prefix))];
+        return [...first.map((it) => renderItem(it, onNavigate, prefix, compact)), ...rest.map((it) => renderItem(it, onNavigate, prefix, compact)),
+            workHubButton(onNavigate, prefix, compact), ...tail.map((it) => renderItem(it, onNavigate, prefix, compact))];
     };
 
     return (
@@ -202,14 +205,19 @@ export default function InternalLayout() {
             </header>
 
             <div className="flex flex-1 min-h-0">
-                <aside className="w-52 bg-white border-r border-slate-300 flex-shrink-0 py-2 overflow-y-auto hidden md:flex md:flex-col">
-                    <div className="flex-1">{renderNav()}</div>
-                    {counters.data?.registered_patients != null && (
+                <aside className={`${collapsed ? "w-14" : "w-52"} bg-white border-r border-slate-300 flex-shrink-0 py-2 overflow-y-auto hidden md:flex md:flex-col transition-[width] duration-150`} data-testid="internal-sidebar" data-collapsed={collapsed ? "1" : "0"}>
+                    <div className="flex-1">{renderNav(undefined, "sidebar", collapsed)}</div>
+                    {!collapsed && counters.data?.registered_patients != null && (
                         <div className="mx-3 mt-3 mb-1 border-t border-slate-200 pt-2 flex items-center justify-between text-[11px] text-slate-500" data-testid="registered-patients-total" title="Verified, active portal patients in this practice">
                             <span className="flex items-center gap-1"><Users className="w-3.5 h-3.5" /> Registered patients</span>
                             <span className="font-mono font-bold text-slate-800 text-sm">{counters.data.registered_patients.toLocaleString()}</span>
                         </div>
                     )}
+                    <button type="button" onClick={toggleCollapsed} data-testid="sidebar-collapse-toggle"
+                        title={collapsed ? "Expand sidebar" : "Collapse sidebar"} aria-label={collapsed ? "Expand sidebar" : "Collapse sidebar"}
+                        className={`mx-2 mt-2 flex items-center ${collapsed ? "justify-center" : "justify-end gap-1 px-2"} py-1.5 rounded-sm text-[11px] text-slate-400 hover:text-slate-700 hover:bg-slate-100 transition-colors`}>
+                        {collapsed ? <ChevronsRight className="w-4 h-4" /> : <><span>Collapse</span><ChevronsLeft className="w-4 h-4" /></>}
+                    </button>
                 </aside>
 
                 <Sheet open={hubOpen} onOpenChange={setHubOpen}>

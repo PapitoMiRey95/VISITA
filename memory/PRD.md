@@ -1015,3 +1015,8 @@ PROD FOLLOW-UPS (need explicit GO, scripts not yet written): stamp practice_id o
 - DEPLOYED 2026-10-22 (bundle main.38b194bd.js): Password Requirements checkmarks + Enter Encounter perf optimization (readyCache prefetch, /visits/ready gather + trimmed context, reference-data caching, patient_directory.id index). Details: CHANGELOG 2026-10-22, audit `memory/qa/enter_encounter_perf_audit.md`, test report iteration_89.
 - DEPLOYED 2026-10-22 (bundle main.8c149d97.js): Deployment & Maintenance experience Phase 1+2 (deployment.py, DeploymentOps.jsx, ManagedNotice, branded MaintenanceScreen, OutageBoundary, cron deployment-verify). Phase 3 (edge/offline fallback) not built. Plus Control Center SIMPLE | ADVANCED guided mode (SimpleOps.jsx, SimpleWizards.jsx) — testing iteration_91 pass. Plus operations_operator limited role (iteration_92, pytest 66/66).
 - PREVIEW (awaiting GO): Calendar appointment PHONE line; Smart Medication workflow (med_reconcile.py, SmartMedPaste, Rx completion outcomes, Portal Preview) — iteration_94 + test_smart_med_reverify 13/13.
+
+
+## 2026-06 — UI edits (Preview only)
+- InternalLayout: collapsible icon-only sidebar (toggle at bottom, tooltips, badges kept, persisted in localStorage `vien.sidebar.collapsed`). testids: `internal-sidebar`, `sidebar-collapse-toggle`.
+- Patients page: removed `max-w-3xl`; snapshot card is full width; on xl screens two columns (demographics left, Visit History/Medical Record/Family/Portal right). Mobile stays stacked.

@@ -281,11 +281,11 @@ export default function Patients() {
             </div>
 
             {!selected ? (
-                <div className="bg-white border border-dashed border-slate-300 rounded-sm px-4 py-16 text-center text-slate-400 text-sm max-w-3xl">
+                <div className="bg-white border border-dashed border-slate-300 rounded-sm px-4 py-16 text-center text-slate-400 text-sm w-full">
                     Search above and select a patient to view their snapshot.
                 </div>
             ) : (
-                <div className="bg-white border border-slate-300 rounded-sm p-5 max-w-3xl" data-testid="patient-snapshot">
+                <div className="bg-white border border-slate-300 rounded-sm p-5 w-full" data-testid="patient-snapshot">
                     <div className="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-3 sm:gap-4 mb-3">
                         <div className="min-w-0 sm:min-w-[220px]">
                             <h2 className="text-lg font-bold text-slate-900" data-testid="patient-name">{formatPatientName(selected)}</h2>
@@ -332,6 +332,8 @@ export default function Patients() {
                         </div>
                     </div>
 
+                    <div className={`grid grid-cols-1 gap-6 ${editing ? "" : "xl:grid-cols-[minmax(0,2fr)_minmax(0,3fr)]"}`} data-testid="patient-snapshot-columns">
+                    <div className="min-w-0">
                     {selected.health_card_update_pending && selected.pending_health_card && (
                         <div className="mb-4 rounded-md border border-amber-300 bg-amber-50 p-3" data-testid="hc-pending-panel">
                             <div className="flex items-center gap-2 text-amber-900 font-bold text-sm"><ShieldCheck className="w-4 h-4" /> HEALTH CARD UPDATE PENDING</div>
@@ -436,6 +438,8 @@ export default function Patients() {
                     </p>
                     </>
                     )}
+                    </div>
+                    <div className="min-w-0 xl:border-l xl:border-slate-200 xl:pl-6" data-testid="patient-snapshot-right">
                     {!editing && (user?.role === "admin" || (user?.role === "physician" && user?.encounter_enabled)) && (
                         <VisitHistory patientRef={patientRefOf(selected)} />
                     )}
@@ -446,6 +450,8 @@ export default function Patients() {
                     {!editing && selected.patient_id && ["admin", "staff"].includes(user?.role) && (
                         <PortalAccountPanel patientId={selected.patient_id} />
                     )}
+                    </div>
+                    </div>
                 </div>
             )}
         </div>

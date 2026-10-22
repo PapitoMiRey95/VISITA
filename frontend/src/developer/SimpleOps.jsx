@@ -17,13 +17,14 @@ function attention(d, announcement) {
     const dep = d.deployment; const st = dep.state; const p = d.probe || {};
     const failing = ["api", "database", "storage", "readiness"].filter((k) => !["ONLINE", "CONNECTED", "READY"].includes(p[k]));
     const last = dep.verification?.checks?.[0];
-    if (st === "SERVICE_ISSUE") return { level: "high", text: failing.length ? `${failing.length} system check${failing.length > 1 ? "s are" : " is"} failing (${failing.map(humanReason).join(", ")}).` : last && !last.ok ? `The last check did not pass: ${last.reasons.map(humanReason).join(", ")}.` : (d.history?.[0]?.result === "MANUAL_ISSUE" ? "An operator marked VIen as needing attention. Current checks are passing." : "The last update did not complete in time, but current checks are passing."), rec: dep.verification.streak >= dep.verification.required ? "resolve" : "check" };
+    if (st === "SERVICE_ISSUE") return { level: "high", text: failing.length ? `${failing.length} system check${failing.length > 1 ? "s are" : " is"} failing (${failing.map(humanReason).join(", ")}).` : last && !last.ok ? `The last check did not pass: ${last.reasons.map(humanReason).join(", ")}.` : (d.history?.[0]?.result === "MANUAL_ISSUE" ? "An operator marked VIen as needing attention. Current checks are passing." : "The last update did not complete in time, but current checks are passing."), rec: (!failing.length && last?.ok) ? "resolve" : "check" };
     if (st === "MAINTENANCE") return { level: "mid", text: `VIen has been offline since ${formatDateTime(dep.since)}.`, rec: "online" };
     if (st === "UPDATING") return { level: "low", text: last && !last.ok ? `Waiting for the new version (${last.reasons.map(humanReason).join(", ")}). Verified ${dep.verification.streak} of ${dep.verification.required} times.` : `Verified ${dep.verification.streak} of ${dep.verification.required} times so far.`, rec: "check" };
     if (failing.length) return { level: "mid", text: `${failing.length} system check${failing.length > 1 ? "s are" : " is"} failing (${failing.map(humanReason).join(", ")}).`, rec: "check" };
     if (announcement?.active) return { level: "none", text: `A message to users is currently shown: “${announcement.message}”.`, rec: "message" };
     return null;
 }
+const recentRecovery = (h) => !!h && ["RESOLVED", "ROLLED_BACK", "RECOVERED"].includes(h.result) && h.completed_at && Date.now() - new Date(h.completed_at).getTime() < 60 * 60 * 1000;
 const REC = { check: ["Check VIen", "Run recommended check"], resolve: ["Recover from a problem", "Mark as resolved"], online: ["Bring VIen back online", "Bring VIen back online"], message: ["Post a message to users", "Review message"] };
 
 function TaskCard({ Icon, title, hint, onClick, testid, disabled, tone = "" }) {
@@ -44,6 +45,7 @@ function HistoryItem({ h }) {
         : h.result === "SUPERSEDED" ? `${KIND_LABEL[h.kind] || h.kind} replaced by a newer action`
         : h.status === "SERVICE_ISSUE" ? `${KIND_LABEL[h.kind] || h.kind} needs attention`
         : h.kind === "INCIDENT" ? (done ? "Problem reported — resolved" : "Problem reported")
+        : h.result === "RESOLVED" ? `${KIND_LABEL[h.kind] || h.kind} — problem resolved by the operator`
         : done ? `${KIND_LABEL[h.kind] || h.kind} ${okResult ? "completed successfully" : "finished"}` : `${KIND_LABEL[h.kind] || h.kind} in progress`;
     const verified = h.verified_at ? "VIen verified itself after the update" : h.result === "RESOLVED" ? "Marked resolved by the operator" : h.result === "ROLLED_BACK" ? "Previous version restored by the operator" : h.result === "TIMEOUT" ? "Did not verify in time" : null;
     return (
@@ -85,7 +87,7 @@ export function SimpleOps({ status, onChanged }) {
                         <div><div className="text-sm text-slate-100" data-testid="simple-attention-text">{att.text}</div><div className="text-xs text-slate-400 mt-1">Recommended: <span className="text-emerald-300 font-semibold" data-testid="simple-recommended">{REC[att.rec][0]}</span></div></div>
                         <Button onClick={() => setWiz(att.rec === "online" ? "offline" : att.rec === "resolve" ? "recover" : att.rec)} className="bg-emerald-500 hover:bg-emerald-400 text-slate-950 font-bold" data-testid="simple-recommended-run">{REC[att.rec][1]}</Button>
                     </div>
-                ) : <div className="mt-2 text-sm text-slate-200" data-testid="simple-attention-none">{d.history?.[0]?.result && d.history[0].result !== "SUCCEEDED" ? "Everything is healthy again. No further action is needed." : "No. All system checks are passing."}</div>}
+                ) : <div className="mt-2 text-sm text-slate-200" data-testid="simple-attention-none">{recentRecovery(d.history?.[0]) ? "Everything is healthy again. No further action is needed." : "No. All system checks are passing."}</div>}
             </section>
 
             <section>

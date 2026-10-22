@@ -1,0 +1,30 @@
+{
+  "summary": "Tested the Control Center SIMPLE | ADVANCED mode (/developer, devops@visita.demo). Every requested flow passed in the UI, plus the API checks for permissions and audit (5/5 pytest). SIMPLE is the default when localStorage is empty, and the ADVANCED choice persists after reload. cc-goto-advanced works. NORMAL hero and all 6 enabled task cards render. Update wizard: RESOURCE goes to UPDATING with API kind RESOURCE and the WILL/WILL NOT facts shown, task-update is disabled, and 'I'm not sure' maps to CODE with the 'Not sure…' note. Help me choose: 6 options; login → advice → Take me there opens wiz-check; stop opens wiz-offline, message opens wiz-message, install opens wiz-update. Check VIen gives 'All checks passed. VIen is healthy.' with no raw codes. Recover: undo/resolve/flag all present while UPDATING. The undo facts state it does NOT roll back patient records. The flag confirm is case-sensitive ISSUE and leads to SERVICE_ISSUE 'VIen needs attention.' with a non-technical attention text and a recommended button. Resolve with RESOLVE returns to NORMAL and shows 'Everything is healthy again…'. Undo is recorded as 'Software update undone — previous version restored'. Offline: the button needs both the checkbox and ENTER, then MAINTENANCE 'VIen is temporarily offline.'. The patient maria sees maintenance-screen. The card is retitled 'Bring VIen back online', and EXIT returns to NORMAL. Message: the post call worked (/api/system/banner showed it active), the attention section mentions it, the wizard reopens prefilled, and remove clears it. The patient global-announcement (an INFO message posted through the same PUT endpoint by API) shows at the top of /portal. History items are humanized, and the technical-details toggle shows and hides the raw JSON. Physician PAGUAYO is redirected from /developer to /internal/patients, and the physician token gets 403 on the API. Audit rows were written for all actions. Cleanup: NORMAL, maintenance OFF, announcement removed.",
+  "backend_issues": {"critical": [], "minor": []},
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [],
+    "design_issues": [
+      {"screen": "SIMPLE history", "issues": ["An update that the operator flagged as SERVICE_ISSUE and then manually resolved shows as 'Server resources update completed successfully' with '✓ Marked resolved by the operator'. HistoryItem treats RESOLVED as okResult, so 'completed successfully' is misleading for a manually resolved problem. Consider 'resolved by the operator' as the headline."]},
+      {"screen": "SIMPLE attention (NORMAL)", "issues": ["simple-attention-none says 'Everything is healthy again. No further action is needed.' whenever history[0].result !== SUCCEEDED (e.g. RESOLVED, ROLLED_BACK, SUPERSEDED). It also appeared on a fresh page load long after the event, which implies a recent recovery the operator never saw. Consider limiting it to a recent time window."]},
+      {"screen": "SIMPLE SERVICE_ISSUE", "issues": ["When the operator flagged the issue and checks pass, the recommendation is 'Check VIen' (because streak < required) rather than 'Mark as resolved'. This is acceptable but could confuse users. task-update stays enabled in SERVICE_ISSUE (it is disabled only in UPDATING/MAINTENANCE); confirm this is intended."]},
+      {"screen": "Patient maintenance screen", "issues": ["Manual 'Take VIen offline' shows patients 'We're completing a brief system update…' instead of the configured maintenance message ('…scheduled maintenance…'). This is minor wording, and the screen itself was accepted in iteration_90."]}
+    ]
+  },
+  "test_report_links": ["/app/backend/tests/test_cc_simple_mode_api.py", "/app/test_reports/pytest/pytest_cc_simple_mode.xml"],
+  "action_items": [
+    "Optional: give manually RESOLVED updates their own history headline instead of 'completed successfully'",
+    "Optional: scope the 'Everything is healthy again' copy to recent recoveries only",
+    "Optional: probe storage can briefly read PENDING right after a backend restart (BOOTSTRAP not finished). SIMPLE attention would then show '1 system check is failing (file storage)'. This is expected, but the wording could say 'starting up'."
+  ],
+  "critical_code_review_comments": [
+    "SimpleWizards OfflineWizard does not send a 'message' field, so the backend default is used. This is fine but cannot be edited in SIMPLE mode.",
+    "MessageWizard is seeded from status.announcement (developer-status, 20s refetch) while SimpleOps uses the developer-deployment query. Both are refetched in onChanged, so there are no stale-state issues in testing."
+  ],
+  "updated_files": ["/app/backend/tests/test_cc_simple_mode_api.py"],
+  "success_rate": {"backend": "100% (5/5 permission/audit checks)", "frontend": "100% of requested flows"},
+  "seed_data_creation": "Created history entries with notes 'TEST_simple resource' and 'Not sure…', and a temporary announcement 'TEST_ …' (removed). No patient data was modified.",
+  "retest_needed": false,
+  "should_main_agent_self_test": true,
+  "context_for_next_testing_agent": "Sign in to SIMPLE via /signin?internal=1 (login-email/login-password/login-submit). Patient login is at /signin, not /login. Run the API tests with: cd /app/backend && python -m pytest -n0 tests/test_cc_simple_mode_api.py. The cron auto-completes RESOURCE updates in about 3 minutes, so assertions must come right after begin."
+}

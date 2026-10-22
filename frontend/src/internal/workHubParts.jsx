@@ -3,6 +3,7 @@ import { toast } from "sonner";
 import { Search, X, UserRound, Bell, ArrowRightLeft, Check, Clock, Play, RotateCcw, MessageSquare, FileCheck2, Flag, AlertTriangle, PhoneCall, FileOutput, Microscope, FileText, Scale, FolderOpen, CalendarDays, ClipboardList, Pill, ChevronDown, ChevronUp, Undo2, Stethoscope, Scissors, ScanLine, FlaskConical } from "lucide-react";
 import { StructuredFields, structuredBody, structuredEnough, emptyStructured, StructuredSummary, ReasonLine, ClinicActionChip, TransferReasonChip } from "./workHubStructured";
 import { api, formatErr } from "../lib/api";
+import { ownerState } from "./workHubTriage";
 import { formatPatientName } from "../lib/name";
 import { formatDate, formatDateTime } from "../lib/date";
 import { Button } from "../components/ui/button";
@@ -36,8 +37,8 @@ export function CategoryTag({ category, testid = "work-category-tag", className 
 }
 // Staff → Physician context (workflow metadata, not authorization; separate from physician booking priority).
 export const ATTENTION_LABEL = { ROUTINE: "Routine", IMPORTANT: "Important", NEEDS_ATTENTION: "Needs attention soon" };
-export const ATTENTION_TONE = { ROUTINE: "bg-emerald-50 text-emerald-700 border-emerald-300", IMPORTANT: "bg-amber-50 text-amber-800 border-amber-400", NEEDS_ATTENTION: "bg-red-50 text-red-700 border-red-400" };
-export const ATTENTION_DOT = { ROUTINE: "bg-emerald-500", IMPORTANT: "bg-amber-400", NEEDS_ATTENTION: "bg-red-500" };
+export const ATTENTION_TONE = { ROUTINE: "bg-slate-100 text-slate-600 border-slate-300", IMPORTANT: "bg-amber-50 text-amber-800 border-amber-400", NEEDS_ATTENTION: "bg-red-50 text-red-700 border-red-400" };
+export const ATTENTION_DOT = { ROUTINE: "bg-slate-400", IMPORTANT: "bg-amber-400", NEEDS_ATTENTION: "bg-red-500" };
 export const REQUESTED_ACTION_LABEL = { REVIEW_DECISION: "Review / Decision", PATIENT_INSTRUCTIONS: "Instructions for patient", SIGN_APPROVE: "Sign / Approve", PREPARE_DOCUMENT: "Complete / Prepare document", FYI: "FYI only", OTHER: "Other" };
 export const REFERRAL_SUBTYPE_LABEL = { DECLINED: "Declined", MORE_INFO_REQUESTED: "More info requested", PROVIDER_UPDATE: "Provider moved / contact update", ACCEPTED_IN_PROCESS: "Accepted / In process", APPOINTMENT_BOOKED: "Appointment booked", FOLLOW_UP_NEEDED: "Follow-up needed", NEW_REFERRAL_NEEDED: "New referral needed" };
 export function AttentionBadge({ level, testid }) {
@@ -68,10 +69,11 @@ export function OutcomeBadge({ item, testid }) {
     return <Chip tone="bg-slate-200 text-slate-700 border-slate-300" testid={testid}>{OUTCOME_LABEL[o]}</Chip>;
 }
 
+// Status is workflow state, not urgency → neutral; green reserved for completed.
 export const STATUS_TONE = {
-    NEW: "bg-amber-100 text-amber-800 border-amber-200",
-    IN_PROGRESS: "bg-sky-100 text-sky-800 border-sky-200",
-    WAITING: "bg-slate-100 text-slate-600 border-slate-200",
+    NEW: "bg-slate-100 text-slate-700 border-slate-300",
+    IN_PROGRESS: "bg-slate-100 text-slate-700 border-slate-300",
+    WAITING: "bg-slate-100 text-slate-600 border-slate-300",
     COMPLETED: "bg-emerald-100 text-emerald-800 border-emerald-200",
 };
 export const STATUS_LABEL = { NEW: "New", IN_PROGRESS: "In progress", WAITING: "Waiting", COMPLETED: "Completed" };
@@ -397,13 +399,12 @@ export function WorkDetail({ item, side, userId, members = [], queues = [], cate
                 <div className="flex flex-wrap items-center justify-end gap-1 shrink-0 max-w-full">
                     <span className="flex items-center gap-1">
                         <PriorityBadge priority={item.priority} testid="work-detail-priority" />
-                        {side !== "PHYSICIAN" && <AwaitingBadge item={item} testid="work-detail-awaiting" />}
-                        <Chip tone="bg-visita-greenLight text-visita-greenDark border-visita-green/40" testid="work-detail-owner">With {ownerLabel(item)}</Chip>
-                    </span>
-                    <span className="flex items-center gap-1">
                         <OverdueBadge item={item} testid="work-detail-overdue" />
                         <SignedBadge item={item} testid="work-detail-signed" />
                         <Chip tone={STATUS_TONE[item.status]} testid="work-detail-status">{STATUS_LABEL[item.status]}</Chip>
+                    </span>
+                    <span className="w-full text-right text-xs text-slate-600 inline-flex items-center justify-end gap-1" data-testid="work-detail-owner" title={`Owner: ${ownerLabel(item)}`}>
+                        <UserRound className="w-3.5 h-3.5 text-slate-400" />{ownerState(item, { userId, side })}{item.owner_position && item.owner_user_id ? <span className="text-slate-400"> · {item.owner_position}</span> : null}
                     </span>
                 </div>
             </div>

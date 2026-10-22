@@ -23,12 +23,13 @@ export function RoleRoute({ roles, children, requireEncounter = false }) {
         return <Navigate to={homePath(user.role)} replace />;
     }
     // Installation maintenance mode: everyone except the developer_ops operator sees the maintenance screen.
-    if (sys.maintenance?.on && user.role !== "developer_ops") {
+    const platformRole = user.role === "developer_ops" || user.role === "operations_operator";
+    if (sys.maintenance?.on && !platformRole) {
         return <MaintenanceScreen />;
     }
     return (
         <>
-            {user.role !== "developer_ops" && <AnnouncementBar />}
+            {!platformRole && <AnnouncementBar />}
             {children}
         </>
     );
@@ -39,7 +40,7 @@ export function homePath(role) {
     if (role === "caregiver") return "/portal/people";
     if (role === "pharmacy") return "/pharmacy";
     if (role === "partner") return "/partner";
-    if (role === "developer_ops") return "/developer";
+    if (role === "developer_ops" || role === "operations_operator") return "/developer";
     if (role === "network") return "/network";
     return "/internal";
 }

@@ -76,6 +76,7 @@ api = APIRouter(prefix="/api")
 MAX_PDF_BYTES = 15 * 1024 * 1024
 CLINIC_ROLES = ("staff", "physician", "admin")
 OPS_ROLES = ("developer_ops",)  # installation-level operator ONLY — organization admins never inherit this
+OPERATOR_ROLES = ("developer_ops", "operations_operator")  # SIMPLE-mode routine operations (status, check, soft update, messages). No rollback/maintenance/issue controls.
 
 
 # ----------------------------- Auth plumbing -----------------------------
@@ -1268,7 +1269,7 @@ async def platform_login(body: LoginBody):
     ident = (body.identifier or body.email or "").strip()
     if not ident:
         raise HTTPException(status_code=400, detail="Please enter your email or username.")
-    user = await db.users.find_one({"role": "developer_ops", "$or": [
+    user = await db.users.find_one({"role": {"$in": list(OPERATOR_ROLES)}, "$or": [
         {"email": ident.lower()},
         {"username": {"$regex": f"^{re.escape(ident)}$", "$options": "i"}},
     ]})
@@ -6435,7 +6436,7 @@ async def add_patient_delegate(patient_id: str, body: DelegateCreateBody,
         du = None
     if not du:
         raise HTTPException(status_code=404, detail="Delegate user not found.")
-    if du.get("role") in ("staff", "physician", "admin", "pharmacy", "partner", "developer_ops"):
+    if du.get("role") in ("staff", "physician", "admin", "pharmacy", "partner", "developer_ops", "operations_operator"):
         raise HTTPException(status_code=400, detail="Clinic/partner accounts cannot be delegates.")
     # A delegate cannot be granted access to their OWN patient record.
     if du.get("patient_id") == patient_id:
@@ -6896,7 +6897,7 @@ async def approve_portal_access_request(req_id: str, body: ApproveAccessRequestB
     if not du:
         raise HTTPException(status_code=500, detail="Could not resolve the caregiver account.")
     delegate_user_id = str(du["_id"])
-    if du.get("role") in ("staff", "physician", "admin", "pharmacy", "partner", "developer_ops"):
+    if du.get("role") in ("staff", "physician", "admin", "pharmacy", "partner", "developer_ops", "operations_operator"):
         raise HTTPException(status_code=400, detail="Clinic/partner accounts cannot be delegates.")
     if du.get("patient_id") == body.patient_id:
         raise HTTPException(status_code=400, detail="This is the patient's own account.")
@@ -9505,7 +9506,7 @@ async def _readiness_probe() -> dict:
 
 
 @api.get("/developer/status")
-async def developer_status(user: dict = Depends(require_roles(*OPS_ROLES))):
+async def developer_status(user: dict = Depends(require_roles(*OPERATOR_ROLES))):
     """Simple installation status for the Developer portal (no secrets, no PHI)."""
     probe = await _readiness_probe()
     base = os.environ.get("APP_BASE_URL", "")
@@ -9539,7 +9540,7 @@ class BuildInfoBody(BaseModel):
 
 
 @api.get("/developer/deployment")
-async def developer_deployment(user: dict = Depends(require_roles(*OPS_ROLES))):
+async def developer_deployment(user: dict = Depends(require_roles(*OPERATOR_ROLES))):
     base = os.environ.get("APP_BASE_URL", "")
     return {"deployment": await dep_mod.get(), "history": await dep_mod.history(20), "release": RELEASE_INFO,
             "environment": "production" if "visitaemr.com" in base.lower() else "preview", "probe": await _readiness_probe(),
@@ -9547,7 +9548,7 @@ async def developer_deployment(user: dict = Depends(require_roles(*OPS_ROLES))):
 
 
 @api.post("/developer/deployment/begin-update")
-async def developer_begin_update(body: BeginUpdateBody, user: dict = Depends(require_roles(*OPS_ROLES))):
+async def developer_begin_update(body: BeginUpdateBody, user: dict = Depends(require_roles(*OPERATOR_ROLES))):
     try:
         return await dep_mod.begin_update(user, body.kind, body.note or "", body.expected_commit, RELEASE_INFO.get("commit"))
     except ValueError as e:
@@ -9555,7 +9556,7 @@ async def developer_begin_update(body: BeginUpdateBody, user: dict = Depends(req
 
 
 @api.post("/developer/deployment/verify")
-async def developer_verify(user: dict = Depends(require_roles(*OPS_ROLES))):
+async def developer_verify(user: dict = Depends(require_roles(*OPERATOR_ROLES))):
     return await dep_mod.verify(await _readiness_probe(), source="operator")
 
 
@@ -9604,7 +9605,7 @@ class AnnouncementBody(BaseModel):
 
 
 @api.put("/developer/announcement")
-async def developer_set_announcement(body: AnnouncementBody, user: dict = Depends(require_roles(*OPS_ROLES))):
+async def developer_set_announcement(body: AnnouncementBody, user: dict = Depends(require_roles(*OPERATOR_ROLES))):
     if body.type not in sys_mod.ANNOUNCEMENT_TYPES:
         raise HTTPException(status_code=400, detail="type must be INFO, WARNING or CRITICAL.")
     if not body.message.strip():
@@ -9617,7 +9618,7 @@ async def developer_set_announcement(body: AnnouncementBody, user: dict = Depend
 
 
 @api.delete("/developer/announcement")
-async def developer_clear_announcement(user: dict = Depends(require_roles(*OPS_ROLES))):
+async def developer_clear_announcement(user: dict = Depends(require_roles(*OPERATOR_ROLES))):
     a = await sys_mod.clear_announcement(user)
     await audit("announcement_removed", "system_state", "global", user, meta={"message": a.get("message")})
     return a
@@ -9797,7 +9798,7 @@ async def network_search(q: str = "", user: dict = Depends(require_roles(*NETWOR
     if len(q) < 2:
         return {"results": []}
     rx = {"$regex": re.escape(q), "$options": "i"}
-    rows = await db.users.find({"role": {"$nin": ["patient", "caregiver", "developer_ops"]}, "active": {"$ne": False},
+    rows = await db.users.find({"role": {"$nin": ["patient", "caregiver", "developer_ops", "operations_operator"]}, "active": {"$ne": False},
                                 "$or": [{"name": rx}, {"email": rx}, {"username": rx}]}, {"name": 1, "email": 1, "role": 1, "username": 1}).limit(10).to_list(10)
     return {"results": [{"id": str(u["_id"]), "name": u.get("name"), "email": u.get("email"), "username": u.get("username"), "role": u.get("role")} for u in rows]}
 

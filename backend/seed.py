@@ -262,6 +262,16 @@ async def seed_all(db, authlib):
             "mfa_enabled": False, "patient_id": None, "active": True, "created_at": now_iso(),
         })
 
+    # operations_operator (SIMPLE-mode routine operations) — Preview-only startup seed, create-if-missing.
+    opr_email = (os.environ.get("OPERATIONS_OPERATOR_EMAIL") or "").strip().lower()
+    opr_pw = os.environ.get("OPERATIONS_OPERATOR_PASSWORD")
+    if opr_email and opr_pw and not _is_production() and not await db.users.find_one({"email": opr_email}):
+        await db.users.insert_one({
+            "email": opr_email, "username": "OPERATOR", "name": "Operations Operator", "role": "operations_operator",
+            "password_hash": authlib.hash_password(opr_pw), "must_change_password": False,
+            "mfa_enabled": False, "patient_id": None, "active": True, "created_at": now_iso(),
+        })
+
     # Pharmacy portal account — env-gated, CREATE-IF-MISSING ONLY.
     # Never overwrites an existing account/password. Nothing is created unless
     # PHARMACY_USERNAME + PHARMACY_PASSWORD are configured for this environment.

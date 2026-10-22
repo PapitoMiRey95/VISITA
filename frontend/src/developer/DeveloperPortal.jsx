@@ -147,8 +147,10 @@ export default function DeveloperPortal() {
     const { user, logout } = useAuth();
     const sys = useSystemStatus();
     const [tab, setTab] = useState("OVERVIEW");
-    const [mode, setModeState] = useState(() => localStorage.getItem("vien_cc_mode") || "SIMPLE"); // SIMPLE is the default; ADVANCED keeps the full technical view
-    const setMode = (m) => { localStorage.setItem("vien_cc_mode", m); setModeState(m); };
+    const limited = user?.role === "operations_operator"; // routine operations only — never ADVANCED / high-risk controls
+    const [modeState, setModeState] = useState(() => localStorage.getItem("vien_cc_mode") || "SIMPLE"); // SIMPLE is the default; ADVANCED keeps the full technical view
+    const mode = limited ? "SIMPLE" : modeState;
+    const setMode = (m) => { if (limited) return; localStorage.setItem("vien_cc_mode", m); setModeState(m); };
     const q = useQuery({ queryKey: ["developer-status"], queryFn: async () => (await api.get("/developer/status")).data, refetchInterval: 20000 });
     const pcq = usePlatformConfigAdmin();
     const d = q.data;
@@ -161,10 +163,11 @@ export default function DeveloperPortal() {
                     <div><div className="font-bold leading-tight">VIen Platform Control Center</div><div className="text-[11px] text-slate-500 uppercase tracking-wider">installation operator · {d?.environment || "…"}</div></div>
                 </div>
                 <div className="flex items-center gap-3 text-sm text-slate-400">
-                    <div className="flex rounded-sm border border-slate-700 overflow-hidden text-xs font-bold" data-testid="cc-mode-toggle">
+                    {limited && <span className="text-[11px] px-2 py-1 rounded-sm bg-slate-800 text-slate-300" data-testid="cc-limited-badge">Operations · routine tasks</span>}
+                    {!limited && <div className="flex rounded-sm border border-slate-700 overflow-hidden text-xs font-bold" data-testid="cc-mode-toggle">
                         {["SIMPLE", "ADVANCED"].map((m) => <button key={m} type="button" onClick={() => setMode(m)} data-testid={`cc-mode-${m.toLowerCase()}`} aria-pressed={mode === m}
                             className={`px-3 py-1.5 ${mode === m ? "bg-emerald-500 text-slate-950" : "text-slate-400 hover:text-slate-200"}`}>{m}</button>)}
-                    </div>
+                    </div>}
                     <OperatorIdentity op={d?.operator} />
                     <Button size="sm" variant="ghost" onClick={() => q.refetch()} className="text-slate-300" data-testid="dev-refresh"><RefreshCw className="w-4 h-4" /></Button>
                     <Button size="sm" variant="ghost" onClick={logout} className="text-slate-300" data-testid="dev-logout"><LogOut className="w-4 h-4 mr-1" /> Logout</Button>
@@ -172,8 +175,9 @@ export default function DeveloperPortal() {
             </header>
             {mode === "SIMPLE" && (
                 <main className="max-w-4xl mx-auto p-6" data-testid="cc-simple-main">
-                    <SimpleOps status={d} onChanged={changed} />
-                    <p className="text-[11px] text-slate-500 mt-8">Need commits, build hashes or verification details? Switch to <button type="button" onClick={() => setMode("ADVANCED")} className="underline text-slate-300" data-testid="cc-goto-advanced">ADVANCED</button>. Every action here is the same audited operation as in the technical view.</p>
+                    <SimpleOps status={d} onChanged={changed} limited={limited} />
+                    {!limited && <p className="text-[11px] text-slate-500 mt-8">Need commits, build hashes or verification details? Switch to <button type="button" onClick={() => setMode("ADVANCED")} className="underline text-slate-300" data-testid="cc-goto-advanced">ADVANCED</button>. Every action here is the same audited operation as in the technical view.</p>}
+                    {limited && <p className="text-[11px] text-slate-500 mt-8" data-testid="cc-limited-note">Your account covers routine operations: status, Check VIen, user messages and preparing updates. Taking VIen offline, recovering from problems and technical controls are reserved for the developer role.</p>}
                 </main>
             )}
             {mode === "ADVANCED" && <>

@@ -135,7 +135,7 @@ function App() {
                         <Route path="account" element={<PortalAccount />} />
                     </Route>
 
-                    <Route path="/developer" element={<RoleRoute roles={["developer_ops"]}><DeveloperPortal /></RoleRoute>} />
+                    <Route path="/developer" element={<RoleRoute roles={["developer_ops", "operations_operator"]}><DeveloperPortal /></RoleRoute>} />
                     <Route path="/network" element={<RoleRoute roles={["network", "physician", "admin", "staff"]}><NetworkHome /></RoleRoute>} />
                     <Route path="/network/people/:id" element={<RoleRoute roles={["network", "physician", "admin", "staff"]}><PersonProfile /></RoleRoute>} />
                     <Route path="/network/orgs/:id" element={<RoleRoute roles={["network", "physician", "admin", "staff"]}><OrgProfile /></RoleRoute>} />

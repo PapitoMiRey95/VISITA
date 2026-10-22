@@ -17,7 +17,7 @@ function attention(d, announcement) {
     const dep = d.deployment; const st = dep.state; const p = d.probe || {};
     const failing = ["api", "database", "storage", "readiness"].filter((k) => !["ONLINE", "CONNECTED", "READY"].includes(p[k]));
     const last = dep.verification?.checks?.[0];
-    if (st === "SERVICE_ISSUE") return { level: "high", text: failing.length ? `${failing.length} system check${failing.length > 1 ? "s are" : " is"} failing (${failing.map(humanReason).join(", ")}).` : last && !last.ok ? `The last check did not pass: ${last.reasons.map(humanReason).join(", ")}.` : (d.history?.[0]?.result === "MANUAL_ISSUE" ? "An operator marked VIen as needing attention. Current checks are passing." : "The last update did not complete in time, but current checks are passing."), rec: (!failing.length && last?.ok) ? "resolve" : "check" };
+    if (st === "SERVICE_ISSUE") return { level: "high", text: failing.length ? `${failing.length} system check${failing.length > 1 ? "s are" : " is"} failing (${failing.map(humanReason).join(", ")}).` : last && !last.ok ? `The last check did not pass: ${last.reasons.map(humanReason).join(", ")}.` : (d.history?.[0]?.result === "MANUAL_ISSUE" ? "An operator marked VIen as needing attention. Run Check VIen to see whether the problem is still present." : "The last update did not complete in time, but current checks are passing."), rec: (!failing.length && last?.ok) ? "resolve" : "check" };
     if (st === "MAINTENANCE") return { level: "mid", text: `VIen has been offline since ${formatDateTime(dep.since)}.`, rec: "online" };
     if (st === "UPDATING") return { level: "low", text: last && !last.ok ? `Waiting for the new version (${last.reasons.map(humanReason).join(", ")}). Verified ${dep.verification.streak} of ${dep.verification.required} times.` : `Verified ${dep.verification.streak} of ${dep.verification.required} times so far.`, rec: "check" };
     if (failing.length) return { level: "mid", text: `${failing.length} system check${failing.length > 1 ? "s are" : " is"} failing (${failing.map(humanReason).join(", ")}).`, rec: "check" };
@@ -63,9 +63,11 @@ function HistoryItem({ h }) {
     );
 }
 
-export function SimpleOps({ status, onChanged }) {
+export function SimpleOps({ status, onChanged, limited = false }) {
     const q = useQuery({ queryKey: ["developer-deployment"], queryFn: async () => (await api.get("/developer/deployment")).data, refetchInterval: 15000 });
     const [wiz, setWiz] = useState(null); // update | offline | message | check | recover | help | online
+    const [issueCheck, setIssueCheck] = useState(null); // SERVICE_ISSUE guided flow: last "Check VIen" result
+    const [contact, setContact] = useState(false);
     const d = q.data;
     if (q.error) return <div className="text-sm text-red-400">{formatErr(q.error)}</div>;
     if (!d) return <div className="text-sm text-slate-500" data-testid="simple-loading">Loading…</div>;
@@ -82,7 +84,27 @@ export function SimpleOps({ status, onChanged }) {
 
             <section className="rounded-lg border border-slate-800 bg-slate-900/70 p-5" data-testid="simple-attention">
                 <div className="text-[11px] uppercase tracking-widest text-slate-500">Does anything need my attention?</div>
-                {att ? (
+                {st === "SERVICE_ISSUE" ? (
+                    <div className="mt-2 space-y-3" data-testid="simple-issue-guidance">
+                        <div className="text-sm text-slate-100" data-testid="simple-attention-text">{att?.text}</div>
+                        {!issueCheck && <div className="flex items-center gap-3"><div className="text-xs text-slate-400">Recommended: <span className="text-emerald-300 font-semibold" data-testid="simple-recommended">Check VIen</span></div><Button onClick={() => setWiz("check")} className="bg-emerald-500 hover:bg-emerald-400 text-slate-950 font-bold" data-testid="simple-recommended-run">Run Check VIen</Button></div>}
+                        {issueCheck && !issueCheck.ok && (
+                            <div className="rounded-md border border-amber-500/40 bg-amber-500/10 p-3" data-testid="simple-issue-persists">
+                                <div className="text-sm font-semibold text-amber-100">The problem is still present.</div>
+                                <div className="text-xs text-amber-200/80 mt-0.5">{issueCheck.reasons.map(humanReason).join("; ")}</div>
+                                <div className="flex flex-wrap gap-2 mt-3">
+                                    {!limited && <Button onClick={() => setWiz("recover")} className="bg-emerald-500 text-slate-950 font-bold" data-testid="simple-issue-recover">Recover from a problem</Button>}
+                                    <Button variant="outline" onClick={() => setContact(true)} className="border-slate-600 text-slate-200" data-testid="simple-issue-contact">Contact developer</Button>
+                                    <Button variant="ghost" onClick={() => setWiz("check")} className="text-slate-300" data-testid="simple-issue-recheck">Check again</Button>
+                                </div>
+                            </div>
+                        )}
+                        {issueCheck && issueCheck.ok && (
+                            <div className="rounded-md border border-emerald-500/40 bg-emerald-500/10 p-3 text-sm text-emerald-100" data-testid="simple-issue-passing">Checks are passing now. {limited ? "Ask your developer to mark the problem as resolved." : <>Recommended: <Button size="sm" onClick={() => setWiz("recover")} className="ml-2 bg-emerald-500 text-slate-950 font-bold" data-testid="simple-issue-resolve">Mark as resolved</Button></>}</div>
+                        )}
+                        {contact && <div className="rounded-md border border-slate-700 p-3 text-xs text-slate-300" data-testid="simple-contact-developer">Contact your VIen developer (OAKMONT Developers). Share: the time it started ({d.deployment.since ? formatDateTime(d.deployment.since) : "—"}), what users report, and that VIen shows “needs attention”. Do not change anything else meanwhile.</div>}
+                    </div>
+                ) : att ? (
                     <div className="mt-2 flex flex-wrap items-center justify-between gap-3">
                         <div><div className="text-sm text-slate-100" data-testid="simple-attention-text">{att.text}</div><div className="text-xs text-slate-400 mt-1">Recommended: <span className="text-emerald-300 font-semibold" data-testid="simple-recommended">{REC[att.rec][0]}</span></div></div>
                         <Button onClick={() => setWiz(att.rec === "online" ? "offline" : att.rec === "resolve" ? "recover" : att.rec)} className="bg-emerald-500 hover:bg-emerald-400 text-slate-950 font-bold" data-testid="simple-recommended-run">{REC[att.rec][1]}</Button>
@@ -94,10 +116,10 @@ export function SimpleOps({ status, onChanged }) {
                 <div className="text-[11px] uppercase tracking-widest text-slate-500 mb-2">What can I safely do?</div>
                 <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-3" data-testid="simple-tasks">
                     <TaskCard Icon={Rocket} title="Update VIen" hint="Install a new version while VIen remains available." onClick={() => setWiz("update")} testid="task-update" disabled={maintenanceOn || st === "UPDATING"} />
-                    <TaskCard Icon={Wrench} title={maintenanceOn ? "Bring VIen back online" : "Take VIen temporarily offline"} hint={maintenanceOn ? "Users can use VIen again." : "For maintenance that should stop user changes."} onClick={() => setWiz("offline")} testid="task-offline" />
+                    {!limited && <TaskCard Icon={Wrench} title={maintenanceOn ? "Bring VIen back online" : "Take VIen temporarily offline"} hint={maintenanceOn ? "Users can use VIen again." : "For maintenance that should stop user changes."} onClick={() => setWiz("offline")} testid="task-offline" />}
                     <TaskCard Icon={Megaphone} title="Post a message to users" hint="Show an informational notice across VIen." onClick={() => setWiz("message")} testid="task-message" />
                     <TaskCard Icon={HeartPulse} title="Check VIen" hint="Check the website, database and storage." onClick={() => setWiz("check")} testid="task-check" />
-                    <TaskCard Icon={Undo2} title="Recover from a problem" hint="Undo or resolve a problematic update." onClick={() => setWiz("recover")} testid="task-recover" />
+                    {!limited && <TaskCard Icon={Undo2} title="Recover from a problem" hint="Undo or resolve a problematic update." onClick={() => setWiz("recover")} testid="task-recover" />}
                     <TaskCard Icon={HelpCircle} title="I’m not sure / Help me choose" hint="Answer one question and we’ll point you to the safest action." onClick={() => setWiz("help")} testid="task-help" tone="border-dashed" />
                 </div>
             </section>
@@ -108,11 +130,12 @@ export function SimpleOps({ status, onChanged }) {
             </section>
 
             <UpdateWizard key={`u${wiz === "update"}`} open={wiz === "update"} onClose={close} onDone={changed} />
-            <OfflineWizard key={`o${wiz === "offline"}${maintenanceOn}`} open={wiz === "offline"} onClose={close} onDone={changed} on={maintenanceOn} />
+            {!limited && <OfflineWizard key={`o${wiz === "offline"}${maintenanceOn}`} open={wiz === "offline"} onClose={close} onDone={changed} on={maintenanceOn} />}
             <MessageWizard key={`m${wiz === "message"}`} open={wiz === "message"} onClose={close} onDone={changed} current={status?.announcement} />
-            <CheckWizard key={`c${wiz === "check"}`} open={wiz === "check"} onClose={close} onDone={changed} />
-            <RecoverWizard key={`r${wiz === "recover"}`} open={wiz === "recover"} onClose={close} onDone={changed} state={st} />
-            <HelpWizard key={`h${wiz === "help"}`} open={wiz === "help"} onClose={close} onPick={setWiz} />
+            <CheckWizard key={`c${wiz === "check"}`} open={wiz === "check"} onClose={close} onDone={(r) => { if (r?.data) setIssueCheck(r.data); changed(); }} />
+            {!limited && <RecoverWizard key={`r${wiz === "recover"}`} open={wiz === "recover"} onClose={close} onDone={changed} state={st} />}
+            <HelpWizard key={`h${wiz === "help"}`} open={wiz === "help"} onClose={close} onPick={(w) => (limited && (w === "offline" || w === "recover")) ? setContact(true) : setWiz(w)} />
+            {limited && contact && st !== "SERVICE_ISSUE" && <div className="rounded-md border border-slate-700 p-3 text-xs text-slate-300" data-testid="simple-contact-developer">Taking VIen offline or recovering from a problem requires the developer role. Contact your VIen developer (OAKMONT Developers) and describe what you need.</div>}
         </div>
     );
 }

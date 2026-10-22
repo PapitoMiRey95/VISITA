@@ -45,9 +45,10 @@ export function UpdateWizard({ open, onClose, onDone, presetKind }) {
     const [note, setNote] = useState("");
     const [step, setStep] = useState(presetKind ? 2 : 1);
     const [busy, run] = useRun(onDone);
-    const begin = () => run(() => api.post("/developer/deployment/begin-update", { kind, note }), "Update started. VIen stays available and will check itself.").then((r) => r && onClose());
+    const prepare = async () => { const r = await run(() => api.post("/developer/deployment/begin-update", { kind, note }), "VIen is prepared: the update notice is live. Now publish the update."); if (r) setStep(3); };
     return (
-        <Shell open={open} onClose={onClose} title="Update VIen" desc="Install a new version while VIen remains available." testid="wiz-update">
+        <Shell open={open} onClose={onClose} title="Update VIen" desc="Three steps: prepare VIen, publish the update, let VIen verify itself." testid="wiz-update">
+            <ol className="flex gap-2 text-[11px]" data-testid="wiz-update-progress">{["Choose", "Prepare VIen", "Publish", "Verification"].map((l, i) => <li key={l} className={`px-2 py-0.5 rounded-sm border ${step === i + 1 ? "border-emerald-400 text-emerald-300" : step > i + 1 ? "border-slate-700 text-slate-500 line-through" : "border-slate-800 text-slate-500"}`}>{i + 1}. {l}</li>)}</ol>
             {step === 1 && (
                 <Step n={1} title="What are you updating?">
                     <Choice active={kind === "CODE"} onClick={() => setKind("CODE")} title="New software version" hint="A new release of the VIen application." testid="wiz-update-kind-code" />
@@ -58,12 +59,31 @@ export function UpdateWizard({ open, onClose, onDone, presetKind }) {
                 </Step>
             )}
             {step === 2 && (
-                <Step n={2} title={`Ready to start: ${KIND_LABEL[kind]}`}>
-                    <Facts will={["VIen will remain available.", "Users will see a brief update notice.", "VIen will automatically check itself after the update."]}
-                        wont={["Patient records will not be changed.", "No user will be logged out by this step.", "Nothing is undone or deleted."]} />
+                <Step n={2} title={`Prepare VIen — ${KIND_LABEL[kind]}`}>
+                    <p className="text-sm text-slate-200">VIen will show an update notice and remain available. <strong className="text-amber-200">This step does not install or publish anything.</strong></p>
+                    <Facts will={["Users see a brief update notice.", "VIen remains available.", "VIen gets ready to verify the new version."]}
+                        wont={["The update is NOT published by this button.", "Patient records are not changed.", "Nobody is logged out."]} />
                     <label className="block text-xs text-slate-400">Optional note (what is being updated)<Input value={note} onChange={(e) => setNote(e.target.value)} className="mt-1 bg-slate-950 border-slate-700 text-slate-100" data-testid="wiz-update-note" /></label>
-                    <p className="text-xs text-slate-400">Next: start the update in the hosting panel. VIen clears the notice by itself once it has verified the new version three times in a row.</p>
-                    <DialogFooter><Button variant="outline" onClick={() => setStep(1)} className="border-slate-600 text-slate-200">Back</Button><Button disabled={busy} onClick={begin} className="bg-emerald-500 hover:bg-emerald-400 text-slate-950 font-bold" data-testid="wiz-update-begin">Begin Update</Button></DialogFooter>
+                    <DialogFooter><Button variant="outline" onClick={() => setStep(1)} className="border-slate-600 text-slate-200">Back</Button><Button disabled={busy} onClick={prepare} className="bg-emerald-500 hover:bg-emerald-400 text-slate-950 font-bold" data-testid="wiz-update-begin">Prepare VIen</Button></DialogFooter>
+                </Step>
+            )}
+            {step === 3 && (
+                <Step n={3} title="Publish the update">
+                    <p className="text-sm text-slate-200">Open the publishing / deployment panel and start the <strong>approved</strong> update.</p>
+                    <ol className="text-xs text-slate-300 list-decimal pl-5 space-y-1" data-testid="wiz-update-publish-steps">
+                        <li>Open the VIen hosting panel (Emergent) in a new tab.</li>
+                        <li>Choose <strong>Deploy / Re-publish</strong> for VIen and confirm the approved version{kind === "RESOURCE" ? " — for server resources, use “Re-publish without build” and change only the resource tier" : ""}.</li>
+                        <li>Wait until the panel reports the deployment finished, then return here.</li>
+                    </ol>
+                    <p className="text-[11px] text-slate-500">There is no direct link from VIen to the hosting panel; it is a separate, access-controlled console. If you do not have access, ask your developer to publish — VIen is already prepared.</p>
+                    <DialogFooter><Button onClick={() => setStep(4)} className="bg-emerald-500 text-slate-950 font-bold" data-testid="wiz-update-published">I have started the publish</Button></DialogFooter>
+                </Step>
+            )}
+            {step === 4 && (
+                <Step n={4} title="Verification">
+                    <p className="text-sm text-slate-200">You’re done here. VIen automatically verifies the new version and removes the notice after three successful checks in a row.</p>
+                    <p className="text-xs text-slate-400">If it does not return to “Everything is working normally” within 20 minutes, VIen marks itself as needing attention and shows you what to do next.</p>
+                    <DialogFooter><Button onClick={onClose} className="bg-emerald-500 text-slate-950 font-bold" data-testid="wiz-update-done">Back to overview</Button></DialogFooter>
                 </Step>
             )}
         </Shell>

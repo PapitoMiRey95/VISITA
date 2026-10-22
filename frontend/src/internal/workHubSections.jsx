@@ -55,7 +55,7 @@ export function ClusterRow({ cluster, tone, defaultOpen, forceOpen, children }) 
                 <Icon className="w-4 h-4 text-slate-500 shrink-0" strokeWidth={2.25} />
                 <span className="min-w-0 flex-1">
                     <span className="block text-sm font-semibold text-slate-900 truncate" data-testid="work-cluster-task">{cluster.task}</span>
-                    <span className="block text-[11px] text-slate-500 truncate">{patients.length ? `${patients.length} patient${patients.length === 1 ? "" : "s"} · ${patients.slice(0, 3).join(", ")}${patients.length > 3 ? "…" : ""}` : `${cluster.items.length} items`}</span>
+                    <span className="block text-[11px] text-slate-500 truncate">{cluster.items.length} items{patients.length ? ` · ${patients.length} patient${patients.length === 1 ? "" : "s"} · ${patients.slice(0, 3).join(", ")}${patients.length > 3 ? "…" : ""}` : ""}</span>
                 </span>
                 <span data-testid="work-cluster-count" className="rounded-full bg-slate-200 text-slate-800 text-xs font-bold px-2 py-0.5 tabular-nums">{cluster.items.length}</span>
                 {open ? <ChevronDown className="w-4 h-4 text-slate-400" /> : <ChevronRight className="w-4 h-4 text-slate-400" />}

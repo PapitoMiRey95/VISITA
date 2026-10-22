@@ -107,6 +107,7 @@ export function dueText(item) {
     const od = overdueDays(item);
     if (od !== null) return { text: od > 0 ? `Overdue · ${od} day${od === 1 ? "" : "s"}` : "Overdue", tone: "red" };
     const due = effectiveDue(item);
+    if (isOverdue(item)) return { text: "Resume now", tone: "red" };
     if (isDueToday(due)) return { text: item.status === "WAITING" && !item.due_at ? "Resume today" : "Due today", tone: "red" };
     if (item.priority === "ASAP") return { text: "ASAP", tone: "red" };
     if (item.attention_level === "NEEDS_ATTENTION") return { text: "Needs attention", tone: "red" };
@@ -132,4 +133,4 @@ export function markSeen(userId, id) {
     localStorage.setItem(seenKey(userId), JSON.stringify([...s].slice(-500)));
     return s;
 }
-export const isUnread = (item, seen) => item.status === "NEW" && !seen.has(item.id);
+export const isUnread = (item, seen, userId) => item.status === "NEW" && item.created_by !== userId && !seen.has(item.id);

@@ -1020,3 +1020,9 @@ PROD FOLLOW-UPS (need explicit GO, scripts not yet written): stamp practice_id o
 ## 2026-06 — UI edits (Preview only)
 - InternalLayout: collapsible icon-only sidebar (toggle at bottom, tooltips, badges kept, persisted in localStorage `vien.sidebar.collapsed`). testids: `internal-sidebar`, `sidebar-collapse-toggle`.
 - Patients page: removed `max-w-3xl`; snapshot card is full width; on xl screens two columns (demographics left, Visit History/Medical Record/Family/Portal right). Mobile stays stacked.
+
+## 2026-06 — Work Hub TRIAGE redesign (PREVIEW only, not deployed; frontend only, no data/workflow changes)
+- `internal/workHubTriage.js`: urgencyRank → groups NOW (rank≤3: overdue, due today, ASAP, NEEDS_ATTENTION, signed-action-required) / NEXT (B1, due ≤7d, IMPORTANT, B2) / ROUTINE. Sort: rank → earliest due/waiting_until → oldest created_at. clusterItems(): same category+task ≥3 → visual cluster (records independent). ownerState(): single concise owner ("You" / "Dr. Aguayo" / "Waiting on Dr. Aguayo" / "Clinic queue"). Unread = status NEW && not self-created && not in localStorage `vien.work.seen.<userId>`.
+- `WorkHub.jsx`: compact cards (urgency dot, category icon, patient / task / owner, due text), TriageSummary header, independent scrolling list + detail panes on md+. `workHubSections.jsx`: TriageSection, ClusterRow (NOW clusters open by default), PhysicianSummary (neutralized). `workHubParts.jsx`: STATUS_TONE/ATTENTION ROUTINE neutral; detail header shows one owner line instead of Awaiting + With chips.
+- Tested: testing_agent iteration_95 (all pass; sticky/dueText/unread/cluster-subtitle follow-ups fixed). Temporary QA fixtures (qa_triage) deleted.
+- Production deploy of Smart Meds + Calendar phone + UI edits dispatched 2026-06 (job 7e7c2f10); post-deploy smoke pending.

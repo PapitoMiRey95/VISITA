@@ -62,7 +62,7 @@ function HistoryCard({ item, selected, onClick }) {
 // Section body: identical work is clustered visually (records stay independent); NOW clusters open by default.
 function TriageList({ section, selectedId, onSelect, seen, ctx }) {
     const rows = clusterItems(section.items);
-    const card = (it) => <WorkCard key={it.id} item={it} ctx={ctx} unread={isUnread(it, seen)} selected={it.id === selectedId} onClick={() => onSelect(it)} />;
+    const card = (it) => <WorkCard key={it.id} item={it} ctx={ctx} unread={isUnread(it, seen, ctx.userId)} selected={it.id === selectedId} onClick={() => onSelect(it)} />;
     return rows.map((r) => r.type === "item" ? card(r.item) : (
         <ClusterRow key={r.key} cluster={r} tone={section.dot} defaultOpen={section.key === "NOW"} forceOpen={r.items.some((i) => i.id === selectedId)}>
             {r.items.map(card)}
@@ -123,7 +123,7 @@ export default function WorkHub() {
                 )}
             </div>
             <div className="grid grid-cols-1 md:grid-cols-[minmax(0,1fr)_minmax(0,1.1fr)] gap-3">
-                <div className={`space-y-3 ${selected ? "hidden md:block" : ""}`} data-testid="work-list">
+                <div className={`space-y-3 ${selected ? "hidden md:block" : ""} md:max-h-[calc(100vh-13rem)] md:overflow-y-auto md:pr-1`} data-testid="work-list">
                     {list.isLoading && <p className="text-sm text-slate-400">Loading…</p>}
                     {!list.isLoading && items.length === 0 && <p className="text-sm text-slate-400 py-6 text-center" data-testid="work-empty">{view === "my" ? "Nothing needs your attention." : isHistory ? "No completed items yet." : "No items."}</p>}
                     {isHistory && items.map((it) => <HistoryCard key={it.id} item={it} selected={it.id === selectedId} onClick={() => setSelectedId(it.id)} />)}
@@ -141,7 +141,7 @@ export default function WorkHub() {
                         <Button variant="outline" size="sm" data-testid="work-history-load-more" disabled={list.isFetching} onClick={() => setHistoryPages((p) => p + 1)} className="w-full h-8 text-xs">{list.isFetching ? "Loading…" : "Load more"}</Button>
                     )}
                 </div>
-                <div className={selected ? "" : "hidden md:block"}>
+                <div className={`${selected ? "" : "hidden md:block"} md:max-h-[calc(100vh-13rem)] md:overflow-y-auto`}>
                     {selected ? <WorkDetail item={selected} side={side} userId={userId} members={meta.data?.members || []} queues={meta.data?.queues || []} categories={categories} documentCategories={meta.data?.document_categories || []} onChanged={refresh} onBack={() => setSelectedId(null)} />
                         : side === "PHYSICIAN" ? <PhysicianSummary />
                         : <div className="hidden md:flex h-40 items-center justify-center rounded-sm border border-dashed border-slate-300 text-sm text-slate-400">Select an item to see its history and actions.</div>}

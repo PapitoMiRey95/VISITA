@@ -1,0 +1,48 @@
+{
+  "summary": "Frontend-only testing of the Work Hub triage redesign (/internal/work) for admin (dark theme), staff (light theme) and mobile 390x844. Everything in the review request works. No page errors. One UX issue on desktop: the detail panel is not sticky. Also found two minor display bugs (one code-review only).",
+  "verified": [
+    "Admin login, then /internal/work loads. Summary reads 11 need attention · 2 due soon · 37 routine = 50. This matches the sidebar Work Hub badge (50) and the cards+cluster data-count totals (ROUTINE: 5 standalone + 7+7+9+3+3+3)",
+    "Sections are in the order now/next/routine. Every NOW card has tone=red, NEXT has amber, ROUTINE has slate",
+    "NOW order: IMAN DE CONDOR 'Fax completed insurance form…' (Overdue · 2 days) is first. Next: JIMENEZ LEMON B1 (Overdue), JIMENEZ LEMON 'Call patient with lab results' (Due today), then the ASAP cards (incl. POZAS ARDIAN 'Mother called, needs apt asap.'), then Signed · action required",
+    "NEXT: TESTPATIENT Iter28 'Chart copy for insurer' (Due in 4 days) comes before 'Discuss procedure — Book patient' (B2 · 3–4 weeks)",
+    "ROUTINE BMD cluster: data-count=7, data-open=false by default. Toggling it shows 7 cards with 7 unique patient names. Selecting a card shows work-detail and the cluster stays open. RODRIGUES DA CUNHA 'Provider moved…' is a standalone ROUTINE card",
+    "The NOW cluster 'Call patient — put through to me when I arrive' (count 4) is open by default",
+    "No old badges (priority/attention/category/awaiting/overdue) on any card for admin or staff. Each card shows one owner line ('Clinic queue · from Dr. Pablo Aguayo', 'You · from …'). 'With … · Physician' never appears",
+    "Unread: clicking a NEW card sets data-unread to 0 and removes the dot. It stays read after reload (localStorage key vien.work.seen.6aab65435a65f344daf9be30)",
+    "Detail header shows ref (QA-TRI-*), category tag, patient, a neutral slate NEW status chip and a single work-detail-owner line ('Clinic queue'). No work-detail-awaiting. The handoff/in-progress/waiting/complete/reply actions are all present and were NOT executed",
+    "Section toggles collapse and expand. Switching Sent and back to My Work resets every section to open",
+    "Sent: summary 1/0/2. IMAN DE CONDOR 'complete insurance form' is in NOW with 'Signed · action required'. The Include completed checkbox toggles; admin has no completed sent items, so no Completed section appeared (expected)",
+    "Waiting: 1 card shows 'Resume in 7 days', amber, in NEXT ('Waiting on Dr. Aguayo · from Kevin (Front Desk)'). History: no summary or sections, shows 'No completed items yet.' (admin has no history, so HistoryCards could not be visually checked)",
+    "Mobile: summary and sections are stacked. Clicking a card hides the list and shows the detail with Back to list. Back returns to the list. No horizontal overflow (scrollWidth 390)",
+    "Staff: same triage layout (9/1/38), no old badges, concise owners, light theme renders well"
+  ],
+  "backend_issues": {"critical": [], "minor": []},
+  "frontend_issues": {
+    "ui_bugs": [
+      {"component": "WorkHub desktop detail panel", "issue": "The right-hand detail column is not sticky. When you select a card lower in the list (e.g. a ROUTINE card at scrollY≈905), work-detail stays at the top of the page (bounding box y=-731) and is off-screen, so it looks like nothing happened. Suggest 'md:sticky md:top-4 md:self-start md:max-h-[calc(100vh-2rem)] md:overflow-auto' on the right column wrapper, or scroll it into view on select", "selector": "[data-testid='work-detail']", "priority": "MEDIUM"},
+      {"component": "workHubTriage.dueText (code review)", "issue": "A WAITING item with no due_at and a waiting_until in the past (not today) gets rank 0 (NOW, via isOverdue/effectiveDue). But overdueDays() only looks at due_at, so dueText falls through to daysUntil<=0 and shows 'Resume in -N days' (or 'Resume in 0 days') with an amber dot inside the red NOW section. Fix: let dueText handle a past effectiveDue (e.g. 'Resume overdue' / 'Overdue', tone red)", "selector": "[data-testid='work-card-due']", "priority": "LOW"}
+    ],
+    "integration_issues": [],
+    "design_issues": [
+      {"screen": "Sent view", "issues": ["Items the user created themselves (e.g. 'hi test', 'complete insurance form' sent by admin) show the blue unread dot because isUnread only checks status NEW. Suggest skipping unread when item.created_by === userId"]},
+      {"screen": "Cluster header", "issues": ["The NOW cluster subtitle says '1 patient · QA TEMP Patient' while it holds 4 items (one has 'No patient'). Consider '4 items · 1 patient' to avoid confusion"]}
+    ]
+  },
+  "test_report_links": [],
+  "action_items": [
+    "Make the desktop WorkDetail column sticky, or scroll it into view on select",
+    "dueText: handle a past waiting_until (WAITING, no due_at) as overdue/red instead of 'Resume in -N days' amber",
+    "Optional: do not mark self-sent items as unread in the Sent view"
+  ],
+  "critical_code_review_comments": [
+    "overdueDays (workHubParts) uses due_at only, but isOverdue (workHubTriage) uses effectiveDue (due_at or waiting_until). The rank and the displayed text can disagree for WAITING items",
+    "The seen-set in localStorage is capped at 500 ids (slice(-500)). Fine for now"
+  ],
+  "updated_files": [],
+  "success_rate": {"backend": "N/A (frontend only)", "frontend": "100% of requested checks pass; 1 medium UX issue + 1 low code-review bug"},
+  "test_credentials": "Admin kevinrodriguez9528@gmail.com / VisitaAdmin2026!; Staff staff@visita.demo / Staff2026! (from /app/memory/test_credentials.md)",
+  "seed_data_creation": "None by the tester. The main agent's QA-TRI-* fixtures were left untouched. No data-changing actions were run. Some NEW items were marked read in localStorage only (admin: LOPEZ Maria BMD QA-TRI-F469, RODRIGUES DA CUNHA 'Provider moved', IMAN DE CONDOR 'Fax…' via mobile)",
+  "retest_needed": false,
+  "should_main_agent_self_test": true,
+  "context_for_next_testing_agent": "The Work Hub triage UI is verified. Admin My Work is 11/2/37. History is empty for admin, so HistoryCards are unverified. The sticky detail panel issue is still open."
+}

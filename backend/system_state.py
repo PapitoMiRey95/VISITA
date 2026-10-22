@@ -34,9 +34,11 @@ async def get_state(fresh: bool = False) -> dict:
     return state
 
 
-async def _save(state: dict):
-    await db.system_state.update_one({"id": "global"}, {"$set": state}, upsert=True)
-    _cache.update(at=time.monotonic(), state=state)
+async def _save(state: dict, *fields: str):
+    """Targeted write of the given top-level fields only (default: announcement + maintenance) — never the whole doc."""
+    fields = fields or ("announcement", "maintenance")
+    await db.system_state.update_one({"id": "global"}, {"$set": {f: state[f] for f in fields}}, upsert=True)
+    _cache.update(at=0.0, state=None)
 
 
 def actor_label(user: dict) -> dict:
@@ -46,14 +48,14 @@ def actor_label(user: dict) -> dict:
 async def set_announcement(message: str, type_: str, user: dict) -> dict:
     s = await get_state(fresh=True)
     s["announcement"] = {"active": True, "type": type_, "message": message.strip(), "updated_at": now_iso(), "by": actor_label(user)}
-    await _save(s)
+    await _save(s, "announcement")
     return s["announcement"]
 
 
 async def clear_announcement(user: dict) -> dict:
     s = await get_state(fresh=True)
     s["announcement"] = {**s["announcement"], "active": False, "updated_at": now_iso(), "by": actor_label(user)}
-    await _save(s)
+    await _save(s, "announcement")
     return s["announcement"]
 
 
@@ -61,7 +63,7 @@ async def set_maintenance(on: bool, message: str, user: dict) -> dict:
     s = await get_state(fresh=True)
     s["maintenance"] = {"on": on, "message": (message or "").strip() or DEFAULT_MAINTENANCE_MSG,
                         "since": now_iso() if on else None, "by": actor_label(user)}
-    await _save(s)
+    await _save(s, "maintenance")
     return s["maintenance"]
 
 

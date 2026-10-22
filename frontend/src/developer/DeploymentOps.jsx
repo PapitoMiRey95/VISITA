@@ -5,6 +5,7 @@ import { Rocket, Activity, History, Megaphone } from "lucide-react";
 import { api, formatErr } from "../lib/api";
 import { Button } from "../components/ui/button";
 import { Input } from "../components/ui/input";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "../components/ui/select";
 import { formatDateTime } from "../lib/date";
 
 const STATE_STYLE = {
@@ -60,9 +61,12 @@ function StateStrip({ d, onChanged }) {
             <div className="mt-4 flex flex-wrap items-end gap-2" data-testid="dep-actions">
                 {st !== "MAINTENANCE" && st !== "UPDATING" && (<>
                     <label className="text-xs text-slate-400">Kind
-                        <select value={kind} onChange={(e) => setKind(e.target.value)} className="block mt-1 h-8 rounded-sm bg-slate-950 border border-slate-700 text-slate-100 text-xs px-2" data-testid="dep-kind">
-                            {(d.kinds || []).map((k) => <option key={k} value={k}>{k === "CODE" ? "CODE deploy" : k === "RESOURCE" ? "RESOURCE-only republish" : "HOTFIX / redeploy"}</option>)}
-                        </select>
+                        <Select value={kind} onValueChange={setKind}>
+                            <SelectTrigger className="mt-1 h-8 w-52 text-xs bg-slate-950 border-slate-700 text-slate-100" data-testid="dep-kind"><SelectValue /></SelectTrigger>
+                            <SelectContent className="bg-slate-900 border-slate-700 text-slate-100">
+                                {(d.kinds || []).map((k) => <SelectItem key={k} value={k} data-testid={`dep-kind-${k.toLowerCase()}`}>{k === "CODE" ? "CODE deploy" : k === "RESOURCE" ? "RESOURCE-only republish" : "HOTFIX / redeploy"}</SelectItem>)}
+                            </SelectContent>
+                        </Select>
                     </label>
                     <label className="text-xs text-slate-400">Expected build (commit){kind === "RESOURCE" ? " — ignored" : ""}
                         <Input value={commit} onChange={(e) => setCommit(e.target.value)} disabled={kind === "RESOURCE"} placeholder={d.release?.commit || "e.g. cacb15e"} className="mt-1 h-8 w-40 text-xs font-mono bg-slate-950 border-slate-700 text-slate-100" data-testid="dep-expected-commit" />

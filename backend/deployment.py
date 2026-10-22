@@ -43,9 +43,14 @@ async def get() -> dict:
 
 
 async def _save(dep: dict):
-    s = await sys_mod.get_state(fresh=True)
-    s["deployment"] = dep
-    await sys_mod._save(s)
+    # Targeted write: never read-modify-write the whole system_state doc (cron verify vs operator edits).
+    await db.system_state.update_one({"id": "global"}, {"$set": {"deployment": dep}}, upsert=True)
+    sys_mod._cache.update(state=None, at=0.0)
+
+
+def _reset_run(dep: dict):
+    dep.update(mode=None, kind=None, note=None, expected_commit=None, deployment_id=None, issue_seen=False)
+    dep["verification"]["deadline_at"] = None
 
 
 def notice_for(dep: dict, maintenance_on: bool) -> dict | None:
@@ -85,6 +90,8 @@ async def begin_update(user: dict, kind: str, note: str, expected_commit: str | 
     if dep["state"] == "MAINTENANCE":
         raise ValueError("Exit Full Maintenance before starting a Soft Update.")
     now = datetime.now(timezone.utc)
+    if dep.get("deployment_id") and dep["state"] in ("UPDATING", "SERVICE_ISSUE"):
+        await _hist_update(dep["deployment_id"], status="COMPLETED", result="SUPERSEDED", completed_at=now_iso())
     dep_id = str(uuid.uuid4())
     await db.deployment_history.insert_one({
         "id": dep_id, "kind": kind, "mode": "SOFT", "note": (note or "").strip() or None, "status": "IN_PROGRESS", "result": None,
@@ -134,7 +141,9 @@ async def verify(probe: dict, source: str = "cron") -> dict:
             result = "RECOVERED" if dep.get("issue_seen") else "SUCCEEDED"
             await _hist_update(dep.get("deployment_id"), status="COMPLETED", result=result, completed_at=now_iso(), build_to=probe.get("commit"),
                                verified_at=now_iso())
-            await _transition(dep, "NORMAL", None, "verification_passed", streak=v["streak"], result=result)
+            dep_id = dep.get("deployment_id")
+            _reset_run(dep)
+            await _transition(dep, "NORMAL", None, "verification_passed", streak=v["streak"], result=result, deployment_id=dep_id)
             return {"state": "NORMAL", "ok": True, "reasons": [], "streak": v["streak"], "result": result}
         deadline = v.get("deadline_at")
         if deadline and now > datetime.fromisoformat(deadline):
@@ -170,8 +179,9 @@ async def resolve(user: dict, note: str, rolled_back: bool, current_commit: str 
     result = "ROLLED_BACK" if rolled_back else "RESOLVED"
     await _hist_update(dep.get("deployment_id"), status="COMPLETED", result=result, completed_at=now_iso(), build_to=current_commit,
                        resolution_note=(note or "").strip() or None)
-    dep["verification"]["deadline_at"] = None
-    await _transition(dep, "NORMAL", user, "manual_resolve", result=result, note=(note or "").strip() or None)
+    dep_id = dep.get("deployment_id")
+    _reset_run(dep)
+    await _transition(dep, "NORMAL", user, "manual_resolve", result=result, note=(note or "").strip() or None, deployment_id=dep_id)
     return dep
 
 
@@ -179,6 +189,11 @@ async def sync_maintenance(on: bool, user: dict, message: str | None):
     """Keep deployment.state in step with the existing Full Maintenance flag + history row."""
     dep = await get()
     if on:
+        if dep["state"] == "MAINTENANCE":
+            return  # already in Full Maintenance — no duplicate row
+        if dep.get("deployment_id") and dep["state"] in ("UPDATING", "SERVICE_ISSUE"):
+            await _hist_update(dep["deployment_id"], status="COMPLETED", result="SUPERSEDED", completed_at=now_iso(),
+                               resolution_note="Superseded by Full Maintenance")
         dep_id = str(uuid.uuid4())
         await db.deployment_history.insert_one({"id": dep_id, "kind": "MAINTENANCE", "mode": "FULL", "note": (message or "").strip() or None, "status": "IN_PROGRESS",
                                                 "result": None, "started_at": now_iso(), "completed_at": None, "operator": sys_mod.actor_label(user),
@@ -186,8 +201,10 @@ async def sync_maintenance(on: bool, user: dict, message: str | None):
         dep.update(mode="FULL", kind="MAINTENANCE", deployment_id=dep_id, note=(message or "").strip() or None)
         await _transition(dep, "MAINTENANCE", user, "full_maintenance_entered")
     else:
+        if dep["state"] != "MAINTENANCE":
+            return  # EXIT while not in Full Maintenance never touches UPDATING / SERVICE_ISSUE
         await _hist_update(dep.get("deployment_id"), status="COMPLETED", result="SUCCEEDED", completed_at=now_iso())
-        dep.update(mode=None, kind=None, deployment_id=None)
+        _reset_run(dep)
         await _transition(dep, "NORMAL", user, "full_maintenance_exited")
 
 

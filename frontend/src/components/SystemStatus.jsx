@@ -30,7 +30,7 @@ export function ManagedNotice() {
     if (!notice) return null;
     const issue = notice.kind !== "UPDATE";
     return (
-        <div className={`w-full px-4 py-2 text-[13px] flex items-center justify-center gap-2 ${issue ? "bg-[#0b2545] text-white" : "bg-[#0b2545] text-white"}`}
+        <div className="w-full px-4 py-2 text-[13px] flex items-center justify-center gap-2 bg-[#0b2545] text-white"
             role="status" data-testid="managed-notice" data-kind={notice.kind}>
             <span className={`w-2 h-2 rounded-full shrink-0 ${issue ? "bg-amber-300" : "bg-sky-300 animate-pulse"}`} />
             <span data-testid="managed-notice-message">{t(issue ? "system.noticeIssue" : "system.noticeUpdate")}</span>
@@ -64,7 +64,7 @@ export function MaintenanceScreen() {
     return (
         <div className="min-h-screen flex items-center justify-center bg-[#0b2545] text-white p-6" data-testid="maintenance-screen">
             <div className="max-w-sm text-center">
-                <div className="mx-auto w-14 h-14 rounded-2xl bg-cyan-500 flex items-center justify-center"><img src="/vien-logo.png" alt="" className="w-9 h-9" /></div>
+                <div className="mx-auto w-14 h-14 rounded-2xl bg-white flex items-center justify-center shadow-lg"><img src="/vien-logo.png" alt="" className="w-9 h-9" /></div>
                 <h1 className="mt-6 text-2xl font-extrabold" data-testid="maintenance-screen-title">{t("system.maintenanceTitle")}</h1>
                 <p className="mt-3 text-slate-300 text-[15px] leading-relaxed" data-testid="maintenance-screen-message">{t("system.maintenanceBody")}</p>
                 <button type="button" onClick={retry} disabled={busy} data-testid="maintenance-retry"

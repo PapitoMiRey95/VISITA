@@ -1,0 +1,42 @@
+{
+  "summary": "Deployment & Maintenance feature (Platform Control Center OPERATIONS + managed notice / maintenance screen / outage card). Backend: the 7 existing tests in test_deployment_state.py pass. I added test_deployment_state_extra.py with 12 tests: 9 pass and 3 fail, and all 3 failures are real state-machine integrity bugs. The 9 that pass cover the GET shape via the public URL, physician getting 403, cron rejecting a wrong secret and accepting the right one on the public URL, invalid kind returning 400, tier saving correctly, RESOURCE ignoring expected_commit, the Global message staying alongside UPDATING and surviving resolve, a patient getting 503 MAINTENANCE_MODE on /api/portal/me during Full Maintenance with history SUCCEEDED after EXIT, and audit rows for the transitions NORMAL<->UPDATING and NORMAL<->MAINTENANCE. Frontend: every requested UI flow passed. On the devops OPERATIONS tab, the state pills, build/tier save, readiness pills, notice preview and history all render, and the Maintenance and Global message cards sit below. The UI Begin Soft Update flow works: CODE with expected commit zzzz goes to UPDATING with 0 / 3 and a deadline, Run health check shows 'failed: commit … != expected zzzz', typing ISSUE enters SERVICE_ISSUE, typing RESOLVE returns to NORMAL. The managed notice shows the exact EN text on /login, /register/dr-aguayo, /portal (announcement below it) and /internal (announcement below it), and switches to Spanish on /login. Full Maintenance shows the branded screen for patient and physician but not for devops; /login shows kind MAINTENANCE; after EXIT, Retry brings the portal back. Outage card: a non-JSON 503 and a network abort both show the overlay (title, Retry, 'Retrying automatically in N s') over the still-mounted page with no 'origin error'/Cloudflare text; manual Retry and the 20 s auto-retry both clear it. Cleanup is done: NORMAL, maintenance OFF, announcement removed, tier cleared.",
+  "backend_issues": {
+    "critical": [
+      {"endpoint": "POST /api/developer/maintenance-mode {on:false, confirm:EXIT}", "issue": "If called while the state is SERVICE_ISSUE (or UPDATING) and maintenance is already off, deployment.sync_maintenance(False) sets the state to NORMAL and marks the active SERVICE_ISSUE history row result=SUCCEEDED. This skips the required typed RESOLVE and records a false success. Reproduced by test_exit_maintenance_does_not_clear_service_issue (state=NORMAL, history_result=SUCCEEDED).", "priority": "HIGH"},
+      {"endpoint": "POST /api/developer/deployment/service-issue (from NORMAL)", "issue": "deployment_id is never cleared after a deployment completes (verify → NORMAL, or resolve). A later manual ISSUE from NORMAL therefore takes the else-branch and overwrites the previous completed deployment's history row (status SERVICE_ISSUE, result MANUAL_ISSUE). A later resolve then rewrites it again as RESOLVED, corrupting the append-only history. Reproduced by test_manual_issue_from_normal_creates_new_row (previous row result became MANUAL_ISSUE).", "priority": "HIGH"}
+    ],
+    "minor": [
+      {"endpoint": "POST /api/developer/maintenance-mode {on:true}", "issue": "Entering Full Maintenance while UPDATING leaves the SOFT history row IN_PROGRESS forever, because sync_maintenance creates a new FULL row and drops the old deployment_id. This shows in the history table as a permanently IN_PROGRESS row. Reproduced by test_enter_maintenance_while_updating_closes_soft_row. Calling ENTER twice also creates duplicate FULL rows."},
+      {"endpoint": "deployment._save / system_state._save", "issue": "The whole system_state document is written with $set (read-modify-write). The background cron verify running every minute can overwrite an announcement or maintenance change made at the same moment with stale values (lost-update race). Prefer targeted $set on 'deployment' only."},
+      {"endpoint": "deployment.resolve / verify→NORMAL", "issue": "kind, mode, note and expected_commit are not reset on NORMAL, so the UI shows 'NORMAL since … · CODE' after the deployment has finished."}
+    ]
+  },
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [
+      {"flow": "Deployment history table", "issue": "Shows corrupted or stale rows caused by the backend bugs above: an orphan IN_PROGRESS SOFT row, and a RESOURCE row whose result was rewritten to RESOLVED.", "affected_selectors": ["[data-testid^=dep-history-row-]"]}
+    ],
+    "design_issues": [
+      {"screen": "Maintenance screen", "issues": ["The blue VIen logo on the cyan-500 tile is low contrast (the logo almost disappears)."]},
+      {"screen": "DeploymentOps", "issues": ["dep-kind uses a native <select> rather than the shadcn Select used elsewhere (minor, but inconsistent).", "ManagedNotice has a no-op ternary: both branches use bg-[#0b2545]."]}
+    ]
+  },
+  "test_report_links": ["/app/backend/tests/test_deployment_state.py", "/app/backend/tests/test_deployment_state_extra.py", "/app/test_reports/pytest/pytest_deployment_extra.xml"],
+  "action_items": [
+    "deployment.sync_maintenance(on=False): only transition and close the history row when the state is actually MAINTENANCE (or maintenance.on was true); otherwise leave SERVICE_ISSUE/UPDATING untouched.",
+    "Clear deployment_id (plus kind/mode/expected_commit/note) when a deployment completes (verify→NORMAL, resolve, maintenance exit), so a manual ISSUE from NORMAL inserts a new INCIDENT row instead of overwriting history.",
+    "sync_maintenance(on=True) while UPDATING/SERVICE_ISSUE: close the existing SOFT row (e.g. status COMPLETED, result SUPERSEDED). Make ENTER idempotent when maintenance is already on (no duplicate FULL rows).",
+    "Use a targeted update_one({'id':'global'},{'$set':{'deployment':dep}}) in deployment._save to avoid the race that overwrites announcement/maintenance."
+  ],
+  "critical_code_review_comments": [
+    "deployment.evaluate: the commit-match expression relies on operator precedence (A or B if cur else False). It is correct, but add parentheses for readability.",
+    "The RoleRoute maintenance screen depends on a 30 s banner poll. A MAINTENANCE_MODE 503 seen by the axios interceptor could call refresh() so the screen appears immediately instead of per-page errors for up to 30 s.",
+    "server.py is >11k lines; the deployment endpoints could move into a router module."
+  ],
+  "updated_files": ["/app/backend/tests/test_deployment_state_extra.py"],
+  "success_rate": {"backend": "84% (16/19 incl. 7 existing; 3 failures are real edge-case bugs)", "frontend": "100% of requested UI flows"},
+  "seed_data_creation": "Only deployment_history rows with TEST_ notes and audit rows were added; no patient data was touched. Final state: NORMAL, maintenance off, announcement removed, tier null.",
+  "retest_needed": true,
+  "should_main_agent_self_test": true,
+  "context_for_next_testing_agent": "Run the backend tests with: cd /app/backend && python -m pytest -n0 tests/test_deployment_state.py tests/test_deployment_state_extra.py (pytest.ini adds xdist; these tests change state and must run sequentially with -n0). For stable UI states use expected_commit 'zzzz'. Outage card: /api/portal/** interception alone may not fire on the Appts tab (it uses /availability/slots and cached data); intercept **/api/** while skipping /api/health, /api/system/ and /api/auth/me, then click nav-prescriptions."
+}

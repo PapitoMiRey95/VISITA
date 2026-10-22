@@ -1,0 +1,59 @@
+{
+  "summary": "Tested the operations_operator vs developer_ops role split (API matrix and UI), the 4-step Update wizard, the SERVICE_ISSUE guided flow, the maintenance bypass, audit and cleanup. Backend pytest: 65 of 66 passed (new test_cc_operator_role.py plus the iteration 90 and 91 suites). Every requested item passed in the UI. I found 2 real issues: (1) the operator can get out of SERVICE_ISSUE through begin-update, which gets around the developer_ops-only resolve; (2) POST /api/platform/auth/login returns 503 during Full Maintenance. I also found a dead 'Bring VIen back online' button for the operator during maintenance, plus small copy issues.",
+  "permission_matrix": {
+    "operations_operator": {"200": ["GET /developer/status", "GET /developer/deployment", "PUT /developer/announcement", "DELETE /developer/announcement", "POST /developer/deployment/begin-update", "POST /developer/deployment/verify"], "403": ["POST /developer/deployment/service-issue", "POST /developer/deployment/resolve", "PUT /developer/deployment/build-info", "POST /developer/maintenance-mode", "GET /developer/platform-config", "GET /developer/data-ops/status", "POST /developer/platform-config/rollback"]},
+    "developer_ops": "200 on all of the above (service-issue/resolve/maintenance/platform-config/data-ops verified)",
+    "physician_PAGUAYO_and_patient_maria": "403 on all 13 /api/developer/* endpoints listed"
+  },
+  "backend_issues": {
+    "critical": [
+      {"endpoint": "POST /api/developer/deployment/begin-update (OPERATOR_ROLES)", "issue": "Privilege escalation: while the state is SERVICE_ISSUE, operations_operator can call begin-update (e.g. kind RESOURCE). It returns 200 and the state goes SERVICE_ISSUE → UPDATING. The cron then auto-verifies and returns to NORMAL, so the operator gets around the developer_ops-only /resolve. Reproduced: tests/cc_probe_operator_escape.py. The UI makes this easy because the task-update card stays enabled during SERVICE_ISSUE. Fix: in begin_update, reject with 403 or 409 when the state is SERVICE_ISSUE and actor role != developer_ops. Also disable task-update for limited users in SERVICE_ISSUE. (During MAINTENANCE it is correctly rejected with 400.)", "priority": "HIGH"},
+      {"endpoint": "POST /api/platform/auth/login", "issue": "Returns 503 MAINTENANCE_MODE during Full Maintenance. '/api/platform/auth/login' is missing from system_state.ALLOW_PREFIXES. The middleware also has no role for an unauthenticated request. So a developer_ops or operator who is signed out cannot sign in through the platform endpoint until maintenance ends. The UI is unaffected only because /signin?internal=1 currently calls /api/auth/login, which is allowed. Fix: add '/api/platform/auth/login' to ALLOW_PREFIXES.", "priority": "HIGH"}
+    ],
+    "minor": [
+      {"endpoint": "maintenance_mode_gate middleware", "issue": "Bypass is only `role in OPS_ROLES`. operations_operator gets through on /api/developer/* only because of ALLOW_PREFIXES. Any non-developer API the operator UI might call during maintenance gets a 503. Consider OPERATOR_ROLES for consistency with the frontend's RoleRoute platformRole."},
+      {"endpoint": "/api/auth/login", "issue": "The generic login also accepts developer_ops/operations_operator accounts. Check that this is intended, since the platform login is meant to be the separate path."}
+    ]
+  },
+  "frontend_issues": {
+    "ui_bugs": [
+      {"component": "SimpleOps attention (MAINTENANCE, limited)", "issue": "The operator sees 'Recommended: Bring VIen back online' with a simple-recommended-run button. Clicking it calls setWiz('offline'), but OfflineWizard is not rendered for limited users, so nothing happens. Hide the button or route it to the contact-developer message. The same dead path exists for rec 'resolve' (SERVICE_ISSUE where the last check passed → setWiz('recover'), and RecoverWizard is not rendered for limited users).", "selector": "[data-testid=simple-recommended-run]", "priority": "MEDIUM"},
+      {"component": "HelpWizard → contact (limited)", "issue": "The simple-contact-developer box is rendered at the bottom of the page (top ≈1400px), below the Recent activity section. After 'Take me there' the operator sees no visible feedback without scrolling. Scroll it into view, or render it near the attention section or as a dialog.", "selector": "[data-testid=simple-contact-developer]", "priority": "LOW"}
+    ],
+    "integration_issues": [],
+    "design_issues": [
+      {"screen": "Update wizard", "issues": ["The dialog description still says 'Three steps: prepare VIen, publish the update, let VIen verify itself.' but the wizard now has 4 steps."]},
+      {"screen": "Operator copy", "issues": ["The CheckWizard failure text tells the operator 'If this continues, use “Recover from a problem”', which the operator cannot do.", "In HelpWizard, the 'stop' advice says 'Use “Take VIen temporarily offline”' and the 'login' advice says 'use “Recover from a problem”'. For operators the advice should point to Contact developer."]},
+      {"screen": "Recent activity", "issue_note": "OK", "issues": ["The history row title says 'problem resolved by the operator · Performed by Operations Operator' even when developer_ops performed the resolve, because the actor shown is the one who began the update. This is ambiguous for audit readers."]}
+    ]
+  },
+  "passed_ui_checks": [
+    "Operator login /signin?internal=1 → /developer in SIMPLE; with localStorage vien_cc_mode=ADVANCED preset (also after a reload) there is no cc-mode-toggle, no dev-tabs and no cc-goto-advanced; cc-limited-badge and cc-limited-note are visible; only task-update/message/check/help are shown (no task-offline/task-recover)",
+    "Update wizard: progress shows Choose/Prepare VIen/Publish/Verification; step 2 contains 'does not install or publish anything' and 'The update is NOT published by this button.'; the button is 'Prepare VIen'; step 3 shows publish steps with 0 links; step 4 shows verification; the status hero shows 'VIen is being updated.'; the banner notice kind is UPDATE; history shows 'Software update in progress · Performed by Operations Operator · TEST_op update'",
+    "Help 'stop' → simple-contact-developer (no offline wizard); Help 'message' → wiz-message; the operator posted the message, patient /portal showed global-announcement, and the operator removed it",
+    "SERVICE_ISSUE as operator: one simple-recommended-run 'Run Check VIen' with no recover; after the failed check: simple-issue-persists 'The problem is still present.' with contact and recheck and no recover; contact text is shown; recheck reopens wiz-check",
+    "SERVICE_ISSUE as developer_ops: simple-issue-recover is shown after the failed check; after clearing expected_commit: simple-issue-passing + simple-issue-resolve → RecoverWizard → RESOLVE → NORMAL",
+    "developer_ops: cc-mode-toggle and all 6 task cards in SIMPLE; ADVANCED shows dev-tabs (OVERVIEW/FEATURES/PUBLIC SITE/OPERATIONS/DATA OPS) and OPERATIONS dep-ops with technical controls",
+    "Full Maintenance: the operator opens /developer (no maintenance screen); patient /portal shows maintenance-screen",
+    "Audit: announcement_published, announcement_removed and deployment_state_changed rows have actor_role operations_operator"
+  ],
+  "test_report_links": ["/app/backend/tests/test_cc_operator_role.py", "/app/backend/tests/cc_probe_operator_escape.py", "/app/backend/tests/cc_setup_issue.py", "/app/test_reports/pytest/pytest_iter92.xml"],
+  "action_items": [
+    "HIGH: Block operations_operator from begin-update while the state is SERVICE_ISSUE (backend) and disable task-update for limited users in SERVICE_ISSUE (frontend)",
+    "HIGH: Add '/api/platform/auth/login' to system_state.ALLOW_PREFIXES so platform sign-in works during Full Maintenance",
+    "MEDIUM: Hide or redirect the simple-recommended-run 'Bring VIen back online' button (MAINTENANCE) and the 'Mark as resolved' recommendation for limited users; it is currently a dead button",
+    "LOW: Fix the Update wizard description ('Three steps' → four), make the operator copy in CheckWizard/HelpWizard role-aware, and scroll the contact-developer box into view"
+  ],
+  "critical_code_review_comments": [
+    "deployment.begin_update has no role or state guard that separates operator from developer_ops; SERVICE_ISSUE is the only state an operator must not leave",
+    "maintenance_mode_gate uses OPS_ROLES while the frontend treats both platform roles as exempt; align on OPERATOR_ROLES",
+    "SimpleOps renders recommendation buttons from attention() without checking `limited`; REC targets 'online' and 'resolve' map to wizards that are not mounted for limited users"
+  ],
+  "updated_files": ["/app/backend/tests/test_cc_operator_role.py", "/app/backend/tests/cc_probe_operator_escape.py", "/app/backend/tests/cc_setup_issue.py"],
+  "success_rate": {"backend": "98% (65/66; the 1 failure is the real platform-login-during-maintenance bug)", "frontend": "100% of the requested flows passed; 1 dead-button bug and copy issues found"},
+  "seed_data_creation": "None. Only TEST_-prefixed notes and announcements, which were removed.",
+  "retest_needed": true,
+  "should_main_agent_self_test": false,
+  "context_for_next_testing_agent": "Run: cd /app/backend && python -m pytest -n0 tests/test_cc_operator_role.py tests/test_cc_simple_mode_api.py tests/test_deployment_state*.py. test_maintenance_operator_access is expected to fail until /api/platform/auth/login is allow-listed. To check the escalation fix, run tests/cc_probe_operator_escape.py (it leaves MAINTENANCE ON at the end; EXIT afterwards via /api/auth/login with the devops token, since platform login gets a 503 during maintenance). cc_setup_issue.py issue|clear|resolve drives the SERVICE_ISSUE state. Final state: NORMAL, maintenance OFF, no announcement.",
+  "rca of the issue": "Escalation: begin-update is guarded by OPERATOR_ROLES and dep_mod.begin_update allows the SERVICE_ISSUE → UPDATING transition (the earlier state is marked SUPERSEDED). The cron then verifies 3× OK and goes to NORMAL. Platform login 503: system_state.ALLOW_PREFIXES contains '/api/auth/login' but not '/api/platform/auth/login'; the unauthenticated request has role=None → 503."
+}

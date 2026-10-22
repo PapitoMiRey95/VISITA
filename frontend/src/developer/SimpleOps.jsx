@@ -104,18 +104,22 @@ export function SimpleOps({ status, onChanged, limited = false }) {
                         )}
                         {contact && <div className="rounded-md border border-slate-700 p-3 text-xs text-slate-300" data-testid="simple-contact-developer">Contact your VIen developer (OAKMONT Developers). Share: the time it started ({d.deployment.since ? formatDateTime(d.deployment.since) : "—"}), what users report, and that VIen shows “needs attention”. Do not change anything else meanwhile.</div>}
                     </div>
-                ) : att ? (
+                ) : att ? (<>
+                    {limited && contact && <div className="mt-2 rounded-md border border-slate-700 p-3 text-xs text-slate-300" data-testid="simple-contact-developer">Taking VIen offline or recovering from a problem requires the developer role. Contact your VIen developer (OAKMONT Developers) and describe what you need.</div>}
                     <div className="mt-2 flex flex-wrap items-center justify-between gap-3">
-                        <div><div className="text-sm text-slate-100" data-testid="simple-attention-text">{att.text}</div><div className="text-xs text-slate-400 mt-1">Recommended: <span className="text-emerald-300 font-semibold" data-testid="simple-recommended">{REC[att.rec][0]}</span></div></div>
-                        <Button onClick={() => setWiz(att.rec === "online" ? "offline" : att.rec === "resolve" ? "recover" : att.rec)} className="bg-emerald-500 hover:bg-emerald-400 text-slate-950 font-bold" data-testid="simple-recommended-run">{REC[att.rec][1]}</Button>
+                        <div><div className="text-sm text-slate-100" data-testid="simple-attention-text">{att.text}</div><div className="text-xs text-slate-400 mt-1">Recommended: <span className="text-emerald-300 font-semibold" data-testid="simple-recommended">{limited && (att.rec === "online" || att.rec === "resolve") ? "Contact developer" : REC[att.rec][0]}</span></div></div>
+                        {(limited && (att.rec === "online" || att.rec === "resolve"))
+                            ? <Button variant="outline" onClick={() => setContact(true)} className="border-slate-600 text-slate-200" data-testid="simple-recommended-contact">Contact developer</Button>
+                            : <Button onClick={() => setWiz(att.rec === "online" ? "offline" : att.rec === "resolve" ? "recover" : att.rec)} className="bg-emerald-500 hover:bg-emerald-400 text-slate-950 font-bold" data-testid="simple-recommended-run">{REC[att.rec][1]}</Button>}
                     </div>
-                ) : <div className="mt-2 text-sm text-slate-200" data-testid="simple-attention-none">{recentRecovery(d.history?.[0]) ? "Everything is healthy again. No further action is needed." : "No. All system checks are passing."}</div>}
+                    </>
+                ) : <div className="mt-2 text-sm text-slate-200" data-testid="simple-attention-none">{limited && contact && <div className="mb-2 rounded-md border border-slate-700 p-3 text-xs text-slate-300" data-testid="simple-contact-developer">Taking VIen offline or recovering from a problem requires the developer role. Contact your VIen developer (OAKMONT Developers) and describe what you need.</div>}{recentRecovery(d.history?.[0]) ? "Everything is healthy again. No further action is needed." : "No. All system checks are passing."}</div>}
             </section>
 
             <section>
                 <div className="text-[11px] uppercase tracking-widest text-slate-500 mb-2">What can I safely do?</div>
                 <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-3" data-testid="simple-tasks">
-                    <TaskCard Icon={Rocket} title="Update VIen" hint="Install a new version while VIen remains available." onClick={() => setWiz("update")} testid="task-update" disabled={maintenanceOn || st === "UPDATING"} />
+                    <TaskCard Icon={Rocket} title="Update VIen" hint="Install a new version while VIen remains available." onClick={() => setWiz("update")} testid="task-update" disabled={maintenanceOn || st === "UPDATING" || (limited && st === "SERVICE_ISSUE")} />
                     {!limited && <TaskCard Icon={Wrench} title={maintenanceOn ? "Bring VIen back online" : "Take VIen temporarily offline"} hint={maintenanceOn ? "Users can use VIen again." : "For maintenance that should stop user changes."} onClick={() => setWiz("offline")} testid="task-offline" />}
                     <TaskCard Icon={Megaphone} title="Post a message to users" hint="Show an informational notice across VIen." onClick={() => setWiz("message")} testid="task-message" />
                     <TaskCard Icon={HeartPulse} title="Check VIen" hint="Check the website, database and storage." onClick={() => setWiz("check")} testid="task-check" />
@@ -132,10 +136,10 @@ export function SimpleOps({ status, onChanged, limited = false }) {
             <UpdateWizard key={`u${wiz === "update"}`} open={wiz === "update"} onClose={close} onDone={changed} />
             {!limited && <OfflineWizard key={`o${wiz === "offline"}${maintenanceOn}`} open={wiz === "offline"} onClose={close} onDone={changed} on={maintenanceOn} />}
             <MessageWizard key={`m${wiz === "message"}`} open={wiz === "message"} onClose={close} onDone={changed} current={status?.announcement} />
-            <CheckWizard key={`c${wiz === "check"}`} open={wiz === "check"} onClose={close} onDone={(r) => { if (r?.data) setIssueCheck(r.data); changed(); }} />
+            <CheckWizard key={`c${wiz === "check"}`} limited={limited} open={wiz === "check"} onClose={close} onDone={(r) => { if (r?.data) setIssueCheck(r.data); changed(); }} />
             {!limited && <RecoverWizard key={`r${wiz === "recover"}`} open={wiz === "recover"} onClose={close} onDone={changed} state={st} />}
-            <HelpWizard key={`h${wiz === "help"}`} open={wiz === "help"} onClose={close} onPick={(w) => (limited && (w === "offline" || w === "recover")) ? setContact(true) : setWiz(w)} />
-            {limited && contact && st !== "SERVICE_ISSUE" && <div className="rounded-md border border-slate-700 p-3 text-xs text-slate-300" data-testid="simple-contact-developer">Taking VIen offline or recovering from a problem requires the developer role. Contact your VIen developer (OAKMONT Developers) and describe what you need.</div>}
+            <HelpWizard key={`h${wiz === "help"}`} limited={limited} open={wiz === "help"} onClose={close} onPick={(w) => (limited && (w === "offline" || w === "recover")) ? setContact(true) : setWiz(w)} />
+
         </div>
     );
 }

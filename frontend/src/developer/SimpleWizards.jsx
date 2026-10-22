@@ -47,7 +47,7 @@ export function UpdateWizard({ open, onClose, onDone, presetKind }) {
     const [busy, run] = useRun(onDone);
     const prepare = async () => { const r = await run(() => api.post("/developer/deployment/begin-update", { kind, note }), "VIen is prepared: the update notice is live. Now publish the update."); if (r) setStep(3); };
     return (
-        <Shell open={open} onClose={onClose} title="Update VIen" desc="Three steps: prepare VIen, publish the update, let VIen verify itself." testid="wiz-update">
+        <Shell open={open} onClose={onClose} title="Update VIen" desc="Choose the update, prepare VIen, publish it in the hosting panel, then let VIen verify itself." testid="wiz-update">
             <ol className="flex gap-2 text-[11px]" data-testid="wiz-update-progress">{["Choose", "Prepare VIen", "Publish", "Verification"].map((l, i) => <li key={l} className={`px-2 py-0.5 rounded-sm border ${step === i + 1 ? "border-emerald-400 text-emerald-300" : step > i + 1 ? "border-slate-700 text-slate-500 line-through" : "border-slate-800 text-slate-500"}`}>{i + 1}. {l}</li>)}</ol>
             {step === 1 && (
                 <Step n={1} title="What are you updating?">
@@ -128,7 +128,7 @@ export function MessageWizard({ open, onClose, onDone, current }) {
     );
 }
 
-export function CheckWizard({ open, onClose, onDone }) {
+export function CheckWizard({ open, onClose, onDone, limited = false }) {
     const [result, setResult] = useState(null);
     const [busy, run] = useRun(onDone);
     const check = async () => { const r = await run(() => api.post("/developer/deployment/verify"), "Check complete"); if (r) setResult(r.data); };
@@ -137,7 +137,7 @@ export function CheckWizard({ open, onClose, onDone }) {
             {!result && <p className="text-sm text-slate-300">This takes a few seconds and changes nothing.</p>}
             {result && (
                 <div className={`rounded-md border p-3 text-sm ${result.ok ? "border-emerald-500/40 bg-emerald-500/10 text-emerald-200" : "border-amber-500/40 bg-amber-500/10 text-amber-100"}`} data-testid="wiz-check-result">
-                    {result.ok ? "All checks passed. VIen is healthy." : `A check did not pass (${result.reasons.map(humanReason).join("; ")}). If this continues, use “Recover from a problem”.`}
+                    {result.ok ? "All checks passed. VIen is healthy." : `A check did not pass (${result.reasons.map(humanReason).join("; ")}). ${limited ? "If this continues, contact your developer." : "If this continues, use “Recover from a problem”."}`}
                     {result.state === "NORMAL" && result.result && <div className="mt-1 text-xs">VIen verified itself and returned to normal operation.</div>}
                 </div>
             )}
@@ -183,13 +183,13 @@ export function RecoverWizard({ open, onClose, onDone, state }) {
     );
 }
 
-export function HelpWizard({ open, onClose, onPick }) {
+export function HelpWizard({ open, onClose, onPick, limited = false }) {
     const OPTIONS = [
         ["install", "I want to install an update", "Use “Update VIen”. VIen stays available and checks itself afterwards.", "update"],
         ["slow", "VIen feels slow", "Run “Check VIen” first. If checks pass, slowness is usually temporary; a server-resources update may help.", "check"],
-        ["login", "Users cannot log in", "Run “Check VIen”. If a check fails, use “Recover from a problem” and contact your developer.", "check"],
+        ["login", "Users cannot log in", limited ? "Run “Check VIen”. If a check fails, contact your developer right away." : "Run “Check VIen”. If a check fails, use “Recover from a problem” and contact your developer.", "check"],
         ["error", "A page is showing an error", "Run “Check VIen”. A failing check points to the cause; otherwise note the page and time for your developer.", "check"],
-        ["stop", "I need to temporarily stop access", "Use “Take VIen temporarily offline”. It blocks changes and shows a calm screen to users.", "offline"],
+        ["stop", "I need to temporarily stop access", limited ? "Taking VIen offline requires the developer role. Contact your developer; meanwhile you can post a message to users." : "Use “Take VIen temporarily offline”. It blocks changes and shows a calm screen to users.", "offline"],
         ["message", "I only want to post a message", "Use “Post a message to users”. It never blocks anyone.", "message"],
     ];
     const [sel, setSel] = useState(null);

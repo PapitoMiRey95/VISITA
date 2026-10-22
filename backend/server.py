@@ -9549,6 +9549,8 @@ async def developer_deployment(user: dict = Depends(require_roles(*OPERATOR_ROLE
 
 @api.post("/developer/deployment/begin-update")
 async def developer_begin_update(body: BeginUpdateBody, user: dict = Depends(require_roles(*OPERATOR_ROLES))):
+    if user["role"] not in OPS_ROLES and (await dep_mod.get())["state"] == "SERVICE_ISSUE":
+        raise HTTPException(status_code=403, detail="VIen needs attention. Only the developer role can start a new update or resolve the problem.")
     try:
         return await dep_mod.begin_update(user, body.kind, body.note or "", body.expected_commit, RELEASE_INFO.get("commit"))
     except ValueError as e:
@@ -11118,7 +11120,7 @@ async def maintenance_mode_gate(request: Request, call_next):
     state = await sys_mod.get_state()
     if not state["maintenance"]["on"]:
         return await call_next(request)
-    if role in OPS_ROLES:
+    if role in OPERATOR_ROLES:
         return await call_next(request)
     return JSONResponse(status_code=503, content={"detail": {"code": "MAINTENANCE_MODE", "message": state["maintenance"]["message"]}})
 

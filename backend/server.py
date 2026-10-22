@@ -57,6 +57,7 @@ import storage
 import work_hub as work_mod
 import locations as locations_mod
 import address_pools as address_pools_mod
+import med_history as med_history_mod
 import booking_types as bt_mod
 import profile_completion as prof_mod
 from db import (APPT_PATIENT_STATUS, BLD_ACTIVE, BLD_PATIENT_STATUS, IMG_ACTIVE,
@@ -3176,22 +3177,128 @@ async def create_rx(body: PrescriptionBody, ctx: PortalCtx = Depends(portal_acce
     return doc
 
 
+async def _portal_patient_refs(p: dict) -> list:
+    """All ids a portal patient's clinical records may be keyed under: the portal id, the matched directory id
+    and any directory record linked to this patient (Rx sent before the link used the directory id)."""
+    refs = {p["id"]}
+    if p.get("matched_directory_id"):
+        refs.add(p["matched_directory_id"])
+    async for d in db.patient_directory.find({"linked_patient_id": p["id"]}, {"_id": 0, "id": 1}):
+        refs.add(d["id"])
+    return list(refs)
+
+
+def _portal_med_view(d: dict, status: str) -> dict:
+    return {"id": d.get("id"), "regimen_key": d.get("regimen_key"), "drug": d.get("drug"), "strength": _med_strength_display(d),
+            "form": d.get("form"), "directions": d.get("sig"), "status": status, "last_prescribed_at": d.get("last_prescribed_at"),
+            "physician_name": d.get("physician_name")}
+
+
 @api.get("/portal/medications")
 async def portal_medications(ctx: PortalCtx = Depends(portal_access(delegates_mod.RX_REQUESTS))):
-    """Patient-facing READ-ONLY medication list: active, physician-confirmed meds only.
-    Sourced from the authoritative `patient_medications` (populated only when a
-    physician sends a prescription). Patients can never add/edit/delete here."""
-    pid = ctx.patient["id"]
-    docs = await db.patient_medications.find(
-        {"patient_id": pid, "active": True}, {"_id": 0}
-    ).sort("last_prescribed_at", -1).to_list(100)
-    meds = [{
-        "id": d.get("id"), "regimen_key": d.get("regimen_key"),
-        "drug": d.get("drug"), "strength": _med_strength_display(d),
-        "form": d.get("form"), "directions": d.get("sig"),
-        "status": "Active",
-    } for d in docs]
-    return {"pharmacy_label": await _refill_pharmacy_label(ctx.patient), "medications": meds}
+    """Patient-facing READ-ONLY medication list sourced from `patient_medications` (written only by a physician
+    Send). `medications` = current/known (active); `previously_prescribed` = discontinued/inactive VIen history,
+    offered for refill selection with a distinct label. Reads across all linked ids — never rewrites records."""
+    refs = await _portal_patient_refs(ctx.patient)
+    docs = await db.patient_medications.find({"patient_id": {"$in": refs}}, {"_id": 0}).sort("last_prescribed_at", -1).to_list(200)
+    seen, meds, previous = set(), [], []
+    for d in docs:
+        ident = "|".join([(d.get("drug") or "").lower(), (d.get("strength") or "").lower(), (d.get("form") or "").lower(), (d.get("sig") or "").lower()])
+        if ident in seen:
+            continue
+        seen.add(ident)
+        (meds if d.get("active", True) else previous).append(_portal_med_view(d, "Active" if d.get("active", True) else "Previously prescribed"))
+    return {"pharmacy_label": await _refill_pharmacy_label(ctx.patient), "medications": meds, "previously_prescribed": previous}
+
+
+class RxRequestItem(BaseModel):
+    kind: str                                  # list | catalog | manual
+    patient_medication_id: Optional[str] = None
+    drug: Optional[str] = None
+    brand: Optional[str] = None
+    label: Optional[str] = None
+    text: Optional[str] = None                 # manual free text, preserved exactly
+
+
+class RxBatchRequestBody(BaseModel):
+    items: List[RxRequestItem]
+    supply_type: str = "standard"
+    requested_months: Optional[int] = None
+    requested_supply_text: Optional[str] = None
+    travel_note: Optional[str] = None
+    patient_note: Optional[str] = None
+
+
+@api.post("/portal/rx-requests")
+async def create_rx_batch_request(body: RxBatchRequestBody, ctx: PortalCtx = Depends(portal_access(delegates_mod.RX_REQUESTS))):
+    """ONE structured prescription request for several medicines: list picks (authoritative fields copied from
+    patient_medications), catalog picks and manual entries (flagged MANUAL ENTRY — REVIEW REQUIRED). Uses the same
+    medications_structured card shape as pharmacy/admin intake so the physician queue and Convert to Prescription
+    work unchanged. Routing unchanged: waiting_physician. Never writes patient_medications or the catalog."""
+    p = ctx.patient
+    await prof_mod.require_complete(p)
+    if not body.items:
+        raise HTTPException(status_code=400, detail="Select at least one medication.")
+    refs = await _portal_patient_refs(p)
+    structured, names, manual_any = [], [], False
+    for it in body.items:
+        kind = (it.kind or "").lower()
+        if kind == "list":
+            m = await db.patient_medications.find_one({"id": it.patient_medication_id, "patient_id": {"$in": refs}}, {"_id": 0})
+            if not m:
+                raise HTTPException(status_code=404, detail="We couldn't find one of those medications on your list.")
+            structured.append({"drug": m.get("drug"), "strength": _med_strength_display(m), "form": m.get("form"), "sig": m.get("sig"),
+                               "attributes": m.get("attributes") or [], "quantity": m.get("quantity"), "quantity_unit": m.get("quantity_unit"),
+                               "entry_source": "LIST", "patient_medication_id": m.get("id"), "regimen_key": m.get("regimen_key"),
+                               "was_active": bool(m.get("active", True))})
+            names.append(" ".join(x for x in (m.get("drug"), _med_strength_display(m)) if x))
+        elif kind == "catalog":
+            drug = (it.drug or it.label or "").strip()
+            if not drug:
+                raise HTTPException(status_code=400, detail="Select a medication from the list.")
+            structured.append({"drug": drug, "brand": (it.brand or None), "strength": None, "form": None, "sig": None, "attributes": [],
+                               "entry_source": "CATALOG", "original_text": (it.label or drug)})
+            names.append(it.label or drug)
+        elif kind == "manual":
+            text = (it.text or "").strip()
+            if not text:
+                raise HTTPException(status_code=400, detail="Enter the medication name.")
+            manual_any = True
+            structured.append({"drug": text, "strength": None, "form": None, "sig": None, "attributes": [], "entry_source": "MANUAL",
+                               "original_text": text, "review_required": True})
+            names.append(text)
+        else:
+            raise HTTPException(status_code=400, detail="Unknown medication item type.")
+    longer = body.supply_type == "longer"
+    months = body.requested_months if isinstance(body.requested_months, int) else None
+    if longer:
+        supply_text = (body.requested_supply_text or "").strip() or (f"{months} months" if months else "Longer supply")
+    else:
+        months = months if months in (1, 2, 3) else 1
+        supply_text = f"{months} month(s)"
+    now = now_iso()
+    doc = {
+        "id": str(uuid.uuid4()), "ref_number": await next_ref("RX"),
+        "patient_id": p["id"], "directory_id": p.get("matched_directory_id"), "visita_patient_id": p.get("visita_patient_id"),
+        "patient_name": f"{p['last_name']}, {p['first_name']}", "practice_id": p.get("practice_id"),
+        "source": "patient_refill",
+        "medication_name": "; ".join(names), "medications": names, "medications_structured": structured,
+        "medication_entry_source": "MANUAL" if manual_any else ("CATALOG" if any(s["entry_source"] == "CATALOG" for s in structured) else "LIST"),
+        "requires_medication_review": manual_any, "review_required": manual_any,
+        "strength": None, "directions": None,
+        "requested_months": months, "supply_type": body.supply_type, "requested_supply_text": supply_text,
+        "travel_note": ((body.travel_note or "").strip() or None) if longer else None,
+        "delivery_method": "pharmacy", "destination_pharmacy_label": await _refill_pharmacy_label(p),
+        "patient_note": (body.patient_note or "").strip() or None,
+        "internal_status": "waiting_physician", "assigned_to": None, "internal_notes": [],
+        "history": [{"status": "waiting_physician", "at": now, "by": ("delegate" if ctx.is_delegate else "patient"), "note": "Patient portal request — routed directly to physician"}],
+        "created_at": now, "updated_at": now, "completed_at": None,
+    }
+    await db.prescription_requests.insert_one({**doc})
+    await audit("create", "prescription", doc["id"], ctx.audit_actor(), new_status="waiting_physician",
+                meta=ctx.audit_meta({"source": "patient_refill", "med_count": len(structured), "manual_entries": sum(1 for s in structured if s["entry_source"] == "MANUAL")}))
+    doc.pop("_id", None)
+    return doc
 
 
 @api.post("/portal/refill-requests")
@@ -3312,7 +3419,7 @@ async def portal_medication_search(q: str = "", ctx: PortalCtx = Depends(portal_
 
     # 1) Effective patient's physician-confirmed medications (prefix matches first).
     p = ctx.patient
-    pmeds = await db.patient_medications.find({"patient_id": p["id"], "active": True}, {"_id": 0}).to_list(200)
+    pmeds = await db.patient_medications.find({"patient_id": {"$in": await _portal_patient_refs(p)}, "active": True}, {"_id": 0}).to_list(200)
     pm_hits = [m for m in pmeds if m.get("drug") and rx.search(m["drug"])]
     pm_hits.sort(key=lambda m: (0 if m["drug"].lower().startswith(tl) else 1, m["drug"].lower()))
     for m in pm_hits:
@@ -7504,6 +7611,7 @@ async def _remember_patient_medications(tx: dict):
             await db.patient_medications.update_one({"regimen_key": key}, {"$set": {
                 "last_prescribed_at": tx["sent_at"], "last_tx_id": tx["id"],
                 "months": tx.get("months"), "refills": tx.get("refills"),
+                "physician_id": tx.get("physician_id"), "physician_name": tx.get("physician_name"),
                 "active": True, "updated_at": now}})
         else:
             await db.patient_medications.insert_one({
@@ -7522,6 +7630,7 @@ async def _remember_patient_medications(tx: dict):
                 "original_text": m.get("original_text"),
                 "months": tx.get("months"), "refills": tx.get("refills"), "note": m.get("note"),
                 "last_prescribed_at": tx["sent_at"], "last_tx_id": tx["id"], "active": True,
+                "physician_id": tx.get("physician_id"), "physician_name": tx.get("physician_name"),
                 "created_at": now, "updated_at": now})
         # normalized medication catalog (no duplicates; keeps original strings seen)
         ckey = "|".join([(m.get("drug") or "").lower().strip(), (m.get("strength") or "").lower().strip(),
@@ -7595,10 +7704,16 @@ async def internal_patient_medications(patient_ref: str, user: dict = Depends(re
     snap = await _resolve_rx_patient(patient_ref)
     if not snap:
         raise HTTPException(status_code=404, detail="Patient not found.")
+    refs = [x for x in {snap["patient_id"], snap.get("directory_id"), patient_ref} if x]  # pre-link Rx were keyed by directory id
     docs = await db.patient_medications.find(
-        {"patient_id": snap["patient_id"], "active": True}, {"_id": 0}
+        {"patient_id": {"$in": refs}, "active": True}, {"_id": 0}
     ).sort("last_prescribed_at", -1).to_list(100)
-    return docs
+    seen, out = set(), []
+    for d in docs:  # same regimen may exist under portal id and directory id — show once (newest first)
+        k = "|".join([(d.get(f) or "").lower() for f in ("drug", "strength", "form", "sig")])
+        if k not in seen:
+            seen.add(k); out.append(d)
+    return out
 
 
 @api.get("/internal/patients/{patient_ref}/prescriptions")
@@ -10740,6 +10855,7 @@ async def maintenance_mode_gate(request: Request, call_next):
 api.include_router(work_mod.build_router(require_roles))
 api.include_router(locations_mod.build_router(require_roles))
 api.include_router(address_pools_mod.build_router(require_roles))
+api.include_router(med_history_mod.build_router(require_roles))
 api.include_router(prof_mod.build_router(get_current_user, get_patient_record, validate_hc_dates, require_roles))
 app.include_router(api)
 

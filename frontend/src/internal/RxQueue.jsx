@@ -177,14 +177,32 @@ export default function RxQueue() {
                         </>
                     ) : (
                         <>
-                            <KV label="Medication">{i.medication_name} {i.strength}</KV>
+                            {(i.medications_structured || []).length > 0 ? (
+                                <div className="space-y-1.5" data-testid="rx-structured-meds">
+                                    <div className="text-[11px] uppercase text-slate-400 font-medium">Patient request — requested medications ({i.medications_structured.length})</div>
+                                    <div className={`grid gap-2 ${i.medications_structured.length > 1 ? "md:grid-cols-2" : ""}`}>
+                                    {i.medications_structured.map((m, idx) => (
+                                        <div key={idx} data-testid="rx-structured-med" className={`border rounded px-2.5 py-2 text-sm min-w-0 break-words ${m.entry_source === "MANUAL" ? "border-amber-300 bg-amber-50/40" : "border-slate-200"}`}>
+                                            <div className="font-semibold text-slate-800">{idx + 1}. {[m.drug, m.strength].filter(Boolean).join(" ")}{m.form ? <span className="font-normal text-slate-500"> — {m.form}</span> : null}</div>
+                                            {m.sig && <div className="text-slate-600 text-sm">{m.sig}</div>}
+                                            <div className="text-[10px] font-bold uppercase mt-1">
+                                                {m.entry_source === "MANUAL" && <span data-testid="med-manual-flag" className="px-1.5 py-0.5 rounded bg-amber-100 text-amber-800 border border-amber-300">Manual entry — review required</span>}
+                                                {m.entry_source === "CATALOG" && <span className="px-1.5 py-0.5 rounded bg-sky-100 text-sky-800">Catalog pick — not on patient list</span>}
+                                                {m.entry_source === "LIST" && <span className="px-1.5 py-0.5 rounded bg-emerald-100 text-emerald-800">{m.was_active === false ? "Previously prescribed (VIen)" : "From patient's medication list"}</span>}
+                                            </div>
+                                        </div>
+                                    ))}
+                                    </div>
+                                </div>
+                            ) : <KV label="Medication">{i.medication_name} {i.strength}</KV>}
                             {(i.medication_entry_source === "MANUAL" || i.requires_medication_review) && (
                                 <div data-testid="manual-entry-detail-badge" className="my-1 inline-flex items-center gap-1.5 px-2 py-1 rounded bg-amber-100 text-amber-800 border border-amber-300 text-[11px] font-bold">
                                     ⚠ MANUAL ENTRY — REVIEW REQUIRED
                                 </div>
                             )}
-                            <KV label="Directions">{i.directions}</KV>
-                            <KV label="Supply">{i.requested_months} month(s)</KV>
+                            {i.directions && <KV label="Directions">{i.directions}</KV>}
+                            <KV label="Supply">{i.requested_supply_text || `${i.requested_months} month(s)`}</KV>
+                            {i.travel_note && <KV label="Travel note">{i.travel_note}</KV>}
                             <KV label="Patient note">{i.patient_note}</KV>
                         </>
                     )}

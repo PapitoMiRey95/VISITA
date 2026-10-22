@@ -23,11 +23,14 @@ export default function MedicationRefill({ onBehalfOf = null, onSubmitted }) {
         queryKey: ["portal-medications", onBehalfOf || "self"],
         queryFn: async () => (await api.get("/portal/medications", { params })).data,
     });
-    const meds = medsQ.data?.medications || [];
+    const meds = useMemo(() => medsQ.data?.medications || [], [medsQ.data]);
+    const previous = useMemo(() => medsQ.data?.previously_prescribed || [], [medsQ.data]);
     const pharmacyLabel = medsQ.data?.pharmacy_label || "";
 
     const [view, setView] = useState("list"); // list | photo
     const [selected, setSelected] = useState(() => new Set());
+    const [extras, setExtras] = useState([]); // [{kind:'catalog'|'manual', label, drug, brand, text}]
+    const [showPrevious, setShowPrevious] = useState(false);
     const [supplyMode, setSupplyMode] = useState("standard"); // standard | longer
     const [months, setMonths] = useState(1); // 1/2/3 standard, 4/5/6 longer, 0 = other
     const [otherText, setOtherText] = useState("");
@@ -42,35 +45,34 @@ export default function MedicationRefill({ onBehalfOf = null, onSubmitted }) {
         return next;
     });
 
-    const pickOnly = (id) => {
-        setSelected(new Set([id]));
-        setTimeout(() => detailRef.current?.scrollIntoView({ behavior: "smooth", block: "start" }), 50);
-    };
-
     useEffect(() => {
-        // Reset supply numbers sensibly when switching modes.
         setMonths(supplyMode === "longer" ? 4 : 1);
         setOtherText("");
     }, [supplyMode]);
 
-    const canSubmit = selected.size > 0 && !busy;
+    const total = selected.size + extras.length;
+    const canSubmit = total > 0 && !busy;
+    const byId = useMemo(() => Object.fromEntries([...meds, ...previous].map((m) => [m.id, m])), [meds, previous]);
 
     const submitRefill = async () => {
-        if (selected.size === 0) return toast.error(t("rx.selectAtLeastOne"));
+        if (total === 0) return toast.error(t("rx.selectAtLeastOne"));
         setBusy(true);
         try {
             const longer = supplyMode === "longer";
             const body = {
-                medication_ids: Array.from(selected),
+                items: [
+                    ...Array.from(selected).map((id) => ({ kind: "list", patient_medication_id: id })),
+                    ...extras.map((x) => (x.kind === "manual" ? { kind: "manual", text: x.text } : { kind: "catalog", drug: x.drug, brand: x.brand, label: x.label })),
+                ],
                 supply_type: supplyMode,
                 requested_months: months === 0 ? null : months,
                 requested_supply_text: longer && months === 0 ? (otherText.trim() || null) : null,
                 travel_note: longer ? (travelNote.trim() || null) : null,
                 patient_note: note.trim() || null,
             };
-            await api.post("/portal/refill-requests", body, { params });
+            await api.post("/portal/rx-requests", body, { params });
             toast.success(t("rx.submitted"));
-            setSelected(new Set());
+            setSelected(new Set()); setExtras([]);
             setSupplyMode("standard"); setMonths(1); setOtherText(""); setTravelNote(""); setNote("");
             onSubmitted && onSubmitted();
         } catch (e) {
@@ -86,9 +88,27 @@ export default function MedicationRefill({ onBehalfOf = null, onSubmitted }) {
         return <PhotoReview params={params} onBack={() => setView("list")} onSubmitted={onSubmitted} />;
     }
 
+    const MedRow = ({ m, previousRow = false }) => {
+        const on = selected.has(m.id);
+        return (
+            <button type="button" data-testid={`medicine-card-${m.id}`} onClick={() => toggle(m.id)}
+                className={`w-full text-left flex items-start gap-3 p-3 rounded-xl border transition ${on ? "border-emerald-500 bg-emerald-50" : "border-slate-200 bg-white hover:border-slate-300"}`}>
+                <span className={`mt-0.5 w-5 h-5 rounded-md border flex items-center justify-center flex-shrink-0 ${on ? "bg-emerald-500 border-emerald-500" : "border-slate-300"}`}>
+                    {on && <Check className="w-3.5 h-3.5 text-white" />}
+                </span>
+                <span className="flex-1 min-w-0">
+                    <span className="block font-bold text-slate-800">{m.drug} {m.strength}</span>
+                    {m.directions && <span className="block text-sm text-slate-500">{m.directions}</span>}
+                    {previousRow
+                        ? <span className="inline-block mt-1 px-2 py-0.5 rounded-full text-[11px] font-bold bg-slate-100 text-slate-600">{t("rx.previouslyPrescribed", "Previously prescribed through VIen")}{m.last_prescribed_at ? ` · ${String(m.last_prescribed_at).slice(0, 10)}` : ""}</span>
+                        : <span className="inline-block mt-1 px-2 py-0.5 rounded-full text-[11px] font-bold bg-emerald-100 text-emerald-700">{t("rx.active")}</span>}
+                </span>
+            </button>
+        );
+    };
+
     return (
         <div className="space-y-5" data-testid="medication-refill">
-            {/* Your Medicines — read-only */}
             <Card data-testid="your-medicines-card">
                 <div className="flex items-center gap-2 mb-1">
                     <Pill className="w-5 h-5 text-emerald-500" />
@@ -97,61 +117,43 @@ export default function MedicationRefill({ onBehalfOf = null, onSubmitted }) {
                 <p className="text-xs text-slate-500 mb-3">{t("rx.readOnlyHint")}</p>
 
                 {meds.length === 0 ? (
-                    <p className="text-sm text-slate-500" data-testid="no-medications">{t("rx.noMeds")}</p>
+                    <p className="text-sm text-slate-500" data-testid="no-medications">{t("rx.noMedsSelect", "We don't have any current medications on file for you yet. Use \"Find another medication\" below.")}</p>
                 ) : (
                     <div className="space-y-2.5">
-                        <p className="text-sm font-semibold text-slate-700">{t("rx.selectMeds")}</p>
-                        {meds.map((m) => {
-                            const on = selected.has(m.id);
-                            return (
-                                <button
-                                    key={m.id}
-                                    type="button"
-                                    data-testid={`medicine-card-${m.id}`}
-                                    onClick={() => toggle(m.id)}
-                                    className={`w-full text-left flex items-start gap-3 p-3 rounded-xl border transition ${on ? "border-emerald-500 bg-emerald-50" : "border-slate-200 bg-white hover:border-slate-300"}`}
-                                >
-                                    <span className={`mt-0.5 w-5 h-5 rounded-md border flex items-center justify-center flex-shrink-0 ${on ? "bg-emerald-500 border-emerald-500" : "border-slate-300"}`}>
-                                        {on && <Check className="w-3.5 h-3.5 text-white" />}
-                                    </span>
-                                    <span className="flex-1 min-w-0">
-                                        <span className="block font-bold text-slate-800">{m.drug} {m.strength}</span>
-                                        {m.directions && <span className="block text-sm text-slate-500">{m.directions}</span>}
-                                        <span className="inline-block mt-1 px-2 py-0.5 rounded-full text-[11px] font-bold bg-emerald-100 text-emerald-700">{t("rx.active")}</span>
-                                    </span>
-                                    <span
-                                        role="button"
-                                        tabIndex={0}
-                                        data-testid={`medicine-refill-${m.id}`}
-                                        onClick={(e) => { e.stopPropagation(); pickOnly(m.id); }}
-                                        onKeyDown={(e) => { if (e.key === "Enter") { e.stopPropagation(); pickOnly(m.id); } }}
-                                        className="text-xs font-bold text-emerald-700 underline underline-offset-2 flex-shrink-0 self-center"
-                                    >
-                                        {t("rx.requestRefill")}
-                                    </span>
-                                </button>
-                            );
-                        })}
+                        <p className="text-sm font-semibold text-slate-700">{t("rx.selectAllRenew", "Select all medicines you want renewed:")}</p>
+                        {meds.map((m) => <MedRow key={m.id} m={m} />)}
                     </div>
                 )}
 
-                <button
-                    type="button"
-                    data-testid="med-not-listed"
-                    onClick={() => setView("photo")}
-                    className="mt-4 text-sm font-semibold text-portal-blue underline underline-offset-2"
-                >
-                    {t("rx.notListed")}
-                </button>
+                {previous.length > 0 && (
+                    <div className="mt-4" data-testid="previously-prescribed">
+                        <button type="button" data-testid="previously-toggle" onClick={() => setShowPrevious((v) => !v)}
+                            className="text-sm font-semibold text-slate-600 underline underline-offset-2">
+                            {showPrevious ? t("rx.hidePrevious", "Hide previously prescribed") : t("rx.showPrevious", "Previously prescribed through VIen ({{n}})", { n: previous.length })}
+                        </button>
+                        {showPrevious && (
+                            <div className="space-y-2.5 mt-2">
+                                <p className="text-xs text-slate-500">{t("rx.previousHint", "Older prescriptions issued through VIen. Select one only if you still take it — your doctor will review.")}</p>
+                                {previous.map((m) => <MedRow key={m.id} m={m} previousRow />)}
+                            </div>
+                        )}
+                    </div>
+                )}
             </Card>
 
-            <RequestDifferentMedication params={params} onSubmitted={onSubmitted} />
+            <FindAnotherMedication params={params} extras={extras} setExtras={setExtras} onPhoto={() => setView("photo")} />
 
-            {/* Refill details appear once a medicine is selected */}
-            {selected.size > 0 && (
+            {total > 0 && (
                 <Card data-testid="refill-details">
                     <div ref={detailRef} />
                     <div className="space-y-4">
+                        <div className="rounded-xl bg-emerald-50 border border-emerald-200 p-3" data-testid="refill-summary">
+                            <p className="text-xs font-bold uppercase tracking-wide text-emerald-700">{t("rx.requesting", "Requesting ({{n}})", { n: total })}</p>
+                            <ul className="mt-1 text-sm text-slate-800 space-y-0.5">
+                                {Array.from(selected).map((id) => byId[id] && <li key={id} data-testid="summary-item">{byId[id].drug} {byId[id].strength}</li>)}
+                                {extras.map((x, i) => <li key={`x${i}`} data-testid="summary-item">{x.kind === "manual" ? x.text : x.label}{x.kind === "manual" && <span className="ml-1 text-[10px] font-bold uppercase text-amber-700">{t("rx.manualFlag", "manual entry")}</span>}</li>)}
+                            </ul>
+                        </div>
                         <div>
                             <Label className="font-semibold text-slate-700">{t("rx.howMuch")}</Label>
                             <div className="flex gap-2 mt-2">
@@ -203,7 +205,7 @@ export default function MedicationRefill({ onBehalfOf = null, onSubmitted }) {
 
                         <Button data-testid="refill-submit" disabled={!canSubmit} onClick={submitRefill}
                             className="w-full h-12 rounded-xl bg-portal-blue hover:bg-portal-blueDark text-white text-base">
-                            {busy ? t("rx.submitting") : t("rx.submit")}
+                            {busy ? t("rx.submitting") : t("rx.requestSelected", "Request selected refills ({{n}})", { n: total })}
                         </Button>
                     </div>
                 </Card>
@@ -287,27 +289,22 @@ const Choice = ({ active, onClick, children, testid }) => (
 );
 
 /**
- * Shared Smart Medication Search for Prescription Requests — used identically by a
- * patient (effectivePatient = self) and an authorized caregiver (effectivePatient =
- * managed patient, via the on_behalf_of param). Type-ahead from the first character,
- * HARD max of 5 server-enforced suggestions, generic + brand matching, patient-med
- * prioritization, and a "can't find it" manual free-text fallback whose text is
- * preserved EXACTLY and flagged for physician review.
+ * Find another medication — catalog SEARCH/SELECT first (max 5 server-enforced suggestions), cart-style so several
+ * different medicines can be added to the SAME request. "I can't find my medication" is the last resort: free text is
+ * preserved exactly and flagged MANUAL ENTRY — REVIEW REQUIRED internally. Patient text never enters the catalog.
  */
-function RequestDifferentMedication({ params, onSubmitted }) {
+function FindAnotherMedication({ params, extras, setExtras, onPhoto }) {
     const { t } = useTranslation(["requests"]);
+    const [openSearch, setOpenSearch] = useState(false);
     const [term, setTerm] = useState("");
     const [results, setResults] = useState([]);
     const [open, setOpen] = useState(false);
-    const [picked, setPicked] = useState(null);
     const [manual, setManual] = useState(false);
     const [manualText, setManualText] = useState("");
-    const [note, setNote] = useState("");
-    const [busy, setBusy] = useState(false);
     const tRef = useRef(null);
 
     const runSearch = (q) => {
-        setTerm(q); setPicked(null);
+        setTerm(q);
         if (tRef.current) clearTimeout(tRef.current);
         if (!q.trim()) { setResults([]); setOpen(false); return; }
         tRef.current = setTimeout(async () => {
@@ -319,100 +316,84 @@ function RequestDifferentMedication({ params, onSubmitted }) {
         }, 180);
     };
 
-    const choose = (r) => { setPicked(r); setTerm(r.label); setOpen(false); };
-
-    const reset = () => { setTerm(""); setResults([]); setPicked(null); setManual(false); setManualText(""); setNote(""); };
-
-    const submit = async () => {
-        const isManual = manual;
-        const name = isManual ? manualText.trim() : (picked?.label || "").trim();
-        if (!name) return toast.error(isManual ? t("rx.enterMedName", "Enter the medication name.") : t("rx.pickMed", "Select a medication first."));
-        setBusy(true);
-        try {
-            await api.post("/portal/prescription-requests", {
-                medication_name: name,
-                medication_entry_source: isManual ? "MANUAL" : "CATALOG",
-                drug: isManual ? null : picked?.drug,
-                brand: isManual ? null : picked?.brand,
-                patient_note: note.trim() || null,
-            }, { params });
-            toast.success(t("rx.requestSubmitted", "Prescription request submitted for physician review."));
-            reset();
-            onSubmitted && onSubmitted();
-        } catch (e) { toast.error(formatErr(e)); } finally { setBusy(false); }
+    const addCatalog = (r) => {
+        if (!extras.some((x) => x.kind === "catalog" && x.label === r.label)) setExtras([...extras, { kind: "catalog", label: r.label, drug: r.drug, brand: r.brand }]);
+        setTerm(""); setResults([]); setOpen(false);
     };
-
-    const canSubmit = !busy && (manual ? manualText.trim().length > 0 : !!picked);
+    const addManual = () => {
+        const text = manualText.trim();
+        if (!text) return toast.error(t("rx.enterMedName", "Enter the medication name."));
+        setExtras([...extras, { kind: "manual", text }]);
+        setManualText(""); setManual(false);
+    };
+    const remove = (i) => setExtras(extras.filter((_, idx) => idx !== i));
 
     return (
-        <Card data-testid="request-different-medication">
+        <Card data-testid="find-another-medication">
             <div className="flex items-center gap-2 mb-1">
                 <Search className="w-5 h-5 text-portal-blue" />
-                <h2 className="font-bold text-slate-800">{t("rx.requestDifferentTitle", "Request a different medication")}</h2>
+                <h2 className="font-bold text-slate-800">{t("rx.cantFindTitle", "Can't find the medicine you need?")}</h2>
             </div>
             <p className="text-xs text-slate-500 mb-3">{t("rx.requestDisclaimer", "Submitting this request does not mean your prescription has been approved. Your physician will review your request.")}</p>
 
-            {!manual && (
-                <div className="relative">
-                    <Label className="font-semibold text-slate-700">{t("rx.medication", "Medication")}</Label>
-                    <Input
-                        data-testid="med-search-input"
-                        className="mt-1"
-                        value={term}
-                        autoComplete="off"
-                        onChange={(e) => runSearch(e.target.value)}
-                        onFocus={() => { if (results.length) setOpen(true); }}
-                        placeholder={t("rx.medSearchPlaceholder", "Start typing a medication name…")}
-                    />
-                    {open && results.length > 0 && (
-                        <div data-testid="med-search-results" className="absolute z-30 left-0 right-0 mt-1 bg-white border border-slate-200 rounded-xl shadow-lg overflow-hidden">
-                            {results.map((r, idx) => (
-                                <button
-                                    key={`${r.label}-${idx}`}
-                                    type="button"
-                                    data-testid={`med-search-option-${idx}`}
-                                    onClick={() => choose(r)}
-                                    className="w-full text-left px-3 py-3 min-h-[48px] hover:bg-portal-blue/5 border-b border-slate-100 last:border-b-0 flex items-center justify-between gap-2"
-                                >
-                                    <span className="font-semibold text-slate-800 truncate">{r.label}</span>
-                                    {r.source === "patient" && (
-                                        <span className="text-[10px] font-bold uppercase bg-emerald-100 text-emerald-700 px-1.5 py-0.5 rounded-full flex-shrink-0">{t("rx.yourMed", "Your med")}</span>
-                                    )}
-                                </button>
-                            ))}
-                        </div>
-                    )}
-                    {picked && (
-                        <div data-testid="med-search-selected" className="mt-2 flex items-center justify-between bg-portal-blue/5 border border-portal-blue/20 rounded-lg px-3 py-2">
-                            <span className="text-sm font-semibold text-slate-800">{picked.label}</span>
-                            <button type="button" data-testid="med-search-clear" onClick={reset} className="text-xs font-semibold text-slate-500 underline">{t("rx.change", "Change")}</button>
-                        </div>
-                    )}
-                </div>
+            {extras.length > 0 && (
+                <ul className="space-y-1.5 mb-3" data-testid="extra-medications">
+                    {extras.map((x, i) => (
+                        <li key={i} data-testid={`extra-med-${i}`} className="flex items-center justify-between bg-portal-blue/5 border border-portal-blue/20 rounded-lg px-3 py-2">
+                            <span className="text-sm font-semibold text-slate-800">{x.kind === "manual" ? x.text : x.label}
+                                {x.kind === "manual" && <span className="ml-2 text-[10px] font-bold uppercase bg-amber-100 text-amber-800 px-1.5 py-0.5 rounded-full">{t("rx.manualFlag", "manual entry")}</span>}</span>
+                            <button type="button" data-testid={`extra-med-remove-${i}`} onClick={() => remove(i)} className="text-xs font-semibold text-slate-500 underline">{t("rx.remove", "Remove")}</button>
+                        </li>
+                    ))}
+                </ul>
             )}
 
-            <label className="mt-3 flex items-center gap-2 cursor-pointer select-none" data-testid="med-cant-find-toggle">
-                <input type="checkbox" checked={manual} onChange={(e) => { setManual(e.target.checked); setPicked(null); setTerm(""); setResults([]); setOpen(false); }} className="w-4 h-4" />
-                <span className="text-sm font-semibold text-slate-700">{t("rx.cantFind", "I can't find my medication")}</span>
-            </label>
+            {!openSearch ? (
+                <Button type="button" variant="outline" data-testid="find-another-btn" onClick={() => setOpenSearch(true)} className="h-11 rounded-xl w-full">
+                    <Search className="w-4 h-4 mr-1.5" /> {extras.length ? t("rx.addAnother", "Add another medication") : t("rx.findAnother", "Find another medication")}
+                </Button>
+            ) : (
+                <div className="space-y-3">
+                    {!manual && (
+                        <div className="relative">
+                            <Label className="font-semibold text-slate-700">{t("rx.medication", "Medication")}</Label>
+                            <Input data-testid="med-search-input" className="mt-1" value={term} autoComplete="off"
+                                onChange={(e) => runSearch(e.target.value)} onFocus={() => { if (results.length) setOpen(true); }}
+                                placeholder={t("rx.medSearchPlaceholder", "Start typing a medication name…")} />
+                            {open && results.length > 0 && (
+                                <div data-testid="med-search-results" className="absolute z-30 left-0 right-0 mt-1 bg-white border border-slate-200 rounded-xl shadow-lg overflow-hidden">
+                                    {results.map((r, idx) => (
+                                        <button key={`${r.label}-${idx}`} type="button" data-testid={`med-search-option-${idx}`} onClick={() => addCatalog(r)}
+                                            className="w-full text-left px-3 py-3 min-h-[48px] hover:bg-portal-blue/5 border-b border-slate-100 last:border-b-0 flex items-center justify-between gap-2">
+                                            <span className="font-semibold text-slate-800 truncate">{r.label}</span>
+                                            {r.source === "patient" && <span className="text-[10px] font-bold uppercase bg-emerald-100 text-emerald-700 px-1.5 py-0.5 rounded-full flex-shrink-0">{t("rx.yourMed", "Your med")}</span>}
+                                        </button>
+                                    ))}
+                                </div>
+                            )}
+                            <p className="text-xs text-slate-500 mt-1">{t("rx.searchHint", "Type a few letters and pick the medication from the list to add it to your request.")}</p>
+                        </div>
+                    )}
 
-            {manual && (
-                <div className="mt-2" data-testid="med-manual-block">
-                    <Label className="font-semibold text-slate-700">{t("rx.medication", "Medication name")}</Label>
-                    <Input data-testid="med-manual-input" className="mt-1" value={manualText} onChange={(e) => setManualText(e.target.value)} placeholder={t("rx.manualPlaceholder", "e.g. the exact name on your bottle")} />
-                    <p className="text-xs text-slate-500 mt-1">{t("rx.manualHelper", "Enter the medication name as it appears on your bottle, package, or pharmacy label.")}</p>
+                    <label className="flex items-center gap-2 cursor-pointer select-none" data-testid="med-cant-find-toggle">
+                        <input type="checkbox" checked={manual} onChange={(e) => { setManual(e.target.checked); setTerm(""); setResults([]); setOpen(false); }} className="w-4 h-4" />
+                        <span className="text-sm font-semibold text-slate-700">{t("rx.cantFind", "I can't find my medication")}</span>
+                    </label>
+
+                    {manual && (
+                        <div data-testid="med-manual-block">
+                            <Label className="font-semibold text-slate-700">{t("rx.medication", "Medication name")}</Label>
+                            <Input data-testid="med-manual-input" className="mt-1" value={manualText} onChange={(e) => setManualText(e.target.value)} placeholder={t("rx.manualPlaceholder", "e.g. the exact name on your bottle")} />
+                            <p className="text-xs text-slate-500 mt-1">{t("rx.manualHelper", "Enter the medication name as it appears on your bottle, package, or pharmacy label.")}</p>
+                            <Button type="button" data-testid="med-manual-add" disabled={!manualText.trim()} onClick={addManual} className="mt-2 h-10 rounded-xl bg-portal-blue hover:bg-portal-blueDark text-white">{t("rx.addToRequest", "Add to request")}</Button>
+                        </div>
+                    )}
+
+                    <button type="button" data-testid="med-not-listed" onClick={onPhoto} className="text-sm font-semibold text-portal-blue underline underline-offset-2">
+                        {t("rx.photoInstead", "Or send a photo of the label instead")}
+                    </button>
                 </div>
             )}
-
-            <div className="mt-3">
-                <Label className="font-semibold text-slate-700">{t("rx.noteLabel")}</Label>
-                <Textarea data-testid="med-request-note" className="mt-1" rows={2} value={note} onChange={(e) => setNote(e.target.value)} />
-            </div>
-
-            <Button data-testid="med-request-submit" disabled={!canSubmit} onClick={submit}
-                className="mt-3 w-full h-12 rounded-xl bg-portal-blue hover:bg-portal-blueDark text-white text-base">
-                {busy ? t("rx.submitting") : t("rx.submitRequest", "Submit request")}
-            </Button>
         </Card>
     );
 }

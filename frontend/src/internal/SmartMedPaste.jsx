@@ -6,34 +6,37 @@ import { Button } from "../components/ui/button";
 import { Input } from "../components/ui/input";
 import { Textarea } from "../components/ui/textarea";
 
+// Inline colours: badges/cards must stay readable under the internal dark theme (class remaps)
 const BADGE = {
-    ALREADY_ON_LIST: ["bg-emerald-100 text-emerald-800", "Already on list"], ADD_MISSING: ["bg-sky-100 text-sky-800", "Missing · add"],
-    POSSIBLE_DOSE_CHANGE: ["bg-amber-200 text-amber-900", "Possible dose change"], SIG_DIFFERENCE: ["bg-amber-200 text-amber-900", "SIG difference"],
-    POSSIBLE_RESTART: ["bg-amber-200 text-amber-900", "Previously stopped · restart?"], REVIEW_REQUIRED: ["bg-rose-100 text-rose-800", "Review required"],
+    ALREADY_ON_LIST: [{ background: "#d1fae5", color: "#065f46" }, "Already on list"], ADD_MISSING: [{ background: "#e0f2fe", color: "#075985" }, "Missing · add"],
+    POSSIBLE_DOSE_CHANGE: [{ background: "#fde68a", color: "#78350f" }, "Possible dose change"], SIG_DIFFERENCE: [{ background: "#fde68a", color: "#78350f" }, "SIG difference"],
+    POSSIBLE_RESTART: [{ background: "#fde68a", color: "#78350f" }, "Previously stopped · restart?"], REVIEW_REQUIRED: [{ background: "#ffe4e6", color: "#9f1239" }, "Review required"],
 };
+const CARD_PLAIN = { background: "#fff", borderColor: "#e2e8f0", color: "#0f172a" };
+const CARD_WARN = { background: "#fffbeb", borderColor: "#fcd34d", color: "#0f172a" };
 const DEFAULT_DECISION = { ALREADY_ON_LIST: "skip", ADD_MISSING: "add", POSSIBLE_DOSE_CHANGE: "flag", SIG_DIFFERENCE: "flag", POSSIBLE_RESTART: "flag", REVIEW_REQUIRED: "skip" };
 const OPTIONS = {
     ALREADY_ON_LIST: [["skip", "No change"]],
     ADD_MISSING: [["add", "Add to list"], ["skip", "Don't add"]],
-    POSSIBLE_DOSE_CHANGE: [["flag", "Keep current · flag for review"], ["replace", "Replace (stop current, add new)"], ["add", "Add both"], ["skip", "Ignore"]],
+    POSSIBLE_DOSE_CHANGE: [["flag", "Keep current · flag for review"], ["replace", "Replace (stop current, add new)"], ["add_both", "Add both"], ["skip", "Ignore"]],
     SIG_DIFFERENCE: [["flag", "Keep current SIG · flag"], ["update_sig", "Update SIG"], ["skip", "Ignore"]],
     POSSIBLE_RESTART: [["flag", "Flag for review"], ["restart", "Restart medication"], ["skip", "Ignore"]],
     REVIEW_REQUIRED: [["skip", "Discard"], ["add", "Add as edited"]],
 };
-const VERB = { add: "will add", skip: "no change", flag: "flag for review", replace: "replace current", update_sig: "update SIG", restart: "restart" };
+const VERB = { add: "will add", add_both: "will add (keeping current)", skip: "no change", flag: "flag for review", replace: "replace current", update_sig: "update SIG", restart: "restart" };
 const label = (m) => [m.drug, m.strength].filter(Boolean).join(" ");
 
 function Card({ row, onChange }) {
-    const [cls, text] = BADGE[row.classification];
+    const [badgeStyle, text] = BADGE[row.classification];
     const m = row.med; const cur = row.match;
     const set = (k, v) => onChange({ ...row, med: { ...m, [k]: v } });
     return (
-        <div className={`rounded-sm border p-2.5 ${row.classification === "ADD_MISSING" || row.classification === "ALREADY_ON_LIST" ? "border-slate-200 bg-white" : "border-amber-300 bg-amber-50/60"}`} data-testid={`smart-card-${row.idx}`} data-classification={row.classification}>
+        <div className="rounded-sm border p-2.5" style={row.classification === "ADD_MISSING" || row.classification === "ALREADY_ON_LIST" ? CARD_PLAIN : CARD_WARN} data-testid={`smart-card-${row.idx}`} data-classification={row.classification}>
             <div className="flex items-start justify-between gap-2">
-                <div className="text-sm font-bold text-slate-800">{m.drug} <span className="font-normal text-slate-500">{m.strength}{m.form ? ` · ${m.form}` : ""}{m.sig ? ` · ${m.sig}` : ""}</span></div>
-                <span className={`text-[10px] px-1.5 py-0.5 rounded font-bold whitespace-nowrap ${cls}`} data-testid={`smart-card-badge-${row.idx}`}>{text}</span>
+                <div className="text-sm font-bold" style={{ color: "#1e293b" }}>{m.drug} <span className="font-normal" style={{ color: "#64748b" }}>{m.strength}{m.form ? ` · ${m.form}` : ""}{m.sig ? ` · ${m.sig}` : ""}</span></div>
+                <span className="text-[10px] px-1.5 py-0.5 rounded font-bold whitespace-nowrap" style={badgeStyle} data-testid={`smart-card-badge-${row.idx}`}>{text}</span>
             </div>
-            {cur && row.classification !== "ALREADY_ON_LIST" && <div className="text-xs text-slate-600 mt-1">Current: <b>{cur.strength}{cur.unit && !/[a-z]/i.test(cur.strength || "") ? ` ${cur.unit}` : ""}</b> · {cur.sig || "—"}{cur.active === false ? " (stopped)" : ""} → Pasted: <b>{m.strength}</b> · {m.sig || "—"}</div>}
+            {cur && row.classification !== "ALREADY_ON_LIST" && <div className="text-xs mt-1" style={{ color: "#475569" }}>Current: <b>{cur.strength}{cur.unit && !/[a-z]/i.test(cur.strength || "") ? ` ${cur.unit}` : ""}</b> · {cur.sig || "—"}{cur.active === false ? " (stopped)" : ""} → Pasted: <b>{m.strength}</b> · {m.sig || "—"}</div>}
             {row.reasons?.length > 0 && <div className="text-xs text-rose-700 mt-1">{row.reasons.join("; ")}</div>}
             {row.decision !== "skip" && (
                 <div className="grid grid-cols-4 gap-1 mt-2">
@@ -48,7 +51,7 @@ function Card({ row, onChange }) {
                     <button key={v} type="button" onClick={() => onChange({ ...row, decision: v })} data-testid={`smart-card-decision-${row.idx}-${v}`}
                         className={`text-xs px-2.5 py-1 rounded-sm border font-semibold ${row.decision === v ? "bg-[#0b2545] text-white border-[#0b2545] shadow-sm" : "bg-white border-slate-300 text-slate-700 hover:bg-slate-100"}`}>{t}</button>
                 ))}
-                {["add", "replace", "restart"].includes(row.decision) && (
+                {["add", "add_both", "replace", "restart"].includes(row.decision) && (
                     <button type="button" onClick={() => onChange({ ...row, portal_visible: !row.portal_visible })} className="ml-auto text-[11px] text-slate-600 inline-flex items-center gap-1" data-testid={`smart-card-visible-${row.idx}`}>
                         {row.portal_visible ? <Eye className="w-3 h-3" /> : <EyeOff className="w-3 h-3" />} {row.portal_visible ? "Visible in Patient Portal" : "Hidden from Patient Portal"}
                     </button>
@@ -84,7 +87,7 @@ export function SmartMedPaste({ patientId, onApplied, onClose }) {
             onApplied?.(data); onClose?.();
         } catch (e) { toast.error(formatErr(e)); } finally { setBusy(false); }
     };
-    const changes = rows?.filter((r) => ["add", "replace", "update_sig", "restart"].includes(r.decision)).length || 0;
+    const changes = rows?.filter((r) => ["add", "add_both", "replace", "update_sig", "restart"].includes(r.decision)).length || 0;
     const flags = rows?.filter((r) => r.decision === "flag").length || 0;
     return (
         <div className="border border-slate-700 bg-slate-800 text-slate-100 rounded-sm p-3 mb-3" data-testid="smart-paste-panel">
@@ -101,14 +104,14 @@ export function SmartMedPaste({ patientId, onApplied, onClose }) {
                 <div className="flex justify-between gap-2 mt-3"><Button size="sm" variant="outline" onClick={() => setStage("paste")}>Back</Button><Button size="sm" onClick={() => setStage("summary")} data-testid="smart-paste-review-next">Review summary →</Button></div>
             </>)}
             {stage === "summary" && rows && (<>
-                <div className="rounded-sm bg-white border border-slate-200 p-3 text-sm space-y-1" data-testid="smart-paste-summary">
+                <div className="rounded-sm border p-3 text-sm space-y-1" style={CARD_PLAIN} data-testid="smart-paste-summary">
                     {rows.map((r) => (
-                        <div key={r.idx} className={r.decision === "skip" ? "text-slate-600" : r.decision === "flag" ? "text-amber-700" : "text-sky-700"} data-testid={`smart-summary-${r.idx}`}>
+                        <div key={r.idx} style={{ color: r.decision === "skip" ? (r.classification === "ALREADY_ON_LIST" ? "#047857" : "#475569") : r.decision === "flag" ? "#b45309" : "#0369a1" }} data-testid={`smart-summary-${r.idx}`}>
                             {r.decision === "skip" && r.classification === "ALREADY_ON_LIST" ? <Check className="inline w-3.5 h-3.5 mr-1" /> : r.decision === "flag" ? <AlertTriangle className="inline w-3.5 h-3.5 mr-1" /> : <Plus className="inline w-3.5 h-3.5 mr-1" />}
                             {label(r.med)} — {r.classification === "ALREADY_ON_LIST" ? "already on list" : BADGE[r.classification][1].toLowerCase()} · {VERB[r.decision]}
                         </div>
                     ))}
-                    <div className="text-[11px] text-slate-500 pt-2 border-t border-slate-100">Source: MEDICATION_RECONCILIATION · recorded with your name and time · existing medications are never silently overwritten.</div>
+                    <div className="text-[11px] pt-2 border-t" style={{ color: "#64748b", borderColor: "#f1f5f9" }}>Source: MEDICATION_RECONCILIATION · recorded with your name and time · existing medications are never silently overwritten.</div>
                 </div>
                 <div className="flex justify-between gap-2 mt-3"><Button size="sm" variant="outline" onClick={() => setStage("review")}>Back</Button>
                     <Button size="sm" disabled={busy} onClick={apply} data-testid="smart-paste-apply">{busy ? "Saving…" : `Apply ${changes} change${changes === 1 ? "" : "s"}${flags ? ` · flag ${flags}` : ""}`}</Button></div>

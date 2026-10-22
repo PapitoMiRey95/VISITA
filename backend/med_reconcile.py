@@ -110,6 +110,7 @@ MED_KEYS = ("drug", "strength", "unit", "form", "sig", "route", "quantity", "qua
 
 
 async def apply(pid: str, decisions: list, source: str, user: dict, regimen_key, remember_catalog, context: dict = None, refs: list = None) -> dict:
+    """Only the explicit Smart Paste decision 'add_both' may create a second active entry for a drug."""
     """decisions: [{med:{...}, classification, decision: add|skip|replace|update_sig|restart, match_id, portal_visible}]"""
     if source not in SOURCES:
         raise HTTPException(status_code=400, detail="Invalid source")
@@ -120,11 +121,11 @@ async def apply(pid: str, decisions: list, source: str, user: dict, regimen_key,
     for d in decisions:
         m = {k: (d.get("med") or {}).get(k) for k in MED_KEYS}
         m["attributes"] = m.get("attributes") or []
+        label = " ".join(x for x in (m.get("drug"), m.get("strength")) if x)
         sm = re.match(r"^\s*([\d.,/]+)\s*([a-zA-Z%µ/]+)\s*$", m.get("strength") or "")
         if sm:  # store like VIen Rx does: strength="5", unit="mg"
             m["strength"], m["unit"] = sm.group(1), (m.get("unit") or sm.group(2))
         dec, cls, match_id = d.get("decision") or "skip", d.get("classification"), d.get("match_id")
-        label = " ".join(x for x in (m.get("drug"), m.get("strength")) if x)
         if not m.get("drug") or dec == "skip":
             skipped.append(label); continue
         if dec == "flag":
@@ -144,6 +145,17 @@ async def apply(pid: str, decisions: list, source: str, user: dict, regimen_key,
                                                                                  "last_verified_at": now, "updated_at": now, "portal_visible": d.get("portal_visible", True), "review_flag": None},
                                                                         "$push": {"history": {"action": "restarted", "at": now, **actor, "source": source}}})
             applied.append(f"{label} — restarted"); continue
+        if dec == "add_both":
+            dec = "add"
+        elif dec == "add":
+            # server-side guard (never trust client classification): an active row for the same drug
+            # means this is a dose/SIG conflict → flag instead of adding a second active entry
+            same = [e for e in await db.patient_medications.find({"patient_id": scope, "active": True}, {"_id": 0}).to_list(300) if _drug_key(e) == _drug_key(m)]
+            if any(_strength_key(e) == _strength_key(m) and (_sig_key(e) == _sig_key(m) or not _sig_key(m)) for e in same):
+                skipped.append(f"{label} (duplicate)"); continue  # identical regimen already active → never a second row
+            if same:
+                await db.patient_medications.update_one({"id": same[0]["id"]}, {"$set": {"review_flag": {"type": "POSSIBLE_DOSE_CHANGE", "pasted": m, "at": now, **actor, "source": source}, "updated_at": now}})
+                flagged.append(f"{label} (conflicts with active {same[0].get('drug')} — flagged, not added)"); continue
         if dec == "add":
             key = regimen_key(pid, m)
             if await db.patient_medications.find_one({"regimen_key": key, "active": True}):

@@ -33,7 +33,7 @@ export default function PortalPreview() {
                             {d.medications?.previously_prescribed?.length > 0 && <div className="text-[11px] mt-2" style={MUTED}>{d.medications.previously_prescribed.length} previously prescribed (shown under refill selection)</div>}
                         </Card>
                         <Card title="Appointments" testid="portal-preview-appts">
-                            {d.overview?.appointments?.length ? <ul className="text-sm space-y-1">{d.overview.appointments.slice(0, 6).map((a) => <li key={a.id}>{a.confirmed_display || a.requested_display || (a.slot_date ? `${formatDate(a.slot_date)} ${a.slot_time || ""}` : "—")} · {a.reason} <span className="text-xs" style={MUTED}>{a.status}</span></li>)}</ul> : <Empty text="No appointments." />}
+                            {d.overview?.appointments?.length ? <ul className="text-sm space-y-1">{d.overview.appointments.map((a) => <li key={a.id}>{a.confirmed_display || a.requested_display || (a.slot_date ? `${formatDate(a.slot_date)} ${a.slot_time || ""}` : "Date to be confirmed")} · {a.reason} <span className="text-xs" style={MUTED}>{a.status}</span></li>)}</ul> : <Empty text="No appointments." />}
                         </Card>
                         <Card title="Prescription requests" testid="portal-preview-rx">
                             {d.overview?.requests?.filter((r) => r.type === "Prescription").length ? <ul className="text-sm space-y-1">{d.overview.requests.filter((r) => r.type === "Prescription").slice(0, 6).map((r) => <li key={r.id}>{r.ref_number} · {r.summary} <span className="text-xs" style={MUTED}>{r.status}</span></li>)}</ul> : <Empty text="No prescription requests." />}

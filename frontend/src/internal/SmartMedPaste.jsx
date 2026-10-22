@@ -46,7 +46,7 @@ function Card({ row, onChange }) {
             <div className="flex flex-wrap items-center gap-1.5 mt-2">
                 {OPTIONS[row.classification].map(([v, t]) => (
                     <button key={v} type="button" onClick={() => onChange({ ...row, decision: v })} data-testid={`smart-card-decision-${row.idx}-${v}`}
-                        className={`text-[11px] px-2 py-0.5 rounded-sm border ${row.decision === v ? "bg-slate-800 text-white border-slate-800" : "border-slate-300 text-slate-700 hover:bg-slate-100"}`}>{t}</button>
+                        className={`text-xs px-2.5 py-1 rounded-sm border font-semibold ${row.decision === v ? "bg-[#0b2545] text-white border-[#0b2545] shadow-sm" : "bg-white border-slate-300 text-slate-700 hover:bg-slate-100"}`}>{t}</button>
                 ))}
                 {["add", "replace", "restart"].includes(row.decision) && (
                     <button type="button" onClick={() => onChange({ ...row, portal_visible: !row.portal_visible })} className="ml-auto text-[11px] text-slate-600 inline-flex items-center gap-1" data-testid={`smart-card-visible-${row.idx}`}>

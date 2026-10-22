@@ -93,7 +93,13 @@ def _public(d: dict) -> dict:
 
 
 async def organize(patient_ids: list, text: str = None, items: list = None) -> dict:
-    parsed = items if items is not None else rx_parser.parse_access_rx(text or "").get("medications", [])
+    if items is None:  # one medication per line: parse line-by-line so newlines are hard boundaries
+        parsed = []
+        for line in (text or "").splitlines():
+            if line.strip():
+                parsed.extend(rx_parser.parse_access_rx(line.strip()).get("medications", []))
+    else:
+        parsed = items
     existing = await db.patient_medications.find({"patient_id": {"$in": patient_ids}}, {"_id": 0}).to_list(300)
     rows = classify(parsed, existing)
     return {"items": [{**r, "summary": summary_line(r)} for r in rows], "existing_count": len(existing)}
@@ -103,13 +109,14 @@ MED_KEYS = ("drug", "strength", "unit", "form", "sig", "route", "quantity", "qua
             "additional_instructions", "original_text", "note", "attributes", "action")
 
 
-async def apply(pid: str, decisions: list, source: str, user: dict, regimen_key, remember_catalog, context: dict = None) -> dict:
+async def apply(pid: str, decisions: list, source: str, user: dict, regimen_key, remember_catalog, context: dict = None, refs: list = None) -> dict:
     """decisions: [{med:{...}, classification, decision: add|skip|replace|update_sig|restart, match_id, portal_visible}]"""
     if source not in SOURCES:
         raise HTTPException(status_code=400, detail="Invalid source")
     now = now_iso()
     applied, flagged, skipped = [], [], []
     actor = {"by": user["name"], "by_role": user["role"], "by_id": user["id"]}
+    scope = {"$in": list({*(refs or []), pid})}  # every match_id write is scoped to THIS patient's records (no cross-patient IDOR)
     for d in decisions:
         m = {k: (d.get("med") or {}).get(k) for k in MED_KEYS}
         m["attributes"] = m.get("attributes") or []
@@ -122,18 +129,18 @@ async def apply(pid: str, decisions: list, source: str, user: dict, regimen_key,
             skipped.append(label); continue
         if dec == "flag":
             if match_id:
-                await db.patient_medications.update_one({"id": match_id}, {"$set": {"review_flag": {"type": cls, "pasted": m, "at": now, **actor, "source": source}, "updated_at": now}})
+                await db.patient_medications.update_one({"id": match_id, "patient_id": scope}, {"$set": {"review_flag": {"type": cls, "pasted": m, "at": now, **actor, "source": source}, "updated_at": now}})
             flagged.append(label); continue
         if dec == "replace" and match_id:
-            await db.patient_medications.update_one({"id": match_id}, {"$set": {"active": False, "discontinued_at": now, "discontinue_reason": "dose_change", "updated_at": now},
+            await db.patient_medications.update_one({"id": match_id, "patient_id": scope}, {"$set": {"active": False, "discontinued_at": now, "discontinue_reason": "dose_change", "updated_at": now},
                                                                         "$push": {"history": {"action": "discontinued", "reason": "dose_change", "at": now, **actor, "source": source}}})
             dec = "add"
         if dec == "update_sig" and match_id:
-            await db.patient_medications.update_one({"id": match_id}, {"$set": {"sig": m.get("sig"), "updated_at": now, "last_verified_at": now, "source": source},
+            await db.patient_medications.update_one({"id": match_id, "patient_id": scope}, {"$set": {"sig": m.get("sig"), "updated_at": now, "last_verified_at": now, "source": source},
                                                                         "$push": {"history": {"action": "sig_updated", "sig": m.get("sig"), "at": now, **actor, "source": source}}})
             applied.append(f"{label} — SIG updated"); continue
         if dec == "restart" and match_id:
-            await db.patient_medications.update_one({"id": match_id}, {"$set": {**{k: m[k] for k in MED_KEYS if m.get(k) is not None}, "active": True, "discontinued_at": None, "source": source,
+            await db.patient_medications.update_one({"id": match_id, "patient_id": scope}, {"$set": {**{k: m[k] for k in MED_KEYS if m.get(k) is not None}, "active": True, "discontinued_at": None, "source": source,
                                                                                  "last_verified_at": now, "updated_at": now, "portal_visible": d.get("portal_visible", True), "review_flag": None},
                                                                         "$push": {"history": {"action": "restarted", "at": now, **actor, "source": source}}})
             applied.append(f"{label} — restarted"); continue
@@ -180,7 +187,7 @@ def build_router(require_roles, roles, scoped_refs, regimen_key, remember_catalo
     async def reconcile_ep(patient_ref: str, body: ApplyBody, user: dict = Depends(require_roles(*roles))):
         refs, _, p = await scoped_refs(patient_ref, user)
         pid = p["id"] if p else refs[0]
-        res = await apply(pid, [d.model_dump() for d in body.decisions], body.source, user, regimen_key, remember_catalog)
+        res = await apply(pid, [d.model_dump() for d in body.decisions], body.source, user, regimen_key, remember_catalog, refs=refs)
         res["medications"] = [med_public(x) for x in await db.patient_medications.find({"patient_id": {"$in": refs}, "active": True}, {"_id": 0}).to_list(200)]
         return res
 

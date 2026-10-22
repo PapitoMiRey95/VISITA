@@ -19,7 +19,7 @@ from bson import ObjectId
 from pymongo.errors import DuplicateKeyError
 from fastapi import (APIRouter, BackgroundTasks, Depends, FastAPI, File, Form,
                      Header, HTTPException, Request, Response, UploadFile)
-from pydantic import BaseModel, EmailStr, Field
+from pydantic import BaseModel, EmailStr, Field, field_validator
 from fastapi.responses import JSONResponse
 from starlette.middleware.cors import CORSMiddleware
 
@@ -331,8 +331,10 @@ async def _refill_pharmacy_label(patient: dict) -> str:
 
 def _med_strength_display(d: dict) -> str:
     """Simple patient-facing strength string from the authoritative medication."""
-    s = " ".join([str(x).strip() for x in (d.get("strength"), d.get("unit")) if x]).strip()
-    return s or (d.get("strength") or "")
+    st, unit = str(d.get("strength") or "").strip(), str(d.get("unit") or "").strip()
+    if unit and re.search(r"[a-zA-Z%µ]", st):  # strength already carries a unit ("5 mg") → don't append again
+        return st
+    return " ".join(x for x in (st, unit) if x)
 
 
 async def _notify_patient_rx_sent(req: dict):
@@ -8876,6 +8878,11 @@ class MedWriteBody(BaseModel):
     sig: Optional[str] = None
     quantity: Optional[str] = None
     quantity_unit: Optional[str] = None
+
+    @field_validator("refills", mode="before")
+    @classmethod
+    def _blank_refills(cls, v):
+        return None if v in ("", None) else v
     route: Optional[str] = None
     duration_value: Optional[str] = None
     duration_unit: Optional[str] = None
@@ -11203,7 +11210,8 @@ async def rx_complete(item_id: str, body: RxCompleteBody, user: dict = Depends(r
         pid = await med_history_mod.canonical_patient_id({"patient_id": doc.get("patient_id"), "patient_directory_id": doc.get("directory_id")}) or doc.get("patient_id") or doc.get("directory_id")
         safe = [d.model_dump() for d in (body.decisions or []) if d.decision in ("add", "skip", "flag")]  # external verification never replaces/stops
         recon = await recon_mod.apply(pid, safe, "CLINIC_VERIFIED_EXTERNAL_RX", user, _regimen_key, _remember_med_catalog,
-                                      context={"request_id": item_id, "ref_number": doc.get("ref_number")}) if pid else None
+                                      context={"request_id": item_id, "ref_number": doc.get("ref_number")},
+                                      refs=[x for x in {pid, doc.get("patient_id"), doc.get("directory_id")} if x]) if pid else None
     updates = {"internal_status": status, "completion_outcome": body.outcome, "completion_note": (body.note or "").strip() or None,
                "completed_at": now, "completed_by": user["name"], "updated_at": now,
                "verified_by": {"id": user["id"], "name": user["name"], "role": user["role"], "at": now} if body.outcome == "PRESCRIPTION_VERIFIED_EXTERNAL" else None,

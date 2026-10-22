@@ -111,8 +111,9 @@ def _is_stopword_sig(tok):
     if up in _DOSING:
         return True
     if re.fullmatch(r"[A-Z]{1,4}(?:-[A-Z]{1,4})?", c) and c == up and up != "LU":
-        # all-caps short token that isn't LU (coverage code) -> SIG abbrev
-        return True
+        # all-caps short token that isn't LU (coverage code) -> SIG abbrev;
+        # a single letter is a vitamin designation (Vitamin D / K / C), never a SIG
+        return len(c) > 1
     return False
 
 

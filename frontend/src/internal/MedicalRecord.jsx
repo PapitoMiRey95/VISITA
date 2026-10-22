@@ -96,7 +96,7 @@ export default function MedicalRecord({ patientId }) {
             await api.patch(`/internal/patients/${patientId}/medications/${id}`, { action_type, ...(note ? { note } : {}) });
             toast.success(label);
             setRec(null); await load();
-        } catch (e) { toast.error(formatErr(e)); setBusy(""); }
+        } catch (e) { toast.error(formatErr(e)); } finally { setBusy(""); }
     };
 
     const active = rec?.medications?.active || [];

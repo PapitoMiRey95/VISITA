@@ -46,6 +46,7 @@ backend/data/*.csv
 *.xlsx
 *.xls
 !backend/taxonomy_sources/*.xlsx
+!backend/seed/address/*.xlsx
 
 # Logs and debug files
 npm-debug.log*

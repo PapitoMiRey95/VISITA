@@ -1,4 +1,5 @@
 import { useState, useEffect, useCallback } from "react";
+import { postalAssist, queuePostalCandidate } from "../lib/postalAssist";
 import { useNavigate, Link, useSearchParams, useParams } from "react-router-dom";
 import { useTranslation } from "react-i18next";
 import { toast } from "sonner";
@@ -112,6 +113,13 @@ export default function Register() {
     const optional = t("common:status.optional");
     const practiceCtx = practice ? { practice_id: practice.id, practice_slug: practice.slug } : {};
 
+    const [postalHint, setPostalHint] = useState(null);
+    const onPostalBlur = async () => {
+        const r = await postalAssist(form.postal_code, form);
+        if (!r) return;
+        setForm(r.next); setPostalHint(r.found ? `${r.city}, ${r.province}` : "unknown");
+    };
+    const postalHintEl = postalHint && <p className="text-[11px] mt-1 text-slate-500" data-testid="reg-postal-hint">{postalHint === "unknown" ? t("auth:register.postalUnknown", "Postal code not recognized — please enter your city and province.") : t("auth:register.postalSuggested", "City and province suggested from your postal code: {{v}}", { v: postalHint })}</p>;
     const submit = async (e) => {
         e.preventDefault();
         const errs = validateCurrent();
@@ -124,6 +132,7 @@ export default function Register() {
         setErrors({});
         setBusy(true);
         try {
+            if (postalHint === "unknown") queuePostalCandidate(form);
             const res = await register({
                 ...form,
                 first_name: form.first_name.trim(), last_name: form.last_name.trim(),
@@ -187,6 +196,7 @@ export default function Register() {
         }
         setBusy(true);
         try {
+            if (postalHint === "unknown") queuePostalCandidate(form);
             const { data } = await api.post("/applications/new-patient", {
                 first_name: form.first_name.trim(), last_name: form.last_name.trim(),
                 middle_name: form.second_name?.trim() || null,
@@ -386,7 +396,7 @@ export default function Register() {
                                     <Field required error={err("province")} label={t("auth:register.addressProvince")} testid="reg-address-province"><Input required value={form.province} onChange={set("province")} /></Field>
                                 </div>
                                 <div className="grid grid-cols-2 gap-3">
-                                    <Field required error={err("postal_code")} label={t("auth:register.addressPostal")} testid="reg-postal"><Input required value={form.postal_code} onChange={set("postal_code")} /></Field>
+                                    <Field required error={err("postal_code")} label={t("auth:register.addressPostal")} testid="reg-postal"><Input required value={form.postal_code} onChange={set("postal_code")} onBlur={onPostalBlur} />{postalHintEl}</Field>
                                     <Field required error={err("country")} label={t("auth:register.addressCountry")} testid="reg-address-country"><Input required value={form.country} onChange={set("country")} /></Field>
                                 </div>
                             </div>
@@ -458,7 +468,7 @@ export default function Register() {
                                     <Field label={t("auth:register.addressProvince")} testid="np-province"><Input required value={form.province} onChange={set("province")} /></Field>
                                 </div>
                                 <div className="grid grid-cols-2 gap-3">
-                                    <Field label={t("auth:register.addressPostal")} testid="np-postal"><Input required value={form.postal_code} onChange={set("postal_code")} /></Field>
+                                    <Field label={t("auth:register.addressPostal")} testid="np-postal"><Input required value={form.postal_code} onChange={set("postal_code")} onBlur={onPostalBlur} />{postalHintEl}</Field>
                                     <Field label={t("auth:register.addressCountry")} testid="np-country"><Input required value={form.country} onChange={set("country")} /></Field>
                                 </div>
                             </div>

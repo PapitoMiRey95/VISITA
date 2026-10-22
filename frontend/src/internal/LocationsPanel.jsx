@@ -5,10 +5,16 @@ import { api, formatErr } from "../lib/api";
 import { Button } from "../components/ui/button";
 import { Input } from "../components/ui/input";
 import { Label } from "../components/ui/label";
-import { AddressFields, emptyAddress, useAddressOptions } from "../components/AddressFields";
+import { AddressFields, emptyAddress } from "../components/AddressFields";
 
 // Shared locations manager: a professional's practice locations, or standalone referral destinations (no named physician).
-const emptyLoc = (entityType) => ({ ...emptyAddress(), label: "", phone: "", fax: "", specialty: "", address_type: entityType === "destination" ? "HOSPITAL" : "PRACTICE", address_subtype: entityType === "destination" ? "REFERRAL_INTAKE" : "" });
+const emptyLoc = (entityType) => ({ ...emptyAddress(), label: "", phone: "", fax: "", specialty: "", address: "", location_type: entityType === "destination" ? "HOSPITAL" : "PRACTICE", location_subtype: entityType === "destination" ? "REFERRAL_INTAKE" : "" });
+const SELECT = "flex h-9 w-full rounded-sm border border-slate-300 bg-white px-2 text-sm";
+function useLocationOptions() {
+    const [opts, setOpts] = useState({ location_types: [], location_subtypes: [] });
+    useEffect(() => { api.get("/internal/address/options").then(({ data }) => setOpts(data)).catch(() => {}); }, []);
+    return opts;
+}
 
 export function useLocations(entityType, entityId) {
     const [rows, setRows] = useState([]);
@@ -23,10 +29,10 @@ export function LocationCard({ loc, onEdit, onRemove, compact = false }) {
             <div className="flex items-start gap-2">
                 <MapPin className="w-4 h-4 mt-0.5 text-visita-green shrink-0" />
                 <div className="flex-1 min-w-0">
-                    <div className="font-semibold text-slate-800 break-words">{loc.label || loc.address_subtype_label || loc.address_type_label || "Location"}{loc.specialty && <span className="font-normal text-slate-500"> · {loc.specialty}</span>}</div>
+                    <div className="font-semibold text-slate-800 break-words">{loc.label || loc.location_subtype_label || loc.location_type_label || "Location"}{loc.specialty && <span className="font-normal text-slate-500"> · {loc.specialty}</span>}</div>
                     <div className="text-slate-700 break-words" data-testid="location-line">{loc.display_line || "—"}</div>
                     <div className="flex flex-wrap gap-x-3 text-xs text-slate-500 mt-0.5">
-                        {(loc.address_type_label || loc.address_subtype_label) && <span>{[loc.address_type_label, loc.address_subtype_label].filter(Boolean).join(" · ")}</span>}
+                        {(loc.location_type_label || loc.location_subtype_label) && <span>{[loc.location_type_label, loc.location_subtype_label].filter(Boolean).join(" · ")}</span>}
                         {loc.phone && <span className="inline-flex items-center gap-1"><Phone className="w-3 h-3" />{loc.phone}</span>}
                         {loc.fax && <span className="inline-flex items-center gap-1"><Printer className="w-3 h-3" />Fax {loc.fax}</span>}
                     </div>
@@ -39,14 +45,15 @@ export function LocationCard({ loc, onEdit, onRemove, compact = false }) {
 }
 
 export function LocationForm({ entityType, entityId, initial, onSaved, onCancel }) {
-    const options = useAddressOptions();
-    const [f, setF] = useState(initial ? { ...emptyLoc(entityType), ...initial } : emptyLoc(entityType));
+    const options = useLocationOptions();
+    const [f, setF] = useState(initial ? { ...emptyLoc(entityType), ...Object.fromEntries(Object.entries(initial).map(([k, v]) => [k, v ?? ""])) } : emptyLoc(entityType));
     const [busy, setBusy] = useState(false);
     const isDest = entityType === "destination";
     const submit = async (e) => {
         e.preventDefault(); setBusy(true);
         try {
-            const body = { ...f, entity_type: entityType, entity_id: entityId || null };
+            const hasParts = [f.street_name, f.street_number, f.street_type].some((x) => (x || "").trim());
+            const body = { ...f, address: hasParts ? "" : f.address, entity_type: entityType, entity_id: entityId || null };
             const { data } = initial?.id ? await api.patch(`/internal/locations/${initial.id}`, body) : await api.post("/internal/locations", body);
             toast.success(initial?.id ? "Location updated." : "Location added."); onSaved(data);
         } catch (err) { toast.error(formatErr(err)); } finally { setBusy(false); }
@@ -58,7 +65,17 @@ export function LocationForm({ entityType, entityId, initial, onSaved, onCancel 
                     <Input data-testid="location-label" value={f.label} onChange={(e) => setF({ ...f, label: e.target.value })} /></div>
                 {isDest && <div className="col-span-2"><Label className="text-xs">Specialty</Label><Input data-testid="location-specialty" value={f.specialty} onChange={(e) => setF({ ...f, specialty: e.target.value })} placeholder="Cardiology" /></div>}
             </div>
-            <AddressFields value={f} onChange={(v) => setF({ ...f, ...v })} options={options} testid="location" />
+            <div className="grid grid-cols-2 gap-2">
+                <div><Label className="text-xs">Location Type</Label>
+                    <select data-testid="location-type" value={f.location_type || ""} onChange={(e) => setF({ ...f, location_type: e.target.value })} className={SELECT}>
+                        <option value="">— Select —</option>{options.location_types.map((o) => <option key={o.code} value={o.code}>{o.label}</option>)}
+                    </select></div>
+                <div><Label className="text-xs">Location Subtype <span className="text-slate-400 font-normal">(optional)</span></Label>
+                    <select data-testid="location-subtype" value={f.location_subtype || ""} onChange={(e) => setF({ ...f, location_subtype: e.target.value })} className={SELECT}>
+                        <option value="">— None —</option>{options.location_subtypes.map((o) => <option key={o.code} value={o.code}>{o.label}</option>)}
+                    </select></div>
+            </div>
+            <AddressFields value={f} onChange={(v) => setF({ ...f, ...v })} internal testid="location" />
             <div className="grid grid-cols-2 gap-2">
                 <div><Label className="text-xs">Phone at this location</Label><Input data-testid="location-phone" value={f.phone} onChange={(e) => setF({ ...f, phone: e.target.value })} placeholder="416-555-0100" /></div>
                 <div><Label className="text-xs">Fax at this location</Label><Input data-testid="location-fax" value={f.fax} onChange={(e) => setF({ ...f, fax: e.target.value })} placeholder="416-555-0101" /></div>

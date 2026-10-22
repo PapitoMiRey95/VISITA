@@ -9,6 +9,7 @@ import { Label } from "../components/ui/label";
 import { HealthCardNumberInput } from "../components/HealthCardNumberInput";
 import { IssueDatePicker } from "../components/IssueDatePicker";
 import { ExpiryPicker } from "../components/ExpiryPicker";
+import { postalAssist } from "../lib/postalAssist";
 
 const EMPTY = { first_name: "", last_name: "", date_of_birth: "", sex: "", email: "", home_phone: "", phone: "", address: "", unit: "", city: "", province: "ON", postal_code: "", country: "Canada", health_card_number: "", health_card_version: "", health_card_issue_date: "", health_card_expiry_date: "" };
 const SELECT = "flex h-9 w-full rounded-sm border border-slate-300 bg-white px-3 text-sm focus:outline-none focus:ring-2 focus:ring-cyan-500";
@@ -57,7 +58,7 @@ export function AddPatientDialog({ open, onClose, onCreated }) {
                         <div className="col-span-2"><Label className="text-xs">Unit</Label><Input data-testid="add-unit" value={f.unit} onChange={set("unit")} /></div>
                         <div className="col-span-3 sm:col-span-2"><Label className="text-xs">City</Label><Input data-testid="add-city" value={f.city} onChange={set("city")} /></div>
                         <div className="col-span-3 sm:col-span-1"><Label className="text-xs">Province</Label><Input data-testid="add-province" value={f.province} onChange={set("province")} /></div>
-                        <div className="col-span-3 sm:col-span-2"><Label className="text-xs">Postal Code</Label><Input data-testid="add-postal" value={f.postal_code} onChange={set("postal_code")} /></div>
+                        <div className="col-span-3 sm:col-span-2"><Label className="text-xs">Postal Code</Label><Input data-testid="add-postal" value={f.postal_code} onChange={set("postal_code")} onBlur={async () => { const r = await postalAssist(f.postal_code, f, { internal: true }); if (r) setF(r.next); }} /></div>
                         <div className="col-span-3 sm:col-span-1"><Label className="text-xs">Country</Label><Input data-testid="add-country" value={f.country} onChange={set("country")} /></div>
                     </div>
                     <div className="border border-slate-200 rounded-sm p-2.5 space-y-2">

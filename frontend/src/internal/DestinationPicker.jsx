@@ -10,7 +10,7 @@ export function DestinationPicker({ onPick }) {
     const [value, setValue] = useState("");
     useEffect(() => { api.get("/internal/locations").then(({ data }) => setRows(data.filter((l) => l.fax || l.address))).catch(() => setRows([])); }, []);
     if (rows.length === 0) return null;
-    const label = (l) => `${l.entity_name ? `${l.entity_name} — ` : ""}${l.label || l.address_subtype_label || l.address_type_label || "Location"}${l.specialty ? ` (${l.specialty})` : ""} · ${l.city || ""}${l.fax ? ` · Fax ${l.fax}` : " · no fax on file"}`;
+    const label = (l) => `${l.entity_name ? `${l.entity_name} — ` : ""}${l.label || l.location_subtype_label || l.location_type_label || "Location"}${l.specialty ? ` (${l.specialty})` : ""} · ${l.city || ""}${l.fax ? ` · Fax ${l.fax}` : " · no fax on file"}`;
     return (
         <div className="md:col-span-2">
             <Label className="text-xs flex items-center gap-1"><MapPin className="w-3.5 h-3.5" /> Pick a saved destination <span className="text-slate-400 font-normal">(fills Specialist / Clinic and fax from that location)</span></Label>

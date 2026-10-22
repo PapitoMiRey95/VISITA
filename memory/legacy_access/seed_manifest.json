@@ -1,0 +1,38 @@
+{
+  "version": 1,
+  "purpose": "Legacy VIen/Access address pool import and UI semantics",
+  "sources": {
+    "provinces": {"file": "tblProv.xlsx", "sheet": "tblProv", "columns": ["ProvID", "Prov", "FullProv"], "data_rows": 13},
+    "cities": {"file": "tblCity.xlsx", "sheet": "tblCity", "columns": ["CityID", "City", "ProvID", "Favourite", "Favourite2"], "data_rows": 288, "ontario_rows": 267},
+    "postal_codes": {"file": "tblPostalCode.xlsx", "sheet": "tblPostalCode", "columns": ["PostalCodeID", "PostalCode", "CityID", "ProvID", "Favourite"], "data_rows": 13230},
+    "street_names": {"file": "tblAddress.xlsx", "sheet": "tblAddress", "columns": ["AddressID", "Address", "ProvID", "Favourite", "Favourite2"], "data_rows": 1474},
+    "street_types": {"file": "tblAddressType.xlsx", "sheet": "tblAddressType", "columns": ["AddressTypeID", "AddressType", "Favourite"], "data_rows": 117},
+    "street_directionals": {"file": "tblAddressSubType.xlsx", "sheet": "tblAddressSubType", "columns": ["AddressSubTypeID", "AddressSubType"], "data_rows": 4}
+  },
+  "semantics": {
+    "Address": "street name / street-name pool",
+    "AddressType": "street suffix/type, e.g. Avenue, Boulevard, Road, Street",
+    "AddressSubType": "directional suffix: East, North, South, West",
+    "location_context": "separate VIen concept; do not overload AddressType/AddressSubType"
+  },
+  "defaults": {"province_code": "ON", "province_id": 9},
+  "toronto_canonical_labels": [
+    "Toronto",
+    "Toronto York",
+    "Toronto North York",
+    "Toronto East York",
+    "Toronto Etobicoke",
+    "Toronto Scarborough"
+  ],
+  "legacy_city_aliases": {
+    "Toronto York North": "Toronto North York",
+    "Toronto York East": "Toronto East York"
+  },
+  "postal_code_rules": {
+    "known": "lookup CityID+ProvID and suggest/populate City+Province",
+    "unknown": "never block; permit manual City+Province",
+    "internal_add": "offer + Add postal code with reviewed City+Province",
+    "patient_global_pool_write": false,
+    "patient_unknown_behavior": "accept address; optional review candidate, no silent global-pool mutation"
+  }
+}

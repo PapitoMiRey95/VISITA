@@ -17,6 +17,7 @@ import { ExpiryPicker } from "../components/ExpiryPicker";
 
 import { Select, SelectTrigger, SelectValue, SelectContent, SelectItem } from "../components/ui/select";
 import { CompletionProfileCard } from "./ProfileCompletion";
+import { postalAssist, queuePostalCandidate } from "../lib/postalAssist";
 
 const SEX_OPTIONS = ["Male", "Female", "X"];
 const TYPE_KEY = { ohip: "typeOhip", private: "typePrivate", tourist: "typeTourist" };
@@ -268,7 +269,7 @@ export default function PortalAccount() {
                             <div className="grid grid-cols-3 gap-2">
                                 <div><Label className="text-xs">{t("portal:account.cityLabel")}</Label><Input data-testid="acct-address-city" value={addr.city} onChange={(e) => setAddr({ ...addr, city: e.target.value })} /></div>
                                 <div><Label className="text-xs">{t("portal:account.provinceLabel")}</Label><Input data-testid="acct-address-province" value={addr.province} onChange={(e) => setAddr({ ...addr, province: e.target.value })} placeholder="ON" /></div>
-                                <div><Label className="text-xs">{t("portal:account.postalLabel")}</Label><Input data-testid="acct-address-postal" value={addr.postal_code} onChange={(e) => setAddr({ ...addr, postal_code: e.target.value })} placeholder="A1A 1A1" /></div>
+                                <div><Label className="text-xs">{t("portal:account.postalLabel")}</Label><Input data-testid="acct-address-postal" value={addr.postal_code} onChange={(e) => setAddr({ ...addr, postal_code: e.target.value })} onBlur={async () => { const r = await postalAssist(addr.postal_code, addr); if (r) { setAddr(r.next); if (!r.found) queuePostalCandidate(r.next); } }} placeholder="A1A 1A1" /></div>
                             </div>
                             <div className="flex gap-2">
                                 <Button data-testid="acct-address-save" disabled={busy} onClick={saveAddress} className="bg-portal-blue text-white">{t("common:actions.save")}</Button>

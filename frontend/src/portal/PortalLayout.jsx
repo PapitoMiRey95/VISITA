@@ -1,8 +1,9 @@
 import { Outlet, useNavigate, NavLink, useLocation } from "react-router-dom";
-import { useMemo, useEffect } from "react";
+import { useState, useMemo, useEffect } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { useTranslation } from "react-i18next";
 import { Home, Calendar, Pill, MessageSquare, ClipboardList, Bell, LogOut, User, Receipt, FileText, CreditCard, ArrowLeft } from "lucide-react";
+import { NotificationPanel, useNotifications } from "./NotificationCenter";
 import { api, setOnBehalfOf } from "../lib/api";
 import { useAuth } from "../context/AuthContext";
 import { ThemeToggle } from "../components/ThemeToggle";
@@ -49,7 +50,10 @@ export default function PortalLayout() {
     const perms = del?.permissions || [];
     const can = (p) => perms.includes(p);
 
-    const unread = (overview.data?.notifications || []).filter((n) => !n.read).length;
+    const notifs = useNotifications();
+    const unread = notifs.unread;
+    const [notifOpen, setNotifOpen] = useState(false);
+    const openNotifications = () => { if (window.matchMedia("(min-width: 768px)").matches) setNotifOpen(true); else nav("/portal/notifications"); };
     const ptype = overview.data?.patient?.patient_type;
     const billing = overview.data?.billing || { open: 0, total: 0 };
     const showInvoices = PRIVATE_TYPES.includes(ptype) || (billing.total || 0) > 0;
@@ -104,10 +108,10 @@ export default function PortalLayout() {
                         ))}
                     </div>
                     {!managed && (
-                        <button data-testid="portal-notifications" onClick={() => nav("/portal/account")} className="relative p-2 rounded-full hover:bg-slate-100">
+                        <button data-testid="portal-notifications" onClick={openNotifications} className="relative p-2 rounded-full hover:bg-slate-100" aria-label="Notifications">
                             <Bell className="w-5 h-5 text-slate-600" />
                             {unread > 0 && (
-                                <span className="absolute top-0 right-0 bg-red-500 text-white text-[10px] w-4 h-4 rounded-full flex items-center justify-center">{unread}</span>
+                                <span data-testid="portal-notifications-badge" className="absolute -top-0.5 -right-0.5 bg-portal-blue text-white text-[10px] font-bold min-w-[18px] h-[18px] px-1 rounded-full flex items-center justify-center ring-2 ring-white dark:ring-[#171b21]">{unread > 99 ? "99+" : unread}</span>
                             )}
                         </button>
                     )}
@@ -116,6 +120,7 @@ export default function PortalLayout() {
                         {user?.name?.[0] || "P"}
                     </button>
                     <ThemeToggle className="border-slate-300 text-slate-700" />
+                    {!managed && <NotificationPanel open={notifOpen} onOpenChange={setNotifOpen} />}
                     <button data-testid="portal-logout" onClick={() => { logout(); nav("/login"); }} className="p-2 rounded-full hover:bg-slate-100">
                         <LogOut className="w-5 h-5 text-slate-600" />
                     </button>

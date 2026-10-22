@@ -228,15 +228,77 @@ def portal_access(permission: str = None):
     return dep
 
 
-async def notify_patient(patient_id: str, title: str, body: str):
-    await db.notifications.insert_one({
-        "id": str(uuid.uuid4()),
-        "patient_id": patient_id,
-        "title": title,
-        "body": body,
-        "read": False,
-        "created_at": now_iso(),
-    })
+NOTIF_CATEGORIES = ("appointment", "prescription", "results", "referral", "invoice", "account", "action_required")
+_NOTIF_RULES = (("health card update not approved", "action_required"), ("not approved", "action_required"), ("more information", "action_required"),
+                ("cancel", "action_required"), ("appointment", "appointment"), ("prescription", "prescription"), ("refill", "prescription"),
+                ("result", "results"), ("referral", "referral"), ("invoice", "invoice"), ("payment", "invoice"), ("fee", "invoice"),
+                ("message", "account"), ("pin", "account"), ("account", "account"), ("health card", "account"))
+_NOTIF_LINKS = {"appointment": "/portal/appointments", "prescription": "/portal/prescriptions", "results": "/portal/documents",
+                "referral": "/portal/referrals", "invoice": "/portal/invoices", "account": "/portal/account", "action_required": "/portal/requests"}
+
+
+_DATE_RX = re.compile(r"(\d{4} [A-Z][a-z]{2} - \d{2}(?: \([A-Za-z]{3}\))?(?: · \d{1,2}:\d{2} ?[AP]M)?)")
+_LEGACY_TITLES = {"your results have been reviewed": "Results reviewed", "appointment update": "More information needed",
+                  "message update": "Clinic replied", "account update": "Account reviewed", "health card update approved": "Health Card updated"}
+
+
+def compact_copy(n: dict) -> dict:
+    """Display-only rewrite of verbose legacy copy: what happened · essential date/status · next action only if needed."""
+    title = (n.get("title") or "").strip()
+    body = (n.get("body") or "").strip()
+    tl = title.lower()
+    date = (_DATE_RX.search(body) or [None])[0] if body else None
+    if date:  # "2026 Oct - 26 (Mon) · 12:30 PM" → "Oct 26 · 12:30 PM"
+        date = re.sub(r"^\d{4} ([A-Z][a-z]{2}) - (\d{2})(?: \([A-Za-z]{3}\))?", lambda m: f"{m.group(1)} {int(m.group(2))}", date)
+    if tl in _LEGACY_TITLES:
+        title = _LEGACY_TITLES[tl]
+    if "results" in tl and "review" in tl:
+        body = "Book a visit if you'd like to discuss."
+    elif tl.startswith("appointment cancelled"):
+        body = f"{date} · cancelled by the clinic." if date else "Cancelled by the clinic."
+    elif tl.startswith("appointment rescheduled"):
+        body = f"Now {date}." if date else body
+    elif tl.startswith("appointment confirmed") or tl.startswith("appointment booked"):
+        body = f"{date} with Dr. Aguayo." if date else body
+    elif tl.startswith("prescription sent"):
+        body = "Your pharmacy will let you know when it's ready."
+    elif tl == "message update" or tl == "clinic replied":
+        body = "Open your messages to read the reply."
+    else:
+        sentences = [x.strip() for x in re.split(r"(?<=[.!])\s+", body) if x.strip()]
+        keep = [x for x in sentences if not re.search(r"patient portal|log in|sign in|see your", x, re.I)] or sentences[:1]
+        body = " ".join(keep)
+    if len(body) > 90:
+        body = body[:87].rstrip(" ,;") + "…"
+    return {**n, "title": title, "body": body}
+
+
+def classify_notification(n: dict) -> dict:
+    """Fills category/link for legacy rows (title-based) without rewriting stored data."""
+    n = compact_copy(n)
+    cat = n.get("category")
+    if cat not in NOTIF_CATEGORIES:
+        t = (n.get("title") or "").lower()
+        cat = next((c for k, c in _NOTIF_RULES if k in t), "account")
+    link = n.get("link") or ("/portal/appointments" if "appointment" in (n.get("title") or "").lower() else _NOTIF_LINKS[cat])
+    return {**n, "category": cat, "link": link}
+
+
+async def notify_patient(patient_id: str, title: str, body: str, category: Optional[str] = None, link: Optional[str] = None,
+                         dedupe_key: Optional[str] = None):
+    """Compact portal notification. `dedupe_key`: an unread duplicate from the last 24h is refreshed (count+1) instead of
+    flooding the feed. Copy must stay short: what happened · essential date/status · next action only if needed."""
+    now = now_iso()
+    if dedupe_key:
+        since = (datetime.now(timezone.utc) - timedelta(hours=24)).isoformat()
+        dup = await db.notifications.find_one({"patient_id": patient_id, "dedupe_key": dedupe_key, "read": False, "created_at": {"$gte": since}})
+        if dup:
+            await db.notifications.update_one({"id": dup["id"]}, {"$set": {"created_at": now, "body": body}, "$inc": {"count": 1}})
+            return dup["id"]
+    doc = classify_notification({"id": str(uuid.uuid4()), "patient_id": patient_id, "title": title, "body": body, "read": False,
+                                 "created_at": now, "category": category, "link": link, "dedupe_key": dedupe_key, "count": 1})
+    await db.notifications.insert_one(doc)
+    return doc["id"]
 
 
 # ---- Smart medication list + refill helpers ----
@@ -274,8 +336,8 @@ async def _notify_patient_rx_sent(req: dict):
         "body": "Your prescription request has been processed and sent to your pharmacy.",
         "read": False, "created_at": now_iso(),
     })
-    await notify_patient(pid, "Prescription sent to your pharmacy",
-                         "Your prescription has been sent to your pharmacy. Sign in to the Patient Portal for details.")
+    await notify_patient(pid, "Prescription sent to your pharmacy", "Your pharmacy will let you know when it's ready.",
+                         category="prescription", link="/portal/prescriptions")
     p = await db.patients.find_one({"id": pid}, {"_id": 0})
     # Tracked send: records sent / failed / skipped_no_email (e.g. directory-only patient).
     lang = notify_svc._lang(p)
@@ -1613,8 +1675,7 @@ async def portal_request_pin(user: dict = Depends(get_current_user)):
         "status": "PENDING", "requested_at": now, "created_at": now,
     })
     await audit("pin_requested", "patient", p["id"], user, meta={"ref": ref})
-    await notify_patient(p["id"], "PIN request received",
-                         "We've asked the clinic to share your Visita PIN with you. They'll follow up shortly.")
+    await notify_patient(p["id"], "PIN request received", "The clinic will follow up shortly.", category="account", link="/portal/account")
     return {"ok": True, "ref_number": ref}
 
     return {"ok": True}
@@ -3839,6 +3900,39 @@ async def portal_update_address(body: AddressUpdateBody, user: dict = Depends(ge
     return {"ok": True, **fields}
 
 
+@api.get("/portal/notifications")
+async def list_notifications(user: dict = Depends(get_current_user)):
+    """Compact feed: legacy identical rows (same title+body, same day) are collapsed into one item with a count."""
+    p = await get_patient_record(user)
+    rows = await db.notifications.find({"patient_id": p["id"]}, {"_id": 0}).sort("created_at", -1).to_list(200)
+    out, seen = [], {}
+    for n in rows:
+        n = classify_notification(n)
+        key = (n.get("title"), n.get("body"), (n.get("created_at") or "")[:10])
+        if key in seen:
+            first = seen[key]
+            first["count"] = (first.get("count") or 1) + (n.get("count") or 1)
+            first["read"] = first["read"] and n.get("read", False)
+            first.setdefault("collapsed_ids", []).append(n["id"])
+            continue
+        seen[key] = n
+        out.append(n)
+    return {"items": out[:100], "unread": sum(1 for n in out if not n.get("read"))}
+
+
+@api.post("/portal/notifications/{note_id}/read")
+async def mark_note_read(note_id: str, user: dict = Depends(get_current_user)):
+    p = await get_patient_record(user)
+    n = await db.notifications.find_one({"id": note_id, "patient_id": p["id"]}, {"_id": 0, "title": 1, "body": 1, "created_at": 1})
+    if not n:
+        raise HTTPException(status_code=404, detail="Notification not found.")
+    # mark collapsed duplicates too (same title/body/day)
+    day = (n.get("created_at") or "")[:10]
+    await db.notifications.update_many({"patient_id": p["id"], "title": n.get("title"), "body": n.get("body"),
+                                        "created_at": {"$regex": f"^{re.escape(day)}"}}, {"$set": {"read": True}})
+    return {"ok": True}
+
+
 @api.post("/portal/notifications/read")
 async def mark_notes_read(user: dict = Depends(get_current_user)):
     p = await get_patient_record(user)
@@ -4419,7 +4513,8 @@ async def _notify_result_reviewed(patient_id: str):
     await db.patient_updates.insert_one({
         "id": str(uuid.uuid4()), "patient_id": patient_id, "type": "result_reviewed",
         "title": "Your results have been reviewed", "body": msg, "read": False, "created_at": now_iso()})
-    await notify_patient(patient_id, "Your results have been reviewed", msg)
+    await notify_patient(patient_id, "Results reviewed", "Reviewed by your physician. Book a visit if you'd like to discuss.",
+                         category="results", link="/portal/documents", dedupe_key="results_reviewed")
     p = await db.patients.find_one({"id": patient_id}, {"_id": 0})
     if p and p.get("email"):
         lang = email_service.norm_lang(p.get("preferred_language"))
@@ -4575,9 +4670,7 @@ async def book_appointment(body: BookApptBody, user: dict = Depends(require_role
     await audit("book_appointment", "appointment", appt["id"], user, new_status="confirmed",
                 meta={"source_type": body.source_type, "source_id": body.source_id, "same_day_override": bool(override)})
     await guard_mod.refresh_week_flags(db, practice_id, ident, [body.date], user)
-    await notify_patient(source["patient_id"], "Appointment booked",
-                         f"An appointment with Dr. Aguayo has been booked for {display}. "
-                         "Please log in to your Patient Portal for details.")
+    await notify_patient(source["patient_id"], "Appointment booked", f"{display} with Dr. Aguayo.", category="appointment", link="/portal/appointments")
     try:
         await notify_svc.appointment_confirmed(db, appt)
     except Exception:
@@ -4625,8 +4718,8 @@ async def msg_update(item_id: str, body: UpdateBody, user: dict = Depends(requir
     await db.patient_messages.update_one({"id": item_id}, mongo_update)
     await audit("update", "message", item_id, user, old_status=old_status, new_status=updates.get("status", old_status))
     if (updates.get("status") == "completed" or body.patient_reply) and doc.get("source") != "pharmacy" and doc.get("patient_id"):
-        await notify_patient(doc["patient_id"], "Message update",
-                             "The clinic has responded to your message. Please log in to your Patient Portal.")
+        await notify_patient(doc["patient_id"], "Clinic replied", "Open your messages to read the reply.", category="account", link="/portal/messages",
+                             dedupe_key=f"msg_reply:{item_id}")
     return await db.patient_messages.find_one({"id": item_id}, {"_id": 0})
 
 
@@ -4928,8 +5021,8 @@ async def appt_update(item_id: str, body: UpdateBody, user: dict = Depends(requi
     elif notify == "declined":
         await notify_svc.appointment_declined(db, fresh, reason=body.staff_note or None)
     elif body.action == "more_info":
-        await notify_patient(doc["patient_id"], "Appointment update",
-                             "We need a little more information about your appointment request. Please log in to your Patient Portal.")
+        await notify_patient(doc["patient_id"], "More information needed", "Review your appointment request.", category="action_required",
+                             link="/portal/appointments", dedupe_key=f"appt_info:{item_id}")
     if body.action in ("complete", "no_show"):
         await notify_svc.cancel_reminders(db, item_id)
     return fresh
@@ -5294,8 +5387,8 @@ async def share_attachment(att_id: str, body: ShareAttachmentBody,
         "read": False, "created_at": now_iso(),
     })
     if body.notify:
-        await notify_patient(patient_id, "Your results have been reviewed",
-                             "Your results have been reviewed by your physician. If you would like to discuss the results, you can request an appointment.")
+        await notify_patient(patient_id, "Results reviewed", "Reviewed by your physician. Book a visit if you'd like to discuss.",
+                             category="results", link="/portal/documents", dedupe_key="results_reviewed")
         p = await db.patients.find_one({"id": patient_id}, {"_id": 0})
         if p and p.get("email"):
             lang = email_service.norm_lang(p.get("preferred_language"))
@@ -5956,8 +6049,7 @@ async def verify_patient(patient_id: str, body: VerifyBody, user: dict = Depends
         fresh = await db.patients.find_one({"id": patient_id}, {"_id": 0})
         await notify_svc.account_verified(db, fresh)
     else:
-        await notify_patient(patient_id, "Account update",
-                             "Your portal account has been reviewed. Please log in to your Patient Portal.")
+        await notify_patient(patient_id, "Account reviewed", "Your portal account was updated.", category="account", link="/portal/account")
     return {"ok": True}
 
 
@@ -10851,8 +10943,8 @@ async def internal_health_card_review(patient_id: str, action: str,
         await audit("health_card_update_rejected", "patient", patient_id, user,
                     meta={**audit_meta, "decision": "declined",
                           "old_values": identity_mod.format_health_card(p.get("health_card_number"), p.get("health_card_version"))})
-        await notify_patient(patient_id, "Health Card update not approved",
-                             "Your Health Card update was reviewed and not approved. Your existing record remains active. Please contact the clinic.")
+        await notify_patient(patient_id, "Health Card update not approved", "Your current card stays active. Contact the clinic.",
+                             category="action_required", link="/portal/health-card")
         return {"ok": True, "status": "rejected"}
     change = {"field": "health_card", "previous": identity_mod.format_health_card(p.get("health_card_number"), p.get("health_card_version")),
               "new": pending.get("display"), "changed_by": user["name"], "changed_at": now_iso(),
@@ -10866,8 +10958,7 @@ async def internal_health_card_review(patient_id: str, action: str,
     })
     await audit("health_card_update_approved", "patient", patient_id, user,
                 meta={**audit_meta, "decision": "approved", "old_values": change["previous"]})
-    await notify_patient(patient_id, "Health Card update approved",
-                         "Your Health Card information has been verified and updated. Thank you.")
+    await notify_patient(patient_id, "Health Card updated", "Verified and saved.", category="account", link="/portal/health-card")
     return {"ok": True, "status": "approved"}
 
 

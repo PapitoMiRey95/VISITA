@@ -77,11 +77,6 @@ export default function PortalAccount() {
         } catch (e) { toast.error(formatErr(e)); } finally { setPinBusy(false); }
     };
 
-    const markRead = async () => {
-        await api.post("/portal/notifications/read");
-        toast.success(t("portal:account.toastNotificationsRead"));
-        refetch();
-    };
 
     const savePhone = async () => {
         setBusy(true);
@@ -329,19 +324,13 @@ export default function PortalAccount() {
             </Card>
 
             <Card>
-                <div className="flex items-center justify-between mb-3">
+                <button type="button" data-testid="account-notifications-link" onClick={() => nav("/portal/notifications")} className="w-full flex items-center justify-between gap-3 text-left">
                     <div className="flex items-center gap-2 font-bold text-slate-700"><BellRing className="w-5 h-5 text-portal-blue" /> {t("portal:account.notifications")}</div>
-                    {notes.some((n) => !n.read) && <button onClick={markRead} data-testid="mark-read" className="text-sm text-portal-blueDark font-bold">{t("portal:account.markAllRead")}</button>}
-                </div>
-                {notes.length === 0 && <p className="text-slate-500 text-sm">{t("portal:account.noNotifications")}</p>}
-                <div className="space-y-2">
-                    {notes.map((n) => (
-                        <div key={n.id} className={`text-sm rounded-lg p-3 border ${n.read ? "border-slate-100 bg-white" : "border-portal-blue/30 bg-portal-blue/5"}`}>
-                            <div className="font-bold text-slate-800">{n.title}</div>
-                            <div className="text-slate-600">{n.body}</div>
-                        </div>
-                    ))}
-                </div>
+                    <div className="flex items-center gap-2 text-sm text-slate-500">
+                        {notes.filter((n) => !n.read).length > 0 && <span className="text-[11px] font-bold px-2 py-0.5 rounded-full bg-portal-blue text-white">{notes.filter((n) => !n.read).length}</span>}
+                        <span>{t("portal:notif.open", "Open")} ›</span>
+                    </div>
+                </button>
             </Card>
 
             <Button onClick={() => { logout(); nav("/login"); }} data-testid="account-logout"

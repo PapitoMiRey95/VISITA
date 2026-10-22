@@ -75,10 +75,9 @@ async def send_refill_reminders(notify, window_days: int = 7) -> dict:
     for pid, items in per_patient.items():
         names = [" ".join(x for x in (m.get("drug"), m.get("strength")) if x) for m, _, _ in items]
         soonest = min(d for _, d, _ in items).isoformat()
-        body = (f"{names[0]} is estimated to run out around {soonest}." if len(names) == 1
-                else f"{', '.join(names[:-1])} and {names[-1]} are estimated to run out soon (first around {soonest}).") + \
-               " Open Prescriptions to request a refill when you're ready."
-        await notify(pid, "Refill reminder", body)
+        body = (f"{names[0]} runs out around {soonest}." if len(names) == 1
+                else f"{len(names)} medicines run out soon (first around {soonest}).") + " Request a refill when ready."
+        await notify(pid, "Refill due soon", body, category="prescription", link="/portal/prescriptions", dedupe_key="refill_due")
         now = now_iso()
         await db.refill_reminders.insert_many([{"key": k, "medication_id": m["id"], "patient_id": pid, "due_on": d.isoformat(), "sent_at": now} for m, d, k in items])
         sent += 1

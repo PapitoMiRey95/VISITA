@@ -51,6 +51,7 @@ import Verifications from "./internal/Verifications";
 import Applications from "./internal/Applications";
 import Settings from "./internal/Settings";
 import ClinicProfile from "./internal/ClinicProfile";
+import NotificationsPage from "./portal/NotificationCenter";
 import DeveloperPortal from "./developer/DeveloperPortal";
 import { SystemStatusProvider } from "./components/SystemStatus";
 import AuditCompliance from "./internal/AuditCompliance";
@@ -119,6 +120,7 @@ function App() {
                         <Route path="requests" element={<PortalMyRequests />} />
                         <Route path="documents" element={<PortalDocuments />} />
                         <Route path="invoices" element={<PortalInvoices />} />
+                        <Route path="notifications" element={<NotificationsPage />} />
                         <Route path="account" element={<PortalAccount />} />
                     </Route>
 
